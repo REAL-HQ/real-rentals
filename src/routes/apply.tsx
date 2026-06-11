@@ -94,6 +94,11 @@ function Apply() {
     if (error) setError(error.message); else setSubmitted(true);
   }
 
+  const selectedVehicle = vehicles.find((v) => v.id === f.vehicle_id);
+  const weeklyToMonthlySavings = selectedVehicle
+    ? Math.round((Number(selectedVehicle.weekly_rate) * 4) - (selectedVehicle.monthly_rate ?? Number(selectedVehicle.weekly_rate) * 4))
+    : 0;
+
   if (submitted) {
     return (
       <SiteLayout>
