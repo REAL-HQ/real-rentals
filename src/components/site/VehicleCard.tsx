@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { Wrench, DoorOpen, Car, BadgeCheck } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck } from "lucide-react";
 
 type Vehicle = Tables<"vehicles">;
 
@@ -25,24 +25,19 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <div className="text-muted-foreground text-sm">No photo</div>
         )}
       </div>
-      <div className="mt-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold text-foreground">
-            {vehicle.make} {vehicle.model}
-          </div>
+      <div className="mt-5 flex items-center justify-between gap-4">
+        <div className="text-lg font-semibold text-foreground">
+          {vehicle.make} {vehicle.model}
         </div>
-        <div className="text-right">
-          <div className="car-price text-lg font-semibold transition-colors">
-            ${Number(vehicle.weekly_rate)}
-          </div>
-          <div className="text-[11px] text-muted-foreground">per week</div>
+        <div className="car-price text-lg font-semibold transition-colors whitespace-nowrap">
+          ${Number(vehicle.weekly_rate)}/week
         </div>
       </div>
       <div className="mt-4 space-y-1.5 text-sm text-muted-foreground">
-        {vehicle.maintenance_status && (
+        {vehicle.body_type && (
           <div className="flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-real-red" strokeWidth={1.75} />
-            <span className="font-medium text-foreground">{vehicle.maintenance_status}</span>
+            <Car className="w-4 h-4" strokeWidth={1.75} />
+            <span className="capitalize">Type: {vehicle.body_type}</span>
           </div>
         )}
         {vehicle.doors != null && (
@@ -51,16 +46,10 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
             <span>Doors: {vehicle.doors}</span>
           </div>
         )}
-        {vehicle.body_type && (
-          <div className="flex items-center gap-2">
-            <Car className="w-4 h-4" strokeWidth={1.75} />
-            <span className="capitalize">Type: {vehicle.body_type}</span>
-          </div>
-        )}
         {uber.length > 0 && (
           <div className="flex items-start gap-2">
             <BadgeCheck className="w-4 h-4 mt-0.5" strokeWidth={1.75} />
-            <span>Uber eligibility: {uber.join(", ")}</span>
+            <span>Eligibility: {uber.join(", ")}</span>
           </div>
         )}
       </div>
