@@ -72,8 +72,8 @@ function Index() {
           </div>
         </FadeUp>
         <FadeUp delay={80}>
-          <div className="mt-8 mx-auto max-w-4xl rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 px-5 py-4">
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm md:text-base font-medium text-white">
+          <div className="mt-8 mx-auto w-fit max-w-full rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 px-4 md:px-5 py-3 md:py-4 overflow-x-auto">
+            <div className="flex flex-nowrap items-center justify-center gap-x-4 md:gap-x-6 text-[11px] sm:text-xs md:text-sm lg:text-base font-medium text-white whitespace-nowrap">
               {[
                 "No Credit Check",
                 "Insurance Included",
@@ -82,7 +82,7 @@ function Index() {
                 "Same-Day Approval",
               ].map((t) => (
                 <span key={t} className="inline-flex items-center gap-1.5">
-                  <Check className="w-4 h-4 text-real-red" strokeWidth={3} />
+                  <Check className="w-3.5 h-3.5 md:w-4 md:h-4 text-real-red shrink-0" strokeWidth={3} />
                   {t}
                 </span>
               ))}
