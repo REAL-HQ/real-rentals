@@ -29,7 +29,7 @@ function HowItWorks() {
         {[
           { n: "01", t: "Apply Online", d: "Five minutes. Personal info, license, gig platforms, vehicle preference. We save your progress between steps." },
           { n: "02", t: "Get Approved Fast", d: "We run an MVR + background check and review your application. Most drivers hear back within 24 hours." },
-          { n: "03", t: "Pick Up Your Car", d: "Schedule pickup at our lot. Your vehicle is detailed, inspected, fueled, GPS-installed, and rideshare-ready." },
+          { n: "03", t: "Pick Up Your Car", d: "Schedule pickup at our lot. Your vehicle is detailed, inspected, fueled, and rideshare-ready." },
           { n: "04", t: "Start Earning", d: "Activate your gig accounts and start driving. Pay weekly rent in advance. No contracts, no surprises." },
         ].map((s, i) => (
           <FadeUp key={s.n} delay={i * 60}>
@@ -69,7 +69,7 @@ function HowItWorks() {
           <FadeUp>
             <h3 className="text-2xl font-semibold mb-6">What's Included</h3>
             <ul className="space-y-3 text-sm">
-              {["Commercial rideshare insurance", "GPS tracking device", "Routine maintenance & oil changes", "Roadside assistance", "Vehicle registration & inspection", "24/7 support"].map((i) => (
+              {["Commercial rideshare insurance", "Routine maintenance & oil changes", "Roadside assistance", "Vehicle registration & inspection", "24/7 support"].map((i) => (
                 <li key={i} className="flex gap-3"><Check className="w-5 h-5 text-real-red" /> {i}</li>
               ))}
             </ul>
