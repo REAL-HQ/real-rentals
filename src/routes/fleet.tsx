@@ -96,7 +96,7 @@ function FleetPage() {
                     key={c.k}
                     type="button"
                     onClick={() => toggleCat(c.k)}
-                    className={`px-4 py-2 rounded-full text-sm border transition ${
+                    className={`px-4 py-2 rounded-lg text-sm border transition ${
                       categories[c.k]
                         ? "bg-real-red text-white border-real-red"
                         : "bg-white text-foreground border-border hover:border-foreground/40"
