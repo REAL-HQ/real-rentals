@@ -1,0 +1,1 @@
+UPDATE public.vehicles SET deposit = 250;
