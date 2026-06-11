@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as InvestorsRouteImport } from './routes/investors'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as FaqRouteImport } from './routes/faq'
@@ -20,6 +21,11 @@ import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvestorsRoute = InvestorsRouteImport.update({
+  id: '/investors',
+  path: '/investors',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HowItWorksRoute = HowItWorksRouteImport.update({
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
+  '/investors': typeof InvestorsRoute
   '/pricing': typeof PricingRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
+  '/investors': typeof InvestorsRoute
   '/pricing': typeof PricingRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
+  '/investors': typeof InvestorsRoute
   '/pricing': typeof PricingRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/faq'
     | '/fleet'
     | '/how-it-works'
+    | '/investors'
     | '/pricing'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/faq'
     | '/fleet'
     | '/how-it-works'
+    | '/investors'
     | '/pricing'
     | '/fleet/$id'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/faq'
     | '/fleet'
     | '/how-it-works'
+    | '/investors'
     | '/pricing'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   FaqRoute: typeof FaqRoute
   FleetRoute: typeof FleetRouteWithChildren
   HowItWorksRoute: typeof HowItWorksRoute
+  InvestorsRoute: typeof InvestorsRoute
   PricingRoute: typeof PricingRoute
 }
 
@@ -127,6 +140,13 @@ declare module '@tanstack/react-router' {
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/investors': {
+      id: '/investors'
+      path: '/investors'
+      fullPath: '/investors'
+      preLoaderRoute: typeof InvestorsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/how-it-works': {
@@ -190,6 +210,7 @@ const rootRouteChildren: RootRouteChildren = {
   FaqRoute: FaqRoute,
   FleetRoute: FleetRouteWithChildren,
   HowItWorksRoute: HowItWorksRoute,
+  InvestorsRoute: InvestorsRoute,
   PricingRoute: PricingRoute,
 }
 export const routeTree = rootRouteImport
