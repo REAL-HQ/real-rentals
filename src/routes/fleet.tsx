@@ -78,7 +78,15 @@ function FleetPage() {
           <div className="rounded-2xl bg-soft p-5 flex flex-wrap items-center gap-5">
             <div className="flex flex-col">
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Make</label>
-              <select value={make} onChange={(e) => setMake(e.target.value)} className="bg-white border border-border rounded-lg pl-4 pr-8 py-2 text-sm">
+              <select
+                value={make}
+                onChange={(e) => setMake(e.target.value)}
+                className="appearance-none bg-white border border-border rounded-lg pl-4 pr-10 py-2 text-sm bg-no-repeat bg-[right_0.75rem_center]"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>\")",
+                }}
+              >
                 <option value="all">All</option>
                 {makes.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
