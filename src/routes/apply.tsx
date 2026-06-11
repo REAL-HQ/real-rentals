@@ -76,7 +76,7 @@ function Apply() {
       if (!f.vehicle_id) errs.vehicle_id = "Pick a vehicle";
       if (!f.start_date) errs.start_date = "Required";
     } else if (step === 4) {
-      if (!f.consent_gps || !f.consent_background || !f.consent_prepay || !f.consent_terms)
+      if (!f.consent_background || !f.consent_prepay || !f.consent_terms)
         errs.consents = "All consents are required";
     }
     setStepErrors(errs);
