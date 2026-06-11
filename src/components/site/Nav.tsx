@@ -3,11 +3,6 @@ import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
 
-const primaryLinks = [
-  { to: "/fleet", label: "Fleet" },
-  { to: "/apply", label: "Apply" },
-];
-
 const menuLinks = [
   { to: "/fleet", label: "Fleet" },
   { to: "/apply", label: "Apply" },
@@ -38,25 +33,21 @@ export function Nav() {
     >
       <div className="container-real flex h-12 items-center justify-between">
         <Logo />
-        <nav className="hidden md:flex items-center gap-8 text-[13px] text-muted-foreground">
-          {primaryLinks.map((l) => (
-            <Link
-              key={l.to}
-              to={l.to}
-              className="hover:text-foreground transition-colors"
-              activeProps={{ className: "text-foreground" }}
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        <button
-          className="p-2 -mr-2"
-          onClick={() => setOpen((o) => !o)}
-          aria-label="Menu"
-        >
-          {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/apply"
+            className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
+          >
+            Apply
+          </Link>
+          <button
+            className="p-2 -mr-2"
+            onClick={() => setOpen((o) => !o)}
+            aria-label="Menu"
+          >
+            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
       {open && (
         <div className="border-t border-border bg-white">
