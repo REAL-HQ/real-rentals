@@ -44,7 +44,7 @@ function Index() {
 
   return (
     <SiteLayout>
-      <section className="relative isolate w-full px-6 md:px-12 pt-12 md:pt-20 pb-10 md:pb-14 text-center overflow-hidden">
+      <section className="relative isolate w-full px-6 md:px-12 pt-24 md:pt-36 pb-10 md:pb-14 text-center overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0 -z-20 bg-cover bg-center"
