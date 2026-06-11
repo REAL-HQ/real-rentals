@@ -56,7 +56,7 @@ function Pricing() {
                     <li key={f} className="flex gap-2"><Check className="w-4 h-4 text-real-red mt-0.5" />{f}</li>
                   ))}
                 </ul>
-                <Link to="/apply" className={`mt-8 inline-flex w-full justify-center rounded-full px-6 py-3 text-sm font-medium transition active:scale-95 ${t.popular ? "bg-real-red text-white hover:opacity-90" : "bg-black text-white hover:bg-real-red"}`}>
+                <Link to="/apply" className={`mt-8 inline-flex w-full justify-center rounded-lg px-6 py-3 text-sm font-medium transition active:scale-95 ${t.popular ? "bg-real-red text-white hover:opacity-90" : "bg-black text-white hover:bg-real-red"}`}>
                   Apply Now
                 </Link>
               </div>

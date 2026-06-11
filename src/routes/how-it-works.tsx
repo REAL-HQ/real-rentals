@@ -87,7 +87,7 @@ function HowItWorks() {
 
       <section className="container-real py-24 text-center">
         <FadeUp>
-          <Link to="/apply" className="inline-flex items-center rounded-full bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95">
+          <Link to="/apply" className="inline-flex items-center rounded-lg bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95">
             Start Your Application
           </Link>
         </FadeUp>
