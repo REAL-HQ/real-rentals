@@ -36,7 +36,7 @@ export function Nav() {
           : "bg-white border-b border-transparent"
       }`}
     >
-      <div className="container-real flex h-16 items-center justify-between">
+      <div className="container-real flex h-12 items-center justify-between">
         <Logo />
         <nav className="hidden md:flex items-center gap-8 text-[13px] text-muted-foreground">
           {primaryLinks.map((l) => (
