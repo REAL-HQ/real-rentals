@@ -79,7 +79,7 @@ function FleetPage() {
           <div className="rounded-2xl bg-soft p-5 flex flex-wrap items-center gap-5">
             <div className="flex flex-col">
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Make</label>
-              <select value={make} onChange={(e) => setMake(e.target.value)} className="bg-white border border-border rounded-full px-4 py-2 text-sm">
+              <select value={make} onChange={(e) => setMake(e.target.value)} className="bg-white border border-border rounded-lg pl-4 pr-8 py-2 text-sm">
                 <option value="all">All</option>
                 {makes.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
