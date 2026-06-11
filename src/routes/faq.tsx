@@ -15,14 +15,16 @@ export const Route = createFileRoute("/faq")({
 });
 
 const faqs = [
+  { q: "What is required to qualify?", a: "You must be 21+, hold a valid US driver's license for at least one year, have a reasonably clean driving record, and a payment method for weekly rent." },
   { q: "Is insurance included?", a: "Yes. Every REAL AUTOMOTIVE vehicle comes with commercial rideshare insurance that covers you while driving for approved platforms." },
-  { q: "What's the mileage limit?", a: "Unlimited miles for rideshare and delivery driving. Personal use should be reasonable." },
-  { q: "How big is the deposit?", a: "Refundable deposits run $249–$500 depending on vehicle, and are held 14–30 days after rental ends to cover tolls or tickets." },
+  { q: "How much is the deposit?", a: "Refundable deposits run $249 to $500 depending on vehicle, and are held 14 to 30 days after rental ends to cover tolls or tickets." },
+  { q: "Can I use the car for Uber and DoorDash?", a: "Yes. You can drive for Uber, Lyft, DoorDash, Instacart, Amazon Flex and other approved gig platforms on the same vehicle." },
+  { q: "Are there mileage limits?", a: "No. Unlimited miles for rideshare and delivery driving. Personal use should be reasonable." },
+  { q: "How quickly can I get approved?", a: "Most drivers are reviewed within 24 hours and on the road within 48 to 72 hours of applying." },
+  { q: "What happens if the vehicle needs repairs?", a: "Routine maintenance and most repairs are on us. Contact support, drop the car at our lot, and we'll get you back on the road quickly." },
   { q: "Who handles maintenance?", a: "We do. Oil changes, brakes, tires, and routine service are on us. You handle fuel and cleanliness." },
-  { q: "Is there a GPS device?", a: "Yes. Every vehicle has a GPS tracker for security and recovery. You consent to this in the application." },
   { q: "How do I pay weekly rent?", a: "Debit, credit, or Cash App. Rent is paid in advance every week via auto-pay." },
   { q: "What if I get deactivated from Uber or Lyft?", a: "You can drive for any approved platform (Lyft, DoorDash, Instacart, Amazon Flex, etc.). If you can no longer drive any platform, contact us — we'll work with you to return the vehicle." },
-  { q: "How fast is approval?", a: "Most drivers are reviewed within 24 hours and on the road within 48–72 hours of applying." },
   { q: "Can I take the car out of state?", a: "Limited out-of-state driving is allowed with prior approval. Unauthorized travel triggers a fee." },
 ];
 
