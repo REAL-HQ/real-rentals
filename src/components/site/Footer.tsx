@@ -46,8 +46,8 @@ export function Footer() {
       <div className="bg-real-red text-white">
         <div className="container-real py-12 md:py-16 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
           <div>
-            <div className="text-2xl md:text-3xl font-semibold">Your Next Paycheck Is Parked Here.</div>
-            <div className="mt-2 text-sm md:text-base text-white/85">Apply in minutes. Drive this week.</div>
+            <div className="text-2xl md:text-3xl font-semibold">Need A Vehicle To Start Driving This Week?</div>
+            <div className="mt-2 text-sm md:text-base text-white/85">Apply in minutes. Get approved fast. Start earning.</div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
