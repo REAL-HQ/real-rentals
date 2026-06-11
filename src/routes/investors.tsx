@@ -83,7 +83,7 @@ function Investors() {
               <I label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Capital range</label>
-                <select value={form.capital_range} onChange={(e) => setForm({ ...form, capital_range: e.target.value })} className="mt-1 w-full bg-soft rounded-full px-5 py-3 text-sm">
+                <select value={form.capital_range} onChange={(e) => setForm({ ...form, capital_range: e.target.value })} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm">
                   <option value="">Select…</option>
                   <option>$10k – $50k</option>
                   <option>$50k – $150k</option>
@@ -112,7 +112,7 @@ function I({ label, value, onChange, type = "text", required }: { label: string;
   return (
     <div>
       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
-      <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-full px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
+      <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
     </div>
   );
 }

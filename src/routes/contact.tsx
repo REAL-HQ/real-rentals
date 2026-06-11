@@ -78,7 +78,7 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   return (
     <div>
       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
-      <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-full px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
+      <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
     </div>
   );
 }

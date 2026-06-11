@@ -110,7 +110,7 @@ function Admin() {
                   <div className="font-medium">{a.full_name} <span className="text-muted-foreground text-sm">· {a.email} · {a.phone}</span></div>
                   <div className="text-xs text-muted-foreground mt-1">{new Date(a.created_at!).toLocaleString()} · Platforms: {a.platforms?.join(", ") || "—"} · Term: {a.rental_term}</div>
                 </div>
-                <select value={a.status} onChange={(e) => updateAppStatus(a.id, e.target.value)} className="bg-white border border-border rounded-full px-4 py-2 text-sm">
+                <select value={a.status} onChange={(e) => updateAppStatus(a.id, e.target.value)} className="bg-white border border-border rounded-lg px-4 py-2 text-sm">
                   {["new", "reviewing", "approved", "declined", "active"].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -126,7 +126,7 @@ function Admin() {
                   <div className="font-medium">{v.year} {v.make} {v.model}</div>
                   <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type}</div>
                 </div>
-                <select value={v.status} onChange={(e) => updateVehicleStatus(v.id, e.target.value)} className="bg-white border border-border rounded-full px-4 py-2 text-sm">
+                <select value={v.status} onChange={(e) => updateVehicleStatus(v.id, e.target.value)} className="bg-white border border-border rounded-lg px-4 py-2 text-sm">
                   {["available", "rented", "maintenance"].map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
