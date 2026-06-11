@@ -51,10 +51,6 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <div className="car-price text-lg font-semibold transition-colors whitespace-nowrap">
             ${Number(vehicle.weekly_rate)}/week
           </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 whitespace-nowrap inline-flex items-center gap-1 justify-end">
-            <Check className="w-3 h-3 text-emerald-600" strokeWidth={2.5} />
-            Refundable Deposit Required
-          </div>
         </div>
       </div>
       <div className="mt-3 rounded-lg bg-white border border-border/60 px-3 py-2 flex items-center gap-2">
