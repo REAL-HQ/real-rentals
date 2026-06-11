@@ -94,6 +94,11 @@ function Apply() {
     if (error) setError(error.message); else setSubmitted(true);
   }
 
+  const selectedVehicle = vehicles.find((v) => v.id === f.vehicle_id);
+  const weeklyToMonthlySavings = selectedVehicle
+    ? Math.round((Number(selectedVehicle.weekly_rate) * 4) - (selectedVehicle.monthly_rate ?? Number(selectedVehicle.weekly_rate) * 4))
+    : 0;
+
   if (submitted) {
     return (
       <SiteLayout>
@@ -210,6 +215,23 @@ function Apply() {
                 <select value={f.rental_term} onChange={(e) => update("rental_term", e.target.value)} className="mt-1 w-full bg-soft rounded-full px-5 py-3 text-sm">
                   <option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="long_term">Long-term</option>
                 </select>
+                {f.rental_term === "weekly" && selectedVehicle && weeklyToMonthlySavings > 0 && (
+                  <div className="mt-3 rounded-xl bg-real-red/5 border border-real-red/20 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <span className="font-semibold text-real-red">Save ~${weeklyToMonthlySavings} / month</span>
+                        <span className="text-muted-foreground ml-1">by switching to Monthly</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => update("rental_term", "monthly")}
+                        className="shrink-0 rounded-lg bg-real-red px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 transition"
+                      >
+                        Switch
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="md:col-span-2">
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
