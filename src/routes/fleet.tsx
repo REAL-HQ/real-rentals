@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Shield, Wrench, BadgeCheck, Navigation } from "lucide-react";
+import { Shield, Wrench, BadgeCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -66,9 +66,8 @@ function FleetPage() {
         <FadeUp>
           <h1 className="text-2xl md:text-3xl font-semibold">Available Vehicles</h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs md:text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Insured</span>
-            <span className="inline-flex items-center gap-1.5"><Navigation className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />GPS Equipped</span>
             <span className="inline-flex items-center gap-1.5"><BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Uber/Lyft Eligible</span>
+            <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Insurance Included</span>
             <span className="inline-flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Maintenance Included</span>
           </div>
         </FadeUp>
