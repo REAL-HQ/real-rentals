@@ -54,7 +54,7 @@ function HowItWorks() {
             "Valid US driver's license (1+ years)",
             "Clean enough driving record (we'll let you know)",
             "Active rideshare/delivery account (or willingness to sign up)",
-            "Refundable deposit ($249–$500)",
+            "Refundable deposit ($250)",
             "Debit card, credit card, or Cash App for weekly rent",
           ].map((r) => (
             <div key={r} className="flex items-start gap-3 text-sm">
