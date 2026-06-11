@@ -62,7 +62,7 @@ function FleetPage() {
 
   return (
     <SiteLayout>
-      <section className="container-real pt-24 md:pt-36 pb-4">
+      <section className="container-real pt-16 md:pt-20 pb-4">
         <FadeUp>
           <h1 className="text-2xl md:text-3xl font-semibold">Available Vehicles</h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs md:text-sm text-muted-foreground">
