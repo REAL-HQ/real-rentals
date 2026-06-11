@@ -33,7 +33,11 @@ function Investors() {
       <section className="container-real pt-20 md:pt-28 pb-16 text-center">
         <FadeUp>
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Investors</div>
-          <h1 className="mt-4 text-4xl md:text-6xl font-semibold max-w-3xl mx-auto">Own The Asset. We Run The Operation.</h1>
+          <h1 className="mt-4 text-4xl md:text-6xl font-semibold max-w-3xl mx-auto">
+            Own The Asset.
+            <br />
+            We Run The Operation.
+          </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             Place vehicles into the REAL AUTOMOTIVE fleet and earn passive monthly income.
             We find the drivers, screen them, collect rent, track every vehicle by GPS,
