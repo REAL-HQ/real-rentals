@@ -6,6 +6,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
 import { FadeUp } from "@/components/site/FadeUp";
+import heroBg from "@/assets/hero-bg.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,29 +44,35 @@ function Index() {
 
   return (
     <SiteLayout>
-      <section className="w-full px-6 md:px-12 pt-20 md:pt-28 pb-16 md:pb-24 text-center">
+      <section className="relative w-full px-6 md:px-12 pt-20 md:pt-28 pb-16 md:pb-24 text-center overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 bg-cover bg-center"
+          style={{ backgroundImage: `url(${heroBg})` }}
+        />
+        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/80 via-black/70 to-black/90" />
         <FadeUp>
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">
             Rent. Drive. Earn.
           </div>
-          <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold mx-auto whitespace-nowrap">
+          <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold mx-auto whitespace-nowrap text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
             Start Driving. Start Earning. This Week.
           </h1>
-          <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-6 text-lg md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
             Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week.
             Insurance included. Maintenance included. Fast approval. Drive this week.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95">
+            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-medium text-black hover:bg-real-red hover:text-white transition active:scale-95">
               View Available Cars <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/apply" className="inline-flex items-center rounded-lg border border-border px-7 py-3 text-sm font-medium hover:border-black transition active:scale-95">
+            <Link to="/apply" className="inline-flex items-center rounded-lg border border-white/40 px-7 py-3 text-sm font-medium text-white hover:bg-white hover:text-black transition active:scale-95">
               Apply Now
             </Link>
           </div>
         </FadeUp>
         <FadeUp delay={80}>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm text-muted-foreground">
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm text-white/75">
             {[
               "Insurance Included",
               "Maintenance Included",
