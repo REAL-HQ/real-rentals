@@ -56,7 +56,7 @@ function Contact() {
                 <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={5} className="mt-1 w-full bg-soft rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
               </div>
               {error && <div className="text-sm text-real-red">{error}</div>}
-              <button disabled={loading} className="rounded-full bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95 disabled:opacity-50">
+              <button disabled={loading} className="rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95 disabled:opacity-50">
                 {loading ? "Sending…" : "Send Message"}
               </button>
             </form>

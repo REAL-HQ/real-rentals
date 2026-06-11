@@ -47,10 +47,10 @@ function Index() {
             week.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-full bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95">
+            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95">
               Browse The Fleet <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/apply" className="inline-flex items-center rounded-full border border-border px-7 py-3 text-sm font-medium hover:border-black transition active:scale-95">
+            <Link to="/apply" className="inline-flex items-center rounded-lg border border-border px-7 py-3 text-sm font-medium hover:border-black transition active:scale-95">
               Apply To Drive
             </Link>
           </div>
@@ -176,7 +176,7 @@ function Index() {
           <FadeUp>
             <h2 className="text-3xl md:text-5xl font-semibold">Your Next Paycheck Is Parked Here.</h2>
             <div className="mt-8">
-              <Link to="/apply" className="inline-flex items-center rounded-full bg-white text-foreground px-8 py-3.5 text-sm font-medium hover:bg-soft transition active:scale-95">
+              <Link to="/apply" className="inline-flex items-center rounded-lg bg-white text-foreground px-8 py-3.5 text-sm font-medium hover:bg-soft transition active:scale-95">
                 Apply To Drive Today
               </Link>
             </div>

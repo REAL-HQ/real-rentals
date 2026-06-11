@@ -94,7 +94,7 @@ function Investors() {
               </div>
               {err && <div className="md:col-span-2 text-sm text-real-red">{err}</div>}
               <div className="md:col-span-2">
-                <button className="rounded-full bg-real-red px-7 py-3 text-sm font-medium text-white hover:opacity-90 transition active:scale-95">Request Deck</button>
+                <button className="rounded-lg bg-real-red px-7 py-3 text-sm font-medium text-white hover:opacity-90 transition active:scale-95">Request Deck</button>
               </div>
             </form>
           )}

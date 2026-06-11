@@ -104,7 +104,7 @@ function Apply() {
             <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
               We Review Most Applications Within 24 Hours. Check your email — we'll be in touch.
             </p>
-            <Link to="/fleet" className="mt-10 inline-flex rounded-full bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
+            <Link to="/fleet" className="mt-10 inline-flex rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
               Back to fleet
             </Link>
           </FadeUp>
@@ -176,7 +176,7 @@ function Apply() {
                   const on = f.platforms.includes(p);
                   return (
                     <button type="button" key={p} onClick={() => update("platforms", on ? f.platforms.filter((x) => x !== p) : [...f.platforms, p])}
-                      className={`rounded-full px-5 py-2 text-sm border transition ${on ? "bg-black text-white border-black" : "border-border hover:border-black"}`}>
+                      className={`rounded-lg px-5 py-2 text-sm border transition ${on ? "bg-black text-white border-black" : "border-border hover:border-black"}`}>
                       {p}
                     </button>
                   );
@@ -247,11 +247,11 @@ function Apply() {
         </div>
 
         <div className="mt-10 flex items-center justify-between">
-          <button onClick={back} disabled={step === 0} className="rounded-full border border-border px-6 py-3 text-sm disabled:opacity-30">Back</button>
+          <button onClick={back} disabled={step === 0} className="rounded-lg border border-border px-6 py-3 text-sm disabled:opacity-30">Back</button>
           {step < STEPS.length - 1 ? (
-            <button onClick={next} className="rounded-full bg-black text-white px-7 py-3 text-sm hover:bg-real-red transition active:scale-95">Continue</button>
+            <button onClick={next} className="rounded-lg bg-black text-white px-7 py-3 text-sm hover:bg-real-red transition active:scale-95">Continue</button>
           ) : (
-            <button onClick={submit} className="rounded-full bg-real-red text-white px-8 py-3 text-sm hover:opacity-90 transition active:scale-95">Submit Application</button>
+            <button onClick={submit} className="rounded-lg bg-real-red text-white px-8 py-3 text-sm hover:opacity-90 transition active:scale-95">Submit Application</button>
           )}
         </div>
       </section>

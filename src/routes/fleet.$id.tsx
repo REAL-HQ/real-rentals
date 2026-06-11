@@ -54,12 +54,12 @@ function VehicleDetail() {
             <h1 className="mt-3 text-4xl md:text-5xl font-semibold">{v.make} {v.model}</h1>
             <p className="mt-4 text-muted-foreground leading-relaxed">{v.description}</p>
 
-            <div className="mt-8 inline-flex rounded-full bg-soft p-1 text-sm">
+            <div className="mt-8 inline-flex rounded-lg bg-soft p-1 text-sm">
               {(["weekly", "monthly"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTerm(t)}
-                  className={`px-5 py-2 rounded-full capitalize transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
+                  className={`px-5 py-2 rounded-lg capitalize transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
                 >
                   {t}
                 </button>
@@ -101,7 +101,7 @@ function VehicleDetail() {
               <Link
                 to="/apply"
                 search={{ vehicle: v.id }}
-                className="inline-flex w-full sm:w-auto justify-center items-center rounded-full bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95"
+                className="inline-flex w-full sm:w-auto justify-center items-center rounded-lg bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95"
               >
                 Apply For This Car
               </Link>

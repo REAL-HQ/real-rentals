@@ -50,7 +50,7 @@ export function Nav() {
         <div className="hidden md:block">
           <Link
             to="/apply"
-            className="inline-flex items-center rounded-full bg-real-red px-5 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-95 transition"
+            className="inline-flex items-center rounded-lg bg-real-red px-5 py-2 text-sm font-medium text-white hover:opacity-90 active:scale-95 transition"
           >
             Apply Now
           </Link>
@@ -79,7 +79,7 @@ export function Nav() {
             <Link
               to="/apply"
               onClick={() => setOpen(false)}
-              className="inline-flex justify-center rounded-full bg-real-red px-5 py-3 text-sm font-medium text-white"
+              className="inline-flex justify-center rounded-lg bg-real-red px-5 py-3 text-sm font-medium text-white"
             >
               Apply Now
             </Link>
