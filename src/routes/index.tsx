@@ -44,7 +44,7 @@ function Index() {
 
   return (
     <SiteLayout>
-      <section className="relative isolate w-full px-6 md:px-12 pt-20 md:pt-28 pb-16 md:pb-24 text-center overflow-hidden">
+      <section className="relative isolate w-full px-6 md:px-12 pt-12 md:pt-20 pb-10 md:pb-14 text-center overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0 -z-20 bg-cover bg-center"
@@ -89,9 +89,9 @@ function Index() {
         </FadeUp>
       </section>
 
-      <section className="bg-soft py-20 md:py-28">
+      <section className="bg-soft py-10 md:py-16">
         <div className="container-real">
-          <FadeUp className="mb-12 flex items-end justify-between flex-wrap gap-4">
+          <FadeUp className="mb-6 flex items-end justify-between flex-wrap gap-4">
             <div>
               <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Featured Fleet</div>
               <h2 className="mt-3 text-3xl md:text-5xl">Available This Week.</h2>
@@ -108,8 +108,8 @@ function Index() {
         </div>
       </section>
 
-      <section className="container-real py-20 md:py-28">
-        <FadeUp className="text-center mb-14">
+      <section className="container-real py-10 md:py-16">
+        <FadeUp className="text-center mb-8">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From Application To Paycheck.</h2>
         </FadeUp>
@@ -129,9 +129,9 @@ function Index() {
         </div>
       </section>
 
-      <section className="bg-soft py-20 md:py-28">
+      <section className="bg-soft py-10 md:py-16">
         <div className="container-real">
-          <FadeUp className="text-center mb-14">
+          <FadeUp className="text-center mb-8">
             <h2 className="text-3xl md:text-5xl">Everything You Need. Nothing You Don't.</h2>
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -153,8 +153,8 @@ function Index() {
         </div>
       </section>
 
-      <section className="container-real py-20 md:py-28">
-        <FadeUp className="text-center mb-14">
+      <section className="container-real py-10 md:py-16">
+        <FadeUp className="text-center mb-8">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Drivers</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From The Driver's Seat.</h2>
         </FadeUp>
@@ -177,9 +177,9 @@ function Index() {
         </div>
       </section>
 
-      <section className="bg-soft py-20 md:py-28">
+      <section className="bg-soft py-10 md:py-16">
         <div className="container-real">
-          <FadeUp className="text-center mb-12">
+          <FadeUp className="text-center mb-8">
             <h2 className="text-3xl md:text-5xl">Questions, Answered.</h2>
           </FadeUp>
           <div className="max-w-3xl mx-auto divide-y divide-border bg-white rounded-2xl">
