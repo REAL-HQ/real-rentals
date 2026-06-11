@@ -40,8 +40,8 @@ function Investors() {
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             Place vehicles into the REAL AUTOMOTIVE fleet and earn passive monthly income.
-            We find the drivers, screen them, collect rent, track every vehicle by GPS,
-            and handle maintenance and recovery — you own the car, we do the work.
+            We find the drivers, screen them, collect rent, and handle maintenance and
+            recovery — you own the car, we do the work.
           </p>
         </FadeUp>
       </section>
@@ -51,7 +51,7 @@ function Investors() {
           {[
             { I: TrendingUp, t: "50/50 Profit Split", d: "Simple, transparent revenue share on every dollar of rent collected." },
             { I: Shield, t: "We Screen Drivers", d: "Background, MVR, identity, and platform checks on every applicant." },
-            { I: MapPin, t: "GPS On Every Car", d: "Live tracking, geofencing, and recovery support included." },
+            { I: MapPin, t: "Fleet Recovery", d: "Recovery support and asset protection included." },
             { I: Wrench, t: "Full-Service Ops", d: "Maintenance, registration, claims, and collections — handled." },
           ].map((b, i) => (
             <FadeUp key={b.t} delay={i * 60}>
