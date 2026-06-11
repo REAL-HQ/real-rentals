@@ -6,7 +6,7 @@ export const Route = createFileRoute("/faq")({
   head: () => ({
     meta: [
       { title: "FAQ — REAL AUTOMOTIVE" },
-      { name: "description", content: "Answers about insurance, mileage, deposits, maintenance, GPS, payments, and platform deactivation." },
+      { name: "description", content: "Answers about insurance, mileage, deposits, maintenance, payments, and platform deactivation." },
       { property: "og:title", content: "FAQ — REAL AUTOMOTIVE" },
       { property: "og:description", content: "Everything you need to know before applying." },
     ],

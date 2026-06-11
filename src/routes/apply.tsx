@@ -46,7 +46,7 @@ function Apply() {
     license_photo_url: "",
     platforms: [], weekly_hours: 30, platform_active: true,
     vehicle_id: preVehicle, start_date: "", rental_term: "weekly", payment_method: "debit",
-    consent_gps: false, consent_background: false, consent_prepay: false, consent_terms: false,
+    consent_gps: true, consent_background: false, consent_prepay: false, consent_terms: false,
   });
   const update = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -76,7 +76,7 @@ function Apply() {
       if (!f.vehicle_id) errs.vehicle_id = "Pick a vehicle";
       if (!f.start_date) errs.start_date = "Required";
     } else if (step === 4) {
-      if (!f.consent_gps || !f.consent_background || !f.consent_prepay || !f.consent_terms)
+      if (!f.consent_background || !f.consent_prepay || !f.consent_terms)
         errs.consents = "All consents are required";
     }
     setStepErrors(errs);
@@ -270,7 +270,6 @@ function Apply() {
           {step === 4 && (
             <div className="space-y-4">
               {[
-                ["consent_gps", "I consent to a GPS tracking device on the vehicle."],
                 ["consent_background", "I authorize a background and driving-record (MVR) check."],
                 ["consent_prepay", "I understand weekly rent is paid in advance."],
                 ["consent_terms", "I agree to the terms and conditions."],
