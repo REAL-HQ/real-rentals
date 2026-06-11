@@ -62,26 +62,29 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --radius: 1rem;
+  /* REAL AUTOMOTIVE — Apple-inspired palette */
+  --background: oklch(1 0 0);                  /* #FFFFFF */
+  --foreground: oklch(0.18 0 0);               /* #111111 */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
+  --card-foreground: oklch(0.18 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0 0 0);                     /* pure black for primary buttons */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0.001 286);          /* #F5F5F7 */
+  --secondary-foreground: oklch(0.18 0 0);
+  --muted: oklch(0.97 0.001 286);              /* #F5F5F7 */
+  --muted-foreground: oklch(0.45 0 0);         /* #555555 */
+  --accent: oklch(0.553 0.232 27.5);           /* #CC0000 red */
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.553 0.232 27.5);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.92 0 0);                   /* #E5E5E7 */
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0 0 0);
+  --real-red: oklch(0.553 0.232 27.5);         /* #CC0000 */
+  --caption: oklch(0.62 0 0);                  /* #888888 */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -140,5 +143,61 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
+      "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  .text-real-red { color: #CC0000; }
+  .bg-real-red { background-color: #CC0000; }
+  .border-real-red { border-color: #CC0000; }
+  .bg-soft { background-color: #F5F5F7; }
+
+  .container-real {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  /* Apple-like fade-up-on-scroll */
+  .fade-up {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 700ms cubic-bezier(.2,.6,.2,1), transform 700ms cubic-bezier(.2,.6,.2,1);
+    will-change: opacity, transform;
+  }
+  .fade-up.in-view {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Signature car-card hover */
+  .car-card {
+    transition: transform 250ms ease-out, box-shadow 250ms ease-out;
+    will-change: transform;
+  }
+  .car-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.18), 0 12px 24px -12px rgba(0,0,0,0.10);
+  }
+  .car-card .car-img {
+    transition: transform 350ms ease-out;
+  }
+  .car-card:hover .car-img {
+    transform: scale(1.08);
+  }
+  .car-card:hover .car-price { color: #CC0000; }
+  @media (max-width: 768px) {
+    .car-card:hover { transform: none; box-shadow: none; }
+    .car-card:active { transform: scale(0.98); }
   }
 }
