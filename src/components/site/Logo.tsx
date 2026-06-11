@@ -1,23 +1,23 @@
 import { Link } from "@tanstack/react-router";
 
-export function Logo({ width = 140 }: { width?: number }) {
+export function Logo({ width = 120 }: { width?: number }) {
   return (
     <Link
       to="/"
       aria-label="REAL AUTOMOTIVE home"
-      className="relative top-[10px] flex-shrink-0"
+      className="relative top-[14px] flex-shrink-0"
       style={{
         display: "block",
         textDecoration: "none",
         background: "#E61919",
-        padding: 7,
+        padding: 6,
         width,
       }}
     >
       <div
         style={{
           border: "2px solid #fff",
-          padding: "4px 14px",
+          padding: "14px 14px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
