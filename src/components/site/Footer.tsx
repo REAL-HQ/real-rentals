@@ -46,21 +46,21 @@ export function Footer() {
         </div>
       </div>
       <div className="bg-real-red text-white">
-        <div className="container-real py-12 md:py-16 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+        <div className="container-real py-14 md:py-20 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
           <div>
-            <div className="text-2xl md:text-3xl font-semibold">Need A Vehicle To Start Driving This Week?</div>
-            <div className="mt-2 text-sm md:text-base text-white/85">Apply in minutes. Get approved fast. Start earning.</div>
+            <div className="text-3xl md:text-5xl font-semibold leading-tight">Need A Vehicle To Start Driving This Week?</div>
+            <div className="mt-3 text-base md:text-lg text-white/90">Apply In Minutes. Get Approved Fast. Start Earning.</div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
             <Link
               to="/apply"
-              className="inline-flex items-center justify-center rounded-lg bg-white text-foreground px-7 py-3 text-sm font-medium hover:bg-soft transition active:scale-95"
+              className="inline-flex items-center justify-center rounded-lg bg-white text-real-red px-10 py-5 text-base md:text-lg font-bold shadow-xl hover:scale-[1.03] hover:shadow-2xl transition active:scale-95 whitespace-nowrap"
             >
-              Apply Now
+              Apply Now →
             </Link>
             <Link
               to="/investors"
-              className="inline-flex items-center justify-center rounded-lg border border-white/40 text-white px-7 py-3 text-sm font-medium hover:bg-white/10 transition active:scale-95"
+              className="inline-flex items-center justify-center rounded-lg border border-white/40 text-white px-6 py-3 text-sm font-medium hover:bg-white/10 transition active:scale-95"
             >
               Become A Partner
             </Link>

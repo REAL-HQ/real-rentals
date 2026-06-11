@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, TrendingUp, ArrowRight, Check } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight } from "lucide-react";
 
 type Vehicle = Tables<"vehicles">;
 
@@ -53,12 +53,9 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           </div>
         </div>
       </div>
-      <div className="mt-3 rounded-lg bg-white border border-border/60 px-3 py-2 flex items-center gap-2">
-        <TrendingUp className="w-3.5 h-3.5 text-emerald-600" strokeWidth={2.25} />
-        <div className="text-[11px] leading-tight">
-          <span className="text-muted-foreground">Typical Driver Earnings: </span>
-          <span className="font-semibold text-foreground">$1,000–$1,500/wk*</span>
-        </div>
+      <div className="mt-3 rounded-lg bg-white border border-border/60 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Great For</div>
+        <div className="text-[12px] font-medium text-foreground mt-0.5">Uber • Lyft • DoorDash • Instacart</div>
       </div>
       <div className="mt-4 space-y-1.5 text-sm text-muted-foreground">
         {vehicle.body_type && (
