@@ -74,11 +74,12 @@ function Index() {
         <FadeUp delay={80}>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm text-white/75">
             {[
+              "Uber/Lyft Eligible",
               "Insurance Included",
               "Maintenance Included",
               "Unlimited Miles",
               "Fast Approval",
-              "Starting At $350/Week",
+              "No Credit Check",
             ].map((t) => (
               <span key={t} className="inline-flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />
