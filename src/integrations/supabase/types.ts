@@ -14,16 +14,257 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      applications: {
+        Row: {
+          address: string | null
+          city: string | null
+          consent_background: boolean | null
+          consent_gps: boolean | null
+          consent_prepay: boolean | null
+          consent_terms: boolean | null
+          created_at: string | null
+          dob: string | null
+          email: string
+          full_name: string
+          id: string
+          license_expiration: string | null
+          license_number: string | null
+          license_photo_url: string | null
+          license_state: string | null
+          notes: string | null
+          payment_method: string | null
+          phone: string
+          platform_active: boolean | null
+          platforms: string[] | null
+          rental_term: string | null
+          start_date: string | null
+          state: string | null
+          status: string
+          vehicle_id: string | null
+          weekly_hours: number | null
+          years_licensed: number | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          created_at?: string | null
+          dob?: string | null
+          email: string
+          full_name: string
+          id?: string
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          phone: string
+          platform_active?: boolean | null
+          platforms?: string[] | null
+          rental_term?: string | null
+          start_date?: string | null
+          state?: string | null
+          status?: string
+          vehicle_id?: string | null
+          weekly_hours?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          consent_background?: boolean | null
+          consent_gps?: boolean | null
+          consent_prepay?: boolean | null
+          consent_terms?: boolean | null
+          created_at?: string | null
+          dob?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          license_expiration?: string | null
+          license_number?: string | null
+          license_photo_url?: string | null
+          license_state?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          phone?: string
+          platform_active?: boolean | null
+          platforms?: string[] | null
+          rental_term?: string | null
+          start_date?: string | null
+          state?: string | null
+          status?: string
+          vehicle_id?: string | null
+          weekly_hours?: number | null
+          years_licensed?: number | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applications_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_leads: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          message: string | null
+          name: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          message?: string | null
+          name: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          message?: string | null
+          name?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
+      investor_leads: {
+        Row: {
+          capital_range: string | null
+          created_at: string | null
+          email: string
+          id: string
+          message: string | null
+          name: string
+          phone: string | null
+          vehicles_interested: number | null
+        }
+        Insert: {
+          capital_range?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          message?: string | null
+          name: string
+          phone?: string | null
+          vehicles_interested?: number | null
+        }
+        Update: {
+          capital_range?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          message?: string | null
+          name?: string
+          phone?: string | null
+          vehicles_interested?: number | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vehicles: {
+        Row: {
+          badges: string[] | null
+          body_type: string | null
+          created_at: string | null
+          deposit: number | null
+          description: string | null
+          id: string
+          make: string
+          model: string
+          monthly_rate: number | null
+          mpg: number | null
+          photos: string[] | null
+          status: string
+          trim: string | null
+          weekly_rate: number
+          year: number
+        }
+        Insert: {
+          badges?: string[] | null
+          body_type?: string | null
+          created_at?: string | null
+          deposit?: number | null
+          description?: string | null
+          id?: string
+          make: string
+          model: string
+          monthly_rate?: number | null
+          mpg?: number | null
+          photos?: string[] | null
+          status?: string
+          trim?: string | null
+          weekly_rate: number
+          year: number
+        }
+        Update: {
+          badges?: string[] | null
+          body_type?: string | null
+          created_at?: string | null
+          deposit?: number | null
+          description?: string | null
+          id?: string
+          make?: string
+          model?: string
+          monthly_rate?: number | null
+          mpg?: number | null
+          photos?: string[] | null
+          status?: string
+          trim?: string | null
+          weekly_rate?: number
+          year?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +391,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
