@@ -12,7 +12,7 @@ const badges = [
   "Insurance Included",
   "Maintenance Included",
   "Unlimited Miles",
-  "GPS Protected",
+  "24/7 Support",
 ];
 
 const driverLinks = [
