@@ -59,8 +59,8 @@ function Index() {
             Start Driving. Start Earning. This Week.
           </h1>
           <p className="mt-6 text-lg md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
-            Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week.
-            Insurance included. Maintenance included. Fast approval. Drive this week.
+            Rent A Vehicle For Uber, Lyft, DoorDash And Delivery Work From $350/Week.
+            Insurance Included. Maintenance Included. Fast Approval. Drive This Week.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-medium text-black hover:bg-black hover:text-white transition active:scale-95">
