@@ -15,16 +15,17 @@ export const Route = createFileRoute("/faq")({
 });
 
 const faqs = [
-  { q: "What is required to qualify?", a: "You must be 21+, hold a valid US driver's license for at least one year, have a reasonably clean driving record, and a payment method for weekly rent." },
+  { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, have a reasonably clean driving record, and a payment method for weekly rent. No credit check required." },
+  { q: "Is a refundable security deposit required?", a: "Yes. Refundable deposits run $249 to $500 depending on vehicle, and are returned 14 to 30 days after rental ends, less any tolls, tickets, or damage." },
+  { q: "What is included in the weekly payment?", a: "Commercial rideshare insurance, routine maintenance, unlimited miles, and 24/7 driver support are all included. You handle fuel and cleanliness." },
+  { q: "Can I drive for Uber and Lyft?", a: "Yes. Every vehicle is eligible for Uber and Lyft, and you can run both platforms on the same car." },
+  { q: "Are maintenance and repairs included?", a: "Yes. Routine maintenance and most mechanical repairs are on us — oil changes, brakes, tires, and scheduled service." },
+  { q: "How quickly can I get approved?", a: "Most applications are reviewed within 24 hours, and many drivers pick up the same day or within 48 to 72 hours of applying." },
   { q: "Is insurance included?", a: "Yes. Every REAL AUTOMOTIVE vehicle comes with commercial rideshare insurance that covers you while driving for approved platforms." },
-  { q: "How much is the deposit?", a: "Refundable deposits run $249 to $500 depending on vehicle, and are held 14 to 30 days after rental ends to cover tolls or tickets." },
-  { q: "Can I use the car for Uber and DoorDash?", a: "Yes. You can drive for Uber, Lyft, DoorDash, Instacart, Amazon Flex and other approved gig platforms on the same vehicle." },
-  { q: "Are there mileage limits?", a: "No. Unlimited miles for rideshare and delivery driving. Personal use should be reasonable." },
-  { q: "How quickly can I get approved?", a: "Most drivers are reviewed within 24 hours and on the road within 48 to 72 hours of applying." },
-  { q: "What happens if the vehicle needs repairs?", a: "Routine maintenance and most repairs are on us. Contact support, drop the car at our lot, and we'll get you back on the road quickly." },
-  { q: "Who handles maintenance?", a: "We do. Oil changes, brakes, tires, and routine service are on us. You handle fuel and cleanliness." },
+  { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. Delivery platforms including DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted on the same vehicle." },
+  { q: "What happens if my vehicle needs repairs?", a: "Contact support, schedule a swap or service appointment, and we'll get you back on the road quickly. Most routine work is covered." },
+  { q: "How do fleet partners earn money?", a: "Partners place vehicles into the REAL Automotive fleet and earn passive monthly income on a 50/50 split of rent collected. We handle driver acquisition, screening, collections, GPS tracking, and maintenance." },
   { q: "How do I pay weekly rent?", a: "Debit, credit, or Cash App. Rent is paid in advance every week via auto-pay." },
-  { q: "What if I get deactivated from Uber or Lyft?", a: "You can drive for any approved platform (Lyft, DoorDash, Instacart, Amazon Flex, etc.). If you can no longer drive any platform, contact us — we'll work with you to return the vehicle." },
   { q: "Can I take the car out of state?", a: "Limited out-of-state driving is allowed with prior approval. Unauthorized travel triggers a fee." },
 ];
 

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, Check } from "lucide-react";
+import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, Check, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -72,20 +72,21 @@ function Index() {
           </div>
         </FadeUp>
         <FadeUp delay={80}>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm text-white/75">
-            {[
-              "Uber/Lyft Eligible",
-              "No Credit Check",
-              "Insurance Included",
-              "Maintenance Included",
-              "Unlimited Miles",
-              "Same Day Approval",
-            ].map((t) => (
-              <span key={t} className="inline-flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />
-                {t}
-              </span>
-            ))}
+          <div className="mt-8 mx-auto max-w-4xl rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm md:text-base font-medium text-white">
+              {[
+                "No Credit Check",
+                "Insurance Included",
+                "Maintenance Included",
+                "Unlimited Miles",
+                "Same-Day Approval",
+              ].map((t) => (
+                <span key={t} className="inline-flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-real-red" strokeWidth={3} />
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
         </FadeUp>
       </section>
@@ -95,7 +96,7 @@ function Index() {
           <FadeUp className="mb-6 flex items-end justify-between flex-wrap gap-4">
             <div>
               <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Featured Fleet</div>
-              <h2 className="mt-3 text-3xl md:text-5xl">Available This Week.</h2>
+              <h2 className="mt-3 text-3xl md:text-5xl">Vehicles Available Now.</h2>
             </div>
             <Link to="/fleet" className="text-sm underline-offset-4 hover:underline">View All →</Link>
           </FadeUp>
@@ -116,14 +117,15 @@ function Index() {
         </FadeUp>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {[
-            { n: "01", t: "Apply", d: "Five minute application." },
-            { n: "02", t: "Approve", d: "Usually within 24 hours." },
-            { n: "03", t: "Pickup", d: "Drive away the same day." },
-            { n: "04", t: "Earn", d: "Start driving immediately." },
+            { n: "01", I: FileText, t: "Apply", d: "Complete a 5-minute application." },
+            { n: "02", I: ClipboardCheck, t: "Get Approved", d: "Most applications reviewed within 24 hours." },
+            { n: "03", I: KeyRound, t: "Pick Up Vehicle", d: "Schedule pickup and complete onboarding." },
+            { n: "04", I: Zap, t: "Start Earning", d: "Drive Uber, Lyft, DoorDash or Instacart immediately." },
           ].map((s, i) => (
             <FadeUp key={s.n} delay={i * 80}>
-              <div className="text-real-red text-sm font-semibold tracking-wider">{s.n}</div>
-              <div className="mt-2 text-lg font-semibold">{s.t}</div>
+              <s.I className="w-7 h-7 text-real-red" strokeWidth={1.75} />
+              <div className="mt-4 text-real-red text-sm font-semibold tracking-wider">{s.n}</div>
+              <div className="mt-1 text-lg font-semibold">{s.t}</div>
               <div className="mt-2 text-muted-foreground text-sm leading-relaxed">{s.d}</div>
             </FadeUp>
           ))}
@@ -141,6 +143,8 @@ function Index() {
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as you want. No mileage caps, no overage fees." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex. Pick your platforms." },
+              { I: CalendarDays, t: "Flexible Weekly Payments", d: "Pay weekly and stay on the road." },
+              { I: BadgeCheck, t: "No Long-Term Contracts", d: "Keep your options open with flexible rental terms." },
             ].map((b, i) => (
               <FadeUp key={b.t} delay={i * 60}>
                 <div className="rounded-2xl bg-white p-7 h-full border border-border">
@@ -154,27 +158,49 @@ function Index() {
         </div>
       </section>
 
-      <section className="container-real py-10 md:py-16">
-        <FadeUp className="text-center mb-8">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Drivers</div>
-          <h2 className="mt-3 text-3xl md:text-5xl">From The Driver's Seat.</h2>
-        </FadeUp>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-7">
-          {[
-            { q: "I applied Tuesday and was earning on Uber by Friday. Made my weekly rent back in three days.", n: "Marcus T.", r: "Uber & Lyft Driver" },
-            { q: "My car broke down right before the holidays. REAL had me in a vehicle and back to work in 48 hours.", n: "Priya S.", r: "DoorDash Driver" },
-            { q: "No deposit headaches, no surprise fees. I keep what I earn and the maintenance is handled.", n: "Jamal R.", r: "Uber Premier Driver" },
-          ].map((t, i) => (
-            <FadeUp key={t.n} delay={i * 60}>
-              <div className="rounded-2xl bg-soft p-7 h-full">
-                <p className="text-lg leading-relaxed">"{t.q}"</p>
-                <div className="mt-6 text-sm">
-                  <div className="font-medium">{t.n}</div>
-                  <div className="text-muted-foreground">{t.r}</div>
-                </div>
+      <section className="container-real py-14 md:py-20">
+        <div className="rounded-3xl bg-foreground text-white p-8 md:p-14 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center">
+          <div className="lg:col-span-3">
+            <FadeUp>
+              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Fleet Partner Program</div>
+              <h2 className="mt-3 text-3xl md:text-5xl leading-tight">Turn Your Vehicle Into Monthly Cash Flow.</h2>
+              <p className="mt-5 text-white/80 leading-relaxed max-w-xl">
+                <span className="font-semibold text-white">Own a vehicle?</span> Join the REAL Automotive Partner Program and earn passive income by placing vehicles into our rideshare fleet.
+              </p>
+              <div className="mt-7 flex flex-col sm:flex-row gap-3">
+                <Link to="/investors" className="inline-flex items-center justify-center rounded-lg bg-real-red text-white px-8 py-4 text-sm font-semibold hover:opacity-90 transition active:scale-95">
+                  Become A Partner <ArrowRight className="w-4 h-4 ml-2" />
+                </Link>
+                <Link to="/investors" className="inline-flex items-center justify-center rounded-lg border border-white/30 text-white px-8 py-4 text-sm font-medium hover:bg-white/10 transition active:scale-95">
+                  Learn More
+                </Link>
               </div>
             </FadeUp>
-          ))}
+          </div>
+          <div className="lg:col-span-2">
+            <FadeUp delay={80}>
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-6">
+                <div className="text-[11px] uppercase tracking-wider text-white/60 font-semibold">We Handle Everything</div>
+                <ul className="mt-4 grid grid-cols-1 gap-3 text-sm">
+                  {[
+                    { I: Users, t: "Driver Acquisition" },
+                    { I: ScanSearch, t: "Screening" },
+                    { I: DollarSign, t: "Collections" },
+                    { I: MapPin, t: "GPS Tracking" },
+                    { I: Briefcase, t: "Fleet Management" },
+                    { I: LifeBuoy, t: "Vehicle Support" },
+                  ].map((x) => (
+                    <li key={x.t} className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-real-red/15 text-real-red">
+                        <x.I className="w-4 h-4" strokeWidth={2} />
+                      </span>
+                      <span className="text-white/90">{x.t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </FadeUp>
+          </div>
         </div>
       </section>
 
@@ -185,9 +211,16 @@ function Index() {
           </FadeUp>
           <div className="max-w-3xl mx-auto divide-y divide-border bg-white rounded-2xl">
             {[
-              { q: "Is insurance included?", a: "Commercial rideshare insurance is included on every vehicle." },
-              { q: "What's the mileage limit?", a: "Unlimited miles for rideshare and delivery driving." },
-              { q: "How fast is approval?", a: "Most applications are reviewed within 24 hours." },
+              { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
+              { q: "Is a refundable security deposit required?", a: "Yes. Refundable deposits run $249 to $500 depending on vehicle and are returned 14 to 30 days after rental ends." },
+              { q: "What is included in the weekly payment?", a: "Commercial rideshare insurance, routine maintenance, unlimited miles, and 24/7 driver support." },
+              { q: "Can I drive for Uber and Lyft?", a: "Yes. Every vehicle is eligible for both Uber and Lyft, on the same car." },
+              { q: "Are maintenance and repairs included?", a: "Routine maintenance and most mechanical repairs are on us." },
+              { q: "How quickly can I get approved?", a: "Most applications are reviewed within 24 hours, with same-day pickup available." },
+              { q: "Is insurance included?", a: "Yes. Commercial rideshare insurance is included on every vehicle." },
+              { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
+              { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },
+              { q: "How do fleet partners earn money?", a: "Partners earn passive monthly income on a 50/50 split of rent collected. We handle drivers, screening, collections, and maintenance." },
             ].map((f) => (
               <details key={f.q} className="group p-6">
                 <summary className="cursor-pointer flex items-center justify-between text-base font-medium list-none">
