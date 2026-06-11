@@ -64,10 +64,10 @@ function Admin() {
         <div className="container-real max-w-md py-32">
           <h1 className="text-3xl font-semibold mb-6">Admin Sign In</h1>
           <form onSubmit={signIn} className="space-y-3">
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" className="w-full bg-soft rounded-full px-5 py-3 text-sm" />
-            <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" placeholder="Password" className="w-full bg-soft rounded-full px-5 py-3 text-sm" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
+            <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" placeholder="Password" className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
             {err && <div className="text-sm text-real-red">{err}</div>}
-            <button className="w-full rounded-full bg-black text-white py-3 text-sm hover:bg-real-red transition">Sign In</button>
+            <button className="w-full rounded-lg bg-black text-white py-3 text-sm hover:bg-real-red transition">Sign In</button>
           </form>
         </div>
       </SiteLayout>
@@ -81,7 +81,7 @@ function Admin() {
           <h1 className="text-2xl font-semibold">No admin access</h1>
           <p className="mt-3 text-muted-foreground text-sm">Your account ID:<br/><code className="text-xs">{session.user.id}</code></p>
           <p className="mt-3 text-muted-foreground text-sm">Grant access from the Cloud SQL editor:<br/><code className="text-xs">INSERT INTO user_roles (user_id, role) VALUES ('{session.user.id}', 'admin');</code></p>
-          <button onClick={signOut} className="mt-6 rounded-full border border-border px-6 py-2 text-sm">Sign out</button>
+          <button onClick={signOut} className="mt-6 rounded-lg border border-border px-6 py-2 text-sm">Sign out</button>
         </div>
       </SiteLayout>
     );
@@ -98,7 +98,7 @@ function Admin() {
         </div>
         <div className="flex gap-2 mb-8 flex-wrap">
           {tabs.map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`rounded-full px-5 py-2 text-sm capitalize transition ${tab === t ? "bg-black text-white" : "bg-soft hover:bg-border"}`}>{t}</button>
+            <button key={t} onClick={() => setTab(t)} className={`rounded-lg px-5 py-2 text-sm capitalize transition ${tab === t ? "bg-black text-white" : "bg-soft hover:bg-border"}`}>{t}</button>
           ))}
         </div>
 

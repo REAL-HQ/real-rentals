@@ -104,7 +104,7 @@ function Apply() {
             <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
               We Review Most Applications Within 24 Hours. Check your email — we'll be in touch.
             </p>
-            <Link to="/fleet" className="mt-10 inline-flex rounded-full bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
+            <Link to="/fleet" className="mt-10 inline-flex rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
               Back to fleet
             </Link>
           </FadeUp>
