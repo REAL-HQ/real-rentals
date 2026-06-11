@@ -203,7 +203,9 @@ export type Database = {
           created_at: string | null
           deposit: number | null
           description: string | null
+          doors: number | null
           id: string
+          maintenance_status: string | null
           make: string
           model: string
           monthly_rate: number | null
@@ -211,6 +213,7 @@ export type Database = {
           photos: string[] | null
           status: string
           trim: string | null
+          uber_eligibility: string[] | null
           weekly_rate: number
           year: number
         }
@@ -220,7 +223,9 @@ export type Database = {
           created_at?: string | null
           deposit?: number | null
           description?: string | null
+          doors?: number | null
           id?: string
+          maintenance_status?: string | null
           make: string
           model: string
           monthly_rate?: number | null
@@ -228,6 +233,7 @@ export type Database = {
           photos?: string[] | null
           status?: string
           trim?: string | null
+          uber_eligibility?: string[] | null
           weekly_rate: number
           year: number
         }
@@ -237,7 +243,9 @@ export type Database = {
           created_at?: string | null
           deposit?: number | null
           description?: string | null
+          doors?: number | null
           id?: string
+          maintenance_status?: string | null
           make?: string
           model?: string
           monthly_rate?: number | null
@@ -245,6 +253,7 @@ export type Database = {
           photos?: string[] | null
           status?: string
           trim?: string | null
+          uber_eligibility?: string[] | null
           weekly_rate?: number
           year?: number
         }
