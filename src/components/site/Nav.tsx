@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
+import { Logo } from "./Logo";
 
 const primaryLinks = [
   { to: "/fleet", label: "Fleet" },
@@ -36,10 +37,7 @@ export function Nav() {
       }`}
     >
       <div className="container-real flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-1 text-[15px] tracking-[0.18em]">
-          <span className="font-semibold">REAL</span>
-          <span className="font-normal text-foreground">AUTOMOTIVE</span>
-        </Link>
+        <Logo />
         <nav className="hidden md:flex items-center gap-8 text-[13px] text-muted-foreground">
           {primaryLinks.map((l) => (
             <Link
