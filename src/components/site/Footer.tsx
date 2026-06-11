@@ -21,7 +21,21 @@ const groups = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-border mt-24">
+    <footer className="mt-24">
+      <div className="bg-real-red text-white">
+        <div className="container-real py-12 md:py-16 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+          <div>
+            <div className="text-2xl md:text-3xl font-semibold">Your Next Paycheck Is Parked Here.</div>
+            <div className="mt-2 text-sm md:text-base text-white/85">Apply in minutes. Drive this week.</div>
+          </div>
+          <Link
+            to="/apply"
+            className="inline-flex items-center rounded-lg bg-white text-foreground px-7 py-3 text-sm font-medium hover:bg-soft transition active:scale-95"
+          >
+            Apply Now
+          </Link>
+        </div>
+      </div>
       <div className="container-real py-14 grid grid-cols-2 md:grid-cols-4 gap-10 text-sm">
         <div className="col-span-2 md:col-span-2">
           <div className="flex items-center gap-1 tracking-[0.18em]">

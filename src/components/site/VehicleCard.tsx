@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { DoorOpen, Car, BadgeCheck } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck, Shield, Wrench, Infinity as InfinityIcon } from "lucide-react";
 
 type Vehicle = Tables<"vehicles">;
 
@@ -53,20 +53,23 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           </div>
         )}
       </div>
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {(vehicle.badges || []).slice(0, 3).map((b) => (
-          <span
-            key={b}
-            className="text-[10px] tracking-wide uppercase px-2 py-1 rounded-full bg-white text-muted-foreground border border-border"
-          >
-            {b}
-          </span>
-        ))}
-        {vehicle.mpg ? (
-          <span className="text-[10px] tracking-wide uppercase px-2 py-1 rounded-full bg-white text-muted-foreground border border-border">
-            {vehicle.mpg} MPG
-          </span>
-        ) : null}
+      <div className="mt-4 pt-4 border-t border-border/60 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-foreground/80">
+        <span className="inline-flex items-center gap-1.5">
+          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Insurance Included
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Maintenance Included
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Unlimited Miles
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Uber/Lyft Eligible
+        </span>
       </div>
     </Link>
   );

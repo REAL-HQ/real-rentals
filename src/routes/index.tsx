@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Shield, Wrench, Zap, MapPin, ArrowRight } from "lucide-react";
+import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -10,10 +10,10 @@ import { FadeUp } from "@/components/site/FadeUp";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "REAL AUTOMOTIVE — Rent. Drive. Earn." },
-      { name: "description", content: "Rideshare-ready vehicles from $350/week. GPS included, maintenance handled, approval in 24 hours." },
-      { property: "og:title", content: "REAL AUTOMOTIVE — Rent. Drive. Earn." },
-      { property: "og:description", content: "Your car for Uber, Lyft and delivery. Ready today." },
+      { title: "REAL AUTOMOTIVE | Start Driving. Start Earning. This Week." },
+      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance included. Maintenance included. Fast approval." },
+      { property: "og:title", content: "Start Driving. Start Earning. This Week." },
+      { property: "og:description", content: "Insurance and maintenance included. Fast approval. Drive this week." },
     ],
   }),
   component: Index,
@@ -39,20 +39,35 @@ function Index() {
             Rent. Drive. Earn.
           </div>
           <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold max-w-4xl mx-auto">
-            Your Car For Uber, Lyft And Delivery. Ready Today.
+            Start Driving. Start Earning. This Week.
           </h1>
           <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Rideshare-ready vehicles from $350 per week. GPS included, maintenance
-            handled, approval in as little as 24 hours. Apply in minutes — drive this
-            week.
+            Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week.
+            Insurance included. Maintenance included. Fast approval. Drive this week.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition active:scale-95">
-              Browse The Fleet <ArrowRight className="w-4 h-4" />
+              View Available Cars <ArrowRight className="w-4 h-4" />
             </Link>
             <Link to="/apply" className="inline-flex items-center rounded-lg border border-border px-7 py-3 text-sm font-medium hover:border-black transition active:scale-95">
-              Apply To Drive
+              Apply Now
             </Link>
+          </div>
+        </FadeUp>
+        <FadeUp delay={80}>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs md:text-sm text-muted-foreground">
+            {[
+              "Insurance Included",
+              "Maintenance Included",
+              "Unlimited Miles",
+              "Fast Approval",
+              "Starting At $350/Week",
+            ].map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />
+                {t}
+              </span>
+            ))}
           </div>
         </FadeUp>
       </section>
@@ -79,14 +94,14 @@ function Index() {
       <section className="container-real py-20 md:py-28">
         <FadeUp className="text-center mb-14">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
-          <h2 className="mt-3 text-3xl md:text-5xl">Four Steps To The Driver's Seat.</h2>
+          <h2 className="mt-3 text-3xl md:text-5xl">From Application To Paycheck.</h2>
         </FadeUp>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {[
-            { n: "01", t: "Apply Online", d: "Five minutes, no paperwork, no dealership games." },
-            { n: "02", t: "Get Approved Fast", d: "We verify your license and driving record, usually within 24 hours." },
-            { n: "03", t: "Pick Up Your Car", d: "Inspected, fueled, and rideshare-ready the day you arrive." },
-            { n: "04", t: "Start Earning", d: "Drive for any platform. Weekly rent, no long-term debt, no surprises." },
+            { n: "01", t: "Apply", d: "Five minute application." },
+            { n: "02", t: "Approve", d: "Usually within 24 hours." },
+            { n: "03", t: "Pickup", d: "Drive away the same day." },
+            { n: "04", t: "Earn", d: "Start driving immediately." },
           ].map((s, i) => (
             <FadeUp key={s.n} delay={i * 80}>
               <div className="text-real-red text-sm font-semibold tracking-wider">{s.n}</div>
@@ -104,10 +119,10 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { I: Shield, t: "Drive With Confidence", d: "Every vehicle is inspected, tracked, and maintained by our team." },
+              { I: Shield, t: "Drive With Confidence", d: "Commercial rideshare insurance is included on every vehicle." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
-              { I: Zap, t: "Approved Fast", d: "Most drivers are approved within 24 hours and on the road the same week." },
-              { I: MapPin, t: "Built For Gig Work", d: "Unlimited platform use — Uber, Lyft, DoorDash, Instacart, Amazon Flex." },
+              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as you want. No mileage caps, no overage fees." },
+              { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex. Pick your platforms." },
             ].map((b, i) => (
               <FadeUp key={b.t} delay={i * 60}>
                 <div className="rounded-2xl bg-white p-7 h-full border border-border">
@@ -128,9 +143,9 @@ function Index() {
         </FadeUp>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-7">
           {[
-            { q: "Picked up Monday, made rent back by Friday. No nonsense.", n: "Marcus T.", r: "Uber & Lyft" },
-            { q: "I was driving for DoorDash within 48 hours of applying. Insanely smooth.", n: "Priya S.", r: "DoorDash" },
-            { q: "The Prius alone pays for itself in gas savings.", n: "Jamal R.", r: "Uber Premier" },
+            { q: "I applied Tuesday and was earning on Uber by Friday. Made my weekly rent back in three days.", n: "Marcus T.", r: "Uber & Lyft Driver" },
+            { q: "My car broke down right before the holidays. REAL had me in a vehicle and back to work in 48 hours.", n: "Priya S.", r: "DoorDash Driver" },
+            { q: "No deposit headaches, no surprise fees. I keep what I earn and the maintenance is handled.", n: "Jamal R.", r: "Uber Premier Driver" },
           ].map((t, i) => (
             <FadeUp key={t.n} delay={i * 60}>
               <div className="rounded-2xl bg-soft p-7 h-full">
@@ -171,18 +186,6 @@ function Index() {
         </div>
       </section>
 
-      <section className="bg-real-red text-white">
-        <div className="container-real py-20 md:py-28 text-center">
-          <FadeUp>
-            <h2 className="text-3xl md:text-5xl font-semibold">Your Next Paycheck Is Parked Here.</h2>
-            <div className="mt-8">
-              <Link to="/apply" className="inline-flex items-center rounded-lg bg-white text-foreground px-8 py-3.5 text-sm font-medium hover:bg-soft transition active:scale-95">
-                Apply To Drive Today
-              </Link>
-            </div>
-          </FadeUp>
-        </div>
-      </section>
     </SiteLayout>
   );
 }
