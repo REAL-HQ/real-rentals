@@ -715,14 +715,17 @@ function EditableSummary({
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [draftMulti, setDraftMulti] = useState<string[]>([]);
 
   const start = (it: EditableItem) => {
     if (it.readOnly) return;
-    setDraft(it.value);
+    if (it.multi) setDraftMulti(it.multi.selected);
+    else setDraft(it.value);
     setEditing(it.field);
   };
-  const commit = (field: string) => {
-    onSave(field, draft);
+  const commit = (field: string, it?: EditableItem) => {
+    if (it?.multi) onSave(field, draftMulti.join(","));
+    else onSave(field, draft);
     setEditing(null);
   };
 
@@ -737,18 +740,48 @@ function EditableSummary({
               <div className="text-muted-foreground">{it.label}</div>
               <div className="min-w-0 text-right">
                 {isEditing ? (
+                  it.options ? (
+                    <select
+                      autoFocus
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onBlur={() => commit(it.field, it)}
+                      onKeyDown={(e) => { if (e.key === "Enter") commit(it.field, it); if (e.key === "Escape") setEditing(null); }}
+                      className="w-full bg-white rounded-md px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-black/10"
+                    >
+                      {it.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : it.multi ? (
+                    <div className="flex flex-wrap gap-1.5 justify-end">
+                      {it.multi.all.map((p) => {
+                        const on = draftMulti.includes(p);
+                        return (
+                          <button
+                            type="button"
+                            key={p}
+                            onClick={() => setDraftMulti(on ? draftMulti.filter((x) => x !== p) : [...draftMulti, p])}
+                            className={`rounded-md px-2.5 py-1 text-xs border transition ${on ? "bg-[#FFD6E0] text-[#7A1F3D] border-[#F5A8BD]" : "border-border hover:border-black"}`}
+                          >
+                            {p}
+                          </button>
+                        );
+                      })}
+                      <button type="button" onClick={() => commit(it.field, it)} className="rounded-md px-2.5 py-1 text-xs bg-real-red text-white">Done</button>
+                    </div>
+                  ) : (
                   <input
                     autoFocus
                     type={it.type ?? "text"}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    onBlur={() => commit(it.field)}
+                    onBlur={() => commit(it.field, it)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") commit(it.field);
+                      if (e.key === "Enter") commit(it.field, it);
                       if (e.key === "Escape") setEditing(null);
                     }}
                     className="w-full bg-white rounded-md px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-black/10"
                   />
+                  )
                 ) : (
                   <span className="truncate inline-block max-w-full align-middle">{it.value || "—"}</span>
                 )}
