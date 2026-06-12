@@ -113,10 +113,10 @@ function Index() {
       </section>
 
       <section className="container-real py-14 md:py-24">
-        <FadeUp className="text-center mb-14 max-w-2xl mx-auto">
+        <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From Application To Paycheck.</h2>
-          <p className="mt-4 text-muted-foreground leading-relaxed">Four simple steps. No credit check. No long wait. Get behind the wheel and start earning this week.</p>
+          <p className="mt-4 text-muted-foreground leading-relaxed md:whitespace-nowrap">Four simple steps. No credit check. No long wait. Get behind the wheel and start earning this week.</p>
         </FadeUp>
         <div className="relative">
           <div aria-hidden className="hidden md:block absolute top-8 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-real-red/30 to-transparent" />
