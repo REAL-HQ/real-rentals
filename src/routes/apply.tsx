@@ -529,3 +529,69 @@ function Summary({ title, items }: { title: string; items: [string, string][] })
     </div>
   );
 }
+
+function StepHelper({ step }: { step: number }) {
+  const content: Record<number, { eyebrow: string; title: string; bullets: string[] }> = {
+    0: {
+      eyebrow: "What You'll Need",
+      title: "A Few Basics To Get Started",
+      bullets: [
+        "Legal name as it appears on your license",
+        "Phone & email we can reach you at",
+        "Current home address",
+        "You must be 21 or older to drive",
+      ],
+    },
+    1: {
+      eyebrow: "License Step",
+      title: "Have Your Driver's License Ready",
+      bullets: [
+        "Active, non-expired US driver's license",
+        "Front photo upload (PNG or JPG)",
+        "We run a quick MVR check after you submit",
+      ],
+    },
+    2: {
+      eyebrow: "Platforms",
+      title: "Tell Us Where You Drive",
+      bullets: [
+        "Pick every platform you plan to drive for",
+        "Add custom platforms if yours isn't listed",
+        "Estimate your average weekly hours",
+      ],
+    },
+    4: {
+      eyebrow: "Consents",
+      title: "A Few Final Confirmations",
+      bullets: [
+        "Background and driving-record check",
+        "Rent is paid one week in advance",
+        "Standard rental terms apply",
+      ],
+    },
+    5: {
+      eyebrow: "Almost Done",
+      title: "Review Your Application",
+      bullets: [
+        "Double-check your details on the left",
+        "Most drivers are approved within 24 hours",
+        "You'll get an email as soon as we review",
+      ],
+    },
+  };
+  const c = content[step] ?? content[0];
+  return (
+    <div className="rounded-2xl border border-border bg-soft p-5">
+      <div className="text-[10px] uppercase tracking-wider text-real-red font-semibold mb-2">{c.eyebrow}</div>
+      <div className="text-base font-semibold mb-4">{c.title}</div>
+      <ul className="space-y-2.5">
+        {c.bullets.map((b) => (
+          <li key={b} className="flex gap-2.5 text-sm text-muted-foreground">
+            <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-real-red" />
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
