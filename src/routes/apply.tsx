@@ -275,6 +275,35 @@ function Apply() {
                     </button>
                   );
                 })}
+                {f.platforms.filter((p) => !PLATFORMS.includes(p)).map((p) => (
+                  <button type="button" key={p} onClick={() => update("platforms", f.platforms.filter((x) => x !== p))}
+                    className="rounded-lg px-5 py-2 text-sm border transition bg-[#FFD6E0] text-[#7A1F3D] border-[#F5A8BD] inline-flex items-center gap-2">
+                    {p}<span aria-hidden className="text-[#7A1F3D]/60">×</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add another platform…"
+                  className="flex-1 bg-soft rounded-lg px-5 py-2 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = (e.currentTarget.value || "").trim();
+                      if (v && !f.platforms.includes(v)) update("platforms", [...f.platforms, v]);
+                      e.currentTarget.value = "";
+                    }
+                  }}
+                />
+                <button type="button"
+                  onClick={(e) => {
+                    const input = (e.currentTarget.previousSibling as HTMLInputElement);
+                    const v = (input.value || "").trim();
+                    if (v && !f.platforms.includes(v)) update("platforms", [...f.platforms, v]);
+                    input.value = "";
+                  }}
+                  className="rounded-lg bg-black text-white px-4 py-2 text-sm hover:bg-real-red transition">Add</button>
               </div>
               {stepErrors.platforms && <div className="mt-2 text-sm text-real-red">{stepErrors.platforms}</div>}
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
