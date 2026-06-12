@@ -186,8 +186,8 @@ function Index() {
         <div className="container-real py-16 md:py-24 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center">
           <div className="lg:col-span-3">
             <FadeUp>
-              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Fleet Partner Program</div>
-              <h2 className="mt-3 text-3xl md:text-5xl leading-tight">Turn Your Vehicle Into Monthly Cash Flow.</h2>
+              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Partner Program</div>
+              <h2 className="mt-3 text-3xl md:text-5xl leading-tight">Turn Your Vehicle Into<br />Monthly Cash Flow.</h2>
               <p className="mt-5 text-white/80 leading-relaxed max-w-xl">
                 <span className="font-semibold text-white">Own a vehicle?</span> Join the REAL Automotive Partner Program and earn passive income by placing vehicles into our rideshare fleet.
               </p>
