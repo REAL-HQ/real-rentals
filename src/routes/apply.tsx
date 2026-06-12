@@ -178,7 +178,7 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
           onClick={() => setStep(3)}
           className="text-[11px] font-medium text-real-red hover:opacity-80 underline underline-offset-2"
         >
-          Change vehicle
+          Change Vehicle
         </button>
       </div>
 
