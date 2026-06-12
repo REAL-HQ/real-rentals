@@ -259,7 +259,7 @@ function Index() {
             ))}
           </div>
           <div className="mt-8 text-center">
-            <Link to="/faq" className="text-sm underline-offset-4 hover:underline">See all FAQs →</Link>
+            <Link to="/faq" className="text-sm underline-offset-4 hover:underline">See All FAQs →</Link>
           </div>
         </div>
       </section>
