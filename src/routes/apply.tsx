@@ -7,7 +7,8 @@ import type { Tables } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check, Users, DoorOpen, Fuel, Car, Pencil } from "lucide-react";
+import { Check, Users, DoorOpen, Fuel, Car, Pencil, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/apply")({
