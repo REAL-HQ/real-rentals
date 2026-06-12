@@ -178,7 +178,7 @@ function Apply() {
     <div className="min-h-screen flex flex-col bg-background">
       <Nav />
       <main className="flex-1">
-      <section className="container-real pt-12 md:pt-20 pb-24 max-w-3xl mx-auto">
+      <section className={`container-real pt-12 md:pt-20 pb-24 mx-auto ${step === 3 ? "max-w-6xl" : "max-w-3xl"}`}>
         <FadeUp>
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Apply</div>
           <h1 className="mt-3 text-3xl md:text-5xl font-semibold">Tell Us About You.</h1>
@@ -302,13 +302,23 @@ function Apply() {
             </div>
           )}
           {step === 3 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Preferred vehicle</label>
-                <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-8">
+              {/* LEFT — Inventory */}
+              <div>
+                <div className="flex items-baseline justify-between mb-3">
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Preferred vehicle</label>
+                  <span className="text-[11px] text-muted-foreground">{vehicles.length} available</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-2 -mr-2">
                   {vehicles.map((v) => {
                     const active = v.id === f.vehicle_id;
                     const photo = v.photos?.[0];
+                    const specs = [
+                      v.body_type,
+                      v.seats ? `${v.seats} seats` : null,
+                      v.doors ? `${v.doors} dr` : null,
+                      v.mpg ? `${v.mpg} mpg` : null,
+                    ].filter(Boolean);
                     return (
                       <button
                         key={v.id}
@@ -316,20 +326,34 @@ function Apply() {
                         onClick={() => update("vehicle_id", v.id)}
                         className={`text-left rounded-xl overflow-hidden border bg-white transition ${active ? "border-real-red ring-2 ring-real-red/20" : "border-border hover:border-foreground/30"}`}
                       >
-                        <div className="aspect-[4/3] bg-soft overflow-hidden">
+                        <div className="aspect-[16/10] bg-soft overflow-hidden relative">
                           {photo ? (
                             <img src={photo} alt={`${v.year} ${v.make} ${v.model}`} className="w-full h-full object-cover" loading="lazy" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No photo</div>
                           )}
+                          <div className="absolute top-2 right-2 rounded-md bg-white/95 backdrop-blur px-2 py-1 text-[11px] font-semibold shadow-sm">
+                            <span className="text-real-red">${Number(v.weekly_rate)}</span>
+                            <span className="text-muted-foreground font-normal">/wk</span>
+                          </div>
+                          {active && (
+                            <div className="absolute top-2 left-2 rounded-md bg-real-red text-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider">Selected</div>
+                          )}
                         </div>
                         <div className="p-3">
-                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{v.year} {v.make}</div>
-                          <div className="text-sm font-semibold leading-tight">{v.model}</div>
-                          <div className="mt-1 text-sm font-semibold text-real-red">${Number(v.weekly_rate)}<span className="text-[11px] font-normal text-muted-foreground">/wk</span></div>
-                          {(v.body_type || v.seats) && (
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              {[v.body_type, v.seats ? `${v.seats} seats` : null].filter(Boolean).join(" · ")}
+                          <div className="text-sm font-semibold leading-tight truncate">
+                            {v.year} {v.make} {v.model}{v.trim ? ` ${v.trim}` : ""}
+                          </div>
+                          {specs.length > 0 && (
+                            <div className="mt-1 text-[11px] text-muted-foreground truncate">
+                              {specs.join(" · ")}
+                            </div>
+                          )}
+                          {v.badges && v.badges.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {v.badges.slice(0, 2).map((b) => (
+                                <span key={b} className="rounded-md bg-soft px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{b}</span>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -337,33 +361,37 @@ function Apply() {
                     );
                   })}
                 </div>
-                {stepErrors.vehicle_id && <div className="mt-1 text-sm text-real-red">{stepErrors.vehicle_id}</div>}
+                {stepErrors.vehicle_id && <div className="mt-2 text-sm text-real-red">{stepErrors.vehicle_id}</div>}
               </div>
-              <In label="Desired start date" type="date" v={f.start_date} e={stepErrors.start_date} on={(v) => update("start_date", v)} />
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental term</label>
-                <SoftSelect value={f.rental_term} onChange={(v) => update("rental_term", v)} options={[{ value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "annual", label: "Annual" }]} />
-                {f.rental_term === "weekly" && selectedVehicle && weeklyToMonthlySavings > 0 && (
-                  <div className="mt-3 rounded-xl bg-real-red/5 border border-real-red/20 p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <span className="font-semibold text-real-red">Save ~${weeklyToMonthlySavings} / month</span>
-                        <span className="text-muted-foreground ml-1">by switching to Monthly</span>
+
+              {/* RIGHT — Terms */}
+              <div className="lg:sticky lg:top-6 lg:self-start space-y-4">
+                <In label="Desired start date" type="date" v={f.start_date} e={stepErrors.start_date} on={(v) => update("start_date", v)} />
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental term</label>
+                  <SoftSelect value={f.rental_term} onChange={(v) => update("rental_term", v)} options={[{ value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "annual", label: "Annual" }]} />
+                  {f.rental_term === "weekly" && selectedVehicle && weeklyToMonthlySavings > 0 && (
+                    <div className="mt-3 rounded-xl bg-real-red/5 border border-real-red/20 p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <span className="font-semibold text-real-red">Save ~${weeklyToMonthlySavings} / month</span>
+                          <span className="text-muted-foreground ml-1">by switching to Monthly</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => update("rental_term", "monthly")}
+                          className="shrink-0 rounded-lg bg-real-red px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 transition"
+                        >
+                          Switch
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => update("rental_term", "monthly")}
-                        className="shrink-0 rounded-lg bg-real-red px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 transition"
-                      >
-                        Switch
-                      </button>
                     </div>
-                  </div>
-                )}
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
-                <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }]} />
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
+                  <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }]} />
+                </div>
               </div>
             </div>
           )}
