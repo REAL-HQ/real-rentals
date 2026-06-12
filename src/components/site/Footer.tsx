@@ -72,7 +72,7 @@ export function Footer() {
         <div className="md:col-span-4">
           <Logo width={110} offset={false} />
           <p className="mt-5 text-muted-foreground max-w-sm">
-            Rideshare-ready vehicles for Uber, Lyft, DoorDash and Instacart drivers.
+            Rideshare-ready vehicles for Uber,<br />Lyft, DoorDash and Instacart drivers.
           </p>
           <ul className="mt-5 space-y-2">
             {badges.map((b) => (
