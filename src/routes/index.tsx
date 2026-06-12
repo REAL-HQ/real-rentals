@@ -124,7 +124,7 @@ function Index() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8 relative">
             {[
               { n: "01", I: FileText, t: "Apply", d: "Complete a 5-minute application online from your phone." },
-              { n: "02", I: ClipboardCheck, t: "Get Approved", d: "Most applications reviewed within 24 hours. No credit check." },
+              { n: "02", I: ClipboardCheck, t: "Get Approved", d: "Most applications reviewed the same day. No credit check." },
               { n: "03", I: KeyRound, t: "Pick Up Vehicle", d: "Schedule pickup, complete onboarding, and grab your keys." },
               { n: "04", I: Zap, t: "Start Earning", d: "Drive Uber, Lyft, DoorDash or Instacart immediately." },
             ].map((s, i) => (
@@ -243,7 +243,7 @@ function Index() {
               { q: "What is included in the weekly payment?", a: "Commercial rideshare insurance, routine maintenance, unlimited miles, and 24/7 driver support." },
               { q: "Can I drive for Uber and Lyft?", a: "Yes. Every vehicle is eligible for both Uber and Lyft, on the same car." },
               { q: "Are maintenance and repairs included?", a: "Routine maintenance and most mechanical repairs are on us." },
-              { q: "How quickly can I get approved?", a: "Most applications are reviewed within 24 hours, with same-day pickup available." },
+              { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
               { q: "Is insurance included?", a: "Yes. Commercial rideshare insurance is included on every vehicle." },
               { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
               { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },

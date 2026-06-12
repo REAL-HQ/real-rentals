@@ -49,7 +49,7 @@ function HowItWorks() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8 relative">
             {[
               { n: "01", I: FileText, t: "Apply Online", d: "Five Minutes. Personal Info, License, Gig Platforms, And Vehicle Preference. We Save Your Progress Between Steps." },
-              { n: "02", I: ClipboardCheck, t: "Get Approved Fast", d: "We Run An MVR And Background Check. Most Drivers Hear Back Within 24 Hours. No Credit Check Required." },
+              { n: "02", I: ClipboardCheck, t: "Get Approved Fast", d: "We Run An MVR And Background Check. Most Drivers Hear Back The Same Day. No Credit Check Required." },
               { n: "03", I: KeyRound, t: "Pick Up Your Car", d: "Schedule Pickup At Our Lot. Your Vehicle Is Detailed, Inspected, Fueled, And Rideshare-Ready." },
               { n: "04", I: Zap, t: "Start Earning", d: "Activate Your Gig Accounts And Start Driving. Pay Weekly Rent In Advance. No Contracts, No Surprises." },
             ].map((s, i) => (
@@ -174,7 +174,7 @@ function HowItWorks() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {[
               { time: "5 Min", t: "Apply", d: "Complete Your Application From Your Phone." },
-              { time: "24 Hrs", t: "Approved", d: "Most Drivers Hear Back Within One Business Day." },
+              { time: "Same Day", t: "Approved", d: "Most Drivers Hear Back The Same Day They Apply." },
               { time: "48 Hrs", t: "On The Road", d: "Pick Up Your Keys And Start Driving." },
             ].map((s, i) => (
               <FadeUp key={s.t} delay={i * 80}>

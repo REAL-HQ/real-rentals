@@ -16,7 +16,7 @@ export const Route = createFileRoute("/apply")({
   head: () => ({
     meta: [
       { title: "Apply To Drive — REAL AUTOMOTIVE" },
-      { name: "description", content: "Apply in minutes. Most drivers are approved in 24 hours." },
+      { name: "description", content: "Apply in minutes. Most drivers are approved same day." },
       { property: "og:title", content: "Apply To Drive — REAL AUTOMOTIVE" },
       { property: "og:description", content: "Five minutes. No dealership games." },
     ],
@@ -288,7 +288,7 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
             <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Done</div>
             <h1 className="mt-4 text-4xl md:text-6xl font-semibold">Application Received.</h1>
             <p className="mt-6 text-lg text-muted-foreground mx-auto whitespace-nowrap">
-              We Review Most Applications Within 24 Hours. Check Your Email — We'll Be In Touch.
+              We Review Most Applications The Same Day. Check Your Email — We'll Be In Touch.
             </p>
             <Link to="/fleet" className="mt-10 inline-flex rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
               Back To Fleet
@@ -865,7 +865,7 @@ function StepHelper({ step }: { step: number }) {
       title: "Review Your Application",
       bullets: [
         "Double-check your details on the left",
-        "Most drivers are approved within 24 hours",
+        "Most drivers are approved the same day",
         "You'll get an email as soon as we review",
       ],
     },

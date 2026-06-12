@@ -20,7 +20,7 @@ const faqs = [
   { q: "What is included in the weekly payment?", a: "Commercial rideshare insurance, routine maintenance, unlimited miles, and 24/7 driver support are all included. You handle fuel and cleanliness." },
   { q: "Can I drive for Uber and Lyft?", a: "Yes. Every vehicle is eligible for Uber and Lyft, and you can run both platforms on the same car." },
   { q: "Are maintenance and repairs included?", a: "Yes. Routine maintenance and most mechanical repairs are on us — oil changes, brakes, tires, and scheduled service." },
-  { q: "How quickly can I get approved?", a: "Most applications are reviewed within 24 hours, and many drivers pick up the same day or within 48 to 72 hours of applying." },
+  { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, and many drivers pick up the same day or within 24 to 48 hours of applying." },
   { q: "Is insurance included?", a: "Yes. Every REAL AUTOMOTIVE vehicle comes with commercial rideshare insurance that covers you while driving for approved platforms." },
   { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. Delivery platforms including DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted on the same vehicle." },
   { q: "What happens if my vehicle needs repairs?", a: "Contact support, schedule a swap or service appointment, and we'll get you back on the road quickly. Most routine work is covered." },
