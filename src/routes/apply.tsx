@@ -235,7 +235,7 @@ function Apply() {
     <div className="min-h-screen flex flex-col bg-background">
       <Nav />
       <main className="flex-1">
-      <section className={`pt-12 md:pt-20 pb-24 mx-auto px-6 ${step === 3 ? "max-w-[1600px]" : "max-w-3xl"}`}>
+      <section className="pt-12 md:pt-20 pb-24 mx-auto px-6 max-w-3xl">
         <FadeUp>
           <h1 className="text-3xl md:text-5xl font-semibold">Application</h1>
         </FadeUp>
@@ -358,7 +358,7 @@ function Apply() {
             </div>
           )}
           {step === 3 && (
-            <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-8">
+            <div className="lg:relative lg:left-1/2 lg:-translate-x-1/2 lg:[width:min(1600px,calc(100vw-3rem))] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-8">
               {/* LEFT — Inventory */}
               <div>
                 <div className="flex items-baseline justify-between mb-3">
