@@ -270,7 +270,7 @@ function Apply() {
                   const on = f.platforms.includes(p);
                   return (
                     <button type="button" key={p} onClick={() => update("platforms", on ? f.platforms.filter((x) => x !== p) : [...f.platforms, p])}
-                      className={`rounded-lg px-5 py-2 text-sm border transition ${on ? "bg-black text-white border-black" : "border-border hover:border-black"}`}>
+                      className={`rounded-lg px-5 py-2 text-sm border transition ${on ? "bg-[#FFD6E0] text-[#7A1F3D] border-[#F5A8BD]" : "border-border hover:border-black"}`}>
                       {p}
                     </button>
                   );
