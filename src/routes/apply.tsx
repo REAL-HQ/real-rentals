@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { SiteLayout } from "@/components/site/SiteLayout";
+import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -101,8 +101,9 @@ function Apply() {
 
   if (submitted) {
     return (
-      <SiteLayout>
-        <div className="container-real py-32 text-center">
+      <div className="min-h-screen flex flex-col bg-background">
+        <Nav />
+        <main className="flex-1 container-real py-32 text-center">
           <FadeUp>
             <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Done</div>
             <h1 className="mt-4 text-4xl md:text-6xl font-semibold">Application Received.</h1>
@@ -113,13 +114,15 @@ function Apply() {
               Back to fleet
             </Link>
           </FadeUp>
-        </div>
-      </SiteLayout>
+        </main>
+      </div>
     );
   }
 
   return (
-    <SiteLayout>
+    <div className="min-h-screen flex flex-col bg-background">
+      <Nav />
+      <main className="flex-1">
       <section className="container-real pt-12 md:pt-20 pb-24 max-w-3xl mx-auto">
         <FadeUp>
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Apply</div>
@@ -302,7 +305,8 @@ function Apply() {
           )}
         </div>
       </section>
-    </SiteLayout>
+      </main>
+    </div>
   );
 }
 
