@@ -140,6 +140,10 @@
     border-color: var(--color-border);
   }
 
+  html {
+    color-scheme: light;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
