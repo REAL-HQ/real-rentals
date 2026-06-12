@@ -131,7 +131,7 @@ function Index() {
               <FadeUp key={s.n} delay={i * 80}>
                 <div className="group relative rounded-2xl bg-white p-7 h-full border border-border hover:border-real-red/40 hover:shadow-lg transition-all duration-300">
                   <div className="flex items-center justify-between">
-                    <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-real-red/10 text-real-red group-hover:bg-real-red group-hover:text-white transition-colors">
+                    <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-real-red/10 text-real-red transition-colors">
                       <s.I className="w-7 h-7" strokeWidth={1.75} />
                     </div>
                     <div className="text-5xl font-bold text-foreground/5 group-hover:text-real-red/20 transition-colors leading-none">{s.n}</div>
