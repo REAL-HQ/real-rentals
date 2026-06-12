@@ -150,7 +150,7 @@ function Apply() {
     ? Math.round((Number(selectedVehicle.weekly_rate) * 4) - (selectedVehicle.monthly_rate ?? Number(selectedVehicle.weekly_rate) * 4))
     : 0;
 
-const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", cash: "Cash" } as Record<string, string>)[f.payment_method] || "—";
+const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", cash: "Cash", zelle: "Zelle", venmo: "Venmo", paypal: "PayPal", applepay: "Apple Pay", googlepay: "Google Pay", ach: "Bank Transfer (ACH)" } as Record<string, string>)[f.payment_method] || "—";
   const tierOptions = (() => {
     if (!selectedVehicle) return [] as { key: string; label: string; price: number; unit: string; baseline: number; discountPct: number }[];
     const weekly = Number(selectedVehicle.weekly_rate);
@@ -467,7 +467,18 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
-                  <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }, { value: "cash", label: "Cash" }]} />
+                  <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[
+                    { value: "debit", label: "Debit" },
+                    { value: "credit", label: "Credit" },
+                    { value: "ach", label: "Bank Transfer (ACH)" },
+                    { value: "applepay", label: "Apple Pay" },
+                    { value: "googlepay", label: "Google Pay" },
+                    { value: "cashapp", label: "Cash App" },
+                    { value: "venmo", label: "Venmo" },
+                    { value: "zelle", label: "Zelle" },
+                    { value: "paypal", label: "PayPal" },
+                    { value: "cash", label: "Cash" },
+                  ]} />
                 </div>
                 {pricingSummary}
               </>
