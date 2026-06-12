@@ -487,6 +487,21 @@ function In({ label, v, on, type = "text", e, className = "" }: { label: string;
   );
 }
 
+function SoftSelect({ value, onChange, placeholder = "Select…", options }: { value: string; onChange: (v: string) => void; placeholder?: string; options: { value: string; label: string }[] }) {
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger className="mt-1 w-full bg-soft border-0 rounded-lg pl-5 pr-4 py-3 h-auto text-sm shadow-none focus:ring-2 focus:ring-black/10">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent className="bg-white">
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value} className="bg-white focus:bg-soft">{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function Summary({ title, items }: { title: string; items: [string, string][] }) {
   return (
     <div className="rounded-2xl bg-soft p-5">
