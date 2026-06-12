@@ -231,11 +231,11 @@ function Apply() {
           <FadeUp>
             <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Done</div>
             <h1 className="mt-4 text-4xl md:text-6xl font-semibold">Application Received.</h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
-              We Review Most Applications Within 24 Hours. Check your email — we'll be in touch.
+            <p className="mt-6 text-lg text-muted-foreground mx-auto whitespace-nowrap">
+              We Review Most Applications Within 24 Hours. Check Your Email — We'll Be In Touch.
             </p>
             <Link to="/fleet" className="mt-10 inline-flex rounded-lg bg-black px-7 py-3 text-sm font-medium text-white hover:bg-real-red transition">
-              Back to fleet
+              Back To Fleet
             </Link>
           </FadeUp>
         </main>
