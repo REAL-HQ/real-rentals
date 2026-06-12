@@ -29,7 +29,7 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
             loading="lazy"
           />
         ) : (
-          <div className="text-muted-foreground text-sm">No photo</div>
+          <div className="text-muted-foreground text-sm">No Photo</div>
         )}
       </div>
       <div className="mt-4 flex items-center gap-2 text-xs font-medium">

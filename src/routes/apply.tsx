@@ -446,7 +446,7 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                           {photo ? (
                             <img src={photo} alt={`${v.year} ${v.make} ${v.model}`} className="w-full h-full object-cover" loading="lazy" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No photo</div>
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No Photo</div>
                           )}
                           <div className="absolute top-2 right-2 rounded-md bg-white/95 backdrop-blur px-2 py-1 text-[11px] font-semibold shadow-sm text-real-red">
                             ${Number(v.weekly_rate)}<span className="font-medium">/wk</span>
