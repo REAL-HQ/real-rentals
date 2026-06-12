@@ -5,7 +5,6 @@ import { Logo } from "./Logo";
 
 const menuLinks = [
   { to: "/fleet", label: "Fleet" },
-  { to: "/apply", label: "Apply" },
   { to: "/how-it-works", label: "How It Works" },
   { to: "/faq", label: "FAQ" },
   { to: "/investors", label: "Investors" },
