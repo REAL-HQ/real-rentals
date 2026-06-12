@@ -53,12 +53,21 @@ const US_STATES: { code: string; name: string }[] = [
 
 function Apply() {
   const { vehicle: preVehicle } = Route.useSearch();
-  const [step, setStep] = useState(0);
+  const STORAGE_KEY = "real-apply-draft-v1";
+  const loadDraft = (): { step: number; f: Form } | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  };
+  const draft = loadDraft();
+  const [step, setStep] = useState(draft?.step ?? 0);
   const [vehicles, setVehicles] = useState<Tables<"vehicles">[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
-  const [f, setF] = useState<Form>({
+  const [f, setF] = useState<Form>(draft?.f ?? {
     full_name: "", email: "", phone: "", dob: "",
     address: "", city: "", state: "", zip: "",
     license_number: "", license_state: "", license_expiration: "", years_licensed: 1,
@@ -72,6 +81,11 @@ function Apply() {
   useEffect(() => {
     supabase.from("vehicles").select("*").eq("status", "available").order("make").then(({ data }) => setVehicles(data || []));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || submitted) return;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, f })); } catch {}
+  }, [step, f, submitted]);
 
   const validateStep = (): boolean => {
     const errs: Record<string, string> = {};
@@ -110,7 +124,11 @@ function Apply() {
     setError(null);
     const payload = { ...f, vehicle_id: f.vehicle_id || null, dob: f.dob || null, license_expiration: f.license_expiration || null, start_date: f.start_date || null };
     const { error } = await supabase.from("applications").insert(payload as any);
-    if (error) setError(error.message); else setSubmitted(true);
+    if (error) setError(error.message);
+    else {
+      setSubmitted(true);
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    }
   }
 
   const selectedVehicle = vehicles.find((v) => v.id === f.vehicle_id);
