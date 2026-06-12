@@ -319,7 +319,7 @@ function Apply() {
                         key={v.id}
                         type="button"
                         onClick={() => update("vehicle_id", v.id)}
-                        className={`relative text-left rounded-xl overflow-hidden bg-white transition outline-none ${active ? "border border-real-red shadow-[0_0_0_2px_hsl(var(--real-red)/0.9),0_8px_24px_-8px_hsl(var(--real-red)/0.35)]" : "border border-border hover:border-foreground/40"}`}
+                        className={`relative text-left rounded-xl overflow-hidden bg-white transition outline-none ${active ? "border-2 border-real-red shadow-[0_0_0_2px_#CC0000,0_10px_24px_-10px_rgba(204,0,0,0.45)]" : "border border-border hover:border-foreground/40"}`}
                       >
                         <div className="aspect-[16/10] bg-soft overflow-hidden relative">
                           {photo ? (
