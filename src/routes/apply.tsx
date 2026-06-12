@@ -150,7 +150,7 @@ function Apply() {
     ? Math.round((Number(selectedVehicle.weekly_rate) * 4) - (selectedVehicle.monthly_rate ?? Number(selectedVehicle.weekly_rate) * 4))
     : 0;
 
-  const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App" } as Record<string, string>)[f.payment_method] || "—";
+const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", cash: "Cash" } as Record<string, string>)[f.payment_method] || "—";
   const tierOptions = (() => {
     if (!selectedVehicle) return [] as { key: string; label: string; price: number; unit: string; baseline: number; discountPct: number }[];
     const weekly = Number(selectedVehicle.weekly_rate);
@@ -467,7 +467,7 @@ function Apply() {
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
-                  <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }]} />
+                  <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }, { value: "cash", label: "Cash" }]} />
                 </div>
                 {pricingSummary}
               </>
