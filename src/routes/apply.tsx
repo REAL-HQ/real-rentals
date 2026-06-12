@@ -386,7 +386,7 @@ function Apply() {
         </div>
 
         <div className="mt-10 flex items-center justify-between">
-          <button onClick={back} disabled={step === 0} className="rounded-lg border border-border px-6 py-3 text-sm disabled:opacity-30">Back</button>
+          <button onClick={back} className="rounded-lg border border-border px-6 py-3 text-sm">Back</button>
           {step < STEPS.length - 1 ? (
             <button onClick={next} className="rounded-lg bg-black text-white px-7 py-3 text-sm hover:bg-real-red transition active:scale-95">Continue</button>
           ) : (
