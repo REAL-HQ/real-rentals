@@ -27,10 +27,8 @@ const driverLinks = [
 ];
 
 const investorLinks = [
-  { to: "/investors", label: "Become A Fleet Partner" },
   { to: "/investors", label: "Earn Passive Income" },
-  { to: "/faq", label: "Investor FAQ" },
-  { to: "/investors", label: "Fleet Management" },
+  { to: "/investor-faq", label: "Investor FAQ" },
 ];
 
 export function Footer() {
@@ -114,12 +112,8 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-border">
-        <div className="container-real py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
-          <div>© 2026 REAL AUTOMOTIVE. All Rights Reserved.</div>
-          <div className="flex gap-5">
-            <Link to="/contact" className="hover:text-foreground">Contact</Link>
-            <Link to="/faq" className="hover:text-foreground">FAQ</Link>
-          </div>
+        <div className="container-real py-6 text-center text-xs text-muted-foreground">
+          © 2026 REAL AUTOMOTIVE. All Rights Reserved.
         </div>
       </div>
     </footer>
