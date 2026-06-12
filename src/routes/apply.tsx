@@ -171,7 +171,16 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
 
   const pricingSummary = selectedVehicle ? (
     <div className="rounded-2xl border border-border bg-soft p-5">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Pricing Summary</div>
+        <button
+          type="button"
+          onClick={() => setStep(3)}
+          className="text-[11px] font-medium text-real-red hover:opacity-80 underline underline-offset-2"
+        >
+          Change vehicle
+        </button>
+      </div>
 
       {selectedVehicle.photos?.[0] && (
         <div className="mb-4 rounded-xl overflow-hidden bg-white aspect-[16/9]">
