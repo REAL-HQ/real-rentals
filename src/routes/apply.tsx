@@ -182,15 +182,42 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
         </button>
       </div>
 
-      {selectedVehicle.photos?.[0] && (
-        <div className="mb-4 rounded-xl overflow-hidden bg-white aspect-[16/9]">
-          <img
-            src={selectedVehicle.photos[0]}
-            alt={`${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}`}
-            className="w-full h-full object-cover"
-          />
+      <div className="mb-4 rounded-xl overflow-hidden bg-white border border-border">
+        {selectedVehicle.photos?.[0] ? (
+          <div className="aspect-[16/9] bg-soft">
+            <img
+              src={selectedVehicle.photos[0]}
+              alt={`${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : null}
+        <div className="p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="text-sm font-semibold leading-tight truncate">
+              {selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}
+              {selectedVehicle.trim ? ` ${selectedVehicle.trim}` : ""}
+            </div>
+            <div className="text-[11px] font-semibold text-real-red whitespace-nowrap">
+              ${Number(selectedVehicle.weekly_rate)}<span className="font-medium">/wk</span>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {selectedVehicle.body_type && (
+              <span className="inline-flex items-center gap-1"><Car size={12} />{selectedVehicle.body_type}</span>
+            )}
+            {selectedVehicle.seats && (
+              <span className="inline-flex items-center gap-1"><Users size={12} />{selectedVehicle.seats}</span>
+            )}
+            {selectedVehicle.doors && (
+              <span className="inline-flex items-center gap-1"><DoorOpen size={12} />{selectedVehicle.doors}</span>
+            )}
+            {selectedVehicle.mpg && (
+              <span className="inline-flex items-center gap-1"><Fuel size={12} />{selectedVehicle.mpg}</span>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="grid grid-cols-3 gap-2 mb-4">
         {tierOptions.map((t) => {
