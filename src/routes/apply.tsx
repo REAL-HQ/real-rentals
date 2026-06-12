@@ -117,7 +117,7 @@ function Apply() {
   };
 
   const next = () => { if (validateStep()) setStep((s) => Math.min(s + 1, STEPS.length - 1)); };
-  const back = () => setStep((s) => Math.max(s - 1, 0));
+  const back = () => window.history.back();
 
   async function submit() {
     if (!validateStep()) return;
