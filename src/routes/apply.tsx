@@ -308,7 +308,7 @@ function Apply() {
               <div>
                 <div className="flex items-baseline justify-between mb-3">
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Preferred vehicle</label>
-                  <span className="text-[11px] text-muted-foreground">{vehicles.length} available</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{vehicles.length} Available</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-2 -mr-2 p-1">
                   {vehicles.map((v) => {
