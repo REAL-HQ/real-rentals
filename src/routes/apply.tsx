@@ -7,7 +7,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check, Users, DoorOpen, Fuel, Car } from "lucide-react";
+import { Check, Users, DoorOpen, Fuel, Car, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/apply")({
@@ -467,10 +467,51 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
           )}
           {step === 5 && (
             <div className="space-y-4 text-sm">
-              <Summary title="Personal" items={[["Name", f.full_name], ["Email", f.email], ["Phone", f.phone], ["DOB", f.dob]]} />
-              <Summary title="License" items={[["#", f.license_number], ["State", f.license_state], ["Expires", f.license_expiration]]} />
-              <Summary title="Platforms" items={[["Platforms", f.platforms.join(", ")], ["Hours/wk", String(f.weekly_hours)]]} />
-              <Summary title="Vehicle" items={[["Vehicle", vehicles.find((v) => v.id === f.vehicle_id) ? `${vehicles.find((v) => v.id === f.vehicle_id)?.year} ${vehicles.find((v) => v.id === f.vehicle_id)?.make} ${vehicles.find((v) => v.id === f.vehicle_id)?.model}` : "—"], ["Start", f.start_date], ["Term", f.rental_term]]} />
+              <EditableSummary
+                title="Personal"
+                items={[
+                  { label: "Name", field: "full_name", value: f.full_name },
+                  { label: "Email", field: "email", value: f.email, type: "email" },
+                  { label: "Phone", field: "phone", value: f.phone, type: "tel" },
+                  { label: "DOB", field: "dob", value: f.dob, type: "date" },
+                ]}
+                onSave={(field, value) => update(field as keyof Form, value as any)}
+              />
+              <EditableSummary
+                title="License"
+                items={[
+                  { label: "#", field: "license_number", value: f.license_number },
+                  { label: "State", field: "license_state", value: f.license_state },
+                  { label: "Expires", field: "license_expiration", value: f.license_expiration, type: "date" },
+                ]}
+                onSave={(field, value) => update(field as keyof Form, value as any)}
+              />
+              <EditableSummary
+                title="Platforms"
+                items={[
+                  { label: "Platforms", field: "platforms", value: f.platforms.join(", "), readOnly: true },
+                  { label: "Hours/wk", field: "weekly_hours", value: String(f.weekly_hours), type: "number" },
+                ]}
+                onSave={(field, value) => {
+                  if (field === "weekly_hours") update("weekly_hours", Number(value) as any);
+                }}
+              />
+              <EditableSummary
+                title="Vehicle"
+                items={[
+                  {
+                    label: "Vehicle",
+                    field: "vehicle_id",
+                    value: vehicles.find((v) => v.id === f.vehicle_id)
+                      ? `${vehicles.find((v) => v.id === f.vehicle_id)?.year} ${vehicles.find((v) => v.id === f.vehicle_id)?.make} ${vehicles.find((v) => v.id === f.vehicle_id)?.model}`
+                      : "—",
+                    readOnly: true,
+                  },
+                  { label: "Start", field: "start_date", value: f.start_date, type: "date" },
+                  { label: "Term", field: "rental_term", value: f.rental_term, readOnly: true },
+                ]}
+                onSave={(field, value) => update(field as keyof Form, value as any)}
+              />
               {error && <div className="text-real-red">{error}</div>}
             </div>
           )}
@@ -577,6 +618,77 @@ function Summary({ title, items }: { title: string; items: [string, string][] })
       <dl className="grid grid-cols-2 gap-y-1">
         {items.map(([k, v]) => (<><dt className="text-muted-foreground">{k}</dt><dd className="text-right">{v || "—"}</dd></>))}
       </dl>
+    </div>
+  );
+}
+
+type EditableItem = { label: string; field: string; value: string; type?: string; readOnly?: boolean };
+
+function EditableSummary({
+  title,
+  items,
+  onSave,
+}: {
+  title: string;
+  items: EditableItem[];
+  onSave: (field: string, value: string) => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const start = (it: EditableItem) => {
+    if (it.readOnly) return;
+    setDraft(it.value);
+    setEditing(it.field);
+  };
+  const commit = (field: string) => {
+    onSave(field, draft);
+    setEditing(null);
+  };
+
+  return (
+    <div className="rounded-2xl bg-soft p-5">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">{title}</div>
+      <div className="divide-y divide-border/40">
+        {items.map((it) => {
+          const isEditing = editing === it.field;
+          return (
+            <div key={it.field} className="grid grid-cols-[140px_1fr_auto] items-center gap-3 py-2">
+              <div className="text-muted-foreground">{it.label}</div>
+              <div className="min-w-0 text-right">
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    type={it.type ?? "text"}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={() => commit(it.field)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commit(it.field);
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                    className="w-full bg-white rounded-md px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-black/10"
+                  />
+                ) : (
+                  <span className="truncate inline-block max-w-full align-middle">{it.value || "—"}</span>
+                )}
+              </div>
+              <div className="w-6 flex justify-end">
+                {!it.readOnly && !isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => start(it)}
+                    className="text-muted-foreground hover:text-foreground transition"
+                    aria-label={`Edit ${it.label}`}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
