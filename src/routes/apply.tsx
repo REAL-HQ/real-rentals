@@ -420,23 +420,6 @@ function Apply() {
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental term</label>
                   <SoftSelect value={f.rental_term} onChange={(v) => update("rental_term", v)} options={[{ value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "annual", label: "Annual" }]} />
-                  {f.rental_term === "weekly" && selectedVehicle && weeklyToMonthlySavings > 0 && (
-                    <div className="mt-3 rounded-xl bg-real-red/5 border border-real-red/20 p-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <span className="font-semibold text-real-red">Save ~${weeklyToMonthlySavings} / month</span>
-                          <span className="text-muted-foreground ml-1">by switching to Monthly</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => update("rental_term", "monthly")}
-                          className="shrink-0 rounded-lg bg-real-red px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 transition"
-                        >
-                          Switch
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
