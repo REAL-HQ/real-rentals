@@ -133,7 +133,14 @@ function Apply() {
       }
     }
   };
-  const back = () => window.history.back();
+  const back = () => {
+    if (step === 0) {
+      window.history.back();
+      return;
+    }
+    setStep((s) => Math.max(s - 1, 0));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   async function submit() {
     if (!validateStep()) return;
