@@ -142,10 +142,10 @@ function Apply() {
   const tierOptions = (() => {
     if (!selectedVehicle) return [] as { key: string; label: string; price: number; unit: string; baseline: number; discountPct: number }[];
     const weekly = Number(selectedVehicle.weekly_rate);
-    const monthly = Number(selectedVehicle.monthly_rate ?? weekly * 4);
-    const annual = Math.round(monthly * 12 * 0.9);
     const monthlyBaseline = weekly * 4;
-    const annualBaseline = weekly * 52;
+    const annualBaseline = monthlyBaseline * 12;
+    const monthly = Math.max(0, monthlyBaseline - 100);
+    const annual = Math.max(0, monthlyBaseline * 10);
     return [
       { key: "weekly", label: "Weekly", price: weekly, unit: "/week", baseline: weekly, discountPct: 0 },
       { key: "monthly", label: "Monthly", price: monthly, unit: "/month", baseline: monthlyBaseline, discountPct: monthlyBaseline > 0 ? Math.max(0, Math.round((1 - monthly / monthlyBaseline) * 100)) : 0 },
