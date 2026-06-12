@@ -236,7 +236,7 @@ function Apply() {
       <Nav />
       <main className="flex-1">
       <section className="pt-12 md:pt-20 pb-24 mx-auto px-6 max-w-3xl">
-        <div className="max-w-md mr-auto">
+        <div className={step === 3 ? "lg:relative lg:left-1/2 lg:-translate-x-1/2 lg:[width:min(1600px,calc(100vw-3rem))]" : "max-w-md mr-auto"}>
           <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
             <div>Step {step + 1} of {STEPS.length} — {STEPS[step]}</div>
             <div>{Math.round(((step + 1) / STEPS.length) * 100)}%</div>
