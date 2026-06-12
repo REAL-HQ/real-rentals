@@ -492,7 +492,7 @@ function In({ label, v, on, type = "text", e, className = "" }: { label: string;
     <div className={className}>
       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
       <input type={type} value={v} onChange={(ev) => on(ev.target.value)} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
-      {e && <div className="mt-1 text-xs text-real-red">{e}</div>}
+      {e && <div className="field-error mt-1 text-xs text-real-red">{e}</div>}
     </div>
   );
 }
