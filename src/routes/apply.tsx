@@ -488,13 +488,22 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
           )}
           {step === 4 && (
             <div className="space-y-4">
+              <TooltipProvider delayDuration={150}>
               {[
-                ["consent_background", "I authorize a background and driving-record (MVR) check."],
-                ["consent_prepay", "I understand weekly rent is paid in advance."],
-              ].map(([k, lbl]) => (
+                ["consent_background", "I authorize a background and driving-record (MVR) check.", "We pull your motor vehicle record and run a basic background check to confirm you're eligible to drive on rideshare and delivery platforms. Soft check — no impact to your credit score."],
+                ["consent_prepay", "I understand weekly rent is paid in advance.", "Each weekly rental period is paid up-front before it begins. Payments auto-charge on your selected day; miss a payment and the vehicle may be deactivated until you're current."],
+              ].map(([k, lbl, info]) => (
                 <label key={k} className="flex items-start gap-3 rounded-2xl bg-soft p-5 cursor-pointer">
                   <input type="checkbox" checked={(f as any)[k]} onChange={(e) => update(k as keyof Form, e.target.checked as any)} className="mt-1 accent-[#CC0000]" />
-                  <span className="text-sm">{lbl}</span>
+                  <span className="text-sm flex-1">{lbl}</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" onClick={(e) => e.preventDefault()} aria-label="More info" className="mt-0.5 text-muted-foreground hover:text-real-red transition-colors">
+                        <Info className="w-4 h-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-xs text-xs leading-relaxed">{info}</TooltipContent>
+                  </Tooltip>
                 </label>
               ))}
               <label className="flex items-start gap-3 rounded-2xl bg-soft p-5 cursor-pointer">
@@ -504,7 +513,7 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                   onChange={(e) => update("consent_terms", e.target.checked)}
                   className="mt-1 accent-[#CC0000]"
                 />
-                <span className="text-sm">
+                <span className="text-sm flex-1">
                   I agree to the{" "}
                   <button
                     type="button"
@@ -515,7 +524,16 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                   </button>
                   .
                 </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" onClick={(e) => e.preventDefault()} aria-label="More info" className="mt-0.5 text-muted-foreground hover:text-real-red transition-colors">
+                      <Info className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-xs text-xs leading-relaxed">Covers the full rental agreement: payment schedule, insurance, mileage, maintenance, refundable deposit, and return policy. Click the link to read the full terms.</TooltipContent>
+                </Tooltip>
               </label>
+              </TooltipProvider>
               {stepErrors.consents && <div className="text-sm text-real-red">{stepErrors.consents}</div>}
             </div>
           )}
