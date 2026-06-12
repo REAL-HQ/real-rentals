@@ -324,7 +324,7 @@ function Apply() {
                         key={v.id}
                         type="button"
                         onClick={() => update("vehicle_id", v.id)}
-                        className={`text-left rounded-xl overflow-hidden border bg-white transition ${active ? "border-real-red ring-2 ring-real-red/20" : "border-border hover:border-foreground/30"}`}
+                        className={`relative text-left rounded-xl overflow-hidden bg-white transition ${active ? "border-2 border-real-red ring-4 ring-real-red/25 shadow-lg shadow-real-red/10" : "border-2 border-border hover:border-foreground/30"}`}
                       >
                         <div className="aspect-[16/10] bg-soft overflow-hidden relative">
                           {photo ? (
@@ -337,7 +337,15 @@ function Apply() {
                             <span className="text-muted-foreground font-normal">/wk</span>
                           </div>
                           {active && (
-                            <div className="absolute top-2 left-2 rounded-md bg-real-red text-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider">Selected</div>
+                            <div className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md bg-real-red text-white pl-1.5 pr-2 py-1 text-[10px] font-semibold uppercase tracking-wider shadow">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              Selected
+                            </div>
+                          )}
+                          {active && (
+                            <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-real-red text-white flex items-center justify-center shadow-md ring-2 ring-white">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
                           )}
                         </div>
                         <div className="p-3">
