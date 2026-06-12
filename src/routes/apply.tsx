@@ -167,7 +167,7 @@ function Apply() {
               key={t.key}
               type="button"
               onClick={() => update("rental_term", t.key as any)}
-              className={`text-left rounded-xl border p-3 transition ${active ? "bg-white border-real-red ring-2 ring-real-red/20" : "bg-white border-border hover:border-foreground/30"}`}
+              className={`text-left rounded-xl p-3 transition ${active ? "bg-white border-2 border-real-red" : "border border-border bg-white hover:border-foreground/30"}`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t.label}</span>
