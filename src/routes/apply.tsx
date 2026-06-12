@@ -155,6 +155,62 @@ function Apply() {
   const activeTier = tierOptions.find((t) => t.key === f.rental_term) ?? tierOptions[0];
   const dueAtPickup = selectedVehicle && activeTier ? activeTier.price + Number(selectedVehicle.deposit ?? 0) : 0;
 
+  const pricingSummary = selectedVehicle ? (
+    <div className="rounded-2xl border border-border bg-soft p-5">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
+
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {tierOptions.map((t) => {
+          const active = t.key === f.rental_term;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => update("rental_term", t.key as any)}
+              className={`text-left rounded-xl border p-3 transition ${active ? "bg-white border-real-red ring-2 ring-real-red/20" : "bg-white border-border hover:border-foreground/30"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{t.label}</span>
+                {t.discountPct > 0 && (
+                  <span className="text-[9px] font-semibold text-real-red bg-real-red/10 rounded-full px-1.5 py-0.5">−{t.discountPct}%</span>
+                )}
+              </div>
+              <div className="mt-1 text-sm font-semibold">${t.price}<span className="text-[10px] font-normal text-muted-foreground">{t.unit}</span></div>
+              {t.discountPct > 0 && (
+                <div className="text-[10px] text-muted-foreground line-through">${t.baseline}{t.unit}</div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-y-2 text-sm">
+        <div className="text-muted-foreground">Vehicle</div>
+        <div className="text-right font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</div>
+        <div className="text-muted-foreground">{activeTier?.label} Rental</div>
+        <div className="text-right font-medium">${activeTier?.price}{activeTier?.unit}</div>
+        {activeTier && activeTier.discountPct > 0 && (
+          <>
+            <div className="text-muted-foreground">{activeTier.label} Discount</div>
+            <div className="text-right font-medium text-real-red">−{activeTier.discountPct}% (saves ${activeTier.baseline - activeTier.price})</div>
+          </>
+        )}
+        <div className="text-muted-foreground">Refundable Security Deposit</div>
+        <div className="text-right font-medium">${Number(selectedVehicle.deposit ?? 0)}</div>
+        <div className="text-muted-foreground">Payment Method</div>
+        <div className="text-right font-medium">{paymentLabel}</div>
+        <div className="col-span-2 border-t border-border my-1" />
+        <div className="font-semibold">Due At Pickup</div>
+        <div className="text-right font-semibold text-real-red">${dueAtPickup}</div>
+      </div>
+      <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+        Your security deposit is fully refundable upon vehicle return, less any
+        outstanding tolls, tickets, damages, unpaid balances, cleaning fees, or
+        other charges outlined in the rental agreement.
+      </p>
+    </div>
+  ) : null;
+
   if (submitted) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -181,8 +237,7 @@ function Apply() {
       <main className="flex-1">
       <section className={`container-real pt-12 md:pt-20 pb-24 mx-auto ${step === 3 ? "max-w-6xl" : "max-w-3xl"}`}>
         <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Apply</div>
-          <h1 className="mt-3 text-3xl md:text-5xl font-semibold">Tell Us About You.</h1>
+          <h1 className="text-3xl md:text-5xl font-semibold">Application</h1>
         </FadeUp>
 
         <div className="mt-10">
@@ -391,6 +446,7 @@ function Apply() {
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
                   <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[{ value: "debit", label: "Debit" }, { value: "credit", label: "Credit" }, { value: "cashapp", label: "Cash App" }]} />
                 </div>
+                {pricingSummary}
               </div>
             </div>
           )}
@@ -429,61 +485,9 @@ function Apply() {
           )}
         </div>
 
-        {selectedVehicle && (
+        {step !== 3 && pricingSummary && (
           <FadeUp>
-            <div className="mt-10 rounded-2xl border border-border bg-soft p-5">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
-
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {tierOptions.map((t) => {
-                  const active = t.key === f.rental_term;
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      onClick={() => update("rental_term", t.key as any)}
-                      className={`text-left rounded-xl border p-3 transition ${active ? "bg-white border-real-red ring-2 ring-real-red/20" : "bg-white border-border hover:border-foreground/30"}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{t.label}</span>
-                        {t.discountPct > 0 && (
-                          <span className="text-[10px] font-semibold text-real-red bg-real-red/10 rounded-full px-2 py-0.5">Save {t.discountPct}%</span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-base font-semibold">${t.price}<span className="text-xs font-normal text-muted-foreground">{t.unit}</span></div>
-                      {t.discountPct > 0 && (
-                        <div className="text-[11px] text-muted-foreground line-through">${t.baseline}{t.unit}</div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <div className="text-muted-foreground">Vehicle</div>
-                <div className="text-right font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</div>
-                <div className="text-muted-foreground">{activeTier?.label} Rental</div>
-                <div className="text-right font-medium">${activeTier?.price}{activeTier?.unit}</div>
-                {activeTier && activeTier.discountPct > 0 && (
-                  <>
-                    <div className="text-muted-foreground">{activeTier.label} Discount</div>
-                    <div className="text-right font-medium text-real-red">−{activeTier.discountPct}% (saves ${activeTier.baseline - activeTier.price})</div>
-                  </>
-                )}
-                <div className="text-muted-foreground">Refundable Security Deposit</div>
-                <div className="text-right font-medium">${Number(selectedVehicle.deposit ?? 0)}</div>
-                <div className="text-muted-foreground">Payment Method</div>
-                <div className="text-right font-medium">{paymentLabel}</div>
-                <div className="col-span-2 border-t border-border my-1" />
-                <div className="font-semibold">Due At Pickup</div>
-                <div className="text-right font-semibold text-real-red">${dueAtPickup}</div>
-              </div>
-              <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-                Your security deposit is fully refundable upon vehicle return, less any
-                outstanding tolls, tickets, damages, unpaid balances, cleaning fees, or
-                other charges outlined in the rental agreement.
-              </p>
-            </div>
+            <div className="mt-10">{pricingSummary}</div>
           </FadeUp>
         )}
       </section>
