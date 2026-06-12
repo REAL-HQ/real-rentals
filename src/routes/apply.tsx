@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { z } from "zod";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Check, Users, DoorOpen, Fuel, Car } from "lucide-react";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (s: Record<string, unknown>) => ({ vehicle: (s.vehicle as string) || "" }),
@@ -309,22 +310,16 @@ function Apply() {
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Preferred vehicle</label>
                   <span className="text-[11px] text-muted-foreground">{vehicles.length} available</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-2 -mr-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-2 -mr-2 p-1">
                   {vehicles.map((v) => {
                     const active = v.id === f.vehicle_id;
                     const photo = v.photos?.[0];
-                    const specs = [
-                      v.body_type,
-                      v.seats ? `${v.seats} seats` : null,
-                      v.doors ? `${v.doors} dr` : null,
-                      v.mpg ? `${v.mpg} mpg` : null,
-                    ].filter(Boolean);
                     return (
                       <button
                         key={v.id}
                         type="button"
                         onClick={() => update("vehicle_id", v.id)}
-                        className={`relative text-left rounded-xl overflow-hidden bg-white transition ${active ? "border-2 border-real-red ring-4 ring-real-red/25 shadow-lg shadow-real-red/10" : "border-2 border-border hover:border-foreground/30"}`}
+                        className={`relative text-left rounded-xl overflow-hidden bg-white transition outline-none ${active ? "border-2 border-real-red shadow-[0_0_0_2px_#CC0000,0_10px_24px_-10px_rgba(204,0,0,0.45)]" : "border border-border hover:border-foreground/40"}`}
                       >
                         <div className="aspect-[16/10] bg-soft overflow-hidden relative">
                           {photo ? (
@@ -332,19 +327,13 @@ function Apply() {
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">No photo</div>
                           )}
-                          <div className="absolute top-2 right-2 rounded-md bg-white/95 backdrop-blur px-2 py-1 text-[11px] font-semibold shadow-sm">
-                            <span className="text-real-red">${Number(v.weekly_rate)}</span>
-                            <span className="text-muted-foreground font-normal">/wk</span>
+                          <div className="absolute top-2 right-2 rounded-md bg-white/95 backdrop-blur px-2 py-1 text-[11px] font-semibold shadow-sm text-real-red">
+                            ${Number(v.weekly_rate)}<span className="font-medium">/wk</span>
                           </div>
                           {active && (
-                            <div className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md bg-real-red text-white pl-1.5 pr-2 py-1 text-[10px] font-semibold uppercase tracking-wider shadow">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <div className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-real-red text-white pl-1.5 pr-2.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow">
+                              <Check size={12} strokeWidth={3} />
                               Selected
-                            </div>
-                          )}
-                          {active && (
-                            <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-real-red text-white flex items-center justify-center shadow-md ring-2 ring-white">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
                           )}
                         </div>
@@ -352,18 +341,20 @@ function Apply() {
                           <div className="text-sm font-semibold leading-tight truncate">
                             {v.year} {v.make} {v.model}{v.trim ? ` ${v.trim}` : ""}
                           </div>
-                          {specs.length > 0 && (
-                            <div className="mt-1 text-[11px] text-muted-foreground truncate">
-                              {specs.join(" · ")}
-                            </div>
-                          )}
-                          {v.badges && v.badges.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {v.badges.slice(0, 2).map((b) => (
-                                <span key={b} className="rounded-md bg-soft px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{b}</span>
-                              ))}
-                            </div>
-                          )}
+                          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+                            {v.body_type && (
+                              <span className="inline-flex items-center gap-1"><Car size={12} />{v.body_type}</span>
+                            )}
+                            {v.seats && (
+                              <span className="inline-flex items-center gap-1"><Users size={12} />{v.seats}</span>
+                            )}
+                            {v.doors && (
+                              <span className="inline-flex items-center gap-1"><DoorOpen size={12} />{v.doors}</span>
+                            )}
+                            {v.mpg && (
+                              <span className="inline-flex items-center gap-1"><Fuel size={12} />{v.mpg}</span>
+                            )}
+                          </div>
                         </div>
                       </button>
                     );
