@@ -137,15 +137,21 @@ function Apply() {
     : 0;
 
   const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App" } as Record<string, string>)[f.payment_method] || "—";
-  const termRate = (() => {
-    if (!selectedVehicle) return { label: "Rental", value: 0, unit: "" };
+  const tierOptions = (() => {
+    if (!selectedVehicle) return [] as { key: string; label: string; price: number; unit: string; baseline: number; discountPct: number }[];
     const weekly = Number(selectedVehicle.weekly_rate);
     const monthly = Number(selectedVehicle.monthly_rate ?? weekly * 4);
-    if (f.rental_term === "monthly") return { label: "Monthly Rental", value: monthly, unit: "/month" };
-    if (f.rental_term === "annual") return { label: "Annual Rental", value: Math.round(monthly * 12 * 0.9), unit: "/year" };
-    return { label: "Weekly Rental", value: weekly, unit: "/week" };
+    const annual = Math.round(monthly * 12 * 0.9);
+    const monthlyBaseline = weekly * 4;
+    const annualBaseline = weekly * 52;
+    return [
+      { key: "weekly", label: "Weekly", price: weekly, unit: "/week", baseline: weekly, discountPct: 0 },
+      { key: "monthly", label: "Monthly", price: monthly, unit: "/month", baseline: monthlyBaseline, discountPct: monthlyBaseline > 0 ? Math.max(0, Math.round((1 - monthly / monthlyBaseline) * 100)) : 0 },
+      { key: "annual", label: "Annual", price: annual, unit: "/year", baseline: annualBaseline, discountPct: annualBaseline > 0 ? Math.max(0, Math.round((1 - annual / annualBaseline) * 100)) : 0 },
+    ];
   })();
-  const dueAtPickup = selectedVehicle ? termRate.value + Number(selectedVehicle.deposit ?? 0) : 0;
+  const activeTier = tierOptions.find((t) => t.key === f.rental_term) ?? tierOptions[0];
+  const dueAtPickup = selectedVehicle && activeTier ? activeTier.price + Number(selectedVehicle.deposit ?? 0) : 0;
 
   if (submitted) {
     return (
@@ -383,15 +389,41 @@ function Apply() {
           <FadeUp>
             <div className="mt-10 rounded-2xl border border-border bg-soft p-5">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {tierOptions.map((t) => {
+                  const active = t.key === f.rental_term;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => update("rental_term", t.key as any)}
+                      className={`text-left rounded-xl border p-3 transition ${active ? "bg-white border-real-red ring-2 ring-real-red/20" : "bg-white border-border hover:border-foreground/30"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{t.label}</span>
+                        {t.discountPct > 0 && (
+                          <span className="text-[10px] font-semibold text-real-red bg-real-red/10 rounded-full px-2 py-0.5">Save {t.discountPct}%</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-base font-semibold">${t.price}<span className="text-xs font-normal text-muted-foreground">{t.unit}</span></div>
+                      {t.discountPct > 0 && (
+                        <div className="text-[11px] text-muted-foreground line-through">${t.baseline}{t.unit}</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="grid grid-cols-2 gap-y-2 text-sm">
                 <div className="text-muted-foreground">Vehicle</div>
                 <div className="text-right font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</div>
-                <div className="text-muted-foreground">{termRate.label}</div>
-                <div className="text-right font-medium">${termRate.value}{termRate.unit}</div>
-                {f.rental_term === "annual" && (
+                <div className="text-muted-foreground">{activeTier?.label} Rental</div>
+                <div className="text-right font-medium">${activeTier?.price}{activeTier?.unit}</div>
+                {activeTier && activeTier.discountPct > 0 && (
                   <>
-                    <div className="text-muted-foreground">Annual Discount</div>
-                    <div className="text-right font-medium text-real-red">10% off</div>
+                    <div className="text-muted-foreground">{activeTier.label} Discount</div>
+                    <div className="text-right font-medium text-real-red">−{activeTier.discountPct}% (saves ${activeTier.baseline - activeTier.price})</div>
                   </>
                 )}
                 <div className="text-muted-foreground">Refundable Security Deposit</div>
