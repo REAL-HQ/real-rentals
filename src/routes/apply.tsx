@@ -136,6 +136,17 @@ function Apply() {
     ? Math.round((Number(selectedVehicle.weekly_rate) * 4) - (selectedVehicle.monthly_rate ?? Number(selectedVehicle.weekly_rate) * 4))
     : 0;
 
+  const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App" } as Record<string, string>)[f.payment_method] || "—";
+  const termRate = (() => {
+    if (!selectedVehicle) return { label: "Rental", value: 0, unit: "" };
+    const weekly = Number(selectedVehicle.weekly_rate);
+    const monthly = Number(selectedVehicle.monthly_rate ?? weekly * 4);
+    if (f.rental_term === "monthly") return { label: "Monthly Rental", value: monthly, unit: "/month" };
+    if (f.rental_term === "annual") return { label: "Annual Rental", value: Math.round(monthly * 12 * 0.9), unit: "/year" };
+    return { label: "Weekly Rental", value: weekly, unit: "/week" };
+  })();
+  const dueAtPickup = selectedVehicle ? termRate.value + Number(selectedVehicle.deposit ?? 0) : 0;
+
   if (submitted) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -165,32 +176,6 @@ function Apply() {
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Apply</div>
           <h1 className="mt-3 text-3xl md:text-5xl font-semibold">Tell Us About You.</h1>
         </FadeUp>
-
-        {selectedVehicle && (
-          <FadeUp>
-            <div className="mt-8 rounded-2xl border border-border bg-soft p-5">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
-              <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <div className="text-muted-foreground">Vehicle</div>
-                <div className="text-right font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</div>
-                <div className="text-muted-foreground">Weekly Rental</div>
-                <div className="text-right font-medium">${Number(selectedVehicle.weekly_rate)}/week</div>
-                <div className="text-muted-foreground">Refundable Security Deposit</div>
-                <div className="text-right font-medium">${Number(selectedVehicle.deposit ?? 0)}</div>
-                <div className="col-span-2 border-t border-border my-1" />
-                <div className="font-semibold">Due At Pickup</div>
-                <div className="text-right font-semibold text-real-red">
-                  ${Number(selectedVehicle.weekly_rate) + Number(selectedVehicle.deposit ?? 0)}
-                </div>
-              </div>
-              <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-                Your security deposit is fully refundable upon vehicle return, less any
-                outstanding tolls, tickets, damages, unpaid balances, cleaning fees, or
-                other charges outlined in the rental agreement.
-              </p>
-            </div>
-          </FadeUp>
-        )}
 
         <div className="mt-10">
           <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
@@ -393,6 +378,38 @@ function Apply() {
             <button onClick={submit} className="rounded-lg bg-real-red text-white px-8 py-3 text-sm hover:opacity-90 transition active:scale-95">Submit Application</button>
           )}
         </div>
+
+        {selectedVehicle && (
+          <FadeUp>
+            <div className="mt-10 rounded-2xl border border-border bg-soft p-5">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Pricing Summary</div>
+              <div className="grid grid-cols-2 gap-y-2 text-sm">
+                <div className="text-muted-foreground">Vehicle</div>
+                <div className="text-right font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</div>
+                <div className="text-muted-foreground">{termRate.label}</div>
+                <div className="text-right font-medium">${termRate.value}{termRate.unit}</div>
+                {f.rental_term === "annual" && (
+                  <>
+                    <div className="text-muted-foreground">Annual Discount</div>
+                    <div className="text-right font-medium text-real-red">10% off</div>
+                  </>
+                )}
+                <div className="text-muted-foreground">Refundable Security Deposit</div>
+                <div className="text-right font-medium">${Number(selectedVehicle.deposit ?? 0)}</div>
+                <div className="text-muted-foreground">Payment Method</div>
+                <div className="text-right font-medium">{paymentLabel}</div>
+                <div className="col-span-2 border-t border-border my-1" />
+                <div className="font-semibold">Due At Pickup</div>
+                <div className="text-right font-semibold text-real-red">${dueAtPickup}</div>
+              </div>
+              <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+                Your security deposit is fully refundable upon vehicle return, less any
+                outstanding tolls, tickets, damages, unpaid balances, cleaning fees, or
+                other charges outlined in the rental agreement.
+              </p>
+            </div>
+          </FadeUp>
+        )}
       </section>
       </main>
     </div>
