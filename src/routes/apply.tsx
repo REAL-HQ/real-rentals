@@ -457,7 +457,7 @@ function Apply() {
           </div>
 
           {/* RIGHT panel — context changes per step */}
-          <aside className="space-y-4 min-w-0">
+          <aside className="space-y-4 min-w-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
             {step === 3 ? (
               <>
                 <In label="Desired start date" type="date" v={f.start_date} e={stepErrors.start_date} on={(v) => update("start_date", v)} />
