@@ -465,6 +465,7 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental term</label>
                   <SoftSelect value={f.rental_term} onChange={(v) => update("rental_term", v)} options={[{ value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "annual", label: "Annual" }]} />
                 </div>
+                {pricingSummary}
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Payment method</label>
                   <SoftSelect value={f.payment_method} onChange={(v) => update("payment_method", v)} options={[
@@ -480,7 +481,6 @@ const paymentLabel = ({ debit: "Debit", credit: "Credit", cashapp: "Cash App", c
                     { value: "cash", label: "Cash" },
                   ]} />
                 </div>
-                {pricingSummary}
               </>
             ) : step > 3 && pricingSummary ? (
               pricingSummary
