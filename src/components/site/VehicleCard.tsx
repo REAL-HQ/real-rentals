@@ -26,7 +26,7 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <img
             src={img}
             alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-            className="car-img w-full h-full object-contain p-3"
+            className="car-img w-full h-full object-cover"
             loading="lazy"
           />
         ) : (
