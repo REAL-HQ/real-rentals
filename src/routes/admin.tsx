@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { SiteLayout } from "@/components/site/SiteLayout";
+import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { ApplicationsPanel } from "@/components/admin/ApplicationsPanel";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
@@ -45,12 +45,12 @@ function Admin() {
 
   async function signOut() { await supabase.auth.signOut(); toast.success("Signed out"); }
 
-  if (checking) return <SiteLayout><div className="container-real py-32 text-center text-muted-foreground">Loading…</div></SiteLayout>;
+  if (checking) return <AdminShell><div className="container-real py-32 text-center text-muted-foreground">Loading…</div></AdminShell>;
   if (!session) return <SignIn />;
   if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
   return (
-    <SiteLayout>
+    <AdminShell>
       <div className="container-real py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -74,7 +74,16 @@ function Admin() {
         {tab === "investors" && <LeadsPanel table="investor_leads" label="Investor leads" />}
         {tab === "contact" && <LeadsPanel table="contact_leads" label="Contact messages" />}
       </div>
-    </SiteLayout>
+    </AdminShell>
+  );
+}
+
+function AdminShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Nav />
+      <main className="flex-1">{children}</main>
+    </div>
   );
 }
 
@@ -150,7 +159,7 @@ function SignIn() {
 
 function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
   return (
-    <SiteLayout>
+    <AdminShell>
       <div className="container-real py-32 text-center max-w-lg">
         <h1 className="text-2xl font-semibold">No admin access</h1>
         <p className="mt-3 text-muted-foreground text-sm">Your account ID:<br/><code className="text-xs">{userId}</code></p>
@@ -159,6 +168,6 @@ function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void
         </p>
         <button onClick={onSignOut} className="mt-6 rounded-lg border border-border px-6 py-2 text-sm">Sign out</button>
       </div>
-    </SiteLayout>
+    </AdminShell>
   );
 }
