@@ -38,7 +38,7 @@ export function VehiclesPanel() {
           return (
             <div key={v.id} className="rounded-2xl bg-soft overflow-hidden">
               <div className="aspect-[4/3] bg-white flex items-center justify-center">
-                {img ? <img src={img} alt="" className="w-full h-full object-contain p-2" /> : <span className="text-xs text-muted-foreground">No photo</span>}
+                {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
               </div>
               <div className="p-4">
                 <div className="font-medium">{v.year} {v.make} {v.model}</div>
