@@ -1,20 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { SiteLayout } from "@/components/site/SiteLayout";
-import { FadeUp } from "@/components/site/FadeUp";
-import { supabase } from "@/integrations/supabase/client";
-import { Shield, TrendingUp, Wrench, MapPin, Info } from "lucide-react";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/investors")({
-  head: () => ({
-    meta: [
-      { title: "Investors — REAL AUTOMOTIVE" },
-      { name: "description", content: "Own the asset, we run the operation. Earn passive monthly income from rideshare fleet vehicles." },
-      { property: "og:title", content: "Own The Asset. We Run The Operation." },
-      { property: "og:description", content: "Place vehicles in the REAL AUTOMOTIVE fleet and earn passive income. 50/50 split." },
-    ],
-  }),
-  component: Investors,
+  beforeLoad: () => {
+    throw redirect({ to: "/partners" });
+  },
 });
 
 const VEHICLE_TYPES = ["Sedan", "SUV", "Minivan", "Hybrid", "EV"];
