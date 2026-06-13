@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Application } from "./types";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUSES = ["new", "reviewing", "approved", "declined", "active"];
 
@@ -53,10 +54,14 @@ export function ApplicationsPanel() {
                 {new Date(a.created_at!).toLocaleString()} · {a.platforms?.join(", ") || "—"} · {a.rental_term || "—"}
               </div>
             </div>
-            <select value={a.status} onChange={(e) => update(a.id, { status: e.target.value })}
-              className="bg-white border border-border rounded-md px-3 py-1.5 text-sm">
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={a.status} onValueChange={(status) => update(a.id, { status })}>
+              <SelectTrigger className="h-8 w-28 bg-white text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <button onClick={() => setOpen(a)} className="rounded-md bg-black text-white px-3 py-1.5 text-sm">View</button>
             <button onClick={() => remove(a.id)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
           </div>

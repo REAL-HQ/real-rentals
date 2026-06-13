@@ -756,16 +756,21 @@ function EditableSummary({
               <div className="min-w-0 text-right">
                 {isEditing ? (
                   it.options ? (
-                    <select
-                      autoFocus
+                    <Select
                       value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onBlur={() => commit(it.field, it)}
-                      onKeyDown={(e) => { if (e.key === "Enter") commit(it.field, it); if (e.key === "Escape") setEditing(null); }}
-                      className="w-full bg-white rounded-md px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-black/10"
+                      onValueChange={(value) => {
+                        setDraft(value);
+                        onSave(it.field, value);
+                        setEditing(null);
+                      }}
                     >
-                      {it.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                      <SelectTrigger className="h-8 w-full bg-white text-foreground rounded-md text-sm focus:ring-2 focus:ring-black/10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {it.options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   ) : it.multi ? (
                     <div className="flex flex-wrap gap-1.5 justify-end">
                       {it.multi.all.map((p) => {

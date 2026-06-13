@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { FleetOwner } from "./types";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUSES = ["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"];
 
@@ -41,10 +42,14 @@ export function FleetOwnersPanel() {
               {f.message && <p className="text-sm mt-2 text-muted-foreground whitespace-pre-wrap">{f.message}</p>}
             </div>
             <div className="flex flex-col gap-2 items-end">
-              <select value={f.status} onChange={(e) => update(f.id, { status: e.target.value })}
-                className="bg-white border border-border rounded-md px-3 py-1.5 text-sm">
-                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <Select value={f.status} onValueChange={(status) => update(f.id, { status })}>
+                <SelectTrigger className="h-8 w-40 bg-white text-foreground">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
               <button onClick={() => remove(f.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
           </div>

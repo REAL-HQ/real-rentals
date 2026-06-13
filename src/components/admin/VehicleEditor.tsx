@@ -6,6 +6,7 @@ import { resolvePhotoUrl } from "@/lib/photoUrl";
 import type { Vehicle } from "./types";
 import { toast } from "sonner";
 import { Sparkles, Upload, X, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUSES = ["available", "rented", "maintenance", "reserved"];
 const BODY_TYPES = ["sedan", "suv", "hatchback", "minivan", "truck", "coupe"];
@@ -244,13 +245,17 @@ function Num({ label, v, onChange }: { label: string; v: number | null; onChange
 }
 function Sel({ label, v, options, onChange }: { label: string; v: string; options: string[]; onChange: (s: string) => void }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
-      <select value={v} onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full border border-border rounded-md px-2 py-1.5 text-sm bg-white">
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </label>
+      <Select value={v} onValueChange={onChange}>
+        <SelectTrigger className="mt-1 h-8 w-full bg-white text-foreground">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 function CSV({ label, v, onChange }: { label: string; v: string[]; onChange: (a: string[]) => void }) {
