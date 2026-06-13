@@ -3,7 +3,7 @@ import { useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
-import { Shield, TrendingUp, Wrench, MapPin } from "lucide-react";
+import { Shield, TrendingUp, Wrench, MapPin, Info } from "lucide-react";
 
 export const Route = createFileRoute("/investors")({
   head: () => ({
@@ -20,15 +20,19 @@ export const Route = createFileRoute("/investors")({
 const VEHICLE_TYPES = ["Sedan", "SUV", "Minivan", "Hybrid", "EV"];
 
 function Investors() {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", capital_range: "", vehicles_interested: 1, vehicle_types: [] as string[], message: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", capital_range: "", vehicles_interested: 1, vehicle_types: [] as string[], vehicle_details: "", message: "" });
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const { vehicle_types, ...rest } = form;
-    const payload = { ...rest, message: [vehicle_types.length ? `Vehicle types: ${vehicle_types.join(", ")}` : "", rest.message].filter(Boolean).join("\n\n") };
-    const { error } = await supabase.from("investor_leads").insert(payload);
+    const { vehicle_types, vehicle_details, ...rest } = form;
+    const extras = [
+      vehicle_types.length ? `Vehicle types: ${vehicle_types.join(", ")}` : "",
+      vehicle_details ? `Vehicle details:\n${vehicle_details}` : "",
+      rest.message,
+    ].filter(Boolean).join("\n\n");
+    const { error } = await supabase.from("investor_leads").insert({ ...rest, message: extras });
     if (error) setErr(error.message); else setSent(true);
   }
 
@@ -86,7 +90,7 @@ function Investors() {
               <I label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
               <I label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Capital range</label>
+                <LabelWithHint label="Capital range" hint="Approximate total you're considering deploying across one or more vehicles." />
                 <div className="relative mt-1">
                 <select value={form.capital_range} onChange={(e) => setForm({ ...form, capital_range: e.target.value })} className="appearance-none w-full bg-soft rounded-lg pl-5 pr-12 py-3 text-sm">
                   <option style={{ background: "#fff" }} value="">Select…</option>
@@ -99,9 +103,12 @@ function Investors() {
                 <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
               </div>
-              <I label="Vehicles interested" type="number" value={String(form.vehicles_interested)} onChange={(v) => setForm({ ...form, vehicles_interested: Number(v) })} />
+              <div>
+                <LabelWithHint label="Vehicles interested" hint="How many vehicles you're looking to place into the fleet." />
+                <input type="number" min={1} value={String(form.vehicles_interested)} onChange={(e) => setForm({ ...form, vehicles_interested: Number(e.target.value) })} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
+              </div>
               <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle types <span className="normal-case tracking-normal text-muted-foreground/70">(optional)</span></label>
+                <LabelWithHint label="Vehicle types" hint="Rideshare-eligible body styles you're open to. Sedans, SUVs, and minivans are typically in highest demand." optional />
                 <div className="mt-2 flex flex-wrap gap-2">
                   {VEHICLE_TYPES.map((t) => {
                     const active = form.vehicle_types.includes(t);
@@ -117,6 +124,10 @@ function Investors() {
                     );
                   })}
                 </div>
+              </div>
+              <div className="md:col-span-2">
+                <LabelWithHint label="Vehicle details" hint="Year, make, model, mileage, condition, title status, and anything else helpful (e.g. '2021 Toyota Camry LE, 62k miles, clean title, no accidents')." optional />
+                <textarea value={form.vehicle_details} onChange={(e) => setForm({ ...form, vehicle_details: e.target.value })} rows={3} placeholder="2021 Toyota Camry LE — 62,000 mi, clean title, single owner" className="mt-1 w-full bg-soft rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
               </div>
               <div className="md:col-span-2">
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Message</label>
@@ -139,6 +150,23 @@ function I({ label, value, onChange, type = "text", required }: { label: string;
     <div>
       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
       <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
+    </div>
+  );
+}
+
+function LabelWithHint({ label, hint, optional }: { label: string; hint: string; optional?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+        {optional && <span className="normal-case tracking-normal text-muted-foreground/70"> (optional)</span>}
+      </label>
+      <span className="group relative inline-flex">
+        <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" strokeWidth={2} />
+        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded-md bg-foreground text-background text-[11px] leading-snug px-3 py-2 opacity-0 group-hover:opacity-100 transition shadow-lg z-10 normal-case tracking-normal">
+          {hint}
+        </span>
+      </span>
     </div>
   );
 }
