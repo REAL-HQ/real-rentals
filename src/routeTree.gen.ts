@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PartnersRouteImport } from './routes/partners'
 import { Route as InvestorsRouteImport } from './routes/investors'
 import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
@@ -20,6 +21,11 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 
+const PartnersRoute = PartnersRouteImport.update({
+  id: '/partners',
+  path: '/partners',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvestorsRoute = InvestorsRouteImport.update({
   id: '/investors',
   path: '/investors',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partners'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partners'
     | '/fleet/$id'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partners'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
 }
@@ -157,10 +169,18 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   InvestorFaqRoute: typeof InvestorFaqRoute
   InvestorsRoute: typeof InvestorsRoute
+  PartnersRoute: typeof PartnersRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/partners': {
+      id: '/partners'
+      path: '/partners'
+      fullPath: '/partners'
+      preLoaderRoute: typeof PartnersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/investors': {
       id: '/investors'
       path: '/investors'
@@ -254,7 +274,18 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   InvestorFaqRoute: InvestorFaqRoute,
   InvestorsRoute: InvestorsRoute,
+  PartnersRoute: PartnersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
