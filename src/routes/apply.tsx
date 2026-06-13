@@ -757,7 +757,6 @@ function EditableSummary({
                 {isEditing ? (
                   it.options ? (
                     <Select
-                      autoFocus
                       value={draft}
                       onValueChange={(value) => {
                         setDraft(value);
