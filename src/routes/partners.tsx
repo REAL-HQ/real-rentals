@@ -364,7 +364,8 @@ function Select({ label, value, onChange, options }: { label: string; value: str
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="appearance-none w-full bg-white text-foreground rounded-lg pl-5 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 border border-border"
+          className="appearance-none w-full bg-soft text-foreground rounded-lg pl-5 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+          style={{ colorScheme: "light" }}
         >
           <option style={{ background: "#fff" }} value="">Select…</option>
           {options.map((o) => (
