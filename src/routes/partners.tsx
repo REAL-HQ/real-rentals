@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
@@ -357,22 +357,70 @@ function Field({ label, value, onChange, type = "text", error }: { label: string
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div>
+    <div ref={ref}>
       <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
       <div className="relative mt-1">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="appearance-none w-full bg-soft text-foreground rounded-lg pl-5 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
-          style={{ colorScheme: "light" }}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="w-full bg-soft text-foreground rounded-lg pl-5 pr-12 py-3 text-left text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+          aria-haspopup="listbox"
+          aria-expanded={open}
         >
-          <option style={{ background: "#fff" }} value="">Select…</option>
-          {options.map((o) => (
-            <option key={o} style={{ background: "#fff" }} value={o}>{o}</option>
-          ))}
-        </select>
+          {value || "Select…"}
+        </button>
         <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        {open && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border bg-white shadow-xl" role="listbox">
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              className="block w-full bg-white px-5 py-3 text-left text-sm text-foreground hover:bg-soft focus:bg-soft focus:outline-none"
+              role="option"
+              aria-selected={value === ""}
+            >
+              Select…
+            </button>
+            {options.map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => {
+                  onChange(o);
+                  setOpen(false);
+                }}
+                className="block w-full bg-white px-5 py-3 text-left text-sm text-foreground hover:bg-soft focus:bg-soft focus:outline-none"
+                role="option"
+                aria-selected={value === o}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
