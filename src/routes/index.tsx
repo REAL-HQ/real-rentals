@@ -158,14 +158,14 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { I: Shield, t: "Drive With Confidence", d: "Commercial rideshare insurance is included on every vehicle." },
+              { I: Shield, t: "Insurance Coverage Included", d: "Insurance coverage is included with every vehicle so you can focus on driving." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
-              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as you want. No mileage caps, no overage fees." },
-              { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex. Pick your platforms." },
-              { I: CalendarDays, t: "Flexible Weekly & Monthly Payments", d: "Pay weekly or monthly and stay on the road." },
-              { I: BadgeCheck, t: "No Long-Term Contracts", d: "Keep your options open with flexible rental terms." },
-              { I: Headphones, t: "24/7 Driver Support", d: "Real humans on call whenever you need help on the road." },
-              { I: Car, t: "Late-Model Vehicles", d: "Clean, reliable cars that riders and delivery customers love." },
+              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as you want. No mileage caps or overage fees." },
+              { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
+              { I: CalendarDays, t: "Flexible Weekly & Monthly Payments", d: "Choose a payment schedule that fits your driving goals." },
+              { I: BadgeCheck, t: "Flexible Rental Terms", d: "No annual commitment required. Stay flexible and stay on the road." },
+              { I: Headphones, t: "Dedicated Driver Support", d: "Our team is available to help with questions, vehicle issues, and rental support." },
+              { I: Car, t: "Fleet-Inspected Vehicles", d: "Every vehicle is inspected and prepared for rideshare and delivery work before entering the fleet." },
             ].map((b, i) => (
               <FadeUp key={b.t} delay={i * 60}>
                 <div className="rounded-2xl bg-white p-7 h-full border border-border">
