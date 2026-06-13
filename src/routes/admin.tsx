@@ -9,6 +9,7 @@ import { FleetOwnersPanel } from "@/components/admin/FleetOwnersPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — REAL AUTOMOTIVE" }, { name: "robots", content: "noindex" }] }),
@@ -83,6 +84,7 @@ function SignIn() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -116,8 +118,15 @@ function SignIn() {
           <form onSubmit={submit} className="mt-8 space-y-3">
             <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="Email"
               className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
-            <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" required minLength={6} placeholder="Password"
-              className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
+            <div className="relative">
+              <input value={pw} onChange={(e) => setPw(e.target.value)} type={showPw ? "text" : "password"} required minLength={6} placeholder="Password"
+                className="w-full bg-soft rounded-lg px-5 py-3 pr-12 text-sm" />
+              <button type="button" onClick={() => setShowPw((v) => !v)}
+                aria-label={showPw ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground">
+                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
             {err && <div className="text-sm text-real-red">{err}</div>}
             <button disabled={loading} className="w-full rounded-lg bg-real-red text-white py-3 text-sm font-medium hover:bg-red-700 transition disabled:opacity-50">
               {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
