@@ -142,6 +142,75 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_owner_submissions: {
+        Row: {
+          condition: string | null
+          created_at: string
+          currently_insured: boolean | null
+          email: string
+          full_name: string
+          id: string
+          lien_status: string | null
+          make: string
+          message: string | null
+          mileage: number | null
+          model: string
+          notes: string | null
+          phone: string
+          photo_urls: string[]
+          registration_state: string | null
+          status: string
+          title_status: string | null
+          trim: string | null
+          vin: string
+          year: number
+        }
+        Insert: {
+          condition?: string | null
+          created_at?: string
+          currently_insured?: boolean | null
+          email: string
+          full_name: string
+          id?: string
+          lien_status?: string | null
+          make: string
+          message?: string | null
+          mileage?: number | null
+          model: string
+          notes?: string | null
+          phone: string
+          photo_urls?: string[]
+          registration_state?: string | null
+          status?: string
+          title_status?: string | null
+          trim?: string | null
+          vin: string
+          year: number
+        }
+        Update: {
+          condition?: string | null
+          created_at?: string
+          currently_insured?: boolean | null
+          email?: string
+          full_name?: string
+          id?: string
+          lien_status?: string | null
+          make?: string
+          message?: string | null
+          mileage?: number | null
+          model?: string
+          notes?: string | null
+          phone?: string
+          photo_urls?: string[]
+          registration_state?: string | null
+          status?: string
+          title_status?: string | null
+          trim?: string | null
+          vin?: string
+          year?: number
+        }
+        Relationships: []
+      }
       investor_leads: {
         Row: {
           capital_range: string | null

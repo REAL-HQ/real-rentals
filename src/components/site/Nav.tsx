@@ -7,7 +7,7 @@ const menuLinks = [
   { to: "/fleet", label: "Fleet" },
   { to: "/how-it-works", label: "How It Works" },
   { to: "/faq", label: "FAQ" },
-  { to: "/investors", label: "Investors" },
+  { to: "/partners", label: "Partners" },
   { to: "/contact", label: "Contact" },
 ];
 

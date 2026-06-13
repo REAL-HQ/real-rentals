@@ -26,9 +26,9 @@ const driverLinks = [
   { to: "/how-it-works", label: "Requirements" },
 ];
 
-const investorLinks = [
-  { to: "/investors", label: "Earn Passive Income" },
-  { to: "/investor-faq", label: "Investor FAQ" },
+const ownerLinks: { to: string; label: string; hash?: string }[] = [
+  { to: "/partners", label: "How It Works" },
+  { to: "/partners", hash: "faq", label: "Owner FAQ" },
 ];
 
 export function Footer() {
@@ -58,7 +58,7 @@ export function Footer() {
               Apply Now →
             </Link>
             <Link
-              to="/investors"
+              to="/partners"
               className="inline-flex items-center justify-center rounded-lg border border-white/40 text-white px-6 py-3 text-sm font-medium hover:bg-white/10 transition active:scale-95"
             >
               Become A Partner
@@ -92,11 +92,11 @@ export function Footer() {
           </ul>
         </div>
         <div className="md:col-span-3">
-          <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Investors</div>
+          <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Fleet Owners</div>
           <ul className="space-y-2 text-muted-foreground">
-            {investorLinks.map((l, i) => (
+            {ownerLinks.map((l, i) => (
               <li key={`${l.label}-${i}`}>
-                <Link to={l.to} className="hover:text-foreground transition-colors">{l.label}</Link>
+                <Link to={l.to} hash={l.hash} className="hover:text-foreground transition-colors">{l.label}</Link>
               </li>
             ))}
           </ul>

@@ -9,7 +9,7 @@ export const Route = createFileRoute("/admin")({
   component: Admin,
 });
 
-type Tab = "applications" | "vehicles" | "contact" | "investors";
+type Tab = "applications" | "vehicles" | "contact" | "investors" | "fleet_owners";
 
 function Admin() {
   const [session, setSession] = useState<any>(null);
@@ -21,6 +21,7 @@ function Admin() {
   const [vehicles, setVehicles] = useState<Tables<"vehicles">[]>([]);
   const [contacts, setContacts] = useState<Tables<"contact_leads">[]>([]);
   const [investors, setInvestors] = useState<Tables<"investor_leads">[]>([]);
+  const [fleetOwners, setFleetOwners] = useState<Tables<"fleet_owner_submissions">[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -40,6 +41,7 @@ function Admin() {
     supabase.from("vehicles").select("*").order("make").then(({ data }) => setVehicles(data || []));
     supabase.from("contact_leads").select("*").order("created_at", { ascending: false }).then(({ data }) => setContacts(data || []));
     supabase.from("investor_leads").select("*").order("created_at", { ascending: false }).then(({ data }) => setInvestors(data || []));
+    supabase.from("fleet_owner_submissions").select("*").order("created_at", { ascending: false }).then(({ data }) => setFleetOwners(data || []));
   }, [isAdmin, tab]);
 
   async function signIn(e: React.FormEvent) {
@@ -56,6 +58,14 @@ function Admin() {
   async function updateVehicleStatus(id: string, status: string) {
     await supabase.from("vehicles").update({ status }).eq("id", id);
     setVehicles((a) => a.map((x) => x.id === id ? { ...x, status } : x));
+  }
+  async function updateFleetOwnerStatus(id: string, status: string) {
+    await supabase.from("fleet_owner_submissions").update({ status }).eq("id", id);
+    setFleetOwners((a) => a.map((x) => x.id === id ? { ...x, status } : x));
+  }
+  async function updateFleetOwnerNotes(id: string, notes: string) {
+    await supabase.from("fleet_owner_submissions").update({ notes }).eq("id", id);
+    setFleetOwners((a) => a.map((x) => x.id === id ? { ...x, notes } : x));
   }
 
   if (!session) {
@@ -87,7 +97,7 @@ function Admin() {
     );
   }
 
-  const tabs: Tab[] = ["applications", "vehicles", "contact", "investors"];
+  const tabs: Tab[] = ["applications", "vehicles", "contact", "investors", "fleet_owners"];
 
   return (
     <SiteLayout>
@@ -153,7 +163,67 @@ function Admin() {
             ))}
           </div>
         )}
+        {tab === "fleet_owners" && (
+          <div className="space-y-4">
+            {fleetOwners.map((f) => (
+              <div key={f.id} className="rounded-2xl bg-soft p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{f.full_name} <span className="text-muted-foreground text-sm">· {f.email} · {f.phone}</span></div>
+                    <div className="text-xs text-muted-foreground mt-1">{new Date(f.created_at!).toLocaleString()}</div>
+                    <div className="text-sm mt-2">{f.year} {f.make} {f.model} {f.trim || ""} · VIN {f.vin} · {f.mileage ?? "—"} mi</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Title: {f.title_status || "—"} · Lien: {f.lien_status || "—"} · State: {f.registration_state || "—"} · Insured: {f.currently_insured === null ? "—" : f.currently_insured ? "Yes" : "No"} · Condition: {f.condition || "—"}
+                    </div>
+                    {f.message && <p className="text-sm mt-2 text-muted-foreground">{f.message}</p>}
+                  </div>
+                  <select
+                    value={f.status}
+                    onChange={(e) => updateFleetOwnerStatus(f.id, e.target.value)}
+                    className="bg-white border border-border rounded-lg px-4 py-2 text-sm"
+                  >
+                    {["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                {f.photo_urls && f.photo_urls.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2">
+                    {f.photo_urls.map((path, idx) => (
+                      <SignedPhoto key={idx} path={path} index={idx} />
+                    ))}
+                  </div>
+                )}
+                <textarea
+                  defaultValue={f.notes || ""}
+                  onBlur={(e) => updateFleetOwnerNotes(f.id, e.target.value)}
+                  placeholder="Notes (saved on blur)"
+                  rows={2}
+                  className="mt-3 w-full bg-white border border-border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            ))}
+            {fleetOwners.length === 0 && <div className="text-muted-foreground text-sm">No fleet owner submissions yet.</div>}
+          </div>
+        )}
       </div>
     </SiteLayout>
+  );
+}
+
+function SignedPhoto({ path, index }: { path: string; index: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    supabase.storage.from("owner-vehicle-photos").createSignedUrl(path, 60 * 60).then(({ data }) => {
+      if (active && data?.signedUrl) setUrl(data.signedUrl);
+    });
+    return () => { active = false; };
+  }, [path]);
+  if (!url) return <div className="aspect-square rounded-lg bg-white border border-border" />;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden bg-white border border-border">
+      <img src={url} alt={`Vehicle ${index + 1}`} className="w-full h-full object-cover" />
+    </a>
   );
 }
