@@ -6,6 +6,7 @@ import { ApplicationsPanel } from "@/components/admin/ApplicationsPanel";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
 import { LeadsPanel } from "@/components/admin/LeadsPanel";
 import { FleetOwnersPanel } from "@/components/admin/FleetOwnersPanel";
+import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -95,26 +96,63 @@ function SignIn() {
   }
 
   return (
-    <SiteLayout>
-      <div className="container-real max-w-md py-24">
-        <h1 className="text-3xl font-semibold mb-2">Admin Sign In</h1>
-        <p className="text-sm text-muted-foreground mb-6">Restricted to authorized team members.</p>
-        <form onSubmit={submit} className="space-y-3">
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="Email"
-            className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
-          <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" required minLength={6} placeholder="Password"
-            className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
-          {err && <div className="text-sm text-real-red">{err}</div>}
-          <button disabled={loading} className="w-full rounded-lg bg-black text-white py-3 text-sm hover:bg-real-red transition disabled:opacity-50">
-            {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
-          </button>
-        </form>
-        <button onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-          className="mt-4 text-xs text-muted-foreground hover:text-foreground">
-          {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
-        </button>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left panel — brand */}
+      <div className="relative hidden lg:flex flex-col justify-between p-12 bg-black text-white overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-real-red/30 via-black to-black pointer-events-none" />
+        <div className="relative z-10">
+          <Logo offset={false} />
+        </div>
+        <div className="relative z-10 max-w-md">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium mb-6">
+            <span className="w-1.5 h-1.5 rounded-full bg-real-red" /> Admin Console
+          </div>
+          <h2 className="text-4xl font-semibold leading-tight">
+            Drive the fleet.<br />Move the business.
+          </h2>
+          <p className="mt-4 text-sm text-white/70 max-w-sm">
+            Manage applications, vehicles, partners, and leads — all in one place.
+          </p>
+        </div>
+        <div className="relative z-10 grid grid-cols-3 gap-6 max-w-md">
+          <Stat n="100%" l="Insured Fleet" />
+          <Stat n="24/7" l="Driver Ready" />
+          <Stat n="Same Day" l="Approvals" />
+        </div>
       </div>
-    </SiteLayout>
+
+      {/* Right panel — form */}
+      <div className="flex items-center justify-center px-6 py-12 bg-background">
+        <div className="w-full max-w-sm">
+          <div className="lg:hidden mb-8 flex justify-center"><Logo offset={false} /></div>
+          <h1 className="text-3xl font-semibold">{mode === "signin" ? "Welcome back" : "Create account"}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Restricted to authorized team members.</p>
+          <form onSubmit={submit} className="mt-8 space-y-3">
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="Email"
+              className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
+            <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" required minLength={6} placeholder="Password"
+              className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
+            {err && <div className="text-sm text-real-red">{err}</div>}
+            <button disabled={loading} className="w-full rounded-lg bg-real-red text-white py-3 text-sm font-medium hover:bg-red-700 transition disabled:opacity-50">
+              {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
+            </button>
+          </form>
+          <button onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+            className="mt-4 text-xs text-muted-foreground hover:text-foreground">
+            {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ n, l }: { n: string; l: string }) {
+  return (
+    <div>
+      <div className="text-xl font-semibold">{n}</div>
+      <div className="text-xs text-white/60 mt-1">{l}</div>
+    </div>
   );
 }
 
