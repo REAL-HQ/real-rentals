@@ -35,7 +35,7 @@ export function Footer() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isPartners = pathname === "/partners";
   return (
-    <footer className="mt-24">
+    <footer className={isPartners ? "" : "mt-24"}>
       {!isPartners && (
       <div className="border-y border-border bg-soft">
         <div className="container-real py-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs md:text-sm text-foreground/80">
