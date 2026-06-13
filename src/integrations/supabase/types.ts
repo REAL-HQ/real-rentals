@@ -269,6 +269,7 @@ export type Database = {
         Row: {
           badges: string[] | null
           body_type: string | null
+          color: string | null
           created_at: string | null
           deposit: number | null
           description: string | null
@@ -290,6 +291,7 @@ export type Database = {
         Insert: {
           badges?: string[] | null
           body_type?: string | null
+          color?: string | null
           created_at?: string | null
           deposit?: number | null
           description?: string | null
@@ -311,6 +313,7 @@ export type Database = {
         Update: {
           badges?: string[] | null
           body_type?: string | null
+          color?: string | null
           created_at?: string | null
           deposit?: number | null
           description?: string | null
