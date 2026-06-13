@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { Check, Phone, Mail, MapPin, Clock, Shield, Wrench, BadgeCheck, Infinity as InfinityIcon, Zap } from "lucide-react";
 import { Logo } from "./Logo";
 
@@ -32,8 +32,11 @@ const ownerLinks: { to: string; label: string; hash?: string }[] = [
 ];
 
 export function Footer() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isPartners = pathname === "/partners";
   return (
     <footer className="mt-24">
+      {!isPartners && (
       <div className="border-y border-border bg-soft">
         <div className="container-real py-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs md:text-sm text-foreground/80">
           {trustBar.map(({ label, Icon }) => (
@@ -44,6 +47,8 @@ export function Footer() {
           ))}
         </div>
       </div>
+      )}
+      {!isPartners && (
       <div className="bg-real-red text-white">
         <div className="container-real py-14 md:py-20 flex flex-col items-center gap-8 text-center">
           <div>
@@ -66,6 +71,7 @@ export function Footer() {
           </div>
         </div>
       </div>
+      )}
       <div className="container-real py-14 grid grid-cols-1 md:grid-cols-12 gap-10 text-sm">
         <div className="md:col-span-4">
           <Logo width={110} offset={false} />
