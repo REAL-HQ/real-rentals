@@ -37,7 +37,7 @@ export function Nav() {
             to="/admin"
             className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
           >
-            Log in
+            Log In
           </Link>
           <Link
             to="/apply"
