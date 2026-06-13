@@ -87,7 +87,8 @@ function Investors() {
               <I label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Capital range</label>
-                <select value={form.capital_range} onChange={(e) => setForm({ ...form, capital_range: e.target.value })} className="mt-1 w-full bg-white border border-border rounded-lg px-5 py-3 text-sm">
+                <div className="relative mt-1">
+                <select value={form.capital_range} onChange={(e) => setForm({ ...form, capital_range: e.target.value })} className="appearance-none w-full bg-white border border-border rounded-lg pl-5 pr-12 py-3 text-sm">
                   <option value="">Select…</option>
                   <option>$5k – $25k</option>
                   <option>$25k – $50k</option>
@@ -95,6 +96,8 @@ function Investors() {
                   <option>$150k – $500k</option>
                   <option>$500k+</option>
                 </select>
+                <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
               </div>
               <I label="Vehicles interested" type="number" value={String(form.vehicles_interested)} onChange={(v) => setForm({ ...form, vehicles_interested: Number(v) })} />
               <div className="md:col-span-2">
