@@ -189,14 +189,9 @@ function Admin() {
                 </div>
                 {f.photo_urls && f.photo_urls.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2">
-                    {f.photo_urls.map((path, idx) => {
-                      const { data } = supabase.storage.from("owner-vehicle-photos").getPublicUrl(path);
-                      return (
-                        <a key={idx} href={data.publicUrl} target="_blank" rel="noreferrer" className="block aspect-square rounded-lg overflow-hidden bg-white border border-border">
-                          <img src={data.publicUrl} alt={`Vehicle ${idx + 1}`} className="w-full h-full object-cover" />
-                        </a>
-                      );
-                    })}
+                    {f.photo_urls.map((path, idx) => (
+                      <SignedPhoto key={idx} path={path} index={idx} />
+                    ))}
                   </div>
                 )}
                 <textarea
