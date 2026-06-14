@@ -181,6 +181,7 @@ export const getMyEarnings = createServerFn({ method: "POST" })
 
     const byVehicle = new Map<string, number>();
     for (const p of payments ?? []) {
+      if (!p.vehicle_id) continue;
       byVehicle.set(p.vehicle_id, (byVehicle.get(p.vehicle_id) ?? 0) + Number(p.amount ?? 0));
     }
 
