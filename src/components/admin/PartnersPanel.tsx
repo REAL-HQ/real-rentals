@@ -49,7 +49,7 @@ export function PartnersPanel() {
     await add({ name: o.full_name, email: o.email, phone: o.phone, partner_type: "vehicle_owner", status: "prospect", vehicles_contributed: 1, notes: `Converted from fleet owner submission. Vehicle: ${o.year} ${o.make} ${o.model}` });
   }
   async function convertInvestor(l: InvestorLead) {
-    await add({ name: l.full_name, email: l.email, phone: l.phone, partner_type: "capital_partner", status: "prospect", capital_committed: l.amount || 0, notes: l.message || null });
+    await add({ name: l.name, email: l.email, phone: l.phone || undefined, partner_type: "capital_partner", status: "prospect", notes: [l.capital_range && `Range: ${l.capital_range}`, l.message].filter(Boolean).join(" — ") || null });
   }
 
   const filtered = filter === "all" ? partners : partners.filter(p => p.partner_type === filter);
@@ -117,8 +117,8 @@ export function PartnersPanel() {
           {legacyInvestors.map(l => (
             <div key={l.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
               <div className="flex-1 min-w-[200px]">
-                <div className="font-medium">{l.full_name} <span className="text-xs text-muted-foreground">· Investor</span></div>
-                <div className="text-xs text-muted-foreground">{l.email} · ${Number(l.amount || 0).toLocaleString()}</div>
+                <div className="font-medium">{l.name} <span className="text-xs text-muted-foreground">· Investor</span></div>
+                <div className="text-xs text-muted-foreground">{l.email} · {l.capital_range || "—"}</div>
               </div>
               <button onClick={() => convertInvestor(l)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert to Partner</button>
             </div>
