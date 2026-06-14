@@ -10,7 +10,15 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — REAL AUTOMOTIVE" }, { name: "robots", content: "noindex" }] }),
@@ -18,11 +26,11 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS = [
-  { id: "drivers", label: "Drivers" },
-  { id: "vehicles", label: "Vehicles" },
-  { id: "partners", label: "Partners" },
-  { id: "payments", label: "Payments" },
-  { id: "settings", label: "Settings" },
+  { id: "drivers", label: "Drivers", icon: Users, description: "Manage applicants, active renters and driver lifecycle" },
+  { id: "vehicles", label: "Vehicles", icon: Car, description: "Fleet inventory and vehicle status" },
+  { id: "partners", label: "Partners", icon: Handshake, description: "Vehicle owners, capital partners and lenders" },
+  { id: "payments", label: "Payments", icon: CreditCard, description: "Rent, deposits and balances" },
+  { id: "settings", label: "Settings", icon: SettingsIcon, description: "Rental terms, payments, admin users and preferences" },
 ] as const;
 type Tab = typeof TABS[number]["id"];
 
@@ -50,28 +58,85 @@ function Admin() {
   if (!session) return <SignIn />;
   if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
+  const current = TABS.find((t) => t.id === tab)!;
+
   return (
-    <AdminShell>
-      <div className="container-real py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold">Admin</h1>
+    <div className="min-h-screen flex bg-soft">
+      {/* Sidebar */}
+      <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
+        <div className="p-5 border-b border-white/10 flex justify-center">
+          <Logo offset={false} width={110} />
         </div>
-        <div className="flex gap-1 mb-8 flex-wrap border-b border-border">
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+                  active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-3 border-t border-white/10">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/80 hover:bg-white/5">
+                <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+                  <User className="w-3.5 h-3.5" />
+                </div>
+                <span className="truncate flex-1 text-left text-xs">{session.user.email}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="w-56">
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{session.user.email}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={signOut} className="cursor-pointer text-real-red focus:text-real-red flex items-center gap-2">
+                <LogOut className="w-4 h-4" /> Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </aside>
+
+      {/* Mobile top bar with tab pills */}
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 bg-[#0b0b0d] text-white">
+        <div className="flex items-center justify-between p-3">
+          <Logo offset={false} width={80} />
+          <button onClick={signOut} className="text-xs text-white/70 inline-flex items-center gap-1"><LogOut className="w-3.5 h-3.5" /> Sign out</button>
+        </div>
+        <div className="flex overflow-x-auto px-2 pb-2 gap-1">
           {TABS.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${tab === t.id ? "border-real-red text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+              className={`px-3 py-1.5 rounded-md text-xs whitespace-nowrap ${tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"}`}>
               {t.label}
             </button>
           ))}
         </div>
-
-        {tab === "drivers" && <DriversPanel />}
-        {tab === "vehicles" && <VehiclesPanel />}
-        {tab === "partners" && <PartnersPanel />}
-        {tab === "payments" && <PaymentsPanel />}
-        {tab === "settings" && <SettingsPanel />}
       </div>
-    </AdminShell>
+
+      {/* Main */}
+      <main className="flex-1 min-w-0 bg-soft md:pt-0 pt-28">
+        <header className="bg-white border-b border-border px-8 py-6">
+          <h1 className="text-2xl font-semibold">{current.label}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{current.description}</p>
+        </header>
+        <div className="p-8">
+          {tab === "drivers" && <DriversPanel />}
+          {tab === "vehicles" && <VehiclesPanel />}
+          {tab === "partners" && <PartnersPanel />}
+          {tab === "payments" && <PaymentsPanel />}
+          {tab === "settings" && <SettingsPanel />}
+        </div>
+      </main>
+    </div>
   );
 }
 
