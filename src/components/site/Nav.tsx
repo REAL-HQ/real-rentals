@@ -91,7 +91,7 @@ export function Nav() {
                 <DropdownMenuItem asChild>
                   <Link to="/admin" className="cursor-pointer flex items-center gap-2 w-full">
                     <Shield className="w-4 h-4" />
-                    Admin
+                    Account
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
