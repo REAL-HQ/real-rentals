@@ -59,10 +59,11 @@ export function Nav() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="hidden sm:inline-flex items-center justify-center w-8 h-8 rounded-full bg-soft text-foreground hover:bg-muted transition"
+                  className="hidden sm:inline-flex items-center justify-center h-8 px-3 rounded-lg bg-soft text-foreground hover:bg-muted transition gap-2 text-[13px]"
                   aria-label="Profile"
                 >
                   <User className="w-4 h-4" />
+                  <span className="font-medium">Profile</span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
