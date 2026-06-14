@@ -55,7 +55,6 @@ function Admin() {
       <div className="container-real py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-semibold">Admin</h1>
-          <p className="text-xs text-muted-foreground mt-1">Signed in as {session.user.email}</p>
         </div>
         <div className="flex gap-1 mb-8 flex-wrap border-b border-border">
           {TABS.map((t) => (
