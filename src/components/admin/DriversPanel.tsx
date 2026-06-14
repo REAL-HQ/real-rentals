@@ -120,7 +120,7 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
           <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
           <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
           <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
-          <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v })} />
+          <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
         </Section>
 
         <Section title="Financials">
@@ -133,14 +133,14 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
           <div className="col-span-2 bg-soft rounded-md px-3 py-2">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle assigned</div>
             {veh ? (
-              <div className="text-sm">{veh.year} {veh.make} {veh.model}<div className="text-xs text-muted-foreground">VIN {veh.vin || "—"}</div></div>
+              <div className="text-sm">{veh.year} {veh.make} {veh.model}<div className="text-xs text-muted-foreground">ID {veh.id.slice(0,8)}</div></div>
             ) : <div className="text-sm text-muted-foreground">None assigned</div>}
             <div className="mt-2">
               <Select value={driver.vehicle_id || "none"} onValueChange={(v) => onUpdate({ vehicle_id: v === "none" ? null : v })}>
                 <SelectTrigger className="h-8 bg-white text-foreground"><SelectValue placeholder="Assign vehicle" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— None —</SelectItem>
-                  {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model} ({v.vin?.slice(-6) || "—"})</SelectItem>)}
+                  {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
