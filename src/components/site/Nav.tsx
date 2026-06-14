@@ -22,6 +22,7 @@ const menuLinks = [
 ];
 
 export function Nav() {
+  const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<any>(null);
