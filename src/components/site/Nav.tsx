@@ -93,19 +93,23 @@ export function Nav() {
               Log In
             </Link>
           )}
-          <Link
-            to="/apply"
-            className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
-          >
-            Apply
-          </Link>
-          <button
-            className="p-2 -mr-2"
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Menu"
-          >
-            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {!session && (
+            <Link
+              to="/apply"
+              className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
+            >
+              Apply
+            </Link>
+          )}
+          {!session && (
+            <button
+              className="p-2 -mr-2"
+              onClick={() => setOpen((o) => !o)}
+              aria-label="Menu"
+            >
+              {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          )}
         </div>
       </div>
       {open && (
