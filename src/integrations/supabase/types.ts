@@ -14,25 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       applications: {
         Row: {
           address: string | null
+          background_check_status: string
           city: string | null
           consent_background: boolean | null
           consent_gps: boolean | null
           consent_prepay: boolean | null
           consent_terms: boolean | null
           created_at: string | null
+          deposit_amount: number | null
+          deposit_paid: number | null
+          deposit_status: string
           dob: string | null
           email: string
           full_name: string
           id: string
+          incident_count: number
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
           license_state: string | null
+          mvr_status: string
           notes: string | null
           payment_method: string | null
+          payment_status: string
           phone: string
           platform_active: boolean | null
           platforms: string[] | null
@@ -40,29 +65,38 @@ export type Database = {
           start_date: string | null
           state: string | null
           status: string
+          updated_at: string
           vehicle_id: string | null
           weekly_hours: number | null
+          weekly_rent: number | null
           years_licensed: number | null
           zip: string | null
         }
         Insert: {
           address?: string | null
+          background_check_status?: string
           city?: string | null
           consent_background?: boolean | null
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
           created_at?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string
           dob?: string | null
           email: string
           full_name: string
           id?: string
+          incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          mvr_status?: string
           notes?: string | null
           payment_method?: string | null
+          payment_status?: string
           phone: string
           platform_active?: boolean | null
           platforms?: string[] | null
@@ -70,29 +104,38 @@ export type Database = {
           start_date?: string | null
           state?: string | null
           status?: string
+          updated_at?: string
           vehicle_id?: string | null
           weekly_hours?: number | null
+          weekly_rent?: number | null
           years_licensed?: number | null
           zip?: string | null
         }
         Update: {
           address?: string | null
+          background_check_status?: string
           city?: string | null
           consent_background?: boolean | null
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
           created_at?: string | null
+          deposit_amount?: number | null
+          deposit_paid?: number | null
+          deposit_status?: string
           dob?: string | null
           email?: string
           full_name?: string
           id?: string
+          incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          mvr_status?: string
           notes?: string | null
           payment_method?: string | null
+          payment_status?: string
           phone?: string
           platform_active?: boolean | null
           platforms?: string[] | null
@@ -100,8 +143,10 @@ export type Database = {
           start_date?: string | null
           state?: string | null
           status?: string
+          updated_at?: string
           vehicle_id?: string | null
           weekly_hours?: number | null
+          weekly_rent?: number | null
           years_licensed?: number | null
           zip?: string | null
         }
@@ -243,6 +288,120 @@ export type Database = {
           vehicles_interested?: number | null
         }
         Relationships: []
+      }
+      partners: {
+        Row: {
+          capital_committed: number | null
+          created_at: string
+          documents: Json | null
+          email: string | null
+          id: string
+          monthly_payment: number | null
+          name: string
+          notes: string | null
+          partner_type: string
+          phone: string | null
+          status: string
+          updated_at: string
+          vehicles_contributed: number | null
+        }
+        Insert: {
+          capital_committed?: number | null
+          created_at?: string
+          documents?: Json | null
+          email?: string | null
+          id?: string
+          monthly_payment?: number | null
+          name: string
+          notes?: string | null
+          partner_type?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          vehicles_contributed?: number | null
+        }
+        Update: {
+          capital_committed?: number | null
+          created_at?: string
+          documents?: Json | null
+          email?: string | null
+          id?: string
+          monthly_payment?: number | null
+          name?: string
+          notes?: string | null
+          partner_type?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          vehicles_contributed?: number | null
+        }
+        Relationships: []
+      }
+      payments: {
+        Row: {
+          amount: number
+          balance_due: number
+          created_at: string
+          driver_id: string | null
+          due_date: string | null
+          id: string
+          late_fees: number
+          notes: string | null
+          paid_date: string | null
+          payment_method: string | null
+          status: string
+          type: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount?: number
+          balance_due?: number
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          id?: string
+          late_fees?: number
+          notes?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number
+          balance_due?: number
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          id?: string
+          late_fees?: number
+          notes?: string | null
+          paid_date?: string | null
+          payment_method?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
