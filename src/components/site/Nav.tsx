@@ -54,7 +54,7 @@ export function Nav() {
       }`}
     >
       <div className="flex h-12 items-center justify-between px-[3%]">
-        <Logo />
+        {location.pathname !== "/admin" && <Logo />}
         <div className="flex items-center gap-3">
           {session ? (
             <DropdownMenu>
