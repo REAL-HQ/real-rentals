@@ -65,7 +65,7 @@ function Admin() {
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
         <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
-          <div className="px-4 py-3 flex items-center">
+          <div className="px-4 py-3 flex items-center justify-center">
             <Logo offset={false} />
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
