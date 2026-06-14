@@ -47,8 +47,8 @@ export function VehiclesPanel() {
                   <button onClick={() => setEditing(v)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                     <Pencil className="w-3.5 h-3.5" /> Edit
                   </button>
-                  <button onClick={() => remove(v)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red">
-                    <Trash2 className="w-3.5 h-3.5" />
+                  <button onClick={() => remove(v)} className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
+                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
                   </button>
                 </div>
               </div>
