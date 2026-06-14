@@ -80,7 +80,7 @@ export function VehiclesPanel() {
           );
         })}
       </div>
-      {rows.length === 0 && <div className="text-sm text-muted-foreground mt-6">No vehicles yet. Click "Add vehicle" to create one.</div>}
+      {rows.length === 0 && <div className="text-sm text-muted-foreground mt-6">No vehicles yet. Click "Add Vehicle" to create one.</div>}
 
       {editing && (
         <VehicleEditor
