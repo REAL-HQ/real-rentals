@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PartnersRouteImport } from './routes/partners'
+import { Route as PartnerRouteImport } from './routes/partner'
 import { Route as InvestorsRouteImport } from './routes/investors'
 import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
@@ -24,6 +25,11 @@ import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 const PartnersRoute = PartnersRouteImport.update({
   id: '/partners',
   path: '/partners',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnerRoute = PartnerRouteImport.update({
+  id: '/partner',
+  path: '/partner',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InvestorsRoute = InvestorsRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
+  '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/fleet/$id': typeof FleetIdRoute
 }
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partner'
     | '/partners'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partner'
     | '/partners'
     | '/fleet/$id'
   id:
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
+    | '/partner'
     | '/partners'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
@@ -169,6 +181,7 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   InvestorFaqRoute: typeof InvestorFaqRoute
   InvestorsRoute: typeof InvestorsRoute
+  PartnerRoute: typeof PartnerRoute
   PartnersRoute: typeof PartnersRoute
 }
 
@@ -179,6 +192,13 @@ declare module '@tanstack/react-router' {
       path: '/partners'
       fullPath: '/partners'
       preLoaderRoute: typeof PartnersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partner': {
+      id: '/partner'
+      path: '/partner'
+      fullPath: '/partner'
+      preLoaderRoute: typeof PartnerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/investors': {
@@ -274,6 +294,7 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   InvestorFaqRoute: InvestorFaqRoute,
   InvestorsRoute: InvestorsRoute,
+  PartnerRoute: PartnerRoute,
   PartnersRoute: PartnersRoute,
 }
 export const routeTree = rootRouteImport

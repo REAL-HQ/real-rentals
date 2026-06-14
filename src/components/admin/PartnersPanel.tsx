@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Partner, FleetOwner, InvestorLead } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useServerFn } from "@tanstack/react-start";
+import { linkPartnerLogin } from "@/lib/partner.functions";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
@@ -89,6 +91,7 @@ export function PartnersPanel() {
               </Select>
               <button onClick={() => remove(p.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
+            <LinkLoginRow partner={p} onLinked={refresh} />
             <div className="grid grid-cols-3 gap-2 mt-3">
               <NumInput label="Capital ($)" value={p.capital_committed as any} onSave={(v) => update(p.id, { capital_committed: v })} />
               <NumInput label="Vehicles" value={p.vehicles_contributed as any} onSave={(v) => update(p.id, { vehicles_contributed: v })} />
