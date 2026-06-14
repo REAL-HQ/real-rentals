@@ -62,10 +62,12 @@ function Admin() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <Nav />
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
-        <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-12 h-[calc(100vh-3rem)]">
+        <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
+          <div className="px-4 py-3 flex items-center">
+            <Logo offset={false} />
+          </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
             {TABS.map((t) => {
               const Icon = t.icon;
@@ -86,32 +88,34 @@ function Admin() {
           </nav>
         </aside>
 
-        {/* Mobile tab pills */}
-        <div className="md:hidden fixed top-12 inset-x-0 z-40 bg-[#0b0b0d] text-white">
-          <div className="flex overflow-x-auto px-2 py-2 gap-1">
-            {TABS.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"}`}>
-                {t.label}
-              </button>
-            ))}
+        {/* Main column */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <Nav />
+          {/* Mobile tab pills */}
+          <div className="md:hidden bg-[#0b0b0d] text-white">
+            <div className="flex overflow-x-auto px-2 py-2 gap-1">
+              {TABS.map((t) => (
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        {/* Main */}
-        <main className="flex-1 min-w-0 bg-white md:pt-0 pt-12">
-          <header className="bg-white border-b border-border px-8 py-6">
-            <h1 className="text-2xl font-semibold">{current.label}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{current.description}</p>
-          </header>
-          <div className="p-8">
+          <main className="flex-1 min-w-0 bg-white">
+            <header className="bg-white border-b border-border px-8 py-6">
+              <h1 className="text-2xl font-semibold">{current.label}</h1>
+              <p className="text-sm text-muted-foreground mt-1">{current.description}</p>
+            </header>
+            <div className="p-8">
             {tab === "drivers" && <DriversPanel />}
             {tab === "vehicles" && <VehiclesPanel />}
             {tab === "partners" && <PartnersPanel />}
             {tab === "payments" && <PaymentsPanel />}
             {tab === "settings" && <SettingsPanel />}
-          </div>
-        </main>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
