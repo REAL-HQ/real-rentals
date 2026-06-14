@@ -220,3 +220,14 @@
     .car-card:active { transform: scale(0.98); }
   }
 }
+
+/* Interactive elements always show a pointer cursor on hover */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+}

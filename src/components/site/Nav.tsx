@@ -26,6 +26,7 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -35,9 +36,20 @@ export function Nav() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      setAuthReady(true);
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   async function handleSignOut() {
@@ -56,7 +68,9 @@ export function Nav() {
       <div className="flex h-12 items-center justify-between px-[3%]">
         {location.pathname !== "/admin" && <Logo />}
         <div className="flex items-center gap-3 ml-auto">
-          {session ? (
+          {!authReady ? (
+            <div className="h-8 w-24" aria-hidden />
+          ) : session ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -95,7 +109,7 @@ export function Nav() {
               Log In
             </Link>
           )}
-          {!session && (
+          {authReady && !session && (
             <Link
               to="/apply"
               className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
@@ -103,7 +117,7 @@ export function Nav() {
               Apply
             </Link>
           )}
-          {!session && (
+          {authReady && !session && (
             <button
               className="p-2 -mr-2"
               onClick={() => setOpen((o) => !o)}
