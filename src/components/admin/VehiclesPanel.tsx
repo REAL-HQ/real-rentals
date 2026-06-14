@@ -5,16 +5,27 @@ import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { VehicleEditor } from "./VehicleEditor";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function VehiclesPanel() {
   const [rows, setRows] = useState<Vehicle[]>([]);
+  const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const [editing, setEditing] = useState<Vehicle | "new" | null>(null);
 
   async function load() {
     const { data } = await supabase.from("vehicles").select("*").order("make");
     setRows((data as Vehicle[]) || []);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    supabase.from("partners").select("id,name").order("name").then(({ data }) => setPartners(data || []));
+  }, []);
+
+  async function assignPartner(v: Vehicle, partner_id: string | null) {
+    const { error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id);
+    if (error) return toast.error(error.message);
+    setRows((r) => r.map((x) => x.id === v.id ? { ...x, partner_id } as Vehicle : x));
+  }
 
   async function remove(v: Vehicle) {
     if (!confirm(`Delete ${v.year} ${v.make} ${v.model}? This cannot be undone.`)) return;
@@ -43,6 +54,19 @@ export function VehiclesPanel() {
               <div className="p-4">
                 <div className="font-medium">{v.year} {v.make} {v.model}</div>
                 <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}</div>
+                <div className="mt-2">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
+                  <Select
+                    value={(v as any).partner_id ?? "__none__"}
+                    onValueChange={(val) => assignPartner(v, val === "__none__" ? null : val)}
+                  >
+                    <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Unassigned</SelectItem>
+                      {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => setEditing(v)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                     <Pencil className="w-3.5 h-3.5" /> Edit
