@@ -2,10 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
-import { ApplicationsPanel } from "@/components/admin/ApplicationsPanel";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
-import { LeadsPanel } from "@/components/admin/LeadsPanel";
-import { FleetOwnersPanel } from "@/components/admin/FleetOwnersPanel";
+import { DriversPanel } from "@/components/admin/DriversPanel";
+import { PartnersPanel } from "@/components/admin/PartnersPanel";
+import { PaymentsPanel } from "@/components/admin/PaymentsPanel";
+import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
@@ -17,11 +18,11 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS = [
-  { id: "applications", label: "Applications" },
+  { id: "drivers", label: "Drivers" },
   { id: "vehicles", label: "Vehicles" },
-  { id: "fleet_owners", label: "Fleet Owners" },
-  { id: "investors", label: "Investors" },
-  { id: "contact", label: "Contact" },
+  { id: "partners", label: "Partners" },
+  { id: "payments", label: "Payments" },
+  { id: "settings", label: "Settings" },
 ] as const;
 type Tab = typeof TABS[number]["id"];
 
@@ -29,7 +30,7 @@ function Admin() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [tab, setTab] = useState<Tab>("applications");
+  const [tab, setTab] = useState<Tab>("drivers");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setChecking(false); });
@@ -68,11 +69,11 @@ function Admin() {
           ))}
         </div>
 
-        {tab === "applications" && <ApplicationsPanel />}
+        {tab === "drivers" && <DriversPanel />}
         {tab === "vehicles" && <VehiclesPanel />}
-        {tab === "fleet_owners" && <FleetOwnersPanel />}
-        {tab === "investors" && <LeadsPanel table="investor_leads" label="Investor leads" />}
-        {tab === "contact" && <LeadsPanel table="contact_leads" label="Contact messages" />}
+        {tab === "partners" && <PartnersPanel />}
+        {tab === "payments" && <PaymentsPanel />}
+        {tab === "settings" && <SettingsPanel />}
       </div>
     </AdminShell>
   );
