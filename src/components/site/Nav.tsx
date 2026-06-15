@@ -120,27 +120,34 @@ export function Nav() {
               <IconBadgeButton ariaLabel="Notifications" count={unreadNotifications} onClick={() => toast.info("Notification center is coming online shortly.")}>
                 <Bell className="w-[18px] h-[18px]" strokeWidth={1.8} />
               </IconBadgeButton>
-              {isDriver && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-soft text-muted-foreground hover:bg-muted hover:text-foreground transition"
-                      aria-label="Help"
-                    >
-                      <LifeBuoy className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Help & Support</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => toast.info("Open Report An Issue from the driver portal.")}>Report An Issue</DropdownMenuItem>
-                    <DropdownMenuItem asChild><Link to="/contact" className="cursor-pointer w-full">Contact Support</Link></DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => toast.info("Roadside dispatch is connected on production.")}>Roadside & Accident</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => toast.info("Vehicle swap request opens with the issues panel.")}>Request A Swap</DropdownMenuItem>
-                    <DropdownMenuItem asChild><Link to="/faq" className="cursor-pointer w-full">Help Center & FAQ</Link></DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition"
+                    aria-label="Help"
+                  >
+                    <HelpCircle className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-white">
+                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Help center coming soon.")}>
+                    <HelpCircle className="w-4 h-4" />
+                    Help
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tour coming soon.")}>
+                    <Rocket className="w-4 h-4" />
+                    Tour
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tutorials coming soon.")}>
+                    <BookOpen className="w-4 h-4" />
+                    Tutorial
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Feedback coming soon.")}>
+                    <MessageCircle className="w-4 h-4" />
+                    Feedback
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
