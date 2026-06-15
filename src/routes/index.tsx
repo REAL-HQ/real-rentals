@@ -13,9 +13,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "REAL AUTOMOTIVE | Start Driving. Start Earning. This Week." },
-      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance included. Maintenance included. Fast approval." },
+      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance options available. Maintenance included. Fast approval." },
       { property: "og:title", content: "Start Driving. Start Earning. This Week." },
-      { property: "og:description", content: "Insurance and maintenance included. Fast approval. Drive this week." },
+      { property: "og:description", content: "Insurance options available and maintenance included. Fast approval. Drive this week." },
     ],
   }),
   component: Index,
@@ -62,7 +62,7 @@ function Index() {
           <p className="mt-6 text-lg md:text-xl text-white/80 max-w-4xl mx-auto leading-relaxed whitespace-nowrap">
             Rent A Vehicle For Uber, Lyft, DoorDash And Delivery Work From $350/Week.
             <br />
-            Insurance Included. Maintenance Included. Fast Approval. Drive This Week.
+            Insurance Options Available. Maintenance Included. Fast Approval. Drive This Week.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-medium text-black hover:bg-black hover:text-white transition active:scale-95">
@@ -80,9 +80,9 @@ function Index() {
           <div className="flex flex-wrap items-center justify-center gap-x-8 md:gap-x-10 gap-y-3 text-sm md:text-base font-medium text-foreground">
             {[
               { label: "No Credit Check", Icon: Check },
-              { label: "Insurance Included", Icon: Shield },
+              { label: "Insurance Options Available", Icon: Shield },
               { label: "Maintenance Included", Icon: Wrench },
-              { label: "Unlimited Miles", Icon: InfinityIcon },
+              { label: "High-Mileage Friendly", Icon: InfinityIcon },
               { label: "Same-Day Approval", Icon: Zap },
             ].map(({ label, Icon }) => (
               <span key={label} className="inline-flex items-center gap-2">
@@ -158,9 +158,9 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { I: Shield, t: "Insurance Included", d: "Insurance coverage is included with every vehicle so you can focus on driving." },
+              { I: Shield, t: "Insurance Options Available", d: "Flexible insurance options are available so you can get covered and focus on driving." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
-              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as you want. No mileage caps or overage fees." },
+              { I: InfinityIcon, t: "High-Mileage Friendly", d: "Built for the long hours gig work demands. Your mileage terms are spelled out in your rental agreement." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
               { I: CalendarDays, t: "Flexible Payments", d: "Choose a weekly or monthly payment schedule that fits your driving goals." },
               { I: BadgeCheck, t: "Flexible Rental Terms", d: "No annual commitment required. Stay flexible and stay on the road." },
@@ -240,11 +240,11 @@ function Index() {
             {[
               { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
               { q: "Is a refundable security deposit required?", a: "Yes. A $250 refundable deposit is required and is returned 14 to 30 days after rental ends." },
-              { q: "What is included in the weekly payment?", a: "Commercial rideshare insurance, routine maintenance, unlimited miles, and 24/7 driver support." },
-              { q: "Can I drive for Uber and Lyft?", a: "Yes. Every vehicle is eligible for both Uber and Lyft, on the same car." },
-              { q: "Are maintenance and repairs included?", a: "Routine maintenance and most mechanical repairs are on us." },
+              { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and driver support. Insurance options are available — ask our team for current details." },
+              { q: "Can I drive for Uber and Lyft?", a: "Most vehicles qualify for both Uber and Lyft on the same car. Some are delivery-focused, so each listing shows what it's approved for." },
+              { q: "Are maintenance and repairs included?", a: "Routine, scheduled maintenance is on us. Your rental agreement spells out exactly what's covered and what's driver-responsible." },
               { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
-              { q: "Is insurance included?", a: "Yes. Commercial rideshare insurance is included on every vehicle." },
+              { q: "Is insurance included?", a: "Insurance options are available, and coverage can vary by vehicle and plan. Contact our team for current options and what's included." },
               { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
               { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },
               { q: "How do fleet partners earn money?", a: "Partners earn passive monthly income on a 50/50 split of rent collected. We handle drivers, screening, collections, and maintenance." },
