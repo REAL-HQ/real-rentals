@@ -12,6 +12,18 @@ type Row = {
 
 const ROLES = ["admin", "partner", "driver", "team"] as const;
 
+// Demo rows shown alongside real assignments so the panel renders populated.
+const DEMO_ROWS: Row[] = [
+  { id: "demo-1", user_id: "a1f3c8e2-7d94-4b1a-9e8c-2d4f6b5a1e90", role: "admin", created_at: new Date(Date.now() - 86400000 * 90).toISOString() },
+  { id: "demo-2", user_id: "b2e4d9f1-6c83-4a2b-8d7e-1c3f5a4b2d81", role: "team", created_at: new Date(Date.now() - 86400000 * 45).toISOString() },
+  { id: "demo-3", user_id: "c3d5e8f0-5b72-4938-7c6d-0b2e4a3c1f72", role: "team", created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: "demo-4", user_id: "d4c6f7e9-4a61-4827-6b5c-9a1d3b2c0e63", role: "partner", created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
+  { id: "demo-5", user_id: "e5b7a6d8-3950-4716-5a4b-8b0c2a1d9f54", role: "partner", created_at: new Date(Date.now() - 86400000 * 15).toISOString() },
+  { id: "demo-6", user_id: "f6a8b5c7-2840-4605-4938-7c9b1a0e8e45", role: "driver", created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
+  { id: "demo-7", user_id: "07b9c4d6-1738-45f4-3827-6a8b0c9d7d36", role: "driver", created_at: new Date(Date.now() - 86400000 * 7).toISOString() },
+  { id: "demo-8", user_id: "18c0d3e5-0627-4ee3-2716-5a7c0b8d6c27", role: "driver", created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
+];
+
 export function TeamPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,12 +34,20 @@ export function TeamPanel() {
     setLoading(true);
     const { data, error } = await supabase.from("user_roles").select("*").order("created_at", { ascending: false });
     if (error) toast.error(error.message);
-    setRows((data as any) ?? []);
+    const real = ((data as any) ?? []) as Row[];
+    // Merge demo rows with real ones (real first), de-duped by user_id+role.
+    const seen = new Set(real.map((r) => `${r.user_id}:${r.role}`));
+    const merged = [...real, ...DEMO_ROWS.filter((d) => !seen.has(`${d.user_id}:${d.role}`))];
+    setRows(merged);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
 
   async function remove(id: string) {
+    if (id.startsWith("demo-")) {
+      toast.info("This is sample data — connect a real user to remove.");
+      return;
+    }
     if (!confirm("Remove this role assignment?")) return;
     const { error } = await supabase.from("user_roles").delete().eq("id", id);
     if (error) return toast.error(error.message);
