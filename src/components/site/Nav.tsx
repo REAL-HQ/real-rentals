@@ -236,3 +236,31 @@ export function Nav() {
     </header>
   );
 }
+
+function IconBadgeButton({
+  ariaLabel,
+  count,
+  onClick,
+  children,
+}: {
+  ariaLabel: string;
+  count: number;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${ariaLabel}${count > 0 ? ` (${count} unread)` : ""}`}
+      className="relative inline-flex items-center justify-center h-8 w-8 rounded-lg bg-soft text-foreground hover:bg-muted transition"
+    >
+      {children}
+      {count > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-real-red text-white text-[10px] font-semibold flex items-center justify-center">
+          {count > 9 ? "9+" : count}
+        </span>
+      )}
+    </button>
+  );
+}
