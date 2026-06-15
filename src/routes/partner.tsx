@@ -58,7 +58,7 @@ function PartnerPage() {
 function PartnerDashboard() {
   const fetchPartner = useServerFn(getMyPartner);
   const fetchEarnings = useServerFn(getMyEarnings);
-  const [period, setPeriod] = useState<"week" | "month">("week");
+  const [period, setPeriod] = useState<"week" | "month">("month");
 
   const partnerQ = useQuery({ queryKey: ["partner", "me"], queryFn: () => fetchPartner() });
   const earningsQ = useQuery({
@@ -101,7 +101,7 @@ function PartnerDashboard() {
 
         <Section title="How Your Split Works" icon={Info}>
           <div className="rounded-xl bg-soft p-5 text-sm space-y-3">
-            <p><strong>{Number(data.partner.revenue_split_pct)}/{100 - Number(data.partner.revenue_split_pct)} revenue split.</strong> A $350/week rental pays you $175/week. The renter pays Real Automotive; we distribute your share weekly.</p>
+            <p><strong>{Number(data.partner.revenue_split_pct)}/{100 - Number(data.partner.revenue_split_pct)} revenue split.</strong> A $350/week rental pays you $175/week. The renter pays Real Automotive; we distribute your share monthly, net of your 50% share of that month's routine maintenance.</p>
             <p><strong>Routine maintenance</strong> (oil changes, brakes, batteries, headlights) is split 50/50. <strong>Major repairs</strong> and special circumstances are handled case-by-case per your agreement.</p>
           </div>
         </Section>
@@ -345,7 +345,7 @@ function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void
     <div className="min-h-screen flex flex-col">
       <Nav />
       <div className="container-real py-32 text-center max-w-lg">
-        <h1 className="text-2xl font-semibold">No partner access</h1>
+        <h1 className="text-2xl font-semibold">No Partner Access</h1>
         <p className="mt-3 text-sm text-muted-foreground">Your account is signed in but isn't linked to a partner record yet.</p>
         <p className="mt-3 text-muted-foreground text-xs">Your account ID:<br/><code>{userId}</code></p>
         <p className="mt-3 text-muted-foreground text-xs">Send this ID (or your email) to Real Automotive and we'll grant access.</p>

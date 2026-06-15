@@ -68,6 +68,7 @@ export type Database = {
           state: string | null
           status: string
           updated_at: string
+          user_id: string | null
           vehicle_id: string | null
           weekly_hours: number | null
           weekly_rent: number | null
@@ -109,6 +110,7 @@ export type Database = {
           state?: string | null
           status?: string
           updated_at?: string
+          user_id?: string | null
           vehicle_id?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
@@ -150,6 +152,7 @@ export type Database = {
           state?: string | null
           status?: string
           updated_at?: string
+          user_id?: string | null
           vehicle_id?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
@@ -359,6 +362,282 @@ export type Database = {
         }
         Relationships: []
       }
+      issues: {
+        Row: {
+          body: string | null
+          created_at: string
+          driver_id: string
+          id: string
+          kind: string
+          rental_id: string | null
+          severity: string
+          status: string
+          title: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          driver_id: string
+          id?: string
+          kind?: string
+          rental_id?: string | null
+          severity?: string
+          status?: string
+          title: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          driver_id?: string
+          id?: string
+          kind?: string
+          rental_id?: string | null
+          severity?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issues_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_records: {
+        Row: {
+          category: string
+          company_share: number
+          completed_at: string | null
+          cost_split: string
+          created_at: string
+          driver_id: string | null
+          due_date: string | null
+          due_mileage: number | null
+          id: string
+          item: string
+          notes: string | null
+          partner_id: string | null
+          partner_share: number
+          rental_id: string | null
+          shop_id: string | null
+          status: string
+          total_cost: number
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          category?: string
+          company_share?: number
+          completed_at?: string | null
+          cost_split?: string
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          due_mileage?: number | null
+          id?: string
+          item: string
+          notes?: string | null
+          partner_id?: string | null
+          partner_share?: number
+          rental_id?: string | null
+          shop_id?: string | null
+          status?: string
+          total_cost?: number
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          category?: string
+          company_share?: number
+          completed_at?: string | null
+          cost_split?: string
+          created_at?: string
+          driver_id?: string | null
+          due_date?: string | null
+          due_mileage?: number | null
+          id?: string
+          item?: string
+          notes?: string | null
+          partner_id?: string | null
+          partner_share?: number
+          rental_id?: string | null
+          shop_id?: string | null
+          status?: string
+          total_cost?: number
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_records_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_records_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_records_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_records_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      markets: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          body: string
+          created_at: string
+          driver_id: string | null
+          id: string
+          kind: string
+          partner_id: string | null
+          read: boolean
+          recipient_id: string | null
+          sender_id: string | null
+          thread_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          driver_id?: string | null
+          id?: string
+          kind?: string
+          partner_id?: string | null
+          read?: boolean
+          recipient_id?: string | null
+          sender_id?: string | null
+          thread_id?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          driver_id?: string | null
+          id?: string
+          kind?: string
+          partner_id?: string | null
+          read?: boolean
+          recipient_id?: string | null
+          sender_id?: string | null
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          channels: string[]
+          created_at: string
+          driver_id: string | null
+          id: string
+          kind: string
+          partner_id: string | null
+          read: boolean
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          driver_id?: string | null
+          id?: string
+          kind?: string
+          partner_id?: string | null
+          read?: boolean
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          driver_id?: string | null
+          id?: string
+          kind?: string
+          partner_id?: string | null
+          read?: boolean
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partners: {
         Row: {
           capital_committed: number | null
@@ -479,6 +758,278 @@ export type Database = {
           },
         ]
       }
+      payouts: {
+        Row: {
+          created_at: string
+          gross_rent: number
+          id: string
+          maintenance_share: number
+          net_amount: number
+          notes: string | null
+          paid_at: string | null
+          partner_id: string
+          partner_share: number
+          period_end: string
+          period_start: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gross_rent?: number
+          id?: string
+          maintenance_share?: number
+          net_amount?: number
+          notes?: string | null
+          paid_at?: string | null
+          partner_id: string
+          partner_share?: number
+          period_end: string
+          period_start: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gross_rent?: number
+          id?: string
+          maintenance_share?: number
+          net_amount?: number
+          notes?: string | null
+          paid_at?: string | null
+          partner_id?: string
+          partner_share?: number
+          period_end?: string
+          period_start?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payouts_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          created_at: string
+          id: string
+          referred_email: string | null
+          referred_user_id: string | null
+          referrer_id: string
+          reward_amount: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          referred_email?: string | null
+          referred_user_id?: string | null
+          referrer_id: string
+          reward_amount?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          referred_email?: string | null
+          referred_user_id?: string | null
+          referrer_id?: string
+          reward_amount?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rentals: {
+        Row: {
+          application_id: string | null
+          created_at: string
+          deposit_amount: number
+          deposit_held: boolean
+          driver_id: string
+          end_date: string | null
+          id: string
+          next_payment_due: string | null
+          start_date: string
+          status: string
+          updated_at: string
+          vehicle_id: string
+          weekly_rate: number
+        }
+        Insert: {
+          application_id?: string | null
+          created_at?: string
+          deposit_amount?: number
+          deposit_held?: boolean
+          driver_id: string
+          end_date?: string | null
+          id?: string
+          next_payment_due?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+          vehicle_id: string
+          weekly_rate?: number
+        }
+        Update: {
+          application_id?: string | null
+          created_at?: string
+          deposit_amount?: number
+          deposit_held?: boolean
+          driver_id?: string
+          end_date?: string | null
+          id?: string
+          next_payment_due?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string
+          weekly_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rentals_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rentals_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shops: {
+        Row: {
+          address: string | null
+          created_at: string
+          hours: string | null
+          id: string
+          is_active: boolean
+          market_id: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          services: string[]
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          hours?: string | null
+          id?: string
+          is_active?: boolean
+          market_id?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          services?: string[]
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          hours?: string | null
+          id?: string
+          is_active?: boolean
+          market_id?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          services?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shops_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      site_content: {
+        Row: {
+          id: string
+          key: string
+          site_id: string | null
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          site_id?: string | null
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          site_id?: string | null
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_content_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sites: {
+        Row: {
+          created_at: string
+          id: string
+          is_published: boolean
+          market_id: string | null
+          slug: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          market_id?: string | null
+          slug: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          market_id?: string | null
+          slug?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sites_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -512,6 +1063,7 @@ export type Database = {
           id: string
           maintenance_status: string | null
           make: string
+          market_id: string | null
           model: string
           monthly_rate: number | null
           mpg: number | null
@@ -535,6 +1087,7 @@ export type Database = {
           id?: string
           maintenance_status?: string | null
           make: string
+          market_id?: string | null
           model: string
           monthly_rate?: number | null
           mpg?: number | null
@@ -558,6 +1111,7 @@ export type Database = {
           id?: string
           maintenance_status?: string | null
           make?: string
+          market_id?: string | null
           model?: string
           monthly_rate?: number | null
           mpg?: number | null
@@ -572,6 +1126,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "vehicles_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "vehicles_partner_id_fkey"
             columns: ["partner_id"]
             isOneToOne: false
@@ -585,6 +1146,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      driver_market_id: { Args: never; Returns: string }
+      driver_owns_rental: { Args: { _rental_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -593,10 +1156,11 @@ export type Database = {
         Returns: boolean
       }
       is_partner_owner: { Args: { _partner_id: string }; Returns: boolean }
+      partner_owns_rental: { Args: { _rental_id: string }; Returns: boolean }
       partner_owns_vehicle: { Args: { _vehicle_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "user" | "partner"
+      app_role: "admin" | "user" | "partner" | "driver" | "team"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -724,7 +1288,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user", "partner"],
+      app_role: ["admin", "user", "partner", "driver", "team"],
     },
   },
 } as const
