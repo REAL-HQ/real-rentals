@@ -144,9 +144,20 @@ export function Nav() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <IconBadgeButton ariaLabel="Messages" count={unreadMessages} onClick={() => toast.info("Messages inbox is coming online with the messaging panel.")}>
-                <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              </IconBadgeButton>
+              {isAdmin ? (
+                <Link to="/admin" search={{ tab: "messages" }} className="relative inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition" aria-label={`Messages${unreadMessages > 0 ? ` (${unreadMessages} unread)` : ""}`}>
+                  <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                  {unreadMessages > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-real-red text-white text-[11px] font-semibold flex items-center justify-center leading-none">
+                      {unreadMessages > 9 ? "9+" : unreadMessages}
+                    </span>
+                  )}
+                </Link>
+              ) : (
+                <IconBadgeButton ariaLabel="Messages" count={unreadMessages} onClick={() => toast.info("Messages inbox is coming online with the messaging panel.")}>
+                  <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                </IconBadgeButton>
+              )}
               <IconBadgeButton ariaLabel="Notifications" count={unreadNotifications} onClick={() => toast.info("Notification center is coming online shortly.")}>
                 <Bell className="w-[18px] h-[18px]" strokeWidth={1.8} />
               </IconBadgeButton>
