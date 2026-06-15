@@ -91,13 +91,22 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       }
     }
 
+    // payments.driver_id references applications.id; resolve via application(s) linked to this user
+    const { data: apps } = await supabase
+      .from("applications")
+      .select("id")
+      .eq("user_id", userId);
+    const appIds = (apps ?? []).map((a: any) => a.id);
+
     const [paymentsRes, maintRes, notifRes] = await Promise.all([
-      supabase
-        .from("payments")
-        .select("id,paid_date,amount,type,status")
-        .eq("driver_id", userId)
-        .order("paid_date", { ascending: false, nullsFirst: false })
-        .limit(20),
+      appIds.length
+        ? supabase
+            .from("payments")
+            .select("id,paid_date,amount,type,status")
+            .in("driver_id", appIds)
+            .order("paid_date", { ascending: false, nullsFirst: false })
+            .limit(20)
+        : Promise.resolve({ data: [] as any[] }),
       rental?.vehicle_id
         ? supabase
             .from("maintenance_records")
