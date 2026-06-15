@@ -97,7 +97,7 @@ export function Nav() {
   const isPartner = roles.includes("partner");
   const isAdmin = roles.includes("admin") || roles.includes("team");
   const accountHref = isAdmin ? "/admin" : isPartner ? "/partner" : isDriver ? "/portal" : "/admin";
-  const accountLabel = isAdmin ? "Admin" : isPartner ? "Partner Portal" : isDriver ? "Driver Portal" : "Account";
+  const accountLabel = isPartner ? "Partner Portal" : isDriver ? "Driver Portal" : "Account";
 
   return (
     <header
