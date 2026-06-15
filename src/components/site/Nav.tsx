@@ -114,34 +114,36 @@ export function Nav() {
             <div className="h-8 w-24" aria-hidden />
           ) : session ? (
             <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition"
-                    aria-label="Help"
-                  >
-                    <HelpCircle className="w-[18px] h-[18px]" strokeWidth={1.8} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-white">
-                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Help center coming soon.")}>
-                    <HelpCircle className="w-4 h-4" />
-                    Help
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tour coming soon.")}>
-                    <Rocket className="w-4 h-4" />
-                    Tour
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tutorials coming soon.")}>
-                    <BookOpen className="w-4 h-4" />
-                    Tutorial
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Feedback coming soon.")}>
-                    <MessageCircle className="w-4 h-4" />
-                    Feedback
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {(isPartner || isDriver) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition"
+                      aria-label="Help"
+                    >
+                      <HelpCircle className="w-[18px] h-[18px]" strokeWidth={1.8} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-white">
+                    <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Help center coming soon.")}>
+                      <HelpCircle className="w-4 h-4" />
+                      Help
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tour coming soon.")}>
+                      <Rocket className="w-4 h-4" />
+                      Tour
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Tutorials coming soon.")}>
+                      <BookOpen className="w-4 h-4" />
+                      Tutorial
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => toast.info("Feedback coming soon.")}>
+                      <MessageCircle className="w-4 h-4" />
+                      Feedback
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <IconBadgeButton ariaLabel="Messages" count={unreadMessages} onClick={() => toast.info("Messages inbox is coming online with the messaging panel.")}>
                 <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
               </IconBadgeButton>
