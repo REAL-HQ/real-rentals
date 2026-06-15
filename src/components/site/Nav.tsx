@@ -153,7 +153,10 @@ export function Nav() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{session.user.email}</p>
+                    {session.user.user_metadata?.full_name && (
+                      <p className="text-sm font-semibold">{session.user.user_metadata.full_name}</p>
+                    )}
+                    <p className="text-sm text-muted-foreground">{session.user.email}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
