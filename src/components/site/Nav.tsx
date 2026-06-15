@@ -114,12 +114,6 @@ export function Nav() {
             <div className="h-8 w-24" aria-hidden />
           ) : session ? (
             <>
-              <IconBadgeButton ariaLabel="Messages" count={unreadMessages} onClick={() => toast.info("Messages inbox is coming online with the messaging panel.")}>
-                <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              </IconBadgeButton>
-              <IconBadgeButton ariaLabel="Notifications" count={unreadNotifications} onClick={() => toast.info("Notification center is coming online shortly.")}>
-                <Bell className="w-[18px] h-[18px]" strokeWidth={1.8} />
-              </IconBadgeButton>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -148,6 +142,12 @@ export function Nav() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <IconBadgeButton ariaLabel="Messages" count={unreadMessages} onClick={() => toast.info("Messages inbox is coming online with the messaging panel.")}>
+                <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </IconBadgeButton>
+              <IconBadgeButton ariaLabel="Notifications" count={unreadNotifications} onClick={() => toast.info("Notification center is coming online shortly.")}>
+                <Bell className="w-[18px] h-[18px]" strokeWidth={1.8} />
+              </IconBadgeButton>
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
