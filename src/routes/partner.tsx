@@ -345,7 +345,7 @@ function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void
     <div className="min-h-screen flex flex-col">
       <Nav />
       <div className="container-real py-32 text-center max-w-lg">
-        <h1 className="text-2xl font-semibold">No partner access</h1>
+        <h1 className="text-2xl font-semibold">No Partner Access</h1>
         <p className="mt-3 text-sm text-muted-foreground">Your account is signed in but isn't linked to a partner record yet.</p>
         <p className="mt-3 text-muted-foreground text-xs">Your account ID:<br/><code>{userId}</code></p>
         <p className="mt-3 text-muted-foreground text-xs">Send this ID (or your email) to Real Automotive and we'll grant access.</p>

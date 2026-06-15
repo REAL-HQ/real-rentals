@@ -204,7 +204,7 @@ function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void
   return (
     <AdminShell>
       <div className="container-real py-32 text-center max-w-lg">
-        <h1 className="text-2xl font-semibold">No admin access</h1>
+        <h1 className="text-2xl font-semibold">No Admin Access</h1>
         <p className="mt-3 text-muted-foreground text-sm">Your account ID:<br/><code className="text-xs">{userId}</code></p>
         <p className="mt-3 text-muted-foreground text-sm">Ask an existing admin to grant access by running:<br/>
           <code className="text-xs">INSERT INTO user_roles (user_id, role) VALUES ('{userId}', 'admin');</code>
