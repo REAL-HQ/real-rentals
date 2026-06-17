@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 type Vehicle = Tables<"vehicles">;
@@ -9,6 +9,13 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
   const img = resolvePhotoUrl(vehicle.photos?.[0]);
   const uber = vehicle.uber_eligibility ?? [];
   const status = vehicle.status ?? "available";
+  const fuel = (vehicle as any).fuel_type ?? "gas";
+  const fuelMeta =
+    fuel === "ev"
+      ? { label: "Electric", Icon: Zap, cls: "bg-blue-50 text-blue-700 border-blue-200" }
+      : fuel === "hybrid"
+        ? { label: "Hybrid", Icon: Leaf, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" }
+        : { label: "Gas", Icon: Fuel, cls: "bg-amber-50 text-amber-700 border-amber-200" };
   const statusMeta =
     status === "available"
       ? { label: "Available Now", color: "text-emerald-600", dot: "bg-emerald-500" }
@@ -21,7 +28,11 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
       params={{ id: vehicle.id }}
       className="car-card group block rounded-2xl bg-soft p-5 cursor-pointer"
     >
-      <div className="overflow-hidden rounded-xl bg-white aspect-[4/3] flex items-center justify-center">
+      <div className="relative overflow-hidden rounded-xl bg-white aspect-[4/3] flex items-center justify-center">
+        <span className={`absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${fuelMeta.cls}`}>
+          <fuelMeta.Icon className="w-3 h-3" strokeWidth={2} />
+          {fuelMeta.label}
+        </span>
         {img ? (
           <img
             src={img}
@@ -58,29 +69,27 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Great For</div>
         <div className="text-[12px] font-medium text-foreground mt-0.5">Uber • Lyft • DoorDash • Instacart</div>
       </div>
-      <div className="mt-4 space-y-1.5 text-sm text-muted-foreground">
-        {vehicle.body_type && (
-          <div className="flex items-center gap-2">
-            <Car className="w-4 h-4" strokeWidth={1.75} />
-            <span className="capitalize">Type: {vehicle.body_type}</span>
-          </div>
-        )}
-        {vehicle.doors != null && (
-          <div className="flex items-center gap-2">
-            <DoorOpen className="w-4 h-4" strokeWidth={1.75} />
-            <span>Doors: {vehicle.doors}</span>
-          </div>
-        )}
-        {vehicle.seats != null && (
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4" strokeWidth={1.75} />
-            <span>Seats: {vehicle.seats}</span>
-          </div>
-        )}
+      <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <Car className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          <span className="capitalize truncate">Type: {vehicle.body_type ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">Seats: {vehicle.seats ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <DoorOpen className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">Doors: {vehicle.doors ?? "—"}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">{fuelMeta.label}</span>
+        </div>
         {uber.length > 0 && (
-          <div className="flex items-start gap-2">
-            <BadgeCheck className="w-4 h-4 mt-0.5" strokeWidth={1.75} />
-            <span>Eligibility: {uber.join(", ")}</span>
+          <div className="col-span-2 flex items-start gap-2 min-w-0">
+            <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Eligibility: {uber.join(", ")}</span>
           </div>
         )}
       </div>
