@@ -15,7 +15,7 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
       ? { label: "Electric", Icon: Zap, cls: "bg-blue-50 text-blue-700 border-blue-200" }
       : fuel === "hybrid"
         ? { label: "Hybrid", Icon: Leaf, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" }
-        : { label: "Gas", Icon: Fuel, cls: "bg-amber-50 text-amber-700 border-amber-200" };
+        : { label: "Gas", Icon: Fuel, cls: "bg-gray-100 text-gray-600 border-gray-200" };
   const statusMeta =
     status === "available"
       ? { label: "Available Now", color: "text-emerald-600", dot: "bg-emerald-500" }
@@ -83,8 +83,8 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <span className="truncate">Doors: {vehicle.doors ?? "—"}</span>
         </div>
         <div className="flex items-center gap-2 min-w-0">
-          <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">{fuelMeta.label}</span>
+          <InfinityIcon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          <span className="truncate">Unlimited Miles</span>
         </div>
         {uber.length > 0 && (
           <div className="col-span-2 flex items-start gap-2 min-w-0">
