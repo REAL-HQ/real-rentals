@@ -1065,6 +1065,7 @@ export type Database = {
           maintenance_status: string | null
           make: string
           market_id: string | null
+          miles_per_tank: number | null
           model: string
           monthly_rate: number | null
           mpg: number | null
@@ -1090,6 +1091,7 @@ export type Database = {
           maintenance_status?: string | null
           make: string
           market_id?: string | null
+          miles_per_tank?: number | null
           model: string
           monthly_rate?: number | null
           mpg?: number | null
@@ -1115,6 +1117,7 @@ export type Database = {
           maintenance_status?: string | null
           make?: string
           market_id?: string | null
+          miles_per_tank?: number | null
           model?: string
           monthly_rate?: number | null
           mpg?: number | null
