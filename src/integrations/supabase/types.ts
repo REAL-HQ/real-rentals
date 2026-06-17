@@ -1060,6 +1060,7 @@ export type Database = {
           deposit: number | null
           description: string | null
           doors: number | null
+          fuel_type: string
           id: string
           maintenance_status: string | null
           make: string
@@ -1084,6 +1085,7 @@ export type Database = {
           deposit?: number | null
           description?: string | null
           doors?: number | null
+          fuel_type?: string
           id?: string
           maintenance_status?: string | null
           make: string
@@ -1108,6 +1110,7 @@ export type Database = {
           deposit?: number | null
           description?: string | null
           doors?: number | null
+          fuel_type?: string
           id?: string
           maintenance_status?: string | null
           make?: string
