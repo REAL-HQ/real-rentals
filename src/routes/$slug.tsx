@@ -388,7 +388,7 @@ function QuoteFormCard({ site, market, compact = false }: { site: Site; market: 
       status: "pending",
       ...utms,
     };
-    const { data, error } = await supabase.from("applications").insert(payload).select("id").single();
+    const { data, error } = await supabase.from("applications").insert(payload as any).select("id").single();
     setSubmitting(false);
     if (error) {
       toast.error(error.message);
