@@ -182,7 +182,7 @@ function ApplyStep1() {
                       value={f.rental_length}
                       onValueChange={(v) => update("rental_length", v)}
                     >
-                      <SelectTrigger className="w-full bg-white border-border text-sm [&>svg]:mr-1">
+                      <SelectTrigger className="w-full bg-white border-border text-sm [&>svg]:mr-2">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
