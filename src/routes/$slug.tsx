@@ -492,8 +492,8 @@ function Field({ label, value, error, onChange, type = "text" }: { label: string
 const gigLogoMap: Record<string, string> = {
   Uber: "https://cdn.simpleicons.org/uber/000000",
   Lyft: "https://cdn.simpleicons.org/lyft/FF00BF",
-  DoorDash: "https://cdn.simpleicons.org/doordash/FF3008",
-  Instacart: "https://cdn.simpleicons.org/instacart/FF8200",
+  DoorDash: "https://upload.wikimedia.org/wikipedia/commons/6/6a/DoorDash_Logo.svg",
+  Instacart: "https://upload.wikimedia.org/wikipedia/commons/9/9f/Instacart_logo_and_wordmark.svg",
   "Amazon Flex": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg",
 };
 
