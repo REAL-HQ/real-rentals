@@ -5,6 +5,7 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (s: Record<string, unknown>) => ({ vehicle: (s.vehicle as string) || "" }),
@@ -177,17 +178,21 @@ function ApplyStep1() {
                     ))}
                   </div>
                   <div className="mt-3">
-                    <select
+                    <Select
                       value={f.rental_length}
-                      onChange={(e) => update("rental_length", e.target.value)}
-                      className="w-full bg-white border border-border rounded-lg px-3 py-2 text-sm"
+                      onValueChange={(v) => update("rental_length", v)}
                     >
-                      {(f.rental_mode === "weekly" ? WEEKLY_OPTIONS : MONTHLY_OPTIONS).map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="w-full bg-white border-border text-sm [&>svg]:mr-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(f.rental_mode === "weekly" ? WEEKLY_OPTIONS : MONTHLY_OPTIONS).map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   {errors.rental_length && <div className="mt-2 text-sm text-real-red">{errors.rental_length}</div>}
                 </div>
