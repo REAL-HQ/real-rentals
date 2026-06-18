@@ -24,6 +24,9 @@ import type { Json } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import heroBg from "@/assets/hero-bg.jpg";
+import sedanImg from "@/assets/cars/accord.jpg.asset.json";
+import suvImg from "@/assets/cars/crv.jpg.asset.json";
+import xlImg from "@/assets/cars/odyssey.jpg.asset.json";
 
 type Site = {
   id: string;
@@ -71,9 +74,9 @@ const defaultHowItWorks: Step[] = [
 ];
 
 const defaultVehicleTypes: VehicleType[] = [
-  { name: "Sedans", tagline: "Efficient Daily Drivers For Rideshare And Delivery." },
-  { name: "SUVs", tagline: "More Room For Drivers Who Need Flexible Cargo Space." },
-  { name: "XL Vehicles", tagline: "Larger Options For Airport Runs, Groups, And Higher-Capacity Trips." },
+  { name: "Sedans", tagline: "Efficient Daily Drivers For Rideshare And Delivery.", image: sedanImg.url },
+  { name: "SUVs", tagline: "More Room For Drivers Who Need Flexible Cargo Space.", image: suvImg.url },
+  { name: "XL Vehicles", tagline: "Larger Options For Airport Runs, Groups, And Higher-Capacity Trips.", image: xlImg.url },
 ];
 
 const PLATFORM_STATUSES = ["Yes", "Pending", "Not Yet"] as const;
