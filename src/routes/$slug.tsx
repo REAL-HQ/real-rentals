@@ -77,7 +77,7 @@ const defaultVehicleTypes: VehicleType[] = [
 ];
 
 const PLATFORM_STATUSES = ["Yes", "Pending", "Not Yet"] as const;
-const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3+ Weeks", "4+ Weeks"];
+const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3 Weeks", "4+ Weeks"];
 const MONTHLY_OPTIONS = ["1 Month", "2 Months", "3+ Months"];
 const DEFAULT_GIGS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex"];
 
