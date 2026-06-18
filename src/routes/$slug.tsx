@@ -494,7 +494,7 @@ const gigLogoMap: Record<string, string> = {
   Lyft: "https://cdn.simpleicons.org/lyft/FF00BF",
   DoorDash: "https://cdn.simpleicons.org/doordash/FF3008",
   Instacart: "https://cdn.simpleicons.org/instacart/FF8200",
-  "Amazon Flex": "https://cdn.simpleicons.org/amazon/FF9900",
+  "Amazon Flex": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg",
 };
 
 function GigLogoMarquee({ items }: { items: string[] }) {
@@ -505,11 +505,11 @@ function GigLogoMarquee({ items }: { items: string[] }) {
         {doubled.map((item, i) => {
           const logoUrl = gigLogoMap[item];
           return (
-            <div key={`${item}-${i}`} className="flex items-center justify-center px-6 md:px-8">
+            <div key={`${item}-${i}`} className="flex items-center justify-center px-6 md:px-10">
               {logoUrl ? (
-                <img src={logoUrl} alt={item} className="h-7 md:h-8 w-auto opacity-80 hover:opacity-100 transition" loading="lazy" />
+                <img src={logoUrl} alt={item} className="h-10 md:h-14 w-auto max-w-[120px] md:max-w-[160px] opacity-80 hover:opacity-100 transition" loading="lazy" />
               ) : (
-                <span className="text-lg font-semibold text-foreground">{item}</span>
+                <span className="text-xl md:text-2xl font-semibold text-foreground">{item}</span>
               )}
             </div>
           );
