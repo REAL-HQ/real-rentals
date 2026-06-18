@@ -4,13 +4,11 @@ import {
   ArrowRight,
   BadgeCheck,
   Briefcase,
-  Calendar,
   CalendarClock,
   Car,
   ChevronDown,
   Check,
   Clock3,
-  CreditCard,
   FileText,
   Infinity as InfinityIcon,
   MapPin,
@@ -18,7 +16,6 @@ import {
   Sparkles,
   UserCheck,
   Wrench,
-  Zap,
 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -69,14 +66,6 @@ const defaultBenefits: Benefit[] = [
   { icon: "zap", label: "Same-Day Approval" },
 ];
 
-const heroBenefits = [
-  { icon: Zap, label: "Same-Day Approvals" },
-  { icon: InfinityIcon, label: "Unlimited Miles" },
-  { icon: CreditCard, label: "No Credit Check" },
-  { icon: Wrench, label: "Maintenance Handled" },
-  { icon: Shield, label: "Insurance Options" },
-  { icon: Calendar, label: "Flexible Weekly Terms" },
-];
 
 const defaultHowItWorks: Step[] = [
   { n: "01", title: "Apply", body: "Share your contact details and rental timeline so we can start your quote." },
@@ -211,14 +200,7 @@ function CityPage() {
             <h1 className="mt-5 max-w-4xl text-[42px] font-semibold leading-[1.05] text-white md:text-[70px]">
               {headline}
             </h1>
-            <ul className="mt-6 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-3">
-              {heroBenefits.map(({ icon: Icon, label }) => (
-                <li key={label} className="flex items-center gap-2.5">
-                  <Icon className="h-5 w-5 text-real-red" strokeWidth={2} />
-                  <span className="text-sm font-medium text-white/90">{label}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/80 md:text-xl">{subhead}</p>
             <button
               type="button"
               onClick={scrollToForm}
