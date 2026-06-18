@@ -56,12 +56,11 @@ const iconMap = {
 };
 
 const defaultBenefits: Benefit[] = [
-  { icon: "clock", label: "Same-Day Approvals", body: "As Soon As Today" },
-  { icon: "infinity", label: "Unlimited Miles" },
   { icon: "check", label: "No Credit Check" },
-  { icon: "wrench", label: "Maintenance Handled" },
-  { icon: "shield", label: "Insurance Options" },
-  { icon: "calendar", label: "Flexible Weekly Terms" },
+  { icon: "shield", label: "Insurance Options Available" },
+  { icon: "wrench", label: "Maintenance Included" },
+  { icon: "infinity", label: "High-Mileage Friendly" },
+  { icon: "zap", label: "Same-Day Approval" },
 ];
 
 const defaultHowItWorks: Step[] = [
@@ -213,14 +212,13 @@ function CityPage() {
       </section>
 
       <section className="border-y border-border bg-white">
-        <div className="container-real grid grid-cols-2 gap-px py-6 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="container-real flex flex-wrap items-center justify-between gap-x-8 gap-y-4 py-5">
           {benefits.map((benefit) => {
             const Icon = iconMap[(benefit.icon ?? "check") as keyof typeof iconMap] ?? Check;
             return (
-              <div key={benefit.label} className="px-2 py-4 text-center">
-                <Icon className="mx-auto h-5 w-5 text-real-red" strokeWidth={2.25} />
-                <div className="mt-3 text-sm font-semibold text-foreground">{benefit.label}</div>
-                {benefit.body && <div className="mt-1 text-xs text-muted-foreground">{benefit.body}</div>}
+              <div key={benefit.label} className="flex items-center gap-2.5">
+                <Icon className="h-5 w-5 text-real-red shrink-0" strokeWidth={2.25} />
+                <span className="text-sm font-semibold text-foreground whitespace-nowrap">{benefit.label}</span>
               </div>
             );
           })}
