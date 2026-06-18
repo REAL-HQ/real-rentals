@@ -50,7 +50,7 @@ export function Footer() {
         </div>
       </div>
       )}
-      {!isPartners && (
+      {!(isPartners || isCity) && (
       <div className="bg-real-red text-white">
         <div className="container-real py-14 md:py-20 flex flex-col items-center gap-8 text-center">
           <div>
