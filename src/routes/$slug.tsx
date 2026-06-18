@@ -68,7 +68,7 @@ const defaultBenefits: Benefit[] = [
 
 const defaultHowItWorks: Step[] = [
   { n: "01", title: "Apply", body: "Share your contact details and rental timeline so we can start your quote." },
-  { n: "02", title: "Get Approved As Soon As Today", body: "Our team reviews your application quickly and confirms the best next steps." },
+  { n: "02", title: "Same Day Approval", body: "Our team reviews your application quickly and confirms the best next steps." },
   { n: "03", title: "Pick Up", body: "We match you to the right vehicle type and schedule pickup once you are cleared." },
   { n: "04", title: "Start Earning", body: "Use the vehicle for rideshare and delivery platforms with weekly flexibility." },
 ];
