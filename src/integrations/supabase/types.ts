@@ -49,12 +49,14 @@ export type Database = {
           earnings_verified_status: string
           email: string
           full_name: string
+          gclid: string | null
           id: string
           incident_count: number
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
           license_state: string | null
+          market_id: string | null
           mvr_status: string
           notes: string | null
           payment_method: string | null
@@ -67,12 +69,18 @@ export type Database = {
           rental_length: string | null
           rental_term: string | null
           rideshare_history_status: string
+          source: string | null
           start_date: string | null
           state: string | null
           status: string
           trips_completed: string | null
           updated_at: string
           user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
           vehicle_id: string | null
           weekly_hours: number | null
           weekly_rent: number | null
@@ -95,12 +103,14 @@ export type Database = {
           earnings_verified_status?: string
           email: string
           full_name: string
+          gclid?: string | null
           id?: string
           incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          market_id?: string | null
           mvr_status?: string
           notes?: string | null
           payment_method?: string | null
@@ -113,12 +123,18 @@ export type Database = {
           rental_length?: string | null
           rental_term?: string | null
           rideshare_history_status?: string
+          source?: string | null
           start_date?: string | null
           state?: string | null
           status?: string
           trips_completed?: string | null
           updated_at?: string
           user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           vehicle_id?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
@@ -141,12 +157,14 @@ export type Database = {
           earnings_verified_status?: string
           email?: string
           full_name?: string
+          gclid?: string | null
           id?: string
           incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          market_id?: string | null
           mvr_status?: string
           notes?: string | null
           payment_method?: string | null
@@ -159,12 +177,18 @@ export type Database = {
           rental_length?: string | null
           rental_term?: string | null
           rideshare_history_status?: string
+          source?: string | null
           start_date?: string | null
           state?: string | null
           status?: string
           trips_completed?: string | null
           updated_at?: string
           user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           vehicle_id?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
@@ -172,6 +196,13 @@ export type Database = {
           zip?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "applications_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "applications_vehicle_id_fkey"
             columns: ["vehicle_id"]
