@@ -229,7 +229,7 @@ function CityPage() {
         <div className="container-real text-center">
           <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Eligible To Drive For</div>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3 md:gap-4">
-            {gigItems.map((item) => <GigLogo key={item} label={item} />)}
+            <GigLogoMarquee items={gigItems} />
           </div>
           <p className="mt-5 text-xs leading-relaxed text-muted-foreground whitespace-nowrap">
             {asString(gigConfig.disclaimer) ?? "REAL AUTOMOTIVE is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules."}

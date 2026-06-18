@@ -215,6 +215,16 @@
     transform: scale(1.08);
   }
   .car-card:hover .car-price { color: #CC0000; }
+
+  /* Gig platform logo marquee */
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+  }
+
   @media (max-width: 768px) {
     .car-card:hover { transform: none; box-shadow: none; }
     .car-card:active { transform: scale(0.98); }
