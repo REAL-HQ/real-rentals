@@ -22,7 +22,6 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import heroBg from "@/assets/hero-bg.jpg";
 
 type Site = {
@@ -449,16 +448,15 @@ function QuoteFormCard({ site, market, compact = false }: { site: Site; market: 
             ))}
           </div>
           <div className="mt-3">
-            <Select value={form.rental_length} onValueChange={(value) => update("rental_length", value)}>
-              <SelectTrigger className="w-full border-border bg-white text-sm [&>svg]:mr-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(form.rental_mode === "weekly" ? WEEKLY_OPTIONS : MONTHLY_OPTIONS).map((option) => (
-                  <SelectItem key={option} value={option}>{option}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <select
+              value={form.rental_length}
+              onChange={(event) => update("rental_length", event.target.value)}
+              className="select-soft w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground"
+            >
+              {(form.rental_mode === "weekly" ? WEEKLY_OPTIONS : MONTHLY_OPTIONS).map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
           </div>
           {errors.rental_length && <div className="mt-2 text-sm text-real-red">{errors.rental_length}</div>}
         </div>
