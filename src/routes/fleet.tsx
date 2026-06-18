@@ -43,14 +43,8 @@ function FleetPage() {
     [vehicles]
   );
 
-  const bodyToCategory: Record<string, string> = {
-    sedan: "economy",
-    suv: "comfort",
-    xl: "xl",
-  };
-
   const filtered = vehicles.filter((v) => {
-    const cat = bodyToCategory[v.body_type ?? ""] ?? "economy";
+    const cat = v.body_type ?? "sedan";
     return (
       (make === "all" || v.make === make) &&
       categories[cat] &&
