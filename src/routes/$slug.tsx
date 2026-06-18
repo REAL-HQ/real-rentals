@@ -401,12 +401,9 @@ function QuoteFormCard({ site, market, compact = false }: { site: Site; market: 
 
   return (
     <div className={`border border-border bg-white text-foreground shadow-2xl shadow-black/20 ${compact ? "p-5 md:p-6" : "p-6 md:p-8"}`}>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
-          <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
-        </div>
-        <div className="rounded-lg bg-soft px-3 py-2 text-xs font-semibold text-muted-foreground">Continue</div>
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
+        <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
       </div>
       <div className="mt-6 grid grid-cols-1 gap-4">
         <Field label="Full Name" value={form.full_name} error={errors.full_name} onChange={(value) => update("full_name", value)} />
