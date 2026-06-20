@@ -62,12 +62,16 @@ export type Database = {
           payment_method: string | null
           payment_status: string
           phone: string
+          pickup_date: string | null
+          pickup_time: string | null
           platform_active: boolean | null
           platform_status: string | null
           platforms: string[] | null
           rating: number | null
           rental_length: string | null
           rental_term: string | null
+          return_date: string | null
+          return_time: string | null
           rideshare_history_status: string
           source: string | null
           start_date: string | null
@@ -116,12 +120,16 @@ export type Database = {
           payment_method?: string | null
           payment_status?: string
           phone: string
+          pickup_date?: string | null
+          pickup_time?: string | null
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
           rating?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          return_date?: string | null
+          return_time?: string | null
           rideshare_history_status?: string
           source?: string | null
           start_date?: string | null
@@ -170,12 +178,16 @@ export type Database = {
           payment_method?: string | null
           payment_status?: string
           phone?: string
+          pickup_date?: string | null
+          pickup_time?: string | null
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
           rating?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          return_date?: string | null
+          return_time?: string | null
           rideshare_history_status?: string
           source?: string | null
           start_date?: string | null

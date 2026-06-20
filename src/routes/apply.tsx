@@ -5,7 +5,6 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (s: Record<string, unknown>) => ({ vehicle: (s.vehicle as string) || "" }),
@@ -28,16 +27,11 @@ const PLATFORM_STATUSES = [
   { value: "Not Yet", label: "Not Yet" },
 ];
 
-const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3+ Weeks", "4+ Weeks"];
-const MONTHLY_OPTIONS = ["1 Month", "2 Months", "3+ Months"];
-
 type Step1Form = {
   full_name: string;
   phone: string;
   email: string;
   platform_status: "Yes" | "Pending" | "Not Yet" | "";
-  rental_mode: "weekly" | "monthly";
-  rental_length: string;
   vehicle_id: string;
 };
 
@@ -47,8 +41,6 @@ function getInitial(vehicle_id: string): Step1Form {
     phone: "",
     email: "",
     platform_status: "",
-    rental_mode: "weekly",
-    rental_length: "1 Week",
     vehicle_id,
   };
 }
@@ -67,9 +59,6 @@ function ApplyStep1() {
   const update = <K extends keyof Step1Form>(k: K, v: Step1Form[K]) => {
     setF((p) => {
       const next = { ...p, [k]: v };
-      if (k === "rental_mode") {
-        next.rental_length = v === "weekly" ? "1 Week" : "1 Month";
-      }
       if (typeof window !== "undefined") {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       }
@@ -83,7 +72,6 @@ function ApplyStep1() {
     if (!z.string().email().safeParse(f.email).success) errs.email = "Invalid email";
     if (!/^\d{7,}$/.test(f.phone.replace(/\D/g, ""))) errs.phone = "Invalid phone";
     if (!f.platform_status) errs.platform_status = "Required";
-    if (!f.rental_length) errs.rental_length = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -94,14 +82,11 @@ function ApplyStep1() {
       return;
     }
     setSubmitting(true);
-    const rental_term = f.rental_mode === "weekly" ? "weekly" : "monthly";
     const payload = {
       full_name: f.full_name,
       phone: f.phone,
       email: f.email,
       platform_status: f.platform_status,
-      rental_length: f.rental_length,
-      rental_term,
       vehicle_id: f.vehicle_id || null,
       status: "pending",
     };
@@ -124,7 +109,7 @@ function ApplyStep1() {
             <div className="max-w-xl mx-auto">
               <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 2</div>
               <h1 className="text-3xl md:text-4xl font-semibold">Get Your Quote</h1>
-              <p className="mt-3 text-muted-foreground">Tell us a little about yourself and how long you need the car.</p>
+              <p className="mt-3 text-muted-foreground">Tell us a little about yourself to get started.</p>
             </div>
           </FadeUp>
 
@@ -159,43 +144,6 @@ function ApplyStep1() {
                   {errors.platform_status && <div className="mt-2 text-sm text-real-red">{errors.platform_status}</div>}
                 </div>
 
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">How Long Do You Want To Rent?</label>
-                  <div className="mt-2 inline-flex rounded-lg bg-white border border-border p-1">
-                    {(["weekly", "monthly"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => update("rental_mode", m)}
-                        className={`px-4 py-1.5 rounded-md text-sm capitalize transition ${
-                          f.rental_mode === m
-                            ? "bg-real-red text-white"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {m === "weekly" ? "By The Week" : "By The Month"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3">
-                    <Select
-                      value={f.rental_length}
-                      onValueChange={(v) => update("rental_length", v)}
-                    >
-                      <SelectTrigger className="w-full bg-white border-border text-sm [&>svg]:mr-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(f.rental_mode === "weekly" ? WEEKLY_OPTIONS : MONTHLY_OPTIONS).map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {errors.rental_length && <div className="mt-2 text-sm text-real-red">{errors.rental_length}</div>}
-                </div>
               </div>
 
               <button
