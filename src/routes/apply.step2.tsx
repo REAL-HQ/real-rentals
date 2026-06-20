@@ -4,6 +4,7 @@ import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export const Route = createFileRoute("/apply/step2")({
   validateSearch: (s: Record<string, unknown>) => ({ id: (s.id as string) || "" }),
@@ -21,11 +22,29 @@ export const Route = createFileRoute("/apply/step2")({
 const PLATFORMS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "Uber Eats"];
 const TRIP_RANGES = ["0 - 100", "100 - 500", "500 - 1,000", "1,000 - 5,000", "5,000+"];
 
+const TIME_OPTIONS = (() => {
+  const out: string[] = [];
+  for (let h = 7; h <= 19; h++) {
+    for (const m of [0, 30]) {
+      const hr12 = ((h + 11) % 12) + 1;
+      const ampm = h < 12 ? "AM" : "PM";
+      out.push(`${hr12}:${m.toString().padStart(2, "0")} ${ampm}`);
+    }
+  }
+  return out;
+})();
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 function ApplyStep2() {
   const { id } = Route.useSearch();
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [trips, setTrips] = useState("");
   const [rating, setRating] = useState("");
+  const [pickupDate, setPickupDate] = useState("");
+  const [pickupTime, setPickupTime] = useState("");
+  const [returnDate, setReturnDate] = useState("");
+  const [returnTime, setReturnTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -36,6 +55,14 @@ function ApplyStep2() {
   const submit = async () => {
     if (platforms.length === 0) {
       toast.error("Select at least one platform.");
+      return;
+    }
+    if (!pickupDate || !pickupTime || !returnDate || !returnTime) {
+      toast.error("Please choose pickup and return date & time.");
+      return;
+    }
+    if (returnDate < pickupDate) {
+      toast.error("Return date must be on or after pickup date.");
       return;
     }
     if (!id) {
@@ -49,6 +76,10 @@ function ApplyStep2() {
         platforms,
         trips_completed: trips,
         rating: rating ? Number(rating) : null,
+        pickup_date: pickupDate,
+        pickup_time: pickupTime,
+        return_date: returnDate,
+        return_time: returnTime,
       })
       .eq("id", id);
     setSubmitting(false);
@@ -152,6 +183,55 @@ function ApplyStep2() {
                   placeholder="e.g. 4.95"
                   className="mt-2 w-full bg-white border border-border rounded-lg px-3 py-2 text-sm"
                 />
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pickup Date</label>
+                  <input
+                    type="date"
+                    min={todayStr()}
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    className="mt-2 w-full bg-white border border-border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Pickup Time</label>
+                  <Select value={pickupTime} onValueChange={setPickupTime}>
+                    <SelectTrigger className="mt-2 w-full bg-white border-border text-sm">
+                      <SelectValue placeholder="Select time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIME_OPTIONS.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Return Date</label>
+                  <input
+                    type="date"
+                    min={pickupDate || todayStr()}
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    className="mt-2 w-full bg-white border border-border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Return Time</label>
+                  <Select value={returnTime} onValueChange={setReturnTime}>
+                    <SelectTrigger className="mt-2 w-full bg-white border-border text-sm">
+                      <SelectValue placeholder="Select time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIME_OPTIONS.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <button
