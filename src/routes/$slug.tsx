@@ -410,7 +410,7 @@ function QuoteFormCard({ site, market, compact = false }: { site: Site; market: 
   }
 
   return (
-    <div className={`border border-border bg-white text-foreground shadow-2xl shadow-black/20 ${compact ? "px-5 md:px-6 pb-5 md:pb-6 pt-3 md:pt-4" : "px-6 md:px-8 pb-6 md:pb-8 pt-4 md:pt-6"}`}>
+    <div className={`border border-border bg-white text-foreground shadow-2xl shadow-black/20 ${compact ? "p-5 md:p-6" : "p-6 md:p-8"}`}>
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
         <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
