@@ -8,14 +8,17 @@ import {
   Car,
   ChevronDown,
   Check,
+  ClipboardCheck,
   Clock3,
   FileText,
   Infinity as InfinityIcon,
+  KeyRound,
   MapPin,
   Shield,
   Sparkles,
   UserCheck,
   Wrench,
+  Zap,
 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -246,23 +249,34 @@ function CityPage() {
       </section>
 
 
-      <section className="bg-soft py-14 md:py-20">
-        <div className="container-real">
-          <FadeUp className="max-w-3xl">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">How It Works</div>
-            <h2 className="mt-4 text-3xl md:text-5xl">From Quote To Keys.</h2>
-            <p className="mt-5 text-base leading-relaxed text-muted-foreground md:text-lg">{localIntro}</p>
-          </FadeUp>
-          <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {howItWorks.map((step, index) => (
-              <FadeUp key={step.title} delay={index * 60}>
-                <div className="h-full border border-border bg-white p-6">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">{String(step.n ?? index + 1).padStart(2, "0")}</div>
-                  <h3 className="mt-5 text-xl font-semibold">{step.title}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
-                </div>
-              </FadeUp>
-            ))}
+      <section className="container-real py-14 md:py-24">
+        <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
+          <h2 className="mt-3 text-3xl md:text-5xl">From Quote To Keys.</h2>
+          <p className="mt-4 text-muted-foreground leading-relaxed">{localIntro}</p>
+        </FadeUp>
+        <div className="relative">
+          <div aria-hidden className="hidden md:block absolute top-8 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-real-red/30 to-transparent" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8 relative">
+            {howItWorks.map((step, index) => {
+              const Icon = [FileText, ClipboardCheck, KeyRound, Zap][index % 4];
+              const n = String(step.n ?? index + 1).padStart(2, "0");
+              return (
+                <FadeUp key={step.title} delay={index * 80}>
+                  <div className="group relative rounded-2xl bg-white p-7 h-full border border-border hover:border-real-red/40 hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-real-red/10 text-real-red transition-colors">
+                        <Icon className="w-7 h-7" strokeWidth={1.75} />
+                      </div>
+                      <div className="text-5xl font-bold text-foreground/5 group-hover:text-real-red/20 transition-colors leading-none">{n}</div>
+                    </div>
+                    <div className="mt-6 text-real-red text-[11px] font-semibold tracking-[0.2em]">STEP {n}</div>
+                    <div className="mt-2 text-xl font-semibold">{step.title}</div>
+                    <div className="mt-2 text-muted-foreground text-sm leading-relaxed">{step.body}</div>
+                  </div>
+                </FadeUp>
+              );
+            })}
           </div>
         </div>
       </section>
