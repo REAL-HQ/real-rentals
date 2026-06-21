@@ -155,6 +155,8 @@ function Index() {
         </FadeUp>
       </section>
 
+      <ComparisonSection />
+
       <section className="bg-soft py-10 md:py-16">
         <div className="container-real">
           <FadeUp className="text-center mb-8">
