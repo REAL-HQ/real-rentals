@@ -182,7 +182,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
         ) : (
           <>
             <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Waitlist</div>
-            <h3 className="mt-2 text-2xl md:text-3xl font-semibold">Join The Waitlist</h3>
+            <h3 className="mt-2 text-2xl md:text-3xl font-semibold">Join The {card.city} Waitlist</h3>
             <p className="mt-2 text-sm text-muted-foreground">Be First To Know When We Launch In {card.city}.</p>
             <form onSubmit={submit} className="mt-5 space-y-3">
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="Full Name" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
