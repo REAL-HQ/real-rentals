@@ -21,16 +21,15 @@ type ComparisonData = {
 };
 
 const DEFAULT_DATA: ComparisonData = {
-  title: "How We Compare",
-  columns: ["Real Automotive", "Uber/Lyft Programs", "Traditional Rentals"],
+  title: "The Gig Driver's Breakdown.",
+  columns: ["Real Automotive", "Uber Rent / Lyft Express", "Avis / Hertz / Enterprise"],
   rows: [
     { feature: "Multi-App Use", real: "Yes", uberlyft: "No", traditional: "No", real_is_win: true },
-    { feature: "Mileage", real: "Unlimited (In Area)", uberlyft: "Restrictive/Per-Mile", traditional: "Restrictive/Per-Mile", real_is_win: true },
+    { feature: "Mileage", real: "Unlimited (In Service Area)", uberlyft: "Restrictive / Per-Mile", traditional: "Restrictive / Per-Mile", real_is_win: true },
     { feature: "Gig-App Eligibility", real: "Uber, Lyft, DoorDash, Flex", uberlyft: "Single Platform", traditional: "Not Gig-Focused", real_is_win: true },
     { feature: "Credit Check", real: "No", uberlyft: "No", traditional: "Often Yes", real_is_win: true },
     { feature: "Approval Speed", real: "As Soon As Same Day", uberlyft: "Varies", traditional: "Varies", real_is_win: true },
-    { feature: "Maintenance", real: "Included (Routine)", uberlyft: "Included", traditional: "Not Gig-Focused", real_is_win: false },
-    { feature: "Deposit", real: "One Low Refundable", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: true },
+    { feature: "Deposit", real: "One Low Refundable", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: false },
     { feature: "Local Support", real: "Local Team", uberlyft: "Call Center", traditional: "Rental Counter", real_is_win: true },
   ],
   disclaimer:
@@ -87,7 +86,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
     <section className="bg-soft py-14 md:py-20">
       <div className="container-real">
         <FadeUp className="text-center mb-10">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Comparison</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Why Drivers Choose Us</div>
           <h2 className="mt-3 text-3xl md:text-5xl">{data.title}</h2>
         </FadeUp>
 
@@ -129,8 +128,8 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                             : "group-hover:bg-real-red/[0.04]"
                         }`}
                       >
-                        <span className="inline-flex items-center justify-center gap-2 font-semibold text-foreground">
-                          {row.real_is_win && (
+                        <span className={`inline-flex items-center justify-center gap-2 font-semibold ${row.real_is_win && row.real !== "Yes" && row.real !== "No" ? "text-green-600" : "text-foreground"}`}>
+                          {row.real_is_win && (row.real === "Yes" || row.real === "No") && (
                             <CheckCircle2 className="w-[18px] h-[18px] text-real-red shrink-0" strokeWidth={2} />
                           )}
                           <span>{row.real}</span>
