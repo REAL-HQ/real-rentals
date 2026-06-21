@@ -295,6 +295,8 @@ function CityPage() {
         </div>
       </section>
 
+      <ComparisonSection siteId={site.id} />
+
       <section className="bg-black py-16 text-center text-white md:py-20">
         <div className="container-real">
           <FadeUp>
