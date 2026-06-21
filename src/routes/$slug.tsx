@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
+import { ComparisonSection } from "@/components/site/ComparisonSection";
 import heroBg from "@/assets/hero-bg.jpg";
 import sedanImg from "@/assets/cars/accord.jpg.asset.json";
 import suvImg from "@/assets/cars/crv.jpg.asset.json";
@@ -293,6 +294,8 @@ function CityPage() {
           <p className="mt-7 text-center text-sm font-medium text-muted-foreground">Your Exact Car Is Matched On Your Call.</p>
         </div>
       </section>
+
+      <ComparisonSection siteId={site.id} />
 
       <section className="bg-black py-16 text-center text-white md:py-20">
         <div className="container-real">

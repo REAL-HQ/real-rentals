@@ -7,6 +7,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
 import { FadeUp } from "@/components/site/FadeUp";
 import { LocationsSection } from "@/components/site/LocationsSection";
+import { ComparisonSection } from "@/components/site/ComparisonSection";
 import heroBg from "@/assets/hero-bg.jpg";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
@@ -153,6 +154,8 @@ function Index() {
           </Link>
         </FadeUp>
       </section>
+
+      <ComparisonSection />
 
       <section className="bg-soft py-10 md:py-16">
         <div className="container-real">
