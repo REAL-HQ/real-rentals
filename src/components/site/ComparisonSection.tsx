@@ -58,27 +58,11 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
 
   const [colReal, colUber, colTrad] = data.columns;
 
-  const renderCell = (text: string, tone: "win" | "lose" | "neutral") => {
-    const Icon = tone === "win" ? CheckCircle2 : tone === "lose" ? XCircle : MinusCircle;
-    const iconClass =
-      tone === "win"
-        ? "text-green-600"
-        : tone === "lose"
-        ? "text-red-500/80"
-        : "text-muted-foreground/60";
-    return (
-      <span className="inline-flex items-center justify-center gap-2">
-        <Icon className={`w-[18px] h-[18px] shrink-0 ${iconClass}`} strokeWidth={2} />
-        <span>{text}</span>
-      </span>
-    );
-  };
-
-  const competitorTone = (text: string): "win" | "lose" | "neutral" => {
+  const cellToneClass = (text: string): string => {
     const t = text.toLowerCase().trim();
-    if (t === "no" || t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often")) return "lose";
-    if (t === "yes" || t === "included" || t.startsWith("unlimited")) return "win";
-    return "neutral";
+    if (t === "no" || t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often")) return "text-red-500/80";
+    if (t === "yes" || t === "included" || t.startsWith("unlimited")) return "text-green-600";
+    return "text-muted-foreground";
   };
 
   return (
@@ -120,25 +104,14 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                       <td className="px-5 md:px-6 py-5 md:py-6 text-[15px] font-semibold text-foreground border-b border-border border-r">
                         {row.feature}
                       </td>
-                      <td
-                        className={`px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-real-red/[0.08] transition-colors ${
-                          row.real_is_win
-                            ? "group-hover:bg-real-red/[0.12]"
-                            : "group-hover:bg-real-red/[0.10]"
-                        }`}
-                      >
-                        <span className={`inline-flex items-center justify-center gap-2 font-semibold ${row.real_is_win && row.real !== "Yes" && row.real !== "No" ? "text-green-600" : "text-foreground"}`}>
-                          {row.real_is_win && (row.real === "Yes" || row.real === "No") && (
-                            <CheckCircle2 className="w-[18px] h-[18px] text-real-red shrink-0" strokeWidth={2} />
-                          )}
-                          <span>{row.real}</span>
-                        </span>
+                      <td className="px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-yellow-100 font-semibold text-foreground">
+                        {row.real}
                       </td>
-                      <td className="px-5 md:px-6 py-5 md:py-6 text-center text-[14px] text-muted-foreground border-b border-border border-r">
-                        {renderCell(row.uberlyft, competitorTone(row.uberlyft))}
+                      <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[14px] border-b border-border border-r ${cellToneClass(row.uberlyft)}`}>
+                        {row.uberlyft}
                       </td>
-                      <td className="px-5 md:px-6 py-5 md:py-6 text-center text-[14px] text-muted-foreground border-b border-border">
-                        {renderCell(row.traditional, competitorTone(row.traditional))}
+                      <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[14px] border-b border-border ${cellToneClass(row.traditional)}`}>
+                        {row.traditional}
                       </td>
                     </tr>
                   ))}
