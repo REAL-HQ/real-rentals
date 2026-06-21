@@ -150,7 +150,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
         </FadeUp>
 
         <FadeUp delay={120}>
-          <p className="mt-6 text-xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
+          <p className="mt-6 text-xs text-muted-foreground text-center whitespace-nowrap">
             {data.disclaimer} As of {data.as_of_date}.
           </p>
         </FadeUp>
