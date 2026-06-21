@@ -83,7 +83,7 @@ const defaultVehicleTypes: VehicleType[] = [
 const PLATFORM_STATUSES = ["Yes", "Pending", "Not Yet"] as const;
 const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3 Weeks", "4+ Weeks"];
 const MONTHLY_OPTIONS = ["1 Month", "2 Months", "3+ Months"];
-const DEFAULT_GIGS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex"];
+const DEFAULT_GIGS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"];
 
 type QuoteForm = {
   full_name: string;
@@ -492,10 +492,12 @@ function Field({ label, value, error, onChange, type = "text" }: { label: string
 
 const gigLogoMap: Record<string, string> = {
   Uber: "https://upload.wikimedia.org/wikipedia/commons/5/58/Uber_logo_2018.svg",
-  Lyft: "https://cdn.simpleicons.org/lyft/FF00BF",
+  Lyft: "https://upload.wikimedia.org/wikipedia/commons/a/a0/Lyft_logo.svg",
   DoorDash: "https://upload.wikimedia.org/wikipedia/commons/6/6a/DoorDash_Logo.svg",
   Instacart: "https://upload.wikimedia.org/wikipedia/commons/9/9f/Instacart_logo_and_wordmark.svg",
   "Amazon Flex": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg",
+  UberEats: "https://upload.wikimedia.org/wikipedia/commons/b/b3/Uber_Eats_2020_logo.svg",
+  Grubhub: "https://upload.wikimedia.org/wikipedia/commons/3/3d/GrubHub_Logo_2016.svg",
 };
 
 function GigLogoMarquee({ items }: { items: string[] }) {
