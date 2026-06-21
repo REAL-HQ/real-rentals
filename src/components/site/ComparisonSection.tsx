@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { FadeUp } from "./FadeUp";
@@ -26,7 +25,7 @@ const DEFAULT_DATA: ComparisonData = {
   rows: [
     { feature: "Multi-App Use", real: "Yes", uberlyft: "No", traditional: "No", real_is_win: true },
     { feature: "Mileage", real: "Unlimited (In Service Area)", uberlyft: "Restrictive / Per-Mile", traditional: "Restrictive / Per-Mile", real_is_win: true },
-    { feature: "Gig-App Eligibility", real: "Uber, Lyft, DoorDash, Flex", uberlyft: "Single Platform", traditional: "Not Gig-Focused", real_is_win: true },
+    { feature: "Gig-App Eligibility", real: "Any Gig Service", uberlyft: "Single Platform", traditional: "Not Gig-Focused", real_is_win: true },
     { feature: "Credit Check", real: "No", uberlyft: "No", traditional: "Often Yes", real_is_win: true },
     { feature: "Approval Speed", real: "As Soon As Same Day", uberlyft: "Varies", traditional: "Varies", real_is_win: true },
     { feature: "Deposit", real: "One Low Refundable", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: false },
