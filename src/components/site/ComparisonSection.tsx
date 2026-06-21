@@ -60,8 +60,10 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
 
   const cellToneClass = (text: string): string => {
     const t = text.toLowerCase().trim();
-    if (t === "no" || t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often")) return "text-red-500/80";
-    if (t === "yes" || t === "included" || t.startsWith("unlimited")) return "text-green-600";
+    const negative = t === "no" || t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often") || t.startsWith("~$") || t.startsWith("call ") || t.startsWith("rental") || t === "varies" || t === "single platform";
+    const positive = t === "yes" || t === "included" || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low");
+    if (negative) return "text-red-500/80";
+    if (positive) return "text-green-600";
     return "text-muted-foreground";
   };
 
