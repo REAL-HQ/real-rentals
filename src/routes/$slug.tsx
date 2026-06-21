@@ -24,6 +24,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
+import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import heroBg from "@/assets/hero-bg.jpg";
 import sedanImg from "@/assets/cars/accord.jpg.asset.json";
 import suvImg from "@/assets/cars/crv.jpg.asset.json";
@@ -63,7 +64,7 @@ const defaultBenefits: Benefit[] = [
   { icon: "check", label: "No Credit Check" },
   { icon: "shield", label: "Insurance Options Available" },
   { icon: "wrench", label: "Maintenance Included" },
-  { icon: "infinity", label: "High-Mileage Friendly" },
+  { icon: "infinity", label: "Unlimited Miles" },
   { icon: "zap", label: "Same-Day Approval" },
 ];
 
@@ -296,6 +297,8 @@ function CityPage() {
       </section>
 
       <ComparisonSection siteId={site.id} />
+
+      <TrustedByDrivers siteId={site.id} />
 
       <section className="bg-black py-16 text-center text-white md:py-20">
         <div className="container-real">
