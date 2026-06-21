@@ -9,6 +9,7 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { LocationsSection } from "@/components/site/LocationsSection";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
 import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
+import { GigLogoMarquee } from "@/components/site/GigLogoMarquee";
 import heroBg from "@/assets/hero-bg.jpg";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
@@ -94,6 +95,18 @@ function Index() {
               </span>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="bg-white py-8 md:py-10">
+        <div className="container-real text-center">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Eligible To Drive For</div>
+        </div>
+        <GigLogoMarquee items={["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"]} />
+        <div className="container-real text-center">
+          <p className="mt-5 text-xs leading-relaxed text-muted-foreground whitespace-nowrap">
+            REAL AUTOMOTIVE is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules.
+          </p>
         </div>
       </section>
 
