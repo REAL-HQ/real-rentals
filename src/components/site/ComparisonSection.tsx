@@ -104,7 +104,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                       <td className="px-5 md:px-6 py-5 md:py-6 text-[15px] font-semibold text-foreground border-b border-border border-r">
                         {row.feature}
                       </td>
-                      <td className="px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-yellow-100 font-semibold text-foreground">
+                      <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-yellow-100 font-semibold ${cellToneClass(row.real)}`}>
                         {row.real}
                       </td>
                       <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[14px] border-b border-border border-r ${cellToneClass(row.uberlyft)}`}>
