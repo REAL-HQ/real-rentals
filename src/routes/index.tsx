@@ -6,6 +6,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
 import { FadeUp } from "@/components/site/FadeUp";
+import { LocationsSection } from "@/components/site/LocationsSection";
 import heroBg from "@/assets/hero-bg.jpg";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
@@ -112,6 +113,8 @@ function Index() {
           </div>
         </div>
       </section>
+
+      <LocationsSection />
 
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
