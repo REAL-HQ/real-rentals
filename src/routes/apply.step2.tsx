@@ -21,6 +21,8 @@ export const Route = createFileRoute("/apply/step2")({
 
 const PLATFORMS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "Uber Eats"];
 const TRIP_RANGES = ["0 - 100", "100 - 500", "500 - 1,000", "1,000 - 5,000", "5,000+"];
+const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3 Weeks", "4+ Weeks"];
+const MONTHLY_OPTIONS = ["1 Month", "2 Months", "3+ Months"];
 
 const TIME_OPTIONS = (() => {
   const out: string[] = [];
@@ -41,6 +43,8 @@ function ApplyStep2() {
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [trips, setTrips] = useState("");
   const [rating, setRating] = useState("");
+  const [rentalMode, setRentalMode] = useState<"weekly" | "monthly">("weekly");
+  const [rentalLength, setRentalLength] = useState<string>("1 Week");
   const [pickupDate, setPickupDate] = useState("");
   const [pickupTime, setPickupTime] = useState("");
   const [returnDate, setReturnDate] = useState("");
@@ -76,6 +80,8 @@ function ApplyStep2() {
         platforms,
         trips_completed: trips,
         rating: rating ? Number(rating) : null,
+        rental_term: rentalMode,
+        rental_length: rentalLength,
         pickup_date: pickupDate,
         pickup_time: pickupTime,
         return_date: returnDate,
