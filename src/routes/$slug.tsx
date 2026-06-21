@@ -292,7 +292,7 @@ function CityPage() {
               </FadeUp>
             ))}
           </div>
-          <p className="mt-7 text-center text-sm font-medium text-muted-foreground">Your Exact Car Is Matched On Your Call.</p>
+          
         </div>
       </section>
 
