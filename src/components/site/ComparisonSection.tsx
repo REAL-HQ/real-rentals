@@ -74,13 +74,13 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left p-4 md:p-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border bg-white w-[28%]">
+                    <th className="text-left p-4 md:p-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border border-r bg-white w-[28%]">
                       Feature
                     </th>
-                    <th className="p-4 md:p-5 text-center text-sm font-semibold text-white bg-real-red border-b border-real-red w-[24%]">
+                    <th className="p-4 md:p-5 text-center text-sm font-semibold text-white bg-real-red border-b border-real-red border-r w-[24%]">
                       {colReal}
                     </th>
-                    <th className="p-4 md:p-5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border bg-white w-[24%]">
+                    <th className="p-4 md:p-5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border border-r bg-white w-[24%]">
                       {colUber}
                     </th>
                     <th className="p-4 md:p-5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border bg-white w-[24%]">
@@ -90,13 +90,13 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                 </thead>
                 <tbody>
                   {data.rows.map((row, i) => (
-                    <tr key={row.feature} className={i % 2 === 1 ? "bg-soft/50" : "bg-white"}>
-                      <td className="p-4 md:p-5 text-sm font-medium text-foreground border-b border-border">
+                    <tr key={row.feature} className={`group transition-colors ${i % 2 === 1 ? "bg-soft/50 hover:bg-muted/60" : "bg-white hover:bg-muted/40"}`}>
+                      <td className="p-4 md:p-5 text-sm font-medium text-foreground border-b border-border border-r">
                         {row.feature}
                       </td>
                       <td
-                        className={`p-4 md:p-5 text-center text-sm border-b border-border ${
-                          row.real_is_win ? "bg-real-red/[0.04]" : ""
+                        className={`p-4 md:p-5 text-center text-sm border-b border-border border-r transition-colors ${
+                          row.real_is_win ? "bg-real-red/[0.04] group-hover:bg-real-red/[0.06]" : ""
                         }`}
                       >
                         <span className="inline-flex items-center justify-center gap-1.5">
@@ -106,7 +106,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                           <span className="font-medium text-foreground">{row.real}</span>
                         </span>
                       </td>
-                      <td className="p-4 md:p-5 text-center text-sm text-muted-foreground border-b border-border">
+                      <td className="p-4 md:p-5 text-center text-sm text-muted-foreground border-b border-border border-r">
                         {row.uberlyft}
                       </td>
                       <td className="p-4 md:p-5 text-center text-sm text-muted-foreground border-b border-border">
