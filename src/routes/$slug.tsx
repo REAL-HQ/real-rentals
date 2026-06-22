@@ -605,7 +605,8 @@ function ServiceAreaSection({ cityLabel, city }: { cityLabel: string; city: stri
           <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Service Area</div>
           <h2 className="mt-2 text-2xl md:text-3xl font-semibold">Serving {cityLabel} And Surrounding Cities.</h2>
           <p className="mt-3 text-muted-foreground max-w-2xl leading-relaxed">
-            Pickup and support based in Tampa. We rent to gig drivers across the wider metro area. Call us to confirm coverage in your neighborhood.
+            Pickup and support based in Tampa. We rent to gig drivers across the wider metro area.<br />
+            Call us to confirm coverage in your neighborhood.
           </p>
         </FadeUp>
         <FadeUp>
