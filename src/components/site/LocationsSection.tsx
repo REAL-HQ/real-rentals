@@ -133,7 +133,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [driverStatus, setDriverStatus] = useState<"active" | "pending" | "not_yet">("not_yet");
+  const [driverStatus, setDriverStatus] = useState<"active" | "pending" | "not_yet" | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
