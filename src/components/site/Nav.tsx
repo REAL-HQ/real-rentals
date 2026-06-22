@@ -108,8 +108,8 @@ export function Nav() {
       }`}
     >
       <div className="flex h-12 items-center justify-between px-[3%]">
-        {location.pathname !== "/admin" && <Logo />}
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex items-center gap-4">
+          {location.pathname !== "/admin" && <Logo />}
           <a
             href="tel:+18135550100"
             className="hidden sm:inline-flex items-center gap-2 text-[13px] font-semibold text-foreground hover:text-real-red transition"
@@ -118,6 +118,8 @@ export function Nav() {
             <Phone className="w-4 h-4 text-real-red" strokeWidth={2.25} />
             (813) 555-0100
           </a>
+        </div>
+        <div className="flex items-center gap-3">
           {!authReady ? (
             <div className="h-8 w-24" aria-hidden />
           ) : session ? (
