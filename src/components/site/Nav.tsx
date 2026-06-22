@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle } from "lucide-react";
+import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Phone } from "lucide-react";
 import { Logo } from "./Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -110,6 +110,14 @@ export function Nav() {
       <div className="flex h-12 items-center justify-between px-[3%]">
         {location.pathname !== "/admin" && <Logo />}
         <div className="flex items-center gap-3 ml-auto">
+          <a
+            href="tel:+18135550100"
+            className="hidden sm:inline-flex items-center gap-2 text-[13px] font-semibold text-foreground hover:text-real-red transition"
+            aria-label="Call REAL AUTOMOTIVE"
+          >
+            <Phone className="w-4 h-4 text-real-red" strokeWidth={2.25} />
+            (813) 555-0100
+          </a>
           {!authReady ? (
             <div className="h-8 w-24" aria-hidden />
           ) : session ? (
