@@ -194,7 +194,7 @@ function CityPage() {
 
   return (
     <SiteLayout>
-      <section className="relative isolate overflow-hidden bg-black px-6 pt-24 pb-12 text-white md:px-12 md:pt-34 md:pb-16">
+      <section className="relative isolate overflow-hidden bg-black px-6 py-12 text-white md:px-12 md:py-16">
         <div aria-hidden className="absolute inset-0 -z-20 bg-cover bg-center" style={{ backgroundImage: `url(${heroBg})` }} />
         <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/75 via-black/60 to-black/85" />
         <div className="container-real grid items-center gap-10 lg:grid-cols-[1fr_440px]">
