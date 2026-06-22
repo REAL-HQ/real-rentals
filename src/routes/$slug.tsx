@@ -103,6 +103,7 @@ type QuoteForm = {
   platform_status: (typeof PLATFORM_STATUSES)[number] | "";
   rental_mode: "weekly" | "monthly";
   rental_length: string;
+  sms_consent: boolean;
 };
 
 export const Route = createFileRoute("/$slug")({
