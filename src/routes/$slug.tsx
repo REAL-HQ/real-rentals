@@ -568,8 +568,8 @@ function WhatYouNeedSection() {
   ];
   return (
     <section className="bg-white py-14 md:py-20">
-      <div className="container-real">
-        <FadeUp className="text-center max-w-2xl mx-auto">
+      <div className="px-6 md:px-12 lg:px-20 xl:px-28">
+        <FadeUp className="text-center">
           <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">What You'll Need To Apply</div>
           <h2 className="mt-3 text-3xl md:text-5xl">Quick Checklist Before You Apply.</h2>
           <p className="mt-4 text-muted-foreground">Have these ready and most drivers are approved the same day.</p>
@@ -581,7 +581,7 @@ function WhatYouNeedSection() {
                 <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-real-red/10 text-real-red">
                   <Icon className="h-6 w-6" strokeWidth={1.75} />
                 </div>
-                <div className="mt-5 text-lg font-semibold">{title}</div>
+                <div className="mt-5 text-lg font-semibold whitespace-nowrap">{title}</div>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
               </div>
             </FadeUp>
