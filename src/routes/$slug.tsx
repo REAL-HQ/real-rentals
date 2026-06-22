@@ -14,11 +14,16 @@ import {
   Infinity as InfinityIcon,
   KeyRound,
   MapPin,
+  Phone,
   Shield,
   Sparkles,
   UserCheck,
   Wrench,
   Zap,
+  IdCard,
+  CreditCard,
+  Smartphone,
+  ShieldCheck,
 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -28,6 +33,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
 import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
+import { StickyCallBar } from "@/components/site/StickyCallBar";
 import heroBg from "@/assets/hero-bg.jpg";
 import sedanImg from "@/assets/cars/accord.jpg.asset.json";
 import suvImg from "@/assets/cars/crv.jpg.asset.json";
