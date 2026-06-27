@@ -113,7 +113,7 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Insurance Included
+          Insurance Options
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />

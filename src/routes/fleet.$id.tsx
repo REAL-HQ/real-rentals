@@ -70,7 +70,7 @@ function VehicleDetail() {
               <span className="text-5xl font-semibold">${Number(price)}</span>
               <span className="text-muted-foreground text-sm">/{term === "weekly" ? "week" : "month"}</span>
             </div>
-            <div className="text-sm text-muted-foreground mt-1">Refundable security deposit required at pickup.</div>
+            <div className="text-sm text-muted-foreground mt-1">No deposit required. A payment card on file authorizes tolls, citations, damage, cleaning, and unpaid rent per your rental agreement.</div>
 
             <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
               {[
@@ -92,7 +92,7 @@ function VehicleDetail() {
             <div className="mt-8">
               <div className="text-sm font-medium mb-3">What's included</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                {["Commercial rideshare insurance", "Routine maintenance", "24/7 driver support"].map((i) => (
+                {["Insurance options available", "Routine maintenance included", "24/7 driver support"].map((i) => (
                   <li key={i} className="flex gap-2 items-start"><Check className="w-4 h-4 text-real-red mt-0.5" /> {i}</li>
                 ))}
               </ul>

@@ -53,6 +53,7 @@ function ApplyStep2() {
   const [returnTime, setReturnTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
 
   const togglePlatform = (p: string) => {
     setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
@@ -69,6 +70,10 @@ function ApplyStep2() {
     }
     if (returnDate < pickupDate) {
       toast.error("Return date must be on or after pickup date.");
+      return;
+    }
+    if (!authorized) {
+      toast.error("Please authorize the card-on-file terms to continue.");
       return;
     }
     if (!id) {
@@ -273,6 +278,18 @@ function ApplyStep2() {
                   </Select>
                 </div>
               </div>
+
+              <label className="mt-6 flex items-start gap-3 rounded-xl border border-border bg-white p-4 text-sm">
+                <input
+                  type="checkbox"
+                  checked={authorized}
+                  onChange={(e) => setAuthorized(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-real-red"
+                />
+                <span className="text-foreground/85 leading-relaxed">
+                  <strong className="font-semibold">No deposit required.</strong> I authorize REAL AUTOMOTIVE to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during my rental, as described in the Rental Agreement.
+                </span>
+              </label>
 
               <button
                 type="button"

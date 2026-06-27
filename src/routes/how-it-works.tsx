@@ -85,7 +85,7 @@ function HowItWorks() {
               { I: IdCard, t: "Valid US Driver's License", d: "Held For At Least One Year With No Major Restrictions." },
               { I: CarFront, t: "Clean Driving Record", d: "Reasonably Clean MVR. We'll Let You Know If You Qualify." },
               { I: Briefcase, t: "Active Gig Account", d: "Or Willingness To Sign Up For Uber, Lyft, DoorDash, Or Instacart." },
-              { I: Wallet, t: "Refundable Deposit", d: "$250 Refundable Security Deposit, Returned After Your Rental Ends." },
+              { I: Wallet, t: "No Deposit", d: "$0 Security Deposit. We Keep A Payment Card On File For Tolls, Citations, Damage, And Unpaid Rent Per Your Rental Agreement." },
               { I: CreditCard, t: "Payment Method", d: "Debit Card, Credit Card, Or Cash App For Weekly Rent." },
             ].map((r, i) => (
               <FadeUp key={r.t} delay={i * 60}>
@@ -119,7 +119,7 @@ function HowItWorks() {
               </div>
               <ul className="mt-6 space-y-4">
                 {[
-                  { I: Shield, t: "Commercial Rideshare Insurance" },
+                  { I: Shield, t: "Insurance Options Available" },
                   { I: Wrench, t: "Routine Maintenance & Oil Changes" },
                   { I: LifeBuoy, t: "24/7 Roadside Assistance" },
                   { I: FileCheck, t: "Vehicle Registration & Inspection" },

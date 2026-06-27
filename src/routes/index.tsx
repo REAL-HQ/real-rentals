@@ -261,7 +261,8 @@ function Index() {
           <div className="max-w-3xl mx-auto divide-y divide-border bg-white rounded-2xl">
             {[
               { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
-              { q: "Is a refundable security deposit required?", a: "Yes. A $250 refundable deposit is required and is returned 14 to 30 days after rental ends." },
+              { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
+              { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
               { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and driver support. Insurance options are available — ask our team for current details." },
               { q: "Can I drive for Uber and Lyft?", a: "Most vehicles qualify for both Uber and Lyft on the same car. Some are delivery-focused, so each listing shows what it's approved for." },
               { q: "Are maintenance and repairs included?", a: "Routine, scheduled maintenance is on us. Your rental agreement spells out exactly what's covered and what's driver-responsible." },

@@ -5,14 +5,14 @@ import { Logo } from "./Logo";
 const trustBar = [
   { label: "Uber/Lyft Eligible", Icon: BadgeCheck },
   { label: "No Credit Check", Icon: Check },
-  { label: "Insurance Included", Icon: Shield },
+  { label: "Insurance Options Available", Icon: Shield },
   { label: "Maintenance Included", Icon: Wrench },
   { label: "Unlimited Miles", Icon: InfinityIcon },
   { label: "Same Day Approval", Icon: Zap },
 ];
 
 const badges = [
-  "Insurance Included",
+  "Insurance Options Available",
   "Maintenance Included",
   "Unlimited Miles",
   "24/7 Support",

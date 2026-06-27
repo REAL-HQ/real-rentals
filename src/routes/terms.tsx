@@ -45,6 +45,21 @@ function TermsPage() {
           </div>
 
           <div>
+            <h2 className="text-xl font-semibold text-foreground">No Deposit & Card On File</h2>
+            <p className="mt-3">REAL AUTOMOTIVE does not collect a security deposit. By signing your rental agreement, you authorize REAL AUTOMOTIVE to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during your rental, as described in the Rental Agreement. The card on file is an incidentals authorization — it is not a deposit and is not pre-charged at booking. Payment card data is securely tokenized through our payment processor; raw card numbers are not stored by REAL AUTOMOTIVE.</p>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Tolls, Tickets & Charges</h2>
+            <p className="mt-3">The renter is responsible for all tolls, tickets, citations, and traffic or parking violations incurred during the rental period. For any unpaid item, REAL AUTOMOTIVE will identify the renter to the issuing authority under the rental agreement — in Florida, via the affidavit process under Fla. Stat. § 316.1001 — transferring the citation to the renter. An administrative fee may apply per notice and may be charged to the payment card on file.</p>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Insurance</h2>
+            <p className="mt-3">Insurance options are available with every rental. Coverage terms, limits, exclusions, and the named insured party are described in your rental agreement and any insurance enrollment documents. Coverage during commercial or rideshare use depends on the option selected; ask our team for current details before you sign.</p>
+          </div>
+
+          <div>
             <h2 className="text-xl font-semibold text-foreground">Disclaimers</h2>
             <p className="mt-3">The site is provided "as is" without warranties of any kind. To the maximum extent permitted by law, REAL AUTOMOTIVE disclaims all liability for damages arising from your use of the site.</p>
           </div>

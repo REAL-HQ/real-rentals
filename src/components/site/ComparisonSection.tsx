@@ -28,7 +28,7 @@ const DEFAULT_DATA: ComparisonData = {
     { feature: "Gig-App Eligibility", real: "Any Gig Service", uberlyft: "Single Platform", traditional: "Not Gig-Focused", real_is_win: true },
     { feature: "Credit Check", real: "No", uberlyft: "No", traditional: "Often Yes", real_is_win: true },
     { feature: "Approval Speed", real: "As Soon As Same Day", uberlyft: "Varies", traditional: "Varies", real_is_win: true },
-    { feature: "Deposit", real: "One Low Refundable", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: false },
+    { feature: "Deposit", real: "No Deposit", uberlyft: "~$200-250 Hold", traditional: "~$200-500 Hold", real_is_win: true },
     { feature: "Local Support", real: "Local Team", uberlyft: "Call Center", traditional: "Rental Counter", real_is_win: true },
   ],
   disclaimer:

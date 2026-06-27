@@ -565,7 +565,7 @@ function interpolate(value: string, site: Site, market: Market | null) {
 function WhatYouNeedSection() {
   const items = [
     { Icon: IdCard, title: "Valid Driver's License", body: "Active U.S. driver's license, 21 or older. Out-of-state licenses welcome." },
-    { Icon: CreditCard, title: "Refundable Deposit", body: "Standard deposit due at pickup. Held against damage and returned at end of rental." },
+    { Icon: CreditCard, title: "No Deposit", body: "$0 security deposit. A payment card on file covers tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
     { Icon: Smartphone, title: "Smartphone & Gig Account", body: "Active or pending account with Uber, Lyft, DoorDash, Instacart, or similar." },
     { Icon: ShieldCheck, title: "Clean Recent Record", body: "Reasonable driving history. No major violations in the last 3 years." },
   ];
@@ -636,6 +636,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
     { q: "Is insurance included?", a: "Insurance options are available with every rental. Our team will walk you through what's included before you sign." },
     { q: "Are miles unlimited?", a: "Yes. Drive as many miles as you need — there are no per-mile fees." },
     { q: "What if the car needs maintenance?", a: "Routine maintenance is included. If something comes up, we handle it so you can keep earning." },
+    { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
     { q: `Do you operate in ${cityLabel}?`, a: `Yes. We support gig drivers throughout the ${cityLabel} metro area. Call us to confirm pickup near you.` },
   ];
   const items = arrayOfObjects<FaqItem>(content.faq, defaults);
