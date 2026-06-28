@@ -23,7 +23,7 @@ const badges = [
 const driverLinks = [
   { to: "/fleet", label: "Fleet" },
   { to: "/how-it-works", label: "How It Works" },
-  { to: "/apply", label: "Apply" },
+  { to: "/apply", label: "Book Now" },
   { to: "/faq", label: "FAQ" },
   { to: "/how-it-works", label: "Requirements" },
 ];
@@ -57,14 +57,14 @@ export function Footer() {
         <div className="container-real py-14 md:py-20 flex flex-col items-center gap-8 text-center">
           <div>
             <div className="text-3xl md:text-5xl font-semibold leading-tight">Need A Vehicle To Start Driving This Week?</div>
-            <div className="mt-3 text-base md:text-lg text-white/90">Apply In Minutes. Get Approved Fast. Start Earning.</div>
+            <div className="mt-3 text-base md:text-lg text-white/90">Book In Minutes. Get Approved Fast. Start Earning.</div>
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 shrink-0">
             <Link
               to="/apply"
               className="inline-flex items-center justify-center rounded-lg bg-white text-real-red px-10 py-5 text-base md:text-lg font-bold shadow-xl hover:scale-[1.03] hover:shadow-2xl transition active:scale-95 whitespace-nowrap"
             >
-              Apply Now →
+              Book Now →
             </Link>
             <Link
               to="/partners"
