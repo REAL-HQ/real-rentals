@@ -109,7 +109,7 @@ function CityCard({ card, onWaitlist }: { card: LocationCard; onWaitlist: () => 
       <div className="absolute inset-x-0 bottom-0 p-4 text-center">
         <div className="text-white text-lg md:text-xl font-semibold drop-shadow">{card.city}</div>
         <div className="mx-auto mt-2 h-[3px] w-10 bg-real-red rounded-full" />
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-real-red px-4 py-2 text-xs font-semibold text-white shadow-sm">
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-real-red px-4 py-2 text-xs font-semibold text-white shadow-sm">
           {isLive ? <>Get A Quote <ArrowRight className="w-3 h-3" /></> : "Join Waitlist"}
         </div>
       </div>
