@@ -42,44 +42,66 @@ const PHONE_HREF = "tel:+18135550100";
 
 export function QuoteHero(props: QuoteHeroProps) {
   return (
-    <section className="relative isolate overflow-hidden bg-[#0a0a0a] text-white">
+    <section className="relative isolate overflow-hidden text-white">
+      {/* Lit studio backdrop */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-20 bg-gradient-to-b from-[#1a1a1a] via-[#0d0d0d] to-black"
+        className="absolute inset-0 -z-30 bg-[radial-gradient(ellipse_70%_60%_at_50%_72%,_#34343a_0%,_#1a1a1d_42%,_#0a0a0b_100%)]"
       />
-      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/30 via-transparent to-black/40" />
+      {/* Soft brand glow */}
+      <div
+        aria-hidden
+        className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] -z-20 opacity-30 bg-[radial-gradient(circle_at_center,_#CC0000_0%,_transparent_60%)] blur-3xl"
+      />
+      {/* Top vignette */}
+      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/40 via-transparent to-black/50" />
 
       <div className="container-real">
         <HeroTopBar />
 
-        <div className="pt-6 pb-8 md:pt-10 md:pb-12">
+        <div className="pt-4 pb-6 md:pt-6 md:pb-8">
           <div className="mx-auto max-w-6xl text-center">
-            <h1 className="text-[32px] leading-[1.1] font-semibold text-white md:text-[52px] lg:text-[60px] md:whitespace-nowrap">
+            <h1 className="text-[32px] leading-[1.05] font-bold text-white md:text-[56px] lg:text-[64px] md:whitespace-nowrap">
               {props.headline.split("\n").map((line, i) => (
                 <span key={i} className="block">
                   {line}
                 </span>
               ))}
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-white/80 md:text-lg md:whitespace-nowrap">
+            <p className="mt-3 text-base leading-relaxed text-white/80 md:text-lg md:whitespace-nowrap">
               {props.subhead}
             </p>
           </div>
 
-          <div className="mt-8 md:mt-10 mx-auto max-w-5xl">
+          <div className="relative z-10 mt-5 md:mt-6 mx-auto max-w-5xl">
             <QuoteWidget {...props} />
           </div>
 
-          <div className="mt-6 md:mt-8 flex flex-col items-center justify-center">
-            <img
-              src={heroCar.url}
-              alt="Clean, fuel-efficient economy sedan — rideshare ready"
-              width={1024}
-              height={768}
-              className="w-full max-w-md md:max-w-2xl object-contain drop-shadow-2xl"
-              loading="eager"
-            />
-            <p className="mt-2 text-xs text-white/60 tracking-wide">
+          <div className="relative z-0 -mt-10 md:-mt-16 flex flex-col items-center justify-center">
+            <div className="relative w-full max-w-3xl md:max-w-4xl lg:max-w-5xl">
+              <img
+                src={heroCar.url}
+                alt="Clean, fuel-efficient economy sedan — rideshare ready"
+                width={1536}
+                height={1024}
+                className="w-full h-auto object-contain drop-shadow-2xl"
+                loading="eager"
+              />
+              {/* Ground shadow */}
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-[85%] h-6 rounded-[100%] bg-black/60 blur-xl" />
+              {/* Reflection */}
+              <div
+                aria-hidden
+                className="absolute -bottom-1 left-0 w-full h-[18%] opacity-20 pointer-events-none"
+                style={{
+                  background: "linear-gradient(to bottom, rgba(255,255,255,0.15), transparent)",
+                  maskImage: "linear-gradient(to top, black, transparent)",
+                  WebkitMaskImage: "linear-gradient(to top, black, transparent)",
+                  transform: "scaleY(-1)",
+                }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-white/60 tracking-wide">
               Clean, Fuel-Efficient Economy Cars — Rideshare Ready.
             </p>
           </div>
