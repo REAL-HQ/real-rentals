@@ -73,7 +73,7 @@ function Index() {
               View Available Cars <ArrowRight className="w-4 h-4" />
             </Link>
             <Link to="/apply" className="inline-flex items-center rounded-lg border border-white/40 px-7 py-3 text-sm font-medium text-white hover:bg-white hover:text-black transition active:scale-95">
-              Apply Now
+              Book Now
             </Link>
           </div>
         </FadeUp>
@@ -142,7 +142,7 @@ function Index() {
           <div aria-hidden className="hidden md:block absolute top-8 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-real-red/30 to-transparent" />
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8 relative">
             {[
-              { n: "01", I: FileText, t: "Apply", d: "Complete a 5-minute application online from your phone." },
+              { n: "01", I: FileText, t: "Book Your Car", d: "Complete a 5-minute booking online from your phone." },
               { n: "02", I: ClipboardCheck, t: "Get Approved", d: "Most applications reviewed the same day. No credit check." },
               { n: "03", I: KeyRound, t: "Pick Up Vehicle", d: "Schedule pickup, complete onboarding, and grab your keys." },
               { n: "04", I: Zap, t: "Start Earning", d: "Drive Uber, Lyft, DoorDash or Instacart immediately." },
