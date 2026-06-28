@@ -3,8 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
-import { completeApplicationProfile } from "@/lib/applications.functions";
-import { supabase } from "@/integrations/supabase/client";
+import { completeApplicationProfile, getApplicationRentalInfo } from "@/lib/applications.functions";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
