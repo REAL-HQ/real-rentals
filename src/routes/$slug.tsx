@@ -44,6 +44,7 @@ type Site = {
 };
 
 type Market = { id: string; name: string; state: string | null; slug: string };
+type ContentMap = Record<string, Json>;
 type Step = { n?: string | number; title: string; body: string };
 type VehicleType = { name: string; tagline: string; image?: string };
 type GigPlatforms = { items?: string[]; disclaimer?: string };
