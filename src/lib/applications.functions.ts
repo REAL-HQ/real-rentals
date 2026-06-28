@@ -52,6 +52,20 @@ export const submitApplication = createServerFn({ method: "POST" })
     return { id: row.id };
   });
 
+export const getApplicationRentalInfo = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("applications")
+      .select("rental_term, rental_length")
+      .eq("id", data.id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    return { rental_term: row?.rental_term ?? null, rental_length: row?.rental_length ?? null };
+  });
+
 export const completeApplicationProfile = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => completeApplicationSchema.parse(data))
   .handler(async ({ data }) => {
