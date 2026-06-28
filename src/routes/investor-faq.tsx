@@ -5,9 +5,9 @@ import { FadeUp } from "@/components/site/FadeUp";
 export const Route = createFileRoute("/investor-faq")({
   head: () => ({
     meta: [
-      { title: "Investor FAQ — REAL AUTOMOTIVE" },
+      { title: "Investor FAQ — REAL RENTALS" },
       { name: "description", content: "Answers for fleet partners and investors: profit splits, screening, maintenance, recovery, and payouts." },
-      { property: "og:title", content: "Investor FAQ — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "Investor FAQ — REAL RENTALS" },
       { property: "og:description", content: "Everything you need to know before placing a vehicle into the fleet." },
     ],
   }),
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/investor-faq")({
 });
 
 const faqs = [
-  { q: "How does the 50/50 split work?", a: "After insurance and any pass-through costs, weekly rent collected on your vehicle is split 50/50 between you and REAL AUTOMOTIVE. Payouts are sent monthly with a full statement." },
+  { q: "How does the 50/50 split work?", a: "After insurance and any pass-through costs, weekly rent collected on your vehicle is split 50/50 between you and REAL RENTALS. Payouts are sent monthly with a full statement." },
   { q: "Who is responsible for maintenance?", a: "We handle scheduling and oversight of routine maintenance and most repairs. Maintenance costs are deducted before the split or billed transparently depending on the agreement." },
   { q: "How do you screen drivers?", a: "Every driver passes a background check, motor vehicle record review, identity verification, and platform eligibility check before being placed in a vehicle." },
   { q: "What happens if a driver stops paying?", a: "We handle collections and, if needed, recovery of the vehicle. GPS tracking is installed on every fleet car so we can locate and recover quickly." },

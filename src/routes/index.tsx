@@ -16,7 +16,7 @@ import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "REAL AUTOMOTIVE | Start Driving. Start Earning. This Week." },
+      { title: "REAL RENTALS | Start Driving. Start Earning. This Week." },
       { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance options available. Maintenance included. Fast approval." },
       { property: "og:title", content: "Start Driving. Start Earning. This Week." },
       { property: "og:description", content: "Insurance options available and maintenance included. Fast approval. Drive this week." },
@@ -106,7 +106,7 @@ function Index() {
         <GigLogoMarquee items={["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"]} />
         <div className="container-real text-center">
           <p className="mt-5 text-xs leading-relaxed text-muted-foreground whitespace-nowrap">
-            REAL AUTOMOTIVE is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules.
+            REAL RENTALS is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules.
           </p>
         </div>
       </section>
@@ -215,7 +215,7 @@ function Index() {
               <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Partner Program</div>
               <h2 className="mt-3 text-3xl md:text-5xl leading-tight">Turn Your Vehicle Into<br />Monthly Cash Flow.</h2>
               <p className="mt-5 text-white/80 leading-relaxed max-w-xl">
-                <span className="font-semibold text-white">Own a vehicle?</span> Join the REAL Automotive Partner Program and earn passive income by placing vehicles into our rideshare fleet.
+                <span className="font-semibold text-white">Own a vehicle?</span> Join the Real Rentals Partner Program and earn passive income by placing vehicles into our rideshare fleet.
               </p>
               <div className="mt-7 flex flex-col sm:flex-row gap-3">
                 <Link to="/investors" className="inline-flex items-center justify-center rounded-lg bg-real-red text-white px-8 py-4 text-sm font-semibold hover:opacity-90 transition active:scale-95">

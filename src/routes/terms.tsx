@@ -4,10 +4,10 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 export const Route = createFileRoute("/terms")({
   head: () => ({
     meta: [
-      { title: "Terms Of Service | REAL AUTOMOTIVE" },
-      { name: "description", content: "The terms that govern your use of REAL AUTOMOTIVE's website and rental application services." },
-      { property: "og:title", content: "Terms Of Service | REAL AUTOMOTIVE" },
-      { property: "og:description", content: "The terms that govern your use of REAL AUTOMOTIVE's website and rental application services." },
+      { title: "Terms Of Service | REAL RENTALS" },
+      { name: "description", content: "The terms that govern your use of REAL RENTALS's website and rental application services." },
+      { property: "og:title", content: "Terms Of Service | REAL RENTALS" },
+      { property: "og:description", content: "The terms that govern your use of REAL RENTALS's website and rental application services." },
     ],
   }),
   component: TermsPage,
@@ -36,7 +36,7 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Platform Affiliation</h2>
-            <p className="mt-3">REAL AUTOMOTIVE is not affiliated with Uber, Lyft, DoorDash, Instacart, Amazon Flex, or any other gig platform. Platform eligibility depends on each platform's own rules.</p>
+            <p className="mt-3">REAL RENTALS is not affiliated with Uber, Lyft, DoorDash, Instacart, Amazon Flex, or any other gig platform. Platform eligibility depends on each platform's own rules.</p>
           </div>
 
           <div>
@@ -46,12 +46,12 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">No Deposit & Card On File</h2>
-            <p className="mt-3">REAL AUTOMOTIVE does not collect a security deposit. By signing your rental agreement, you authorize REAL AUTOMOTIVE to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during your rental, as described in the Rental Agreement. The card on file is an incidentals authorization — it is not a deposit and is not pre-charged at booking. Payment card data is securely tokenized through our payment processor; raw card numbers are not stored by REAL AUTOMOTIVE.</p>
+            <p className="mt-3">REAL RENTALS does not collect a security deposit. By signing your rental agreement, you authorize REAL RENTALS to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during your rental, as described in the Rental Agreement. The card on file is an incidentals authorization — it is not a deposit and is not pre-charged at booking. Payment card data is securely tokenized through our payment processor; raw card numbers are not stored by REAL RENTALS.</p>
           </div>
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Tolls, Tickets & Charges</h2>
-            <p className="mt-3">The renter is responsible for all tolls, tickets, citations, and traffic or parking violations incurred during the rental period. For any unpaid item, REAL AUTOMOTIVE will identify the renter to the issuing authority under the rental agreement — in Florida, via the affidavit process under Fla. Stat. § 316.1001 — transferring the citation to the renter. An administrative fee may apply per notice and may be charged to the payment card on file.</p>
+            <p className="mt-3">The renter is responsible for all tolls, tickets, citations, and traffic or parking violations incurred during the rental period. For any unpaid item, REAL RENTALS will identify the renter to the issuing authority under the rental agreement — in Florida, via the affidavit process under Fla. Stat. § 316.1001 — transferring the citation to the renter. An administrative fee may apply per notice and may be charged to the payment card on file.</p>
           </div>
 
           <div>
@@ -61,7 +61,7 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Disclaimers</h2>
-            <p className="mt-3">The site is provided "as is" without warranties of any kind. To the maximum extent permitted by law, REAL AUTOMOTIVE disclaims all liability for damages arising from your use of the site.</p>
+            <p className="mt-3">The site is provided "as is" without warranties of any kind. To the maximum extent permitted by law, REAL RENTALS disclaims all liability for damages arising from your use of the site.</p>
           </div>
 
           <div>
@@ -71,7 +71,7 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Contact</h2>
-            <p className="mt-3">Questions? See our <Link to="/privacy" className="text-real-red underline">Privacy Policy</Link> or email <a href="mailto:legal@realautomotive.com" className="text-real-red underline">legal@realautomotive.com</a>.</p>
+            <p className="mt-3">Questions? See our <Link to="/privacy" className="text-real-red underline">Privacy Policy</Link> or email <a href="mailto:legal@realrentals.com" className="text-real-red underline">legal@realrentals.com</a>.</p>
           </div>
         </div>
       </section>

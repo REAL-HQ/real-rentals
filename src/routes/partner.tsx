@@ -18,7 +18,7 @@ import {
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 export const Route = createFileRoute("/partner")({
-  head: () => ({ meta: [{ title: "Partner Portal — REAL AUTOMOTIVE" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Partner Portal — REAL RENTALS" }, { name: "robots", content: "noindex" }] }),
   component: PartnerPage,
 });
 
@@ -101,7 +101,7 @@ function PartnerDashboard() {
 
         <Section title="How Your Split Works" icon={Info}>
           <div className="rounded-xl bg-soft p-5 text-sm space-y-3">
-            <p><strong>{Number(data.partner.revenue_split_pct)}/{100 - Number(data.partner.revenue_split_pct)} revenue split.</strong> A $350/week rental pays you $175/week. The renter pays Real Automotive; we distribute your share monthly, net of your 50% share of that month's routine maintenance.</p>
+            <p><strong>{Number(data.partner.revenue_split_pct)}/{100 - Number(data.partner.revenue_split_pct)} revenue split.</strong> A $350/week rental pays you $175/week. The renter pays Real Rentals; we distribute your share monthly, net of your 50% share of that month's routine maintenance.</p>
             <p><strong>Routine maintenance</strong> (oil changes, brakes, batteries, headlights) is split 50/50. <strong>Major repairs</strong> and special circumstances are handled case-by-case per your agreement.</p>
           </div>
         </Section>
@@ -300,7 +300,7 @@ function PartnerSignIn() {
     const { error } = await fn;
     setLoading(false);
     if (error) return setErr(error.message);
-    if (mode === "signup") toast.success("Account created. Ask Real Automotive to link your partner record.");
+    if (mode === "signup") toast.success("Account created. Ask Real Rentals to link your partner record.");
   }
 
   return (
@@ -348,7 +348,7 @@ function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void
         <h1 className="text-2xl font-semibold">No Partner Access</h1>
         <p className="mt-3 text-sm text-muted-foreground">Your account is signed in but isn't linked to a partner record yet.</p>
         <p className="mt-3 text-muted-foreground text-xs">Your account ID:<br/><code>{userId}</code></p>
-        <p className="mt-3 text-muted-foreground text-xs">Send this ID (or your email) to Real Automotive and we'll grant access.</p>
+        <p className="mt-3 text-muted-foreground text-xs">Send this ID (or your email) to Real Rentals and we'll grant access.</p>
         <button onClick={onSignOut} className="mt-6 rounded-lg border border-border px-6 py-2 text-sm">Sign Out</button>
       </div>
     </div>

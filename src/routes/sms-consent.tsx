@@ -4,10 +4,10 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 export const Route = createFileRoute("/sms-consent")({
   head: () => ({
     meta: [
-      { title: "SMS Consent Policy | REAL AUTOMOTIVE" },
-      { name: "description", content: "How REAL AUTOMOTIVE uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
-      { property: "og:title", content: "SMS Consent Policy | REAL AUTOMOTIVE" },
-      { property: "og:description", content: "How REAL AUTOMOTIVE uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
+      { title: "SMS Consent Policy | REAL RENTALS" },
+      { name: "description", content: "How REAL RENTALS uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
+      { property: "og:title", content: "SMS Consent Policy | REAL RENTALS" },
+      { property: "og:description", content: "How REAL RENTALS uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
     ],
   }),
   component: SmsConsentPage,
@@ -24,7 +24,7 @@ function SmsConsentPage() {
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
           <div>
             <h2 className="text-xl font-semibold text-foreground">Opt-In</h2>
-            <p className="mt-3">By submitting an application or quote request and checking the SMS consent box, you agree to receive text messages from REAL AUTOMOTIVE at the mobile number you provide. Messages may include rental updates, application status, scheduling, and occasional promotions.</p>
+            <p className="mt-3">By submitting an application or quote request and checking the SMS consent box, you agree to receive text messages from REAL RENTALS at the mobile number you provide. Messages may include rental updates, application status, scheduling, and occasional promotions.</p>
           </div>
 
           <div>

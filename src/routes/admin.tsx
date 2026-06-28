@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "Admin — REAL AUTOMOTIVE" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Admin — REAL RENTALS" }, { name: "robots", content: "noindex" }] }),
   component: Admin,
 });
 

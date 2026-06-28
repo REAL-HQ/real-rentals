@@ -11,9 +11,9 @@ export const Route = createFileRoute("/apply")({
   validateSearch: (s: Record<string, unknown>) => ({ vehicle: (s.vehicle as string) || "" }),
   head: () => ({
     meta: [
-      { title: "Step 1 of 2 — REAL AUTOMOTIVE" },
+      { title: "Step 1 of 2 — REAL RENTALS" },
       { name: "description", content: "Get a rideshare vehicle quote in seconds. Step 1 of 2." },
-      { property: "og:title", content: "Step 1 of 2 — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "Step 1 of 2 — REAL RENTALS" },
       { property: "og:description", content: "Get a rideshare vehicle quote in seconds. Step 1 of 2." },
     ],
   }),

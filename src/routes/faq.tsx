@@ -5,9 +5,9 @@ import { FadeUp } from "@/components/site/FadeUp";
 export const Route = createFileRoute("/faq")({
   head: () => ({
     meta: [
-      { title: "FAQ — REAL AUTOMOTIVE" },
+      { title: "FAQ — REAL RENTALS" },
       { name: "description", content: "Answers about insurance, mileage, no-deposit policy, tolls, maintenance, payments, and platform deactivation." },
-      { property: "og:title", content: "FAQ — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "FAQ — REAL RENTALS" },
       { property: "og:description", content: "Everything you need to know before applying." },
     ],
   }),
@@ -25,7 +25,7 @@ const faqs = [
   { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
   { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. Delivery platforms including DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted on the same vehicle." },
   { q: "What happens if my vehicle needs repairs?", a: "Contact support, schedule a swap or service appointment, and we'll get you back on the road quickly. Most routine work is covered." },
-  { q: "How do fleet partners earn money?", a: "Partners place vehicles into the REAL Automotive fleet and earn passive monthly income on a 50/50 split of rent collected. We handle driver acquisition, screening, collections, GPS tracking, and maintenance." },
+  { q: "How do fleet partners earn money?", a: "Partners place vehicles into the Real Rentals fleet and earn passive monthly income on a 50/50 split of rent collected. We handle driver acquisition, screening, collections, GPS tracking, and maintenance." },
   { q: "How do I pay weekly rent?", a: "Debit, credit, or Cash App. Rent is paid in advance every week via auto-pay." },
   { q: "Can I take the car out of state?", a: "Limited out-of-state driving is allowed with prior approval. Unauthorized travel triggers a fee." },
 ];

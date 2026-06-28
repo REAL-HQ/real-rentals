@@ -21,7 +21,7 @@ type ComparisonData = {
 
 const DEFAULT_DATA: ComparisonData = {
   title: "The Gig Driver's Breakdown.",
-  columns: ["Real Automotive", "Uber Rent / Lyft Express", "Avis / Hertz / Enterprise"],
+  columns: ["Real Rentals", "Uber Rent / Lyft Express", "Avis / Hertz / Enterprise"],
   rows: [
     { feature: "Multi-App Use", real: "Yes", uberlyft: "No", traditional: "No", real_is_win: true },
     { feature: "Mileage", real: "Unlimited (In Service Area)", uberlyft: "Restrictive / Per-Mile", traditional: "Restrictive / Per-Mile", real_is_win: true },

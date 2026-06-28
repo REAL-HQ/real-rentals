@@ -8,9 +8,9 @@ import { Phone, Mail, MapPin } from "lucide-react";
 export const Route = createFileRoute("/contact")({
   head: () => ({
     meta: [
-      { title: "Contact — REAL AUTOMOTIVE" },
-      { name: "description", content: "Get in touch about renting, applying, or partnering with REAL AUTOMOTIVE." },
-      { property: "og:title", content: "Contact — REAL AUTOMOTIVE" },
+      { title: "Contact — REAL RENTALS" },
+      { name: "description", content: "Get in touch about renting, applying, or partnering with REAL RENTALS." },
+      { property: "og:title", content: "Contact — REAL RENTALS" },
       { property: "og:description", content: "We're here to help." },
     ],
   }),
@@ -65,7 +65,7 @@ function Contact() {
         <FadeUp delay={80}>
           <div className="space-y-6">
             <Item I={Phone} label="Phone" v="(555) 555-0199" />
-            <Item I={Mail} label="Email" v="drivers@realautomotive.com" />
+            <Item I={Mail} label="Email" v="drivers@realrentals.com" />
             <Item I={MapPin} label="Lot" v="2847 Industrial Pkwy, Suite 100" />
           </div>
         </FadeUp>

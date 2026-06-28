@@ -63,7 +63,7 @@
 
 :root {
   --radius: 1rem;
-  /* REAL AUTOMOTIVE — Apple-inspired palette */
+  /* REAL RENTALS — Apple-inspired palette */
   --background: oklch(1 0 0);                  /* #FFFFFF */
   --foreground: oklch(0.18 0 0);               /* #111111 */
   --card: oklch(1 0 0);

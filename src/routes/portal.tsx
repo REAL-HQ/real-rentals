@@ -34,7 +34,7 @@ import {
 export const Route = createFileRoute("/portal")({
   head: () => ({
     meta: [
-      { title: "Driver Portal — REAL AUTOMOTIVE" },
+      { title: "Driver Portal — REAL RENTALS" },
       { name: "robots", content: "noindex" },
     ],
   }),

@@ -139,7 +139,7 @@ export const Route = createFileRoute("/$slug")({
     const title = loaderData?.site.title ?? "City";
     const state = loaderData?.market?.state ? `, ${loaderData.market.state}` : "";
     const content = loaderData?.content ?? {};
-    const seoTitle = asString(content.seo_title) ?? `Drive For Uber, Lyft & Delivery In ${title}${state} | REAL AUTOMOTIVE`;
+    const seoTitle = asString(content.seo_title) ?? `Drive For Uber, Lyft & Delivery In ${title}${state} | REAL RENTALS`;
     const seoDescription =
       asString(content.seo_description) ??
       `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, insurance options, and fast approvals.`;
@@ -196,7 +196,7 @@ function CityPage() {
   const howItWorks = arrayOfObjects<Step>(content.how_it_works, defaultHowItWorks);
   const localIntro = interpolate(
     asString(content.local_intro) ??
-      `${site.title} drivers need a fast, flexible rental path that works for rideshare, delivery, airport runs, and everyday gig work. REAL AUTOMOTIVE helps you get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
+      `${site.title} drivers need a fast, flexible rental path that works for rideshare, delivery, airport runs, and everyday gig work. REAL RENTALS helps you get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
     site,
     market,
   );
@@ -255,7 +255,7 @@ function CityPage() {
         <GigLogoMarquee items={gigItems} />
         <div className="container-real text-center">
           <p className="mt-5 text-xs leading-relaxed text-muted-foreground whitespace-nowrap">
-            {asString(gigConfig.disclaimer) ?? "REAL AUTOMOTIVE is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules."}
+            {asString(gigConfig.disclaimer) ?? "REAL RENTALS is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules."}
           </p>
         </div>
       </section>
@@ -470,7 +470,7 @@ function QuoteFormCard({ site, market, compact = false }: { site: Site; market: 
           className="mt-0.5 h-4 w-4 accent-real-red shrink-0"
         />
         <span className="text-[11px] leading-snug text-muted-foreground">
-          By checking this box, I agree to receive SMS text messages from REAL AUTOMOTIVE about my application, rental updates, and scheduling at the number provided. Message and data rates may apply. Reply STOP to opt out. See our{" "}
+          By checking this box, I agree to receive SMS text messages from REAL RENTALS about my application, rental updates, and scheduling at the number provided. Message and data rates may apply. Reply STOP to opt out. See our{" "}
           <Link to="/sms-consent" className="underline hover:text-foreground">SMS Consent</Link> and{" "}
           <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
         </span>

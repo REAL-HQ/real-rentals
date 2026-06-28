@@ -10,7 +10,7 @@ import { resolvePhotoUrl } from "@/lib/photoUrl";
 export const Route = createFileRoute("/fleet/$id")({
   head: () => ({
     meta: [
-      { title: "Vehicle Details — REAL AUTOMOTIVE" },
+      { title: "Vehicle Details — REAL RENTALS" },
       { name: "description", content: "View specs, pricing, and what's included with this rideshare-ready vehicle." },
     ],
   }),

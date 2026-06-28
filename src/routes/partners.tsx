@@ -8,10 +8,10 @@ import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileT
 export const Route = createFileRoute("/partners")({
   head: () => ({
     meta: [
-      { title: "Partner Program — REAL AUTOMOTIVE" },
-      { name: "description", content: "You own the car, we run everything. Place your idle vehicle in the Real Automotive fleet and earn monthly payouts. Fully managed. You keep the title." },
+      { title: "Partner Program — REAL RENTALS" },
+      { name: "description", content: "You own the car, we run everything. Place your idle vehicle in the Real Rentals fleet and earn monthly payouts. Fully managed. You keep the title." },
       { property: "og:title", content: "You Own The Car. We Run Everything." },
-      { property: "og:description", content: "Real Automotive's Partner Program — we screen drivers, GPS-track every car, and handle maintenance and recovery. You keep the title." },
+      { property: "og:description", content: "Real Rentals's Partner Program — we screen drivers, GPS-track every car, and handle maintenance and recovery. You keep the title." },
     ],
   }),
   component: Partners,
@@ -164,7 +164,7 @@ function Partners() {
             We Run Everything.
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Already have a vehicle sitting idle? Place it in the Real Automotive
+            Already have a vehicle sitting idle? Place it in the Real Rentals
             fleet and earn a monthly revenue split. You keep the title. We find and
             screen the drivers, collect rent, track every car by GPS, and handle
             maintenance and recovery.
@@ -203,7 +203,7 @@ function Partners() {
             <p className="mt-4 text-muted-foreground leading-relaxed">
               Our founder has personally completed 700+ five-star rentals on Turo — a public,
               verifiable track record of running rental vehicles safely, profitably, and at
-              scale. The same operating discipline runs the Real Automotive fleet your car
+              scale. The same operating discipline runs the Real Rentals fleet your car
               joins.
             </p>
             <p className="mt-3 text-xs text-muted-foreground/80">

@@ -11,9 +11,9 @@ export const Route = createFileRoute("/apply/step2")({
   validateSearch: (s: Record<string, unknown>) => ({ id: (s.id as string) || "" }),
   head: () => ({
     meta: [
-      { title: "Step 2 of 2 — REAL AUTOMOTIVE" },
+      { title: "Step 2 of 2 — REAL RENTALS" },
       { name: "description", content: "Complete your driver profile to finalize your quote." },
-      { property: "og:title", content: "Step 2 of 2 — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "Step 2 of 2 — REAL RENTALS" },
       { property: "og:description", content: "Complete your driver profile to finalize your quote." },
     ],
   }),
@@ -287,7 +287,7 @@ function ApplyStep2() {
                   className="mt-0.5 h-4 w-4 accent-real-red"
                 />
                 <span className="text-foreground/85 leading-relaxed">
-                  <strong className="font-semibold">No deposit required.</strong> I authorize REAL AUTOMOTIVE to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during my rental, as described in the Rental Agreement.
+                  <strong className="font-semibold">No deposit required.</strong> I authorize REAL RENTALS to keep a valid payment card on file and to charge that card for tolls, tickets, citations, damage, cleaning, and unpaid rent incurred during my rental, as described in the Rental Agreement.
                 </span>
               </label>
 

@@ -7,7 +7,7 @@ export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
         <a
           href="tel:+18135550100"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-real-red px-3 py-3 text-sm font-semibold text-real-red active:scale-95 transition"
-          aria-label="Call REAL AUTOMOTIVE"
+          aria-label="Call REAL RENTALS"
         >
           <Phone className="w-4 h-4" strokeWidth={2.25} /> Call Now
         </a>

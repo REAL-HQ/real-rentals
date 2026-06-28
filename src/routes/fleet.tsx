@@ -11,9 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export const Route = createFileRoute("/fleet")({
   head: () => ({
     meta: [
-      { title: "The Fleet — REAL AUTOMOTIVE" },
+      { title: "The Fleet — REAL RENTALS" },
       { name: "description", content: "Browse rideshare-ready vehicles. Filter by make, body type, and price. From $350/week." },
-      { property: "og:title", content: "The Fleet — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "The Fleet — REAL RENTALS" },
       { property: "og:description", content: "Every car ready for Uber, Lyft, DoorDash, Instacart, and Amazon Flex." },
     ],
   }),

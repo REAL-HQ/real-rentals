@@ -6,9 +6,9 @@ import { Check, X, FileText, ClipboardCheck, KeyRound, Zap, ArrowRight, Shield, 
 export const Route = createFileRoute("/how-it-works")({
   head: () => ({
     meta: [
-      { title: "How It Works — REAL AUTOMOTIVE" },
+      { title: "How It Works — REAL RENTALS" },
       { name: "description", content: "Apply, get approved, pick up your car, and start earning — usually within 48 hours." },
-      { property: "og:title", content: "How It Works — REAL AUTOMOTIVE" },
+      { property: "og:title", content: "How It Works — REAL RENTALS" },
       { property: "og:description", content: "From application to first ride in 48 hours." },
     ],
   }),
