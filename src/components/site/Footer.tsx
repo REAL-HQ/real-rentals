@@ -1,21 +1,23 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Check, Phone, Mail, MapPin, Clock, Shield, Wrench, BadgeCheck, Infinity as InfinityIcon, Zap } from "lucide-react";
+import { Check, Phone, Mail, MapPin, Clock, Shield, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
 import { Logo } from "./Logo";
 
 const trustBar = [
-  { label: "Uber/Lyft Eligible", Icon: BadgeCheck },
   { label: "No Credit Check", Icon: Check },
-  { label: "Insurance Options Available", Icon: Shield },
-  { label: "Maintenance Included", Icon: Wrench },
+  { label: "No Deposit", Icon: Wallet },
   { label: "Unlimited Miles", Icon: InfinityIcon },
+  { label: "Insurance Included", Icon: Shield },
+  { label: "Maintenance Included", Icon: Wrench },
   { label: "Same Day Approval", Icon: Zap },
 ];
 
 const badges = [
-  "Insurance Options Available",
-  "Maintenance Included",
+  "No Credit Check",
+  "No Deposit",
   "Unlimited Miles",
-  "24/7 Support",
+  "Insurance Included",
+  "Maintenance Included",
+  "Same Day Approval",
 ];
 
 const driverLinks = [

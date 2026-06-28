@@ -25,6 +25,7 @@ import {
   CreditCard,
   Smartphone,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -69,14 +70,16 @@ const iconMap = {
   user: UserCheck,
   car: Car,
   file: FileText,
+  wallet: Wallet,
 };
 
 const defaultBenefits: Benefit[] = [
   { icon: "check", label: "No Credit Check" },
-  { icon: "shield", label: "Insurance Options Available" },
-  { icon: "wrench", label: "Maintenance Included" },
+  { icon: "wallet", label: "No Deposit" },
   { icon: "infinity", label: "Unlimited Miles" },
-  { icon: "zap", label: "Same-Day Approval" },
+  { icon: "shield", label: "Insurance Included" },
+  { icon: "wrench", label: "Maintenance Included" },
+  { icon: "zap", label: "Same Day Approval" },
 ];
 
 
