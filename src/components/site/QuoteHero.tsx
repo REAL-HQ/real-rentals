@@ -126,7 +126,7 @@ function HeroTopBar() {
         </a>
         <Link
           to="/apply"
-          className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-semibold text-white hover:bg-real-red/90 transition active:scale-95"
+          className="inline-flex items-center rounded bg-real-red px-4 py-2 text-[13px] font-semibold text-white hover:bg-real-red/90 transition active:scale-95"
         >
           Book Now
         </Link>
