@@ -44,36 +44,11 @@ type Site = {
 };
 
 type Market = { id: string; name: string; state: string | null; slug: string };
-type ContentMap = Record<string, Json>;
-type Benefit = { icon?: string; label: string; body?: string };
 type Step = { n?: string | number; title: string; body: string };
 type VehicleType = { name: string; tagline: string; image?: string };
 type GigPlatforms = { items?: string[]; disclaimer?: string };
 
-const iconMap = {
-  check: Check,
-  shield: Shield,
-  wrench: Wrench,
-  infinity: InfinityIcon,
-  zap: Sparkles,
-  clock: Clock3,
-  calendar: CalendarClock,
-  briefcase: Briefcase,
-  badge: BadgeCheck,
-  user: UserCheck,
-  car: Car,
-  file: FileText,
-  wallet: Wallet,
-};
-
-const defaultBenefits: Benefit[] = [
-  { icon: "check", label: "No Credit Check" },
-  { icon: "wallet", label: "No Deposit" },
-  { icon: "infinity", label: "Unlimited Miles" },
-  { icon: "shield", label: "Insurance Included" },
-  { icon: "wrench", label: "Maintenance Included" },
-  { icon: "zap", label: "Same Day Approval" },
-];
+const defaultHowItWorks: Step[] = [
 
 
 const defaultHowItWorks: Step[] = [
