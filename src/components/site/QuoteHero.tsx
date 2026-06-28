@@ -254,82 +254,73 @@ function CollapsedWidget({
   onGetQuote: () => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">City</label>
-        {mode === "city" && city ? (
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-soft px-3 py-2.5 text-sm font-semibold">
-            <MapPin className="w-4 h-4 text-real-red" />
-            {city.name}{city.state ? `, ${city.state}` : ""}
-          </div>
-        ) : (
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1fr_auto] gap-3 md:gap-4 items-end">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">City</label>
+          {mode === "city" && city ? (
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-soft px-3 py-2.5 text-sm font-semibold">
+              <MapPin className="w-4 h-4 text-real-red" />
+              {city.name}{city.state ? `, ${city.state}` : ""}
+            </div>
+          ) : (
+            <select
+              value={widget.city?.slug ?? ""}
+              onChange={(e) => {
+                const slug = e.target.value;
+                const next = locations?.find((l) => l.slug === slug) || null;
+                setWidget((w) => ({ ...w, city: next }));
+              }}
+              className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
+            >
+              <option value="">Select Your City</option>
+              {(locations ?? []).map((l) => (
+                <option key={l.slug} value={l.slug}>
+                  {l.name}{l.state ? `, ${l.state}` : ""} {l.status === "live" ? "" : "(Coming Soon)"}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental Length</label>
           <select
-            value={widget.city?.slug ?? ""}
-            onChange={(e) => {
-              const slug = e.target.value;
-              const next = locations?.find((l) => l.slug === slug) || null;
-              setWidget((w) => ({ ...w, city: next }));
-            }}
+            value={widget.rentalMode}
+            onChange={(e) => setWidget((w) => ({ ...w, rentalMode: e.target.value as "weekly" | "monthly" }))}
             className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
           >
-            <option value="">Select Your City</option>
-            {(locations ?? []).map((l) => (
-              <option key={l.slug} value={l.slug}>
-                {l.name}{l.state ? `, ${l.state}` : ""} {l.status === "live" ? "" : "(Coming Soon)"}
-              </option>
+            <option value="weekly">By The Week</option>
+            <option value="monthly">By The Month</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Active On A Gig App?</label>
+          <select
+            value={widget.platformStatus}
+            onChange={(e) => setWidget((w) => ({ ...w, platformStatus: e.target.value as PlatformStatus | "" }))}
+            className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
+          >
+            <option value="">Select</option>
+            {PLATFORM_STATUSES.map((status) => (
+              <option key={status} value={status}>{status}</option>
             ))}
           </select>
-        )}
-      </div>
-
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental Length</label>
-        <div className="mt-2 inline-flex rounded-lg border border-border bg-soft p-1 w-full">
-          {(["weekly", "monthly"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setWidget((w) => ({ ...w, rentalMode: m }))}
-              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
-                widget.rentalMode === m
-                  ? "bg-real-red text-white"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {m === "weekly" ? "By The Week" : "By The Month"}
-            </button>
-          ))}
         </div>
+
+        <button
+          type="button"
+          onClick={onGetQuote}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98] whitespace-nowrap"
+        >
+          Get My Quote <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
 
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Active On A Gig App?</label>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {PLATFORM_STATUSES.map((status) => {
-            const active = widget.platformStatus === status;
-            return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setWidget((w) => ({ ...w, platformStatus: status }))}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition min-w-[80px] ${
-                  active ? "bg-real-red text-white border-real-red" : "bg-white text-foreground border-border hover:border-foreground/40"
-                }`}
-              >
-                {status}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onGetQuote}
-        className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98]"
-      >
-        Get My Quote <ArrowRight className="w-4 h-4" />
-      </button>
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Quick quote — no deposit, no credit check. We'll confirm your car on a fast call.
+      </p>
     </div>
   );
 }
