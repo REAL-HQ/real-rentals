@@ -54,23 +54,18 @@ function ApplyStep2() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+  const fetchRentalInfo = useServerFn(getApplicationRentalInfo);
 
   useEffect(() => {
     if (!id) return;
-    supabase
-      .from("applications")
-      .select("rental_term, rental_length")
-      .eq("id", id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return;
-        if (data.rental_term === "weekly" || data.rental_term === "monthly") {
-          setRentalMode(data.rental_term);
-        }
-        if (data.rental_length) {
-          setRentalLength(data.rental_length);
-        }
-      });
+    fetchRentalInfo({ data: { id } }).then((result) => {
+      if (result.rental_term === "weekly" || result.rental_term === "monthly") {
+        setRentalMode(result.rental_term);
+      }
+      if (result.rental_length) {
+        setRentalLength(result.rental_length);
+      }
+    });
   }, [id]);
 
   const togglePlatform = (p: string) => {
