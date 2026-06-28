@@ -104,7 +104,7 @@ function VehicleDetail() {
                 search={{ vehicle: v.id }}
                 className="inline-flex w-full sm:w-auto justify-center items-center rounded-lg bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95"
               >
-                Apply For This Car
+                Book This Car
               </Link>
             </div>
           </FadeUp>
