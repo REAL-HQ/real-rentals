@@ -7,7 +7,7 @@ export const Route = createFileRoute("/how-it-works")({
   head: () => ({
     meta: [
       { title: "How It Works — REAL RENTALS" },
-      { name: "description", content: "Apply, get approved, pick up your car, and start earning — usually within 48 hours." },
+      { name: "description", content: "Book, get approved, pick up your car, and start earning — usually within 48 hours." },
       { property: "og:title", content: "How It Works — REAL RENTALS" },
       { property: "og:description", content: "From application to first ride in 48 hours." },
     ],
@@ -173,7 +173,7 @@ function HowItWorks() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {[
-              { time: "5 Min", t: "Apply", d: "Complete Your Application From Your Phone." },
+              { time: "5 Min", t: "Book Your Car", d: "Complete Your Booking From Your Phone." },
               { time: "Same Day", t: "Approved", d: "Most Drivers Hear Back The Same Day They Apply." },
               { time: "48 Hrs", t: "On The Road", d: "Pick Up Your Keys And Start Driving." },
             ].map((s, i) => (
