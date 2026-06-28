@@ -229,13 +229,13 @@ function CityPage() {
           <p className="mb-4 text-center text-sm md:text-base text-foreground/80">
             Tired Of Overpriced Rentals, Credit Checks, And Confusing Rules? We Keep It Simple.
           </p>
-          <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4">
+          <div className="flex flex-nowrap items-center justify-center gap-x-4 md:gap-x-6 lg:gap-x-8 gap-y-3 overflow-x-auto">
           {benefits.map((benefit) => {
             const Icon = iconMap[(benefit.icon ?? "check") as keyof typeof iconMap] ?? Check;
             return (
-              <div key={benefit.label} className="flex items-center gap-2.5">
-                <Icon className="h-5 w-5 text-real-red shrink-0" strokeWidth={2.25} />
-                <span className="text-sm font-semibold text-foreground whitespace-nowrap">{benefit.label}</span>
+              <div key={benefit.label} className="flex items-center gap-2 shrink-0">
+                <Icon className="h-4 w-4 md:h-[18px] md:w-[18px] text-real-red shrink-0" strokeWidth={2.25} />
+                <span className="text-xs sm:text-sm md:text-base font-medium text-foreground whitespace-nowrap">{benefit.label}</span>
               </div>
             );
           })}

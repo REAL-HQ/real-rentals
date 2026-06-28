@@ -60,7 +60,7 @@ function Index() {
           <p className="mb-4 text-center text-sm md:text-base text-foreground/80">
             Tired Of Overpriced Rentals, Credit Checks, And Confusing Rules? We Keep It Simple.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-8 md:gap-x-10 gap-y-3 text-sm md:text-base font-medium text-foreground">
+          <div className="flex flex-nowrap items-center justify-center gap-x-4 md:gap-x-6 lg:gap-x-8 gap-y-3 text-xs sm:text-sm md:text-base font-medium text-foreground overflow-x-auto">
             {[
               { label: "No Credit Check", Icon: Check },
               { label: "No Deposit", Icon: Wallet },
@@ -69,7 +69,7 @@ function Index() {
               { label: "Maintenance Included", Icon: Wrench },
               { label: "Same Day Approval", Icon: Zap },
             ].map(({ label, Icon }) => (
-              <span key={label} className="inline-flex items-center gap-2">
+              <span key={label} className="inline-flex items-center gap-2 whitespace-nowrap shrink-0">
                 <Icon className="w-4 h-4 md:w-[18px] md:h-[18px] text-real-red shrink-0" strokeWidth={2.25} />
                 {label}
               </span>
