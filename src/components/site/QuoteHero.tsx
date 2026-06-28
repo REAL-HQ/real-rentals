@@ -47,7 +47,7 @@ export function QuoteHero(props: QuoteHeroProps) {
       <div
         aria-hidden
         className="absolute inset-0 -z-20 bg-cover bg-center"
-        style={{ backgroundImage: `url(${heroBg})` }}
+        style={{ backgroundImage: `url(${heroBg.url})` }}
       />
       <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/80 via-black/60 to-black/85" />
 
