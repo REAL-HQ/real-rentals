@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf, Wallet } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 type Vehicle = Tables<"vehicles">;
@@ -112,16 +112,24 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           No Credit Check
         </span>
         <span className="inline-flex items-center gap-1.5">
+          <Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          No Deposit
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Unlimited Miles
+        </span>
+        <span className="inline-flex items-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Insurance Options
+          Insurance Included
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
           Maintenance Included
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Unlimited Miles
+          <Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Same Day Approval
         </span>
       </div>
     </Link>
