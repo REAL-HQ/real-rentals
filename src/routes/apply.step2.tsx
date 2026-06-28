@@ -56,6 +56,24 @@ function ApplyStep2() {
   const [done, setDone] = useState(false);
   const [authorized, setAuthorized] = useState(false);
 
+  useEffect(() => {
+    if (!id) return;
+    supabase
+      .from("applications")
+      .select("rental_term, rental_length")
+      .eq("id", id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        if (data.rental_term === "weekly" || data.rental_term === "monthly") {
+          setRentalMode(data.rental_term);
+        }
+        if (data.rental_length) {
+          setRentalLength(data.rental_length);
+        }
+      });
+  }, [id]);
+
   const togglePlatform = (p: string) => {
     setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
