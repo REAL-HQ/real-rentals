@@ -65,7 +65,7 @@ function Contact() {
         <FadeUp delay={80}>
           <div className="space-y-6">
             <Item I={Phone} label="Phone" v="(555) 555-0199" />
-            <Item I={Mail} label="Email" v="drivers@realautomotive.com" />
+            <Item I={Mail} label="Email" v="drivers@realrentals.com" />
             <Item I={MapPin} label="Lot" v="2847 Industrial Pkwy, Suite 100" />
           </div>
         </FadeUp>

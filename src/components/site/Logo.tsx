@@ -40,9 +40,9 @@ export function Logo({ width = 120, offset = true }: { width?: number; offset?: 
         <span
           style={{
             fontFamily: "'Poppins',sans-serif",
-            fontSize: ".45rem",
+            fontSize: ".5rem",
             fontWeight: 700,
-            letterSpacing: ".3em",
+            letterSpacing: ".25em",
             color: "#fff",
             textTransform: "uppercase",
             textAlign: "center",
@@ -50,7 +50,7 @@ export function Logo({ width = 120, offset = true }: { width?: number; offset?: 
             marginTop: 2,
           }}
         >
-          AUTOMOTIVE
+          RENTALS
         </span>
       </div>
     </Link>

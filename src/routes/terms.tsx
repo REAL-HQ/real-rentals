@@ -71,7 +71,7 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Contact</h2>
-            <p className="mt-3">Questions? See our <Link to="/privacy" className="text-real-red underline">Privacy Policy</Link> or email <a href="mailto:legal@realautomotive.com" className="text-real-red underline">legal@realautomotive.com</a>.</p>
+            <p className="mt-3">Questions? See our <Link to="/privacy" className="text-real-red underline">Privacy Policy</Link> or email <a href="mailto:legal@realrentals.com" className="text-real-red underline">legal@realrentals.com</a>.</p>
           </div>
         </div>
       </section>
