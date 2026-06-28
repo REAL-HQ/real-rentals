@@ -49,9 +49,6 @@ type VehicleType = { name: string; tagline: string; image?: string };
 type GigPlatforms = { items?: string[]; disclaimer?: string };
 
 const defaultHowItWorks: Step[] = [
-
-
-const defaultHowItWorks: Step[] = [
   { n: "01", title: "Book Your Car", body: "Share your contact details and rental timeline so we can start your quote." },
   { n: "02", title: "Same Day Approval", body: "Our team reviews your application quickly and confirms the best next steps." },
   { n: "03", title: "Pick Up", body: "We match you to the right vehicle type and schedule pickup once you are cleared." },
