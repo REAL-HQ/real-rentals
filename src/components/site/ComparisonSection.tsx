@@ -61,7 +61,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
   const cellToneClass = (text: string): string => {
     const t = text.toLowerCase().trim();
     const negative = t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often") || t.startsWith("~$") || t.startsWith("call ") || t.startsWith("rental") || t === "varies" || t === "single platform";
-    const positive = t === "yes" || t === "no" || t === "included" || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low");
+    const positive = t === "yes" || t === "no" || t === "included" || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low") || t.startsWith("no deposit");
     if (negative) return "text-red-500/80";
     if (positive) return "text-green-600";
     return "text-muted-foreground";
