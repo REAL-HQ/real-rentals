@@ -73,7 +73,6 @@ export type Database = {
           return_date: string | null
           return_time: string | null
           rideshare_history_status: string
-          sms_consent: boolean | null
           source: string | null
           start_date: string | null
           state: string | null
@@ -132,7 +131,6 @@ export type Database = {
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
-          sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
           state?: string | null
@@ -191,7 +189,6 @@ export type Database = {
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
-          sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
           state?: string | null

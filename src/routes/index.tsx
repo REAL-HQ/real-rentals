@@ -10,7 +10,7 @@ import { LocationsSection } from "@/components/site/LocationsSection";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
 import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import { GigLogoMarquee } from "@/components/site/GigLogoMarquee";
-import { QuoteHero, type QuoteLocation } from "@/components/site/QuoteHero";
+import heroBg from "@/assets/hero-bg.jpg";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
 export const Route = createFileRoute("/")({
@@ -27,8 +27,6 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [vehicles, setVehicles] = useState<Tables<"vehicles">[]>([]);
-  const [locations, setLocations] = useState<QuoteLocation[]>([]);
-
   useEffect(() => {
     (async () => {
       const fetchType = (type: string) =>
@@ -46,39 +44,40 @@ function Index() {
         fetchType("xl"),
       ]);
       setVehicles([...sedans, ...suvs, ...xl]);
-
-      const { data: sites } = await supabase
-        .from("sites")
-        .select("id, slug, market_id, title, status, show_on_homepage, sort_order, markets(name, state)")
-        .eq("show_on_homepage", true)
-        .order("sort_order", { ascending: true });
-      const rows = (sites ?? []) as any[];
-      const mapped: QuoteLocation[] = rows.map((r) => ({
-        id: r.id,
-        slug: r.slug,
-        title: r.title,
-        market_id: r.market_id,
-        status: r.status ?? "coming_soon",
-        name: r.markets?.name ?? r.title,
-        state: r.markets?.state ?? null,
-      }));
-      mapped.sort((a, b) => {
-        if (a.status === "live" && b.status !== "live") return -1;
-        if (b.status === "live" && a.status !== "live") return 1;
-        return (a.sort_order ?? 100) - (b.sort_order ?? 100);
-      });
-      setLocations(mapped);
     })();
   }, []);
 
   return (
-    <SiteLayout hideNav>
-      <QuoteHero
-        mode="homepage"
-        locations={locations}
-        headline="Start Driving. Start Earning. This Week."
-        subhead="Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance options available. Maintenance included. Fast approval."
-      />
+    <SiteLayout>
+      <section className="relative isolate w-full px-6 md:px-12 pt-24 md:pt-36 pb-10 md:pb-14 text-center overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-20 bg-cover bg-center"
+          style={{ backgroundImage: `url(${heroBg})` }}
+        />
+        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/80" />
+        <FadeUp>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">
+            Rent. Drive. Earn.
+          </div>
+          <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold mx-auto whitespace-nowrap text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
+            Start Driving. Start Earning. This Week.
+          </h1>
+          <p className="mt-6 text-lg md:text-xl text-white/80 max-w-4xl mx-auto leading-relaxed whitespace-nowrap">
+            Rent A Vehicle For Uber, Lyft, DoorDash And Delivery Work From $350/Week.
+            <br />
+            Insurance Options Available. Maintenance Included. Fast Approval. Drive This Week.
+          </p>
+          <div className="mt-9 flex flex-wrap justify-center gap-3">
+            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-medium text-black hover:bg-black hover:text-white transition active:scale-95">
+              View Available Cars <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link to="/apply" className="inline-flex items-center rounded-lg border border-white/40 px-7 py-3 text-sm font-medium text-white hover:bg-white hover:text-black transition active:scale-95">
+              Book Now
+            </Link>
+          </div>
+        </FadeUp>
+      </section>
 
       <section className="border-y border-border bg-white">
         <div className="container-real py-5 md:py-6">
