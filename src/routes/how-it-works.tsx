@@ -29,7 +29,7 @@ function HowItWorks() {
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Link to="/apply" className="inline-flex items-center gap-2 rounded-lg bg-real-red px-7 py-3 text-sm font-medium text-white hover:opacity-90 transition active:scale-95">
-              Start Your Application <ArrowRight className="w-4 h-4" />
+              Book Now <ArrowRight className="w-4 h-4" />
             </Link>
             <Link to="/fleet" className="inline-flex items-center rounded-lg border border-white/40 px-7 py-3 text-sm font-medium text-white hover:bg-white hover:text-black transition active:scale-95">
               Browse Vehicles
@@ -42,7 +42,7 @@ function HowItWorks() {
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-3xl mx-auto">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">The Process</div>
-          <h2 className="mt-3 text-3xl md:text-5xl">From Application To Paycheck.</h2>
+          <h2 className="mt-3 text-3xl md:text-5xl">From Booking To Paycheck.</h2>
         </FadeUp>
         <div className="relative">
           <div aria-hidden className="hidden md:block absolute top-8 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-real-red/30 to-transparent" />
@@ -119,7 +119,7 @@ function HowItWorks() {
               </div>
               <ul className="mt-6 space-y-4">
                 {[
-                  { I: Shield, t: "Insurance Options Available" },
+                  { I: Shield, t: "Insurance Included" },
                   { I: Wrench, t: "Routine Maintenance & Oil Changes" },
                   { I: LifeBuoy, t: "24/7 Roadside Assistance" },
                   { I: FileCheck, t: "Vehicle Registration & Inspection" },
@@ -200,7 +200,7 @@ function HowItWorks() {
             </p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
               <Link to="/apply" className="inline-flex items-center gap-2 rounded-lg bg-real-red px-8 py-4 text-sm font-semibold text-white hover:opacity-90 transition active:scale-95">
-                Start Your Application <ArrowRight className="w-4 h-4" />
+                Book Now <ArrowRight className="w-4 h-4" />
               </Link>
               <Link to="/contact" className="inline-flex items-center rounded-lg border border-white/30 px-8 py-4 text-sm font-medium text-white hover:bg-white/10 transition active:scale-95">
                 Talk To A Human

@@ -92,7 +92,7 @@ function VehicleDetail() {
             <div className="mt-8">
               <div className="text-sm font-medium mb-3">What's included</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                {["Insurance options available", "Routine maintenance included", "24/7 driver support"].map((i) => (
+                {["Insurance included", "Routine maintenance included", "24/7 driver support"].map((i) => (
                   <li key={i} className="flex gap-2 items-start"><Check className="w-4 h-4 text-real-red mt-0.5" /> {i}</li>
                 ))}
               </ul>
