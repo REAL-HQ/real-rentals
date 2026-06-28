@@ -10,7 +10,7 @@ import { LocationsSection } from "@/components/site/LocationsSection";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
 import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import { GigLogoMarquee } from "@/components/site/GigLogoMarquee";
-import heroBg from "@/assets/hero-bg.jpg";
+import { HeroQuoteBar } from "@/components/site/HeroQuoteBar";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
 export const Route = createFileRoute("/")({
@@ -49,35 +49,11 @@ function Index() {
 
   return (
     <SiteLayout>
-      <section className="relative isolate w-full px-6 md:px-12 pt-24 md:pt-36 pb-10 md:pb-14 text-center overflow-hidden">
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-20 bg-cover bg-center"
-          style={{ backgroundImage: `url(${heroBg})` }}
-        />
-        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/80" />
-        <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">
-            Rent. Drive. Earn.
-          </div>
-          <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold mx-auto whitespace-nowrap text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
-            Start Driving. Start Earning. This Week.
-          </h1>
-          <p className="mt-6 text-lg md:text-xl text-white/80 max-w-4xl mx-auto leading-relaxed whitespace-nowrap">
-            Rent A Vehicle For Uber, Lyft, DoorDash And Delivery Work From $350/Week.
-            <br />
-            Insurance Options Available. Maintenance Included. Fast Approval. Drive This Week.
-          </p>
-          <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Link to="/fleet" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-medium text-black hover:bg-black hover:text-white transition active:scale-95">
-              View Available Cars <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link to="/apply" className="inline-flex items-center rounded-lg border border-white/40 px-7 py-3 text-sm font-medium text-white hover:bg-white hover:text-black transition active:scale-95">
-              Book Now
-            </Link>
-          </div>
-        </FadeUp>
-      </section>
+      <HeroQuoteBar
+        eyebrow="Rent. Drive. Earn."
+        headline="Start Driving. Start Earning. This Week."
+        subhead="Insurance options available. Maintenance included. Fast approval."
+      />
 
       <section className="border-y border-border bg-white">
         <div className="container-real py-5 md:py-6">
