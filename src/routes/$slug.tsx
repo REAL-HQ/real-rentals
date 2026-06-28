@@ -583,12 +583,12 @@ function WhatYouNeedSection() {
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {items.map(({ Icon, title, body }, i) => (
             <FadeUp key={title} delay={i * 60}>
-              <div className="h-full rounded-2xl border border-border bg-soft p-6">
-                <div className="flex items-center gap-4">
-                  <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-real-red/10 text-real-red">
-                    <Icon className="h-6 w-6" strokeWidth={1.75} />
+              <div className="h-full rounded-2xl border border-border bg-soft p-4 sm:p-5">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="inline-flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-real-red/10 text-real-red">
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.75} />
                   </div>
-                  <div className="text-lg font-semibold whitespace-nowrap">{title}</div>
+                  <div className="text-sm sm:text-base font-semibold whitespace-nowrap">{title}</div>
                 </div>
                 <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{body}</p>
               </div>
