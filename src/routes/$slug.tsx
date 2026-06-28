@@ -108,7 +108,7 @@ export const Route = createFileRoute("/$slug")({
     const seoTitle = asString(content.seo_title) ?? `Drive For Uber, Lyft & Delivery In ${title}${state} | REAL RENTALS`;
     const seoDescription =
       asString(content.seo_description) ??
-      `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, insurance options, and fast approvals.`;
+      `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, insurance included, and fast approvals.`;
     return {
       meta: [
         { title: seoTitle },
