@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, Check, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch, Headphones, Car } from "lucide-react";
+import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, Check, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -84,10 +84,11 @@ function Index() {
           <div className="flex flex-wrap items-center justify-center gap-x-8 md:gap-x-10 gap-y-3 text-sm md:text-base font-medium text-foreground">
             {[
               { label: "No Credit Check", Icon: Check },
-              { label: "Insurance Options Available", Icon: Shield },
-              { label: "Maintenance Included", Icon: Wrench },
+              { label: "No Deposit", Icon: Wallet },
               { label: "Unlimited Miles", Icon: InfinityIcon },
-              { label: "Same-Day Approval", Icon: Zap },
+              { label: "Insurance Included", Icon: Shield },
+              { label: "Maintenance Included", Icon: Wrench },
+              { label: "Same Day Approval", Icon: Zap },
             ].map(({ label, Icon }) => (
               <span key={label} className="inline-flex items-center gap-2">
                 <Icon className="w-4 h-4 md:w-[18px] md:h-[18px] text-real-red shrink-0" strokeWidth={2.25} />
