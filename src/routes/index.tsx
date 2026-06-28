@@ -55,25 +55,6 @@ function Index() {
         subhead="Insurance options available. Maintenance included. Fast approval."
       />
 
-      <section className="border-y border-border bg-white">
-        <div className="container-real py-5 md:py-6">
-          <div className="flex flex-nowrap items-center justify-center gap-x-4 md:gap-x-6 lg:gap-x-8 gap-y-3 text-xs sm:text-sm md:text-base font-medium text-foreground overflow-x-auto">
-            {[
-              { label: "No Credit Check", Icon: Check },
-              { label: "No Deposit", Icon: Wallet },
-              { label: "Unlimited Miles", Icon: InfinityIcon },
-              { label: "Insurance Included", Icon: Shield },
-              { label: "Maintenance Included", Icon: Wrench },
-              { label: "Same Day Approval", Icon: Zap },
-            ].map(({ label, Icon }) => (
-              <span key={label} className="inline-flex items-center gap-2 whitespace-nowrap shrink-0">
-                <Icon className="w-4 h-4 md:w-[18px] md:h-[18px] text-real-red shrink-0" strokeWidth={2.25} />
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
 
       <section className="bg-white py-8 md:py-10">
         <div className="container-real text-center">

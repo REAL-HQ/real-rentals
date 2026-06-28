@@ -224,21 +224,6 @@ function CityPage() {
         </div>
       </section>
 
-      <section className="border-y border-border bg-white">
-        <div className="container-real py-5">
-          <div className="flex flex-nowrap items-center justify-center gap-x-4 md:gap-x-6 lg:gap-x-8 gap-y-3 overflow-x-auto">
-          {benefits.map((benefit) => {
-            const Icon = iconMap[(benefit.icon ?? "check") as keyof typeof iconMap] ?? Check;
-            return (
-              <div key={benefit.label} className="flex items-center gap-2 shrink-0">
-                <Icon className="h-4 w-4 md:h-[18px] md:w-[18px] text-real-red shrink-0" strokeWidth={2.25} />
-                <span className="text-xs sm:text-sm md:text-base font-medium text-foreground whitespace-nowrap">{benefit.label}</span>
-              </div>
-            );
-          })}
-          </div>
-        </div>
-      </section>
 
       <section className="bg-white py-8 md:py-10">
         <div className="container-real text-center">
