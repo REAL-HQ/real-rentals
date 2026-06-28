@@ -580,7 +580,7 @@ function WhatYouNeedSection() {
           <h2 className="mt-3 text-3xl md:text-5xl">Quick Checklist Before You Apply.</h2>
           <p className="mt-4 text-muted-foreground">Have these ready and most drivers are approved the same day.</p>
         </FadeUp>
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
           {items.map(({ Icon, title, body }, i) => (
             <FadeUp key={title} delay={i * 60}>
               <div className="h-full rounded-2xl border border-border bg-soft p-4 sm:p-5">
