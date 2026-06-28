@@ -67,15 +67,6 @@ const WEEKLY_OPTIONS = ["1 Week", "2 Weeks", "3 Weeks", "4+ Weeks"];
 const MONTHLY_OPTIONS = ["1 Month", "2 Months", "3+ Months"];
 const DEFAULT_GIGS = ["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"];
 
-type QuoteForm = {
-  full_name: string;
-  phone: string;
-  email: string;
-  platform_status: (typeof PLATFORM_STATUSES)[number] | "";
-  rental_mode: "weekly" | "monthly";
-  rental_length: string;
-  sms_consent: boolean;
-};
 
 export const Route = createFileRoute("/$slug")({
   loader: async ({ params }) => {
