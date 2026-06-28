@@ -77,17 +77,20 @@ function Index() {
         mode="homepage"
         locations={locations}
         headline="Start Driving. Start Earning. This Week."
-        subhead="Insurance options available. Maintenance included. Fast approval."
+        subhead="Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance options available. Maintenance included. Fast approval."
       />
 
       <section className="border-y border-border bg-white">
         <div className="container-real py-5 md:py-6">
+          <p className="mb-4 text-center text-sm md:text-base text-foreground/80">
+            Tired Of Overpriced Rentals, Credit Checks, And Confusing Rules? We Keep It Simple.
+          </p>
           <div className="flex flex-wrap items-center justify-center gap-x-8 md:gap-x-10 gap-y-3 text-sm md:text-base font-medium text-foreground">
             {[
               { label: "No Credit Check", Icon: Check },
               { label: "No Deposit", Icon: Wallet },
               { label: "Unlimited Miles", Icon: InfinityIcon },
-              { label: "Insurance Options Available", Icon: Shield },
+              { label: "Insurance Included", Icon: Shield },
               { label: "Maintenance Included", Icon: Wrench },
               { label: "Same Day Approval", Icon: Zap },
             ].map(({ label, Icon }) => (
@@ -136,7 +139,7 @@ function Index() {
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
           <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
-          <h2 className="mt-3 text-3xl md:text-5xl">From Booking To Paycheck.</h2>
+          <h2 className="mt-3 text-3xl md:text-5xl">From Application To Paycheck.</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed md:whitespace-nowrap">Four simple steps. No credit check. No long wait. Get behind the wheel and start earning this week.</p>
         </FadeUp>
         <div className="relative">

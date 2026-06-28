@@ -6,7 +6,7 @@ export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
       <div className="grid grid-cols-2 gap-2 p-2">
         <a
           href="tel:+18135550100"
-          className="inline-flex items-center justify-center gap-2 rounded border border-real-red px-3 py-3 text-sm font-semibold text-real-red active:scale-95 transition"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-real-red px-3 py-3 text-sm font-semibold text-real-red active:scale-95 transition"
           aria-label="Call REAL RENTALS"
         >
           <Phone className="w-4 h-4" strokeWidth={2.25} /> Call Now
@@ -14,7 +14,7 @@ export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
         <button
           type="button"
           onClick={onApplyClick}
-          className="inline-flex items-center justify-center gap-2 rounded bg-real-red px-3 py-3 text-sm font-semibold text-white active:scale-95 transition"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-3 py-3 text-sm font-semibold text-white active:scale-95 transition"
         >
           Get Quote <ArrowRight className="w-4 h-4" />
         </button>

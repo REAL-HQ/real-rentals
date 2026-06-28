@@ -7,6 +7,7 @@ import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { submitApplication } from "@/lib/applications.functions";
 import { Logo } from "./Logo";
+import heroBg from "@/assets/hero-bg-new.jpg.asset.json";
 import heroCar from "@/assets/hero-economy-car.png.asset.json";
 
 export type QuoteLocation = {
@@ -42,66 +43,41 @@ const PHONE_HREF = "tel:+18135550100";
 
 export function QuoteHero(props: QuoteHeroProps) {
   return (
-    <section className="relative isolate overflow-hidden text-white">
-      {/* Lit studio backdrop */}
+    <section className="relative isolate overflow-hidden bg-black text-white">
       <div
         aria-hidden
-        className="absolute inset-0 -z-30 bg-[radial-gradient(ellipse_70%_60%_at_50%_72%,_#34343a_0%,_#1a1a1d_42%,_#0a0a0b_100%)]"
+        className="absolute inset-0 -z-20 bg-cover bg-center"
+        style={{ backgroundImage: `url(${heroBg.url})` }}
       />
-      {/* Soft brand glow */}
-      <div
-        aria-hidden
-        className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] -z-20 opacity-30 bg-[radial-gradient(circle_at_center,_#CC0000_0%,_transparent_60%)] blur-3xl"
-      />
-      {/* Top vignette */}
-      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/40 via-transparent to-black/50" />
+      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/80 via-black/60 to-black/85" />
 
       <div className="container-real">
         <HeroTopBar />
 
-        <div className="pt-4 pb-6 md:pt-6 md:pb-8">
-          <div className="mx-auto max-w-6xl text-center">
-            <h1 className="text-[32px] leading-[1.05] font-bold text-white md:text-[56px] lg:text-[64px] md:whitespace-nowrap">
-              {props.headline.split("\n").map((line, i) => (
-                <span key={i} className="block">
-                  {line}
-                </span>
-              ))}
+        <div className="pt-6 pb-8 md:pt-10 md:pb-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <h1 className="text-[32px] leading-[1.1] font-semibold text-white md:text-[56px]">
+              {props.headline}
             </h1>
-            <p className="mt-3 text-base leading-relaxed text-white/80 md:text-lg md:whitespace-nowrap">
+            <p className="mt-4 text-base leading-relaxed text-white/80 md:text-lg">
               {props.subhead}
             </p>
           </div>
 
-          <div className="relative z-10 mt-5 md:mt-6 mx-auto max-w-5xl">
+          <div className="mt-8 md:mt-10 mx-auto max-w-xl">
             <QuoteWidget {...props} />
           </div>
 
-          <div className="relative z-0 -mt-10 md:-mt-16 flex flex-col items-center justify-center">
-            <div className="relative w-full max-w-3xl md:max-w-4xl lg:max-w-5xl">
-              <img
-                src={heroCar.url}
-                alt="Clean, fuel-efficient economy sedan — rideshare ready"
-                width={1536}
-                height={1024}
-                className="w-full h-auto object-contain drop-shadow-2xl"
-                loading="eager"
-              />
-              {/* Ground shadow */}
-              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-[85%] h-6 rounded-[100%] bg-black/60 blur-xl" />
-              {/* Reflection */}
-              <div
-                aria-hidden
-                className="absolute -bottom-1 left-0 w-full h-[18%] opacity-20 pointer-events-none"
-                style={{
-                  background: "linear-gradient(to bottom, rgba(255,255,255,0.15), transparent)",
-                  maskImage: "linear-gradient(to top, black, transparent)",
-                  WebkitMaskImage: "linear-gradient(to top, black, transparent)",
-                  transform: "scaleY(-1)",
-                }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-white/60 tracking-wide">
+          <div className="mt-6 md:mt-8 flex flex-col items-center justify-center">
+            <img
+              src={heroCar.url}
+              alt="Clean, fuel-efficient economy sedan — rideshare ready"
+              width={1024}
+              height={768}
+              className="w-full max-w-md md:max-w-2xl object-contain drop-shadow-2xl"
+              loading="eager"
+            />
+            <p className="mt-2 text-xs text-white/60 tracking-wide">
               Clean, Fuel-Efficient Economy Cars — Rideshare Ready.
             </p>
           </div>
@@ -126,7 +102,7 @@ function HeroTopBar() {
         </a>
         <Link
           to="/apply"
-          className="inline-flex items-center rounded bg-real-red px-4 py-2 text-[13px] font-semibold text-white hover:bg-real-red/90 transition active:scale-95"
+          className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-semibold text-white hover:bg-real-red/90 transition active:scale-95"
         >
           Book Now
         </Link>
@@ -280,73 +256,82 @@ function CollapsedWidget({
   onGetQuote: () => void;
 }) {
   return (
-    <div>
-      <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1fr_auto] gap-3 md:gap-4 items-end">
-        <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">City</label>
-          {mode === "city" && city ? (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-soft px-3 py-2.5 text-sm font-semibold">
-              <MapPin className="w-4 h-4 text-real-red" />
-              {city.name}{city.state ? `, ${city.state}` : ""}
-            </div>
-          ) : (
-            <select
-              value={widget.city?.slug ?? ""}
-              onChange={(e) => {
-                const slug = e.target.value;
-                const next = locations?.find((l) => l.slug === slug) || null;
-                setWidget((w) => ({ ...w, city: next }));
-              }}
-              className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
-            >
-              <option value="">Select Your City</option>
-              {(locations ?? []).map((l) => (
-                <option key={l.slug} value={l.slug}>
-                  {l.name}{l.state ? `, ${l.state}` : ""} {l.status === "live" ? "" : "(Coming Soon)"}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental Length</label>
+    <div className="space-y-4">
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">City</label>
+        {mode === "city" && city ? (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-soft px-3 py-2.5 text-sm font-semibold">
+            <MapPin className="w-4 h-4 text-real-red" />
+            {city.name}{city.state ? `, ${city.state}` : ""}
+          </div>
+        ) : (
           <select
-            value={widget.rentalMode}
-            onChange={(e) => setWidget((w) => ({ ...w, rentalMode: e.target.value as "weekly" | "monthly" }))}
+            value={widget.city?.slug ?? ""}
+            onChange={(e) => {
+              const slug = e.target.value;
+              const next = locations?.find((l) => l.slug === slug) || null;
+              setWidget((w) => ({ ...w, city: next }));
+            }}
             className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
           >
-            <option value="weekly">By The Week</option>
-            <option value="monthly">By The Month</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Active On A Gig App?</label>
-          <select
-            value={widget.platformStatus}
-            onChange={(e) => setWidget((w) => ({ ...w, platformStatus: e.target.value as PlatformStatus | "" }))}
-            className="mt-2 w-full appearance-none rounded-lg border border-border bg-white px-3 py-2.5 text-sm select-soft"
-          >
-            <option value="">Select</option>
-            {PLATFORM_STATUSES.map((status) => (
-              <option key={status} value={status}>{status}</option>
+            <option value="">Select Your City</option>
+            {(locations ?? []).map((l) => (
+              <option key={l.slug} value={l.slug}>
+                {l.name}{l.state ? `, ${l.state}` : ""} {l.status === "live" ? "" : "(Coming Soon)"}
+              </option>
             ))}
           </select>
-        </div>
-
-        <button
-          type="button"
-          onClick={onGetQuote}
-          className="inline-flex items-center justify-center gap-2 rounded bg-real-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98] whitespace-nowrap"
-        >
-          Get My Quote <ArrowRight className="w-4 h-4" />
-        </button>
+        )}
       </div>
 
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Quick quote — no deposit, no credit check. We'll confirm your car on a fast call.
-      </p>
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rental Length</label>
+        <div className="mt-2 inline-flex rounded-lg border border-border bg-soft p-1 w-full">
+          {(["weekly", "monthly"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setWidget((w) => ({ ...w, rentalMode: m }))}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
+                widget.rentalMode === m
+                  ? "bg-real-red text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {m === "weekly" ? "By The Week" : "By The Month"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Active On A Gig App?</label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {PLATFORM_STATUSES.map((status) => {
+            const active = widget.platformStatus === status;
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setWidget((w) => ({ ...w, platformStatus: status }))}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition min-w-[80px] ${
+                  active ? "bg-real-red text-white border-real-red" : "bg-white text-foreground border-border hover:border-foreground/40"
+                }`}
+              >
+                {status}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onGetQuote}
+        className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98]"
+      >
+        Get My Quote <ArrowRight className="w-4 h-4" />
+      </button>
     </div>
   );
 }
@@ -436,7 +421,7 @@ function ExpandedForm({
         type="button"
         onClick={onContinue}
         disabled={submitting}
-        className="w-full inline-flex items-center justify-center gap-2 rounded bg-real-red px-6 py-3 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98] disabled:opacity-50"
+        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:bg-real-red/90 transition active:scale-[0.98] disabled:opacity-50"
       >
         {submitting ? "Saving…" : "Continue"} <ArrowRight className="w-4 h-4" />
       </button>
@@ -533,7 +518,7 @@ function WaitlistModal({ city, onClose }: { city: QuoteLocation; onClose: () => 
             <CheckCircle2 className="w-12 h-12 text-real-red mx-auto" />
             <h3 className="mt-4 text-2xl font-semibold">You&apos;re On The List</h3>
             <p className="mt-2 text-muted-foreground text-sm">We&apos;ll Tell You When {city.name} Opens.</p>
-            <button onClick={onClose} className="mt-6 rounded bg-real-red text-white px-6 py-2.5 text-sm font-medium hover:opacity-90 transition active:scale-95">
+            <button onClick={onClose} className="mt-6 rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium hover:opacity-90 transition active:scale-95">
               Close
             </button>
           </div>
@@ -567,7 +552,7 @@ function WaitlistModal({ city, onClose }: { city: QuoteLocation; onClose: () => 
                   ))}
                 </div>
               </div>
-              <button disabled={submitting} className="w-full rounded bg-real-red text-white py-3 text-sm font-semibold hover:opacity-90 transition active:scale-95 disabled:opacity-50">
+              <button disabled={submitting} className="w-full rounded-lg bg-real-red text-white py-3 text-sm font-semibold hover:opacity-90 transition active:scale-95 disabled:opacity-50">
                 {submitting ? "Submitting…" : "Notify Me"}
               </button>
             </form>

@@ -169,13 +169,10 @@ function CityPage() {
   const { site, market, content } = Route.useLoaderData();
   const cityLabel = market?.state ? `${site.title}, ${market.state}` : site.title;
   const ctaLabel = asString(content.cta_label) ?? "Get My Quote";
-  const headline = interpolate(
-    asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps\nIn ${site.title} This Week`,
-    site,
-    market,
-  );
+  const headline = interpolate(asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps In ${site.title} This Week`, site, market);
   const subhead = interpolate(
-    asString(content.hero_subhead) ?? `Insurance options available. Maintenance included. Fast approval.`,
+    asString(content.hero_subhead) ??
+      `Get matched with a rideshare-ready rental in ${cityLabel}. Unlimited miles, maintenance handled, insurance options, and flexible weekly terms.`,
     site,
     market,
   );
