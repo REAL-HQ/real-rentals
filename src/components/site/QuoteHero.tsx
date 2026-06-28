@@ -53,11 +53,11 @@ export function QuoteHero(props: QuoteHeroProps) {
         <HeroTopBar />
 
         <div className="pt-6 pb-8 md:pt-10 md:pb-12">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-[32px] leading-[1.1] font-semibold text-white md:text-[56px]">
+          <div className="mx-auto max-w-6xl text-center">
+            <h1 className="text-[32px] leading-[1.1] font-semibold text-white md:text-[52px] lg:text-[60px] md:whitespace-nowrap">
               {props.headline}
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-white/80 md:text-lg">
+            <p className="mt-4 text-base leading-relaxed text-white/80 md:text-lg md:whitespace-nowrap">
               {props.subhead}
             </p>
           </div>
