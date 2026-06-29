@@ -21,12 +21,10 @@ import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ContactRouteImport } from './routes/contact'
-import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
-import { Route as ApplyStep2RouteImport } from './routes/apply.step2'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -88,11 +86,6 @@ const ContactRoute = ContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApplyRoute = ApplyRouteImport.update({
-  id: '/apply',
-  path: '/apply',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -113,17 +106,11 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => FleetRoute,
 } as any)
-const ApplyStep2Route = ApplyStep2RouteImport.update({
-  id: '/step2',
-  path: '/step2',
-  getParentRoute: () => ApplyRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -136,14 +123,12 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -156,7 +141,6 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesById {
@@ -164,7 +148,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -177,7 +160,6 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRouteTypes {
@@ -186,7 +168,6 @@ export interface FileRouteTypes {
     | '/'
     | '/$slug'
     | '/admin'
-    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -199,14 +180,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/$slug'
     | '/admin'
-    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -219,14 +198,12 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   id:
     | '__root__'
     | '/'
     | '/$slug'
     | '/admin'
-    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -239,7 +216,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
 }
@@ -247,7 +223,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SlugRoute: typeof SlugRoute
   AdminRoute: typeof AdminRoute
-  ApplyRoute: typeof ApplyRouteWithChildren
   ContactRoute: typeof ContactRoute
   FaqRoute: typeof FaqRoute
   FleetRoute: typeof FleetRouteWithChildren
@@ -348,13 +323,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/apply': {
-      id: '/apply'
-      path: '/apply'
-      fullPath: '/apply'
-      preLoaderRoute: typeof ApplyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -383,25 +351,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof FleetRoute
     }
-    '/apply/step2': {
-      id: '/apply/step2'
-      path: '/step2'
-      fullPath: '/apply/step2'
-      preLoaderRoute: typeof ApplyStep2RouteImport
-      parentRoute: typeof ApplyRoute
-    }
   }
 }
-
-interface ApplyRouteChildren {
-  ApplyStep2Route: typeof ApplyStep2Route
-}
-
-const ApplyRouteChildren: ApplyRouteChildren = {
-  ApplyStep2Route: ApplyStep2Route,
-}
-
-const ApplyRouteWithChildren = ApplyRoute._addFileChildren(ApplyRouteChildren)
 
 interface FleetRouteChildren {
   FleetIdRoute: typeof FleetIdRoute
@@ -417,7 +368,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SlugRoute: SlugRoute,
   AdminRoute: AdminRoute,
-  ApplyRoute: ApplyRouteWithChildren,
   ContactRoute: ContactRoute,
   FaqRoute: FaqRoute,
   FleetRoute: FleetRouteWithChildren,
