@@ -170,6 +170,7 @@ function CityPage() {
         subhead={subhead}
         site={site}
         market={market}
+        ctaLabel={ctaLabel}
       />
 
       <section className="bg-white py-8 md:py-10">
