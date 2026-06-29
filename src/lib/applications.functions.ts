@@ -17,6 +17,8 @@ const submitApplicationSchema = z.object({
   state: nullableString,
   sms_consent: z.boolean().nullable().optional(),
   source: z.string().trim().max(40).nullable().optional(),
+  pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   utm_source: nullableString,
   utm_medium: nullableString,
   utm_campaign: nullableString,
