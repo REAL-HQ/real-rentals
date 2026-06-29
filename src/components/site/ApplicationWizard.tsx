@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, ArrowRight, Check, Loader2, Phone, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Phone, Upload, Car, Truck, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
@@ -161,10 +161,13 @@ export function ApplicationWizard({ id }: { id: string }) {
               how_heard: state.how_heard,
             })} saving={saving} />
           )}
-          {step === "complete" && <ConfirmationStep />}
-          <p className="mt-6 text-center text-[11px] text-muted-foreground">
-            Takes about a minute — no payment required to submit.
-          </p>
+          {step === "complete" ? (
+            <ConfirmationStep id={id} state={state} />
+          ) : (
+            <p className="mt-6 text-center text-[11px] text-muted-foreground">
+              Takes about a minute — no payment required to submit.
+            </p>
+          )}
         </div>
       </FadeUp>
     </div>
@@ -387,29 +390,99 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving }: StepProps &
   );
 }
 
-function ConfirmationStep() {
+function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
+  const firstName = (state.full_name || "").trim().split(/\s+/)[0] || "there";
+  const reference = `RR-${id.replace(/-/g, "").slice(-6).toUpperCase()}`;
+  const phone = "+18888888888";
+  const phoneDisplay = "(888) 888-8888";
+  const dateRange =
+    state.pickup_date && state.return_date
+      ? `${fmtDate(state.pickup_date)} – ${fmtDate(state.return_date)}`
+      : null;
+  const chips = [
+    state.city ? { icon: <CalendarCheck className="h-3.5 w-3.5" />, label: state.city } : null,
+    state.vehicle_size ? { icon: <Car className="h-3.5 w-3.5" />, label: state.vehicle_size } : null,
+    dateRange ? { icon: <CalendarCheck className="h-3.5 w-3.5" />, label: dateRange } : null,
+  ].filter(Boolean) as { icon: React.ReactNode; label: string }[];
+
+  const steps = [
+    { title: "We'll Review & Call You", desc: "A team member will review your request and reach out shortly to confirm details." },
+    { title: "Confirm Your Vehicle", desc: "We'll walk through availability and match you to the right vehicle for your needs." },
+    { title: "Pick Up Or Delivery", desc: "Choose to pick up at our lot or have your vehicle delivered to you." },
+  ];
+
   return (
-    <div className="text-center py-6">
-      <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-real-red/10 text-real-red">
-        <Check className="h-7 w-7" />
+    <div className="py-2">
+      <div className="flex flex-col items-center text-center">
+        <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-[#FCEBEB] text-real-red">
+          <Check className="h-8 w-8" strokeWidth={2.5} />
+        </div>
+        <h2 className="mt-6 text-2xl md:text-3xl font-semibold tracking-tight">Request Received — We'll Be In Touch</h2>
+        <p className="mt-3 text-sm md:text-base text-muted-foreground max-w-md">
+          Thanks, {firstName}. A member of our team will review your request and call you shortly to confirm availability and your vehicle.
+        </p>
+        <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-1.5 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold">Reference</span>
+          <span className="font-mono font-semibold text-foreground">#{reference}</span>
+        </div>
       </div>
-      <h2 className="mt-6 text-2xl md:text-3xl font-semibold">Application Received — You Qualify For A Premium Rental.</h2>
-      <p className="mt-4 text-sm text-muted-foreground">Next steps:</p>
-      <ol className="mt-3 inline-block text-left text-sm space-y-1">
-        <li>1) We'll call you shortly</li>
-        <li>2) Choose your vehicle</li>
-        <li>3) Vehicle delivery</li>
-      </ol>
-      <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
-        <a href="tel:+18888888888" className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90">
+
+      {chips.length > 0 && (
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          {chips.map((c, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-white border border-border px-3 py-1.5 text-xs text-foreground">
+              {c.icon}
+              {c.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-8">
+        <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-muted-foreground mb-4 text-center">What Happens Next</div>
+        <ol className="space-y-4">
+          {steps.map((s, i) => (
+            <li key={i} className="flex items-start gap-4 rounded-xl bg-white border border-border p-4">
+              <div className="flex-shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full bg-real-red text-white text-sm font-semibold">
+                {i + 1}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground">{s.title}</div>
+                <div className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{s.desc}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl bg-soft border border-border p-4">
+        <div className="text-sm">
+          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Questions Now?</div>
+          <a href={`tel:${phone}`} className="font-semibold text-foreground hover:text-real-red">{phoneDisplay}</a>
+        </div>
+        <span className="text-xs text-muted-foreground">We typically respond within a few hours.</span>
+      </div>
+
+      <div className="mt-5 flex flex-col sm:flex-row gap-3">
+        <a href={`tel:${phone}`} className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90">
           <Phone className="h-4 w-4" /> Call Now
         </a>
-        <Link to="/fleet" className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40">
+        <Link to="/fleet" className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40">
           Browse Vehicles
         </Link>
       </div>
+
+      <p className="mt-5 text-center text-[11px] text-muted-foreground">
+        We typically respond within a few hours · No payment required.
+      </p>
     </div>
   );
+}
+
+function fmtDate(s: string) {
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
