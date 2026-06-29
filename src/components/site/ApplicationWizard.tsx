@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, ArrowRight, Check, Loader2, Phone, Upload, Car, CalendarCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Mail, Phone, Upload, Car, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
@@ -395,6 +395,7 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
   const reference = `RR-${id.replace(/-/g, "").slice(-6).toUpperCase()}`;
   const phone = "+18888888888";
   const phoneDisplay = "(888) 888-8888";
+  const email = "hello@realrentals.com";
   const dateRange =
     state.pickup_date && state.return_date
       ? `${fmtDate(state.pickup_date)} – ${fmtDate(state.return_date)}`
@@ -455,17 +456,24 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
         </ol>
       </div>
 
-      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl bg-soft border border-border p-4">
-        <div className="text-sm">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Questions Now?</div>
-          <a href={`tel:${phone}`} className="font-semibold text-foreground hover:text-real-red">{phoneDisplay}</a>
+      <div className="mt-6 rounded-xl bg-white border border-border p-4">
+        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">Questions Now?</div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+          <a href={`tel:${phone}`} className="inline-flex items-center gap-2 text-sm font-semibold text-foreground hover:text-real-red">
+            <Phone className="h-4 w-4 text-real-red" /> {phoneDisplay}
+          </a>
+          <a href={`mailto:${email}`} className="inline-flex items-center gap-2 text-sm font-semibold text-foreground hover:text-real-red break-all">
+            <Mail className="h-4 w-4 text-real-red" /> {email}
+          </a>
         </div>
-        <span className="text-xs text-muted-foreground">We typically respond within a few hours.</span>
       </div>
 
-      <div className="mt-5 flex flex-col sm:flex-row gap-3">
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <a href={`tel:${phone}`} className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90">
           <Phone className="h-4 w-4" /> Call Now
+        </a>
+        <a href={`mailto:${email}`} className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40">
+          <Mail className="h-4 w-4" /> Email Us
         </a>
         <Link to="/fleet" className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40">
           Browse Vehicles
