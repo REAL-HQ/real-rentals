@@ -21,6 +21,7 @@ import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
@@ -86,6 +87,11 @@ const ContactRoute = ContactRouteImport.update({
   path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApplyRoute = ApplyRouteImport.update({
+  id: '/apply',
+  path: '/apply',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$slug'
     | '/admin'
+    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$slug'
     | '/admin'
+    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$slug'
     | '/admin'
+    | '/apply'
     | '/contact'
     | '/faq'
     | '/fleet'
@@ -223,6 +235,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SlugRoute: typeof SlugRoute
   AdminRoute: typeof AdminRoute
+  ApplyRoute: typeof ApplyRoute
   ContactRoute: typeof ContactRoute
   FaqRoute: typeof FaqRoute
   FleetRoute: typeof FleetRouteWithChildren
@@ -323,6 +336,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/apply': {
+      id: '/apply'
+      path: '/apply'
+      fullPath: '/apply'
+      preLoaderRoute: typeof ApplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -368,6 +388,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SlugRoute: SlugRoute,
   AdminRoute: AdminRoute,
+  ApplyRoute: ApplyRoute,
   ContactRoute: ContactRoute,
   FaqRoute: FaqRoute,
   FleetRoute: FleetRouteWithChildren,
