@@ -120,9 +120,7 @@ export function Nav() {
           </a>
         </div>
         <div className="flex items-center gap-3">
-          {!authReady ? (
-            <div className="h-8 w-24" aria-hidden />
-          ) : session ? (
+          {authReady && session ? (
             <>
               {(isPartner || isDriver) && (
                 <DropdownMenu>
@@ -204,15 +202,15 @@ export function Nav() {
               </DropdownMenuContent>
             </DropdownMenu>
             </>
-          ) : (
+          ) : !session ? (
             <Link
               to="/admin"
               className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
             >
               Log In
             </Link>
-          )}
-          {authReady && !session && (
+          ) : null}
+          {!session && (
             <Link
               to="/apply"
               className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
@@ -220,7 +218,7 @@ export function Nav() {
               Book Now
             </Link>
           )}
-          {authReady && !session && (
+          {!session && (
             <button
               className="p-2 -mr-2"
               onClick={() => setOpen((o) => !o)}
