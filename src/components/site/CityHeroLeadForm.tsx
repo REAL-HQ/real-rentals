@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
