@@ -79,6 +79,11 @@ export function CityHeroLeadForm({
     if (!z.string().email().safeParse(form.email).success) next.email = "Invalid Email";
     if (!/^\d{7,}$/.test(form.phone.replace(/\D/g, ""))) next.phone = "Invalid Phone";
     if (!form.platform_status) next.platform_status = "Required";
+    if (!form.pickup_date) next.pickup_date = "Required";
+    if (!form.return_date) next.return_date = "Required";
+    if (form.pickup_date && form.return_date && form.return_date <= form.pickup_date) {
+      next.return_date = "Must be after pick up date";
+    }
     if (!form.sms_consent) next.sms_consent = "Required";
     if (!form.terms_accepted) next.terms_accepted = "Required";
     setErrors(next);
