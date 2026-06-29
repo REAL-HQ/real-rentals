@@ -25,6 +25,7 @@ export function CityHeroLeadForm({
   headline,
   subhead,
   id,
+  ctaLabel = "Get My Quote",
 }: {
   site: Site;
   market: Market | null;
@@ -32,7 +33,11 @@ export function CityHeroLeadForm({
   headline: string;
   subhead: React.ReactNode;
   id?: string;
+  ctaLabel?: string;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const scrollToCard = () => cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   const navigate = useNavigate();
   const saveApplication = useServerFn(submitApplication);
   const [form, setForm] = useState({
