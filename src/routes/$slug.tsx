@@ -24,7 +24,6 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
-import { submitApplication } from "@/lib/applications.functions";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ComparisonSection } from "@/components/site/ComparisonSection";

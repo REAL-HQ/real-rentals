@@ -4,11 +4,9 @@ import { ArrowRight } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
-import { submitApplication } from "@/lib/applications.functions";
+import { savePartialApplication } from "@/lib/applications.functions";
 import { FadeUp } from "./FadeUp";
 import heroBg from "@/assets/hero-bg.jpg";
-
-const PLATFORM_STATUSES = ["Yes", "Pending", "Not Yet"] as const;
 
 type Site = {
   id: string;
@@ -40,16 +38,16 @@ export function CityHeroLeadForm({
   const scrollToCard = () => cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const navigate = useNavigate();
-  const saveApplication = useServerFn(submitApplication);
+  const saveApplication = useServerFn(savePartialApplication);
+  // honeypot
+  const [hp, setHp] = useState("");
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
     email: "",
     pickup_date: "",
     return_date: "",
-    platform_status: "",
     sms_consent: false,
-    terms_accepted: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -78,19 +76,18 @@ export function CityHeroLeadForm({
     if (!z.string().min(2).safeParse(form.full_name).success) next.full_name = "Required";
     if (!z.string().email().safeParse(form.email).success) next.email = "Invalid Email";
     if (!/^\d{7,}$/.test(form.phone.replace(/\D/g, ""))) next.phone = "Invalid Phone";
-    if (!form.platform_status) next.platform_status = "Required";
     if (!form.pickup_date) next.pickup_date = "Required";
     if (!form.return_date) next.return_date = "Required";
     if (form.pickup_date && form.return_date && form.return_date <= form.pickup_date) {
       next.return_date = "Must be after pick up date";
     }
     if (!form.sms_consent) next.sms_consent = "Required";
-    if (!form.terms_accepted) next.terms_accepted = "Required";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
   async function submit() {
+    if (hp) return; // bot
     if (!validate()) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -100,14 +97,13 @@ export function CityHeroLeadForm({
       full_name: form.full_name,
       phone: form.phone,
       email: form.email,
-      platform_status: form.platform_status as "Yes" | "Pending" | "Not Yet",
       pickup_date: form.pickup_date || null,
       return_date: form.return_date || null,
       market_id: site.market_id,
       city: market?.name ?? site.title,
       state: market?.state ?? null,
       sms_consent: form.sms_consent,
-      source: "city_lp",
+      source: "city_lp" as const,
       ...utms,
     };
     try {
@@ -115,7 +111,7 @@ export function CityHeroLeadForm({
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("lead", { detail: { city: site.slug, applicationId: data.id } }));
       }
-      navigate({ to: "/apply/step2", search: { id: data.id } });
+      navigate({ to: "/apply", search: { id: data.id } });
     } catch (error: any) {
       toast.error(error?.message || "Could not submit your application. Please try again.");
     } finally {
@@ -148,32 +144,14 @@ export function CityHeroLeadForm({
 
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 5</div>
             <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
+            {/* honeypot */}
+            <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />
             <div className="mt-6 grid grid-cols-1 gap-4">
               <Field label="Full Name" value={form.full_name} error={errors.full_name} onChange={(value) => update("full_name", value)} />
               <Field label="Phone" value={form.phone} error={errors.phone} onChange={(value) => update("phone", value)} />
               <Field label="Email" type="email" value={form.email} error={errors.email} onChange={(value) => update("email", value)} />
-
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Are You Already Active On A Gig App?</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {PLATFORM_STATUSES.map((status) => {
-                    const active = form.platform_status === status;
-                    return (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => update("platform_status", status)}
-                        className={`rounded-lg border px-5 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
-                      >
-                        {status}
-                      </button>
-                    );
-                  })}
-                </div>
-                {errors.platform_status && <div className="mt-2 text-sm text-real-red">{errors.platform_status}</div>}
-              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
@@ -210,21 +188,6 @@ export function CityHeroLeadForm({
             </label>
             {errors.sms_consent && <div className="mt-2 text-sm text-real-red">{errors.sms_consent}</div>}
 
-            <label className="mt-4 flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.terms_accepted}
-                onChange={(e) => update("terms_accepted", e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-real-red shrink-0"
-              />
-              <span className="text-[11px] leading-snug text-muted-foreground">
-                I agree to the{" "}
-                <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
-                <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
-              </span>
-            </label>
-            {errors.terms_accepted && <div className="mt-2 text-sm text-real-red">{errors.terms_accepted}</div>}
-
             <button
               type="button"
               onClick={submit}
@@ -233,6 +196,11 @@ export function CityHeroLeadForm({
             >
               {submitting ? "Saving…" : "Continue"}
             </button>
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">
+              By submitting, you agree to our{" "}
+              <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
+              <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+            </p>
           </div>
         </FadeUp>
       </div>

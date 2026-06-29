@@ -42,20 +42,25 @@ export type Database = {
           consent_prepay: boolean | null
           consent_terms: boolean | null
           created_at: string | null
+          current_step: string | null
           deposit_amount: number | null
           deposit_paid: number | null
           deposit_status: string
           dob: string | null
           earnings_verified_status: string
           email: string
+          full_coverage_insurance: boolean | null
           full_name: string
           gclid: string | null
+          gig_status: string | null
+          how_heard: string | null
           id: string
           incident_count: number
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
           license_state: string | null
+          license_valid: boolean | null
           market_id: string | null
           mvr_status: string
           notes: string | null
@@ -67,15 +72,19 @@ export type Database = {
           platform_active: boolean | null
           platform_status: string | null
           platforms: string[] | null
+          profile_screenshot_url: string | null
           rating: number | null
+          rental_duration: string | null
           rental_length: string | null
           rental_term: string | null
           return_date: string | null
           return_time: string | null
           rideshare_history_status: string
+          score: number
           sms_consent: boolean | null
           source: string | null
           start_date: string | null
+          start_timing: string | null
           state: string | null
           status: string
           trips_completed: string | null
@@ -87,6 +96,7 @@ export type Database = {
           utm_source: string | null
           utm_term: string | null
           vehicle_id: string | null
+          vehicle_size: string | null
           weekly_hours: number | null
           weekly_rent: number | null
           years_licensed: number | null
@@ -101,20 +111,25 @@ export type Database = {
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
           created_at?: string | null
+          current_step?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
           dob?: string | null
           earnings_verified_status?: string
           email: string
+          full_coverage_insurance?: boolean | null
           full_name: string
           gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
           id?: string
           incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          license_valid?: boolean | null
           market_id?: string | null
           mvr_status?: string
           notes?: string | null
@@ -126,15 +141,19 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          profile_screenshot_url?: string | null
           rating?: number | null
+          rental_duration?: string | null
           rental_length?: string | null
           rental_term?: string | null
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
+          score?: number
           sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
+          start_timing?: string | null
           state?: string | null
           status?: string
           trips_completed?: string | null
@@ -146,6 +165,7 @@ export type Database = {
           utm_source?: string | null
           utm_term?: string | null
           vehicle_id?: string | null
+          vehicle_size?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null
@@ -160,20 +180,25 @@ export type Database = {
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
           created_at?: string | null
+          current_step?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
           dob?: string | null
           earnings_verified_status?: string
           email?: string
+          full_coverage_insurance?: boolean | null
           full_name?: string
           gclid?: string | null
+          gig_status?: string | null
+          how_heard?: string | null
           id?: string
           incident_count?: number
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
           license_state?: string | null
+          license_valid?: boolean | null
           market_id?: string | null
           mvr_status?: string
           notes?: string | null
@@ -185,15 +210,19 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          profile_screenshot_url?: string | null
           rating?: number | null
+          rental_duration?: string | null
           rental_length?: string | null
           rental_term?: string | null
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
+          score?: number
           sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
+          start_timing?: string | null
           state?: string | null
           status?: string
           trips_completed?: string | null
@@ -205,6 +234,7 @@ export type Database = {
           utm_source?: string | null
           utm_term?: string | null
           vehicle_id?: string | null
+          vehicle_size?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null

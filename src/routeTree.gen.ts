@@ -26,7 +26,6 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
-import { Route as ApplyStep2RouteImport } from './routes/apply.step2'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -113,17 +112,12 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => FleetRoute,
 } as any)
-const ApplyStep2Route = ApplyStep2RouteImport.update({
-  id: '/step2',
-  path: '/step2',
-  getParentRoute: () => ApplyRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -136,14 +130,13 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -156,7 +149,6 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesById {
@@ -164,7 +156,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$slug': typeof SlugRoute
   '/admin': typeof AdminRoute
-  '/apply': typeof ApplyRouteWithChildren
+  '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
   '/fleet': typeof FleetRouteWithChildren
@@ -177,7 +169,6 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
-  '/apply/step2': typeof ApplyStep2Route
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRouteTypes {
@@ -199,7 +190,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -219,7 +209,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   id:
     | '__root__'
@@ -239,7 +228,6 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
-    | '/apply/step2'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
 }
@@ -247,7 +235,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SlugRoute: typeof SlugRoute
   AdminRoute: typeof AdminRoute
-  ApplyRoute: typeof ApplyRouteWithChildren
+  ApplyRoute: typeof ApplyRoute
   ContactRoute: typeof ContactRoute
   FaqRoute: typeof FaqRoute
   FleetRoute: typeof FleetRouteWithChildren
@@ -383,25 +371,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof FleetRoute
     }
-    '/apply/step2': {
-      id: '/apply/step2'
-      path: '/step2'
-      fullPath: '/apply/step2'
-      preLoaderRoute: typeof ApplyStep2RouteImport
-      parentRoute: typeof ApplyRoute
-    }
   }
 }
-
-interface ApplyRouteChildren {
-  ApplyStep2Route: typeof ApplyStep2Route
-}
-
-const ApplyRouteChildren: ApplyRouteChildren = {
-  ApplyStep2Route: ApplyStep2Route,
-}
-
-const ApplyRouteWithChildren = ApplyRoute._addFileChildren(ApplyRouteChildren)
 
 interface FleetRouteChildren {
   FleetIdRoute: typeof FleetIdRoute
@@ -417,7 +388,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SlugRoute: SlugRoute,
   AdminRoute: AdminRoute,
-  ApplyRoute: ApplyRouteWithChildren,
+  ApplyRoute: ApplyRoute,
   ContactRoute: ContactRoute,
   FaqRoute: FaqRoute,
   FleetRoute: FleetRouteWithChildren,
@@ -434,13 +405,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

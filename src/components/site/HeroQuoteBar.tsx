@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import heroBg from "@/assets/hero-bg.jpg";
@@ -23,8 +23,9 @@ export function HeroQuoteBar({
     presetCitySlug && presetCityLabel ? [{ slug: presetCitySlug, label: presetCityLabel }] : [],
   );
   const [city, setCity] = useState(presetCitySlug ?? "");
-  const [length, setLength] = useState("By The Week");
-  const [gig, setGig] = useState("");
+  const [pickup, setPickup] = useState("");
+  const [returnDate, setReturnDate] = useState("");
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
     (async () => {
@@ -49,15 +50,15 @@ export function HeroQuoteBar({
 
   function submit() {
     const target = city || presetCitySlug;
-    if (!target) return;
+    if (!target || !pickup || !returnDate) return;
     if (presetCitySlug && target === presetCitySlug) {
       document.getElementById("quote-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     const qs = new URLSearchParams();
     qs.set("city", target);
-    if (length) qs.set("len", length);
-    if (gig) qs.set("gig", gig);
+    qs.set("pickup", pickup);
+    qs.set("return", returnDate);
     window.location.href = `/apply?${qs.toString()}#quote-form`;
   }
 
@@ -87,26 +88,8 @@ export function HeroQuoteBar({
               placeholder="Select Your City"
               options={cities.map((c) => ({ value: c.slug, label: c.label }))}
             />
-            <SelectField
-              label="Rental Length"
-              value={length}
-              onChange={setLength}
-              options={[
-                { value: "By The Week", label: "By The Week" },
-                { value: "By The Month", label: "By The Month" },
-              ]}
-            />
-            <SelectField
-              label="Active On A Gig App?"
-              value={gig}
-              onChange={setGig}
-              placeholder="Select"
-              options={[
-                { value: "Yes", label: "Yes" },
-                { value: "Pending", label: "Pending" },
-                { value: "Not Yet", label: "Not Yet" },
-              ]}
-            />
+            <DateField label="Pick Up Date" min={today} value={pickup} onChange={setPickup} />
+            <DateField label="Return Date" min={pickup || today} value={returnDate} onChange={setReturnDate} />
             <button
               type="button"
               onClick={submit}
@@ -155,6 +138,21 @@ function SelectField({
           <path fill="currentColor" d="M5.5 7.5L10 12l4.5-4.5z" />
         </svg>
       </div>
+    </label>
+  );
+}
+
+function DateField({ label, value, onChange, min }: { label: string; value: string; onChange: (v: string) => void; min?: string }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">{label}</span>
+      <input
+        type="date"
+        min={min}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1.5 w-full rounded-lg border border-border bg-white px-4 py-3 text-sm font-medium text-foreground focus:outline-none focus:border-real-red"
+      />
     </label>
   );
 }
