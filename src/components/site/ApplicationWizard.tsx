@@ -48,7 +48,6 @@ type WizardState = {
 const GIG_OPTS = ["Yes, already driving", "Not yet, ready to start", "No"];
 const START_OPTS = ["Today", "This week", "Within 2 weeks", "Just checking options"];
 const VEHICLE_OPTS = ["Sedan", "SUV", "XL"];
-const DURATION_OPTS = ["1-2 weeks", "2-4 weeks", "1-2 months", "3+ months"];
 const PLATFORM_OPTS = ["Uber", "Lyft", "DoorDash", "Uber Eats", "Instacart", "GrubHub", "Amazon Flex", "Other"];
 const HOW_HEARD_OPTS = ["Facebook", "Instagram", "Referral", "Google", "Other"];
 
@@ -141,7 +140,6 @@ export function ApplicationWizard({ id }: { id: string }) {
           {step === "rental" && (
             <RentalStep state={state} update={update} onBack={goBack} onNext={() => goNext("gig", {
               vehicle_size: state.vehicle_size,
-              rental_duration: state.rental_duration,
               pickup_date: state.pickup_date,
               return_date: state.return_date,
             })} saving={saving} />
@@ -286,18 +284,26 @@ function EligibilityStep({ state, update, onNext, saving }: StepProps & { onNext
 }
 
 function RentalStep({ state, update, onBack, onNext, saving }: StepProps & { onBack: () => void; onNext: () => void }) {
-  const canNext = !!state.vehicle_size && !!state.rental_duration && !!state.pickup_date && !!state.return_date && state.return_date > state.pickup_date;
+  const canNext = !!state.vehicle_size && !!state.pickup_date && !!state.return_date && state.return_date > state.pickup_date;
   const today = new Date().toISOString().slice(0, 10);
+  const days =
+    state.pickup_date && state.return_date && state.return_date > state.pickup_date
+      ? Math.round((new Date(state.return_date).getTime() - new Date(state.pickup_date).getTime()) / 86400000)
+      : null;
   return (
     <div>
       <StepHeader eyebrow="Step 2 of 4" title="Rental Details" sub="Confirm what you need and when." />
       <div className="space-y-6">
         <RadioGroup label="Which Vehicle Size Are You Interested In?" value={state.vehicle_size as any} options={VEHICLE_OPTS} onChange={(v) => update("vehicle_size", v)} />
-        <RadioGroup label="How Long Are You Looking To Rent?" value={state.rental_duration as any} options={DURATION_OPTS} onChange={(v) => update("rental_duration", v)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <DateField label="Pick Up Date" min={today} value={state.pickup_date ?? ""} onChange={(v) => update("pickup_date", v)} />
           <DateField label="Return Date" min={state.pickup_date ?? today} value={state.return_date ?? ""} onChange={(v) => update("return_date", v)} />
         </div>
+        {days !== null && (
+          <div className="text-xs text-muted-foreground">
+            Rental Length: <span className="font-semibold text-foreground">{days} {days === 1 ? "day" : "days"}</span>
+          </div>
+        )}
       </div>
       <NavRow onBack={onBack} onNext={onNext} saving={saving} canNext={canNext} />
     </div>
