@@ -107,9 +107,9 @@ export function CityHeroLeadForm({
   }
 
   return (
-    <section id={id} className="relative isolate overflow-hidden px-6 md:px-12 pt-24 md:pt-32 pb-14 md:pb-20 text-center text-white">
+    <section id={id} className="relative isolate overflow-hidden flex flex-col min-h-[620px] md:min-h-[88vh] px-6 md:px-12 pt-24 md:pt-32 pb-10 md:pb-16 text-center text-white">
       <div aria-hidden className="absolute inset-0 -z-20 bg-cover bg-center" style={{ backgroundImage: `url(${heroBg})` }} />
-      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/75 via-black/60 to-black/85" />
+      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/80 via-black/15 to-black/90" />
       <FadeUp>
         <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{eyebrow}</div>
         <h1 className="mt-4 text-[40px] md:text-[72px] leading-[1.02] font-semibold text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
@@ -120,8 +120,8 @@ export function CityHeroLeadForm({
         </p>
       </FadeUp>
 
-      <FadeUp delay={80}>
-        <div className="mt-10 max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
+      <FadeUp delay={80} className="mt-auto w-full">
+        <div className="mt-10 md:mt-16 max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
           <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
           <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
           <div className="mt-6 grid grid-cols-1 gap-4">
