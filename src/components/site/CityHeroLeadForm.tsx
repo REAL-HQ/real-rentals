@@ -121,17 +121,20 @@ export function CityHeroLeadForm({
       </FadeUp>
 
       <FadeUp delay={80} className="mt-auto w-full">
-        <div className="mt-10 md:mt-16 max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
-          <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
-          <div className="mt-6 grid grid-cols-1 gap-4">
+        <div className="mt-10 md:mt-16 max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 md:gap-6">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 2</div>
+              <h2 className="mt-1 text-2xl font-semibold">Get My Quote</h2>
+            </div>
+          </div>
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-4">
             <Field label="Full Name" value={form.full_name} error={errors.full_name} onChange={(value) => update("full_name", value)} />
             <Field label="Phone" value={form.phone} error={errors.phone} onChange={(value) => update("phone", value)} />
             <Field label="Email" type="email" value={form.email} error={errors.email} onChange={(value) => update("email", value)} />
-
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Are You Already Active On A Gig App?</label>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Active On A Gig App?</label>
+              <div className="mt-1 flex flex-wrap gap-2">
                 {PLATFORM_STATUSES.map((status) => {
                   const active = form.platform_status === status;
                   return (
@@ -139,7 +142,7 @@ export function CityHeroLeadForm({
                       key={status}
                       type="button"
                       onClick={() => update("platform_status", status)}
-                      className={`rounded-lg border px-5 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                      className={`rounded-lg border px-3 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
                     >
                       {status}
                     </button>
@@ -184,7 +187,7 @@ export function CityHeroLeadForm({
             type="button"
             onClick={submit}
             disabled={submitting}
-            className="mt-7 inline-flex w-full items-center justify-center rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+            className="mt-6 inline-flex w-full md:w-auto md:min-w-[220px] items-center justify-center rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
           >
             {submitting ? "Saving…" : "Continue"}
           </button>
