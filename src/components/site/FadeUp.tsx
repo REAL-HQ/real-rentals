@@ -10,31 +10,25 @@ export function FadeUp({
   delay?: number;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [inView, setInView] = useState(false);
+  // Default to visible so SSR/initial paint shows content immediately.
+  // Only hide-then-fade if the element is actually below the fold on mount.
+  const [inView, setInView] = useState(true);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // Respect reduced motion and show immediately.
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      setInView(true);
-      return;
-    }
-    // If already in the viewport on mount (e.g. above-the-fold hero,
-    // bfcache restore, fast reload), reveal right away. IntersectionObserver
-    // can otherwise miss the initial intersection during hydration.
+    if (typeof window === "undefined") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const rect = el.getBoundingClientRect();
     const vh = window.innerHeight || document.documentElement.clientHeight;
-    const vw = window.innerWidth || document.documentElement.clientWidth;
-    if (rect.top < vh && rect.bottom > 0 && rect.left < vw && rect.right > 0) {
-      const id = window.setTimeout(() => setInView(true), delay);
-      return () => window.clearTimeout(id);
-    }
-    // Safety net: if the observer never fires for any reason, reveal after 1.5s.
+    // If already on screen, leave it visible — no fade.
+    if (rect.top < vh && rect.bottom > 0) return;
+    // Below the fold: hide and observe for scroll-in.
+    setInView(false);
     const fallback = window.setTimeout(() => setInView(true), 1500 + delay);
     const obs = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) {
-          setTimeout(() => setInView(true), delay);
+          window.setTimeout(() => setInView(true), delay);
           window.clearTimeout(fallback);
           obs.disconnect();
         }
