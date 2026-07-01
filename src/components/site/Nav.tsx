@@ -215,7 +215,7 @@ export function Nav() {
               to="/apply"
               className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
             >
-              Get My Quote
+              Book Now
             </Link>
           )}
           {!session && (
@@ -255,7 +255,7 @@ export function Nav() {
                     onClick={() => setOpen(false)}
                     className="inline-flex w-full justify-center rounded-lg bg-real-red px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition active:scale-95"
                   >
-                    Get My Quote
+                    Book Now
                   </Link>
                 </div>
               )}
