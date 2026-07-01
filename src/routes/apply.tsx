@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
-import { ApplicationWizard } from "@/components/site/ApplicationWizard";
+import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -131,7 +131,8 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
   return (
     <FadeUp>
       <div className="max-w-xl mx-auto">
-        <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 5</div>
+        <ProgressBar current="your_info" source="homepage" />
+        <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 5</div>
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">We'll save your spot and call you shortly.</p>
 
