@@ -37,14 +37,6 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <div className="text-muted-foreground text-sm">No Photo</div>
         )}
       </div>
-      <div className="mt-4 flex items-center gap-2 text-xs font-medium">
-        <span className={`relative inline-flex h-2 w-2 rounded-full ${statusMeta.dot}`}>
-          {status === "available" && (
-            <span className={`absolute inset-0 rounded-full ${statusMeta.dot} animate-ping opacity-60`} />
-          )}
-        </span>
-        <span className={statusMeta.color}>{statusMeta.label}</span>
-      </div>
       <div className="mt-2 flex items-start justify-between gap-4">
         <div>
           <div className="text-lg font-semibold text-foreground leading-tight">
