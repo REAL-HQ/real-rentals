@@ -17,9 +17,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "REAL RENTALS | Start Driving. Start Earning. This Week." },
-      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. Insurance included. Maintenance included. Fast approval." },
+      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. No deposit. Maintenance included. Fast approval." },
       { property: "og:title", content: "Start Driving. Start Earning. This Week." },
-      { property: "og:description", content: "Insurance included and maintenance included. Fast approval. Drive this week." },
+      { property: "og:description", content: "No deposit. Maintenance included. Fast approval. Drive this week." },
     ],
   }),
   component: Index,
@@ -56,7 +56,7 @@ function Index() {
           <>
             Rent a vehicle for Uber, Lyft, DoorDash and delivery work.
             <br />
-            Insurance included. Maintenance included. Fast approval. Drive this week.
+            No deposit. Maintenance included. Fast approval. Drive this week.
           </>
         }
       />
@@ -144,7 +144,7 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { I: Shield, t: "Insurance Included", d: "Insurance is included with every rental so you can get covered and focus on driving." },
+              { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement (Roamly-verified)." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
@@ -227,11 +227,11 @@ function Index() {
               { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
               { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
               { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
-              { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, driver support, and insurance included." },
+              { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and 24/7 driver support. You carry your own auto insurance (rideshare/delivery coverage as applicable) — we'll walk you through exactly what's needed on your qualification call." },
               { q: "Can I drive for Uber and Lyft?", a: "Most vehicles qualify for both Uber and Lyft on the same car. Some are delivery-focused, so each listing shows what it's approved for." },
               { q: "Are maintenance and repairs included?", a: "Routine, scheduled maintenance is on us. Your rental agreement spells out exactly what's covered and what's driver-responsible." },
               { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
-              { q: "Is insurance included?", a: "Yes. Insurance is included with every rental, and our team will walk you through coverage before you sign." },
+              { q: "Do I need my own insurance?", a: "Yes. Drivers maintain their own auto insurance with rideshare or delivery coverage as applicable. Our team will explain exactly what's required on your qualification call and can point you to gig-friendly options." },
               { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
               { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },
               { q: "How do fleet partners earn money?", a: "Partners earn passive monthly income on a 50/50 split of rent collected. We handle drivers, screening, collections, and maintenance." },
