@@ -430,7 +430,7 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
   const reference = `RR-${id.replace(/-/g, "").slice(-6).toUpperCase()}`;
   const phone = "+18888888888";
   const phoneDisplay = "(888) 888-8888";
-  const email = "hello@realrentals.com";
+  const email = "leads@drivereal.com";
   const dateRange =
     state.pickup_date && state.return_date
       ? `${fmtDate(state.pickup_date)} – ${fmtDate(state.return_date)}`
