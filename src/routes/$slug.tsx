@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -10,6 +10,8 @@ import {
   ClipboardCheck,
   CreditCard,
   FileText,
+  Gauge,
+  Headphones,
   IdCard,
   KeyRound,
   MapPin,
@@ -18,6 +20,8 @@ import {
   Smartphone,
   Sparkles,
   UserCheck,
+  Users,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { z } from "zod";
@@ -50,7 +54,7 @@ type GigPlatforms = { items?: string[]; disclaimer?: string };
 
 const defaultHowItWorks: Step[] = [
   { n: "01", title: "Book Your Car", body: "Share your contact details and rental timeline so we can start your quote." },
-  { n: "02", title: "Same Day Approval", body: "Our team reviews your application quickly and confirms the best next steps." },
+  { n: "02", title: "Same Day Review", body: "Our team reviews your application the same day and confirms your pickup window — most drivers are approved within hours." },
   { n: "03", title: "Pick Up", body: "We match you to the right vehicle type and schedule pickup once you are cleared." },
   { n: "04", title: "Start Earning", body: "Use the vehicle for rideshare and delivery platforms with weekly flexibility." },
 ];
@@ -136,12 +140,22 @@ export const Route = createFileRoute("/$slug")({
 
 function CityPage() {
   const { site, market, content } = Route.useLoaderData();
+  const [adMode, setAdMode] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setAdMode(new URLSearchParams(window.location.search).get("v") === "ad");
+  }, []);
   const cityLabel = market?.state ? `${site.title}, ${market.state}` : site.title;
   const ctaLabel = asString(content.cta_label) ?? "Get My Quote";
-  const headline = interpolate(asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps In ${site.title} This Week`, site, market);
+  const headline = interpolate(
+    asString(content.hero_headline) ??
+      `Driving For Uber, Lyft Or Delivery Apps In ${site.title}? Get A Car This Week.`,
+    site,
+    market,
+  );
   const subhead = interpolate(
     asString(content.hero_subhead) ??
-      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nNo deposit. Maintenance included. Fast approval. Drive this week.",
+      "No Deposit. Maintenance Included. Unlimited Miles.\nMost Drivers Are On The Road Within 24 Hours.",
     site,
     market,
   );
@@ -152,7 +166,7 @@ function CityPage() {
   const howItWorks = arrayOfObjects<Step>(content.how_it_works, defaultHowItWorks);
   const localIntro = interpolate(
     asString(content.local_intro) ??
-      `${site.title} drivers need a fast, flexible rental path that works for rideshare, delivery, airport runs, and everyday gig work. REAL RENTALS helps you get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
+      `From Quote To Keys — Most Drivers Are On The Road Within 24 Hours. REAL RENTALS helps ${site.title} gig drivers get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
     site,
     market,
   );
@@ -161,7 +175,7 @@ function CityPage() {
   const scrollToForm = () => document.getElementById("quote-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <SiteLayout>
+    <SiteLayout adMode={adMode}>
       <CityHeroLeadForm
         id="quote-form"
         eyebrow={eyebrow}
@@ -170,6 +184,7 @@ function CityPage() {
         site={site}
         market={market}
         ctaLabel={ctaLabel}
+        adMode={adMode}
       />
 
       <section className="bg-white py-8 md:py-10">
@@ -226,23 +241,30 @@ function CityPage() {
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             {vehicleTypes.map((vehicle, index) => (
               <FadeUp key={vehicle.name} delay={index * 60}>
-                <div className="overflow-hidden border border-border bg-white">
-                  <div className="flex aspect-[4/3] items-center justify-center bg-soft">
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  <div className="relative flex aspect-[4/3] items-center justify-center bg-soft">
                     {vehicle.image ? (
                       <img src={vehicle.image} alt={`${vehicle.name} representative rental type`} className="h-full w-full object-cover" loading="lazy" />
                     ) : (
                       <Car className="h-16 w-16 text-real-red" strokeWidth={1.8} />
                     )}
+                    <span className="absolute top-3 right-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-real-red shadow-sm">
+                      Or Similar
+                    </span>
                   </div>
-                  <div className="p-6 text-center">
-                    <h3 className="text-2xl font-semibold">{vehicle.name}</h3>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{vehicle.tagline}</p>
+                  <div className="p-6">
+                    <h3 className="text-center text-2xl font-semibold">{vehicle.name}</h3>
+                    <p className="mt-3 text-center text-sm leading-relaxed text-muted-foreground">{vehicle.tagline}</p>
+                    <VehicleSpecRow name={vehicle.name} />
+                    <VehicleEligibility name={vehicle.name} />
                   </div>
                 </div>
               </FadeUp>
             ))}
           </div>
-          
+          <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground max-w-3xl mx-auto">
+            Vehicles shown are representative of each category. Your exact vehicle is confirmed at pickup. Platform eligibility subject to each platform's vehicle requirements.
+          </p>
         </div>
       </section>
 
