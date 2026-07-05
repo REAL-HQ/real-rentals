@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Shield, Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
+import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headphones } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
