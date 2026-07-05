@@ -358,6 +358,52 @@ function interpolate(value: string, site: Site, market: Market | null) {
 }
 
 function WhatYouNeedSection() {
+  return _WhatYouNeedSection();
+}
+
+function VehicleSpecRow({ name }: { name: string }) {
+  const isXL = /XL/i.test(name);
+  const specs = [
+    { Icon: Users, label: isXL ? "7-8 Seats" : "5 Seats" },
+    { Icon: Gauge, label: "Unlimited Miles" },
+    { Icon: Headphones, label: "24/7 Support" },
+    { Icon: Wrench, label: "Maintenance Included" },
+  ];
+  return (
+    <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
+      {specs.map(({ Icon, label }) => (
+        <div key={label} className="flex flex-col items-center gap-1 text-center">
+          <Icon className="h-5 w-5 text-real-red" strokeWidth={1.75} />
+          <span className="text-[11px] font-medium leading-tight text-foreground">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const eligibilityMap: Record<string, string[]> = {
+  Sedans: ["Uber", "Lyft", "DoorDash", "Instacart", "Uber Eats", "Amazon Flex"],
+  SUVs: ["Uber", "Uber Comfort", "Lyft", "DoorDash", "Instacart", "Amazon Flex"],
+  "XL Vehicles": ["Uber XL", "Lyft XL", "Uber", "Lyft", "Delivery Platforms"],
+};
+
+function VehicleEligibility({ name }: { name: string }) {
+  const platforms = eligibilityMap[name] ?? eligibilityMap.Sedans;
+  return (
+    <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+      {platforms.map((p) => (
+        <span
+          key={p}
+          className="whitespace-nowrap rounded-full border border-border bg-white px-2.5 py-0.5 text-[10px] font-medium text-foreground/80"
+        >
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function _WhatYouNeedSection() {
   const items = [
     { Icon: IdCard, title: "Valid Driver's License", body: "Active U.S. driver's license, 21 or older. Out-of-state licenses welcome." },
     { Icon: CreditCard, title: "No Deposit", body: "$0 security deposit. A payment card on file covers tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
