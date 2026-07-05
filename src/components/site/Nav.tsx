@@ -111,12 +111,12 @@ export function Nav() {
         <div className="flex items-center gap-4">
           {location.pathname !== "/admin" && <Logo />}
           <a
-            href="tel:+18135550100"
+            href="mailto:leads@drivereal.com"
             className="hidden sm:inline-flex items-center gap-2 text-[13px] font-semibold text-foreground hover:text-real-red transition"
-            aria-label="Call REAL RENTALS"
+            aria-label="Email REAL RENTALS"
           >
-            <Phone className="w-4 h-4 text-real-red" strokeWidth={2.25} />
-            (813) 555-0100
+            <Mail className="w-4 h-4 text-real-red" strokeWidth={2.25} />
+            leads@drivereal.com
           </a>
         </div>
         <div className="flex items-center gap-3">
