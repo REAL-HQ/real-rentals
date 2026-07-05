@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, BadgeCheck } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -25,6 +25,7 @@ export function CityHeroLeadForm({
   subhead,
   id,
   ctaLabel = "Get My Quote",
+  adMode = false,
 }: {
   site: Site;
   market: Market | null;
@@ -33,6 +34,7 @@ export function CityHeroLeadForm({
   subhead: React.ReactNode;
   id?: string;
   ctaLabel?: string;
+  adMode?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const scrollToCard = () => cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -103,7 +105,7 @@ export function CityHeroLeadForm({
       city: market?.name ?? site.title,
       state: market?.state ?? null,
       sms_consent: form.sms_consent,
-      source: "city_lp" as const,
+      source: (adMode ? "city_lp_ad" : "city_lp") as "city_lp" | "city_lp_ad",
       ...utms,
     };
     try {
@@ -140,10 +142,15 @@ export function CityHeroLeadForm({
           >
             {ctaLabel} <ArrowRight className="h-4 w-4" />
           </button>
+          <p className="mt-3 text-xs text-white/70">Takes 60 seconds. No credit check.</p>
         </FadeUp>
 
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
+            <div className="mb-4 flex items-start gap-2 rounded-lg bg-real-red/5 border border-real-red/20 px-3 py-2 text-[11px] leading-snug text-foreground">
+              <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-real-red" strokeWidth={2.25} />
+              <span><span className="font-semibold">Built For Active Gig Drivers</span> — if you drive for Uber, Lyft, DoorDash, Instacart, Uber Eats, Amazon Flex or Grubhub, you qualify to apply.</span>
+            </div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 5</div>
             <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
             {/* honeypot */}
