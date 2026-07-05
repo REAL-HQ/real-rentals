@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, ArrowRight, Check, Loader2, Mail, Phone, Upload, Car, CalendarCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Mail, Upload, Car, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
