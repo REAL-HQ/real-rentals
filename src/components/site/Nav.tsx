@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Mail } from "lucide-react";
+import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Mail, ArrowRight } from "lucide-react";
 import { Logo } from "./Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ const menuLinks = [
   { to: "/contact", label: "Contact" },
 ];
 
-export function Nav() {
+export function Nav({ adMode = false }: { adMode?: boolean } = {}) {
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -98,6 +98,27 @@ export function Nav() {
   const isAdmin = roles.includes("admin") || roles.includes("team");
   const accountHref = isAdmin ? "/admin" : isPartner ? "/partner" : isDriver ? "/portal" : "/admin";
   const accountLabel = isPartner ? "Partner Portal" : isDriver ? "Driver Portal" : "Account";
+
+  if (adMode) {
+    const scrollToQuote = () => {
+      const el = document.getElementById("quote-form");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    return (
+      <header className="sticky top-0 z-50 w-full bg-white border-b border-border">
+        <div className="flex h-14 items-center justify-between px-[3%]">
+          <Logo />
+          <button
+            type="button"
+            onClick={scrollToQuote}
+            className="inline-flex items-center gap-2 rounded-lg bg-real-red px-4 py-2 text-[13px] font-semibold text-white hover:bg-red-700 transition active:scale-95"
+          >
+            Get My Quote <ArrowRight className="w-4 h-4" strokeWidth={2.25} />
+          </button>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header
