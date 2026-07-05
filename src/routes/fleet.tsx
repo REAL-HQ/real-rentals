@@ -65,8 +65,8 @@ function FleetPage() {
             <span className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.5} />No Credit Check</span>
             <span className="inline-flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />No Deposit</span>
             <span className="inline-flex items-center gap-1.5"><InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Unlimited Miles</span>
-            <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Insurance Included</span>
             <span className="inline-flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Maintenance Included</span>
+            <span className="inline-flex items-center gap-1.5"><Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />24/7 Driver Support</span>
             <span className="inline-flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Same Day Approval</span>
           </div>
         </FadeUp>
