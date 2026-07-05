@@ -138,7 +138,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       state: nullableString,
       pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
       return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      source: z.enum(["homepage", "city_lp", "city_lp_ad"]),
+      source: z.enum(["homepage", "city_lp"]),
       utm_source: nullableString,
       utm_medium: nullableString,
       utm_campaign: nullableString,

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -10,8 +10,6 @@ import {
   ClipboardCheck,
   CreditCard,
   FileText,
-  Gauge,
-  Headphones,
   IdCard,
   KeyRound,
   MapPin,
@@ -20,8 +18,6 @@ import {
   Smartphone,
   Sparkles,
   UserCheck,
-  Users,
-  Wrench,
   Zap,
 } from "lucide-react";
 import { z } from "zod";
@@ -54,7 +50,7 @@ type GigPlatforms = { items?: string[]; disclaimer?: string };
 
 const defaultHowItWorks: Step[] = [
   { n: "01", title: "Book Your Car", body: "Share your contact details and rental timeline so we can start your quote." },
-  { n: "02", title: "Same Day Review", body: "Our team reviews your application the same day and confirms your pickup window — most drivers are approved within hours." },
+  { n: "02", title: "Same Day Approval", body: "Our team reviews your application quickly and confirms the best next steps." },
   { n: "03", title: "Pick Up", body: "We match you to the right vehicle type and schedule pickup once you are cleared." },
   { n: "04", title: "Start Earning", body: "Use the vehicle for rideshare and delivery platforms with weekly flexibility." },
 ];
@@ -140,22 +136,12 @@ export const Route = createFileRoute("/$slug")({
 
 function CityPage() {
   const { site, market, content } = Route.useLoaderData();
-  const [adMode, setAdMode] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setAdMode(new URLSearchParams(window.location.search).get("v") === "ad");
-  }, []);
   const cityLabel = market?.state ? `${site.title}, ${market.state}` : site.title;
   const ctaLabel = asString(content.cta_label) ?? "Get My Quote";
-  const headline = interpolate(
-    asString(content.hero_headline) ??
-      `Driving For Uber, Lyft Or Delivery Apps In ${site.title}? Get A Car This Week.`,
-    site,
-    market,
-  );
+  const headline = interpolate(asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps In ${site.title} This Week`, site, market);
   const subhead = interpolate(
     asString(content.hero_subhead) ??
-      "No Deposit. Maintenance Included. Unlimited Miles.\nMost Drivers Are On The Road Within 24 Hours.",
+      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nNo deposit. Maintenance included. Fast approval. Drive this week.",
     site,
     market,
   );
@@ -166,7 +152,7 @@ function CityPage() {
   const howItWorks = arrayOfObjects<Step>(content.how_it_works, defaultHowItWorks);
   const localIntro = interpolate(
     asString(content.local_intro) ??
-      `From Quote To Keys — Most Drivers Are On The Road Within 24 Hours. REAL RENTALS helps ${site.title} gig drivers get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
+      `${site.title} drivers need a fast, flexible rental path that works for rideshare, delivery, airport runs, and everyday gig work. REAL RENTALS helps you get quoted, approved, and matched without showing live inventory or locking you into a single car online.`,
     site,
     market,
   );
@@ -175,7 +161,7 @@ function CityPage() {
   const scrollToForm = () => document.getElementById("quote-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <SiteLayout adMode={adMode}>
+    <SiteLayout>
       <CityHeroLeadForm
         id="quote-form"
         eyebrow={eyebrow}
@@ -184,7 +170,6 @@ function CityPage() {
         site={site}
         market={market}
         ctaLabel={ctaLabel}
-        adMode={adMode}
       />
 
       <section className="bg-white py-8 md:py-10">
@@ -241,30 +226,23 @@ function CityPage() {
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             {vehicleTypes.map((vehicle, index) => (
               <FadeUp key={vehicle.name} delay={index * 60}>
-                <div className="overflow-hidden rounded-2xl border border-border bg-white">
-                  <div className="relative flex aspect-[4/3] items-center justify-center bg-soft">
+                <div className="overflow-hidden border border-border bg-white">
+                  <div className="flex aspect-[4/3] items-center justify-center bg-soft">
                     {vehicle.image ? (
                       <img src={vehicle.image} alt={`${vehicle.name} representative rental type`} className="h-full w-full object-cover" loading="lazy" />
                     ) : (
                       <Car className="h-16 w-16 text-real-red" strokeWidth={1.8} />
                     )}
-                    <span className="absolute top-3 right-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-real-red shadow-sm">
-                      Or Similar
-                    </span>
                   </div>
-                  <div className="p-6">
-                    <h3 className="text-center text-2xl font-semibold">{vehicle.name}</h3>
-                    <p className="mt-3 text-center text-sm leading-relaxed text-muted-foreground">{vehicle.tagline}</p>
-                    <VehicleSpecRow name={vehicle.name} />
-                    <VehicleEligibility name={vehicle.name} />
+                  <div className="p-6 text-center">
+                    <h3 className="text-2xl font-semibold">{vehicle.name}</h3>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{vehicle.tagline}</p>
                   </div>
                 </div>
               </FadeUp>
             ))}
           </div>
-          <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground max-w-3xl mx-auto">
-            Vehicles shown are representative of each category. Your exact vehicle is confirmed at pickup. Platform eligibility subject to each platform's vehicle requirements.
-          </p>
+          
         </div>
       </section>
 
@@ -358,52 +336,6 @@ function interpolate(value: string, site: Site, market: Market | null) {
 }
 
 function WhatYouNeedSection() {
-  return _WhatYouNeedSection();
-}
-
-function VehicleSpecRow({ name }: { name: string }) {
-  const isXL = /XL/i.test(name);
-  const specs = [
-    { Icon: Users, label: isXL ? "7-8 Seats" : "5 Seats" },
-    { Icon: Gauge, label: "Unlimited Miles" },
-    { Icon: Headphones, label: "24/7 Support" },
-    { Icon: Wrench, label: "Maintenance Included" },
-  ];
-  return (
-    <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-4">
-      {specs.map(({ Icon, label }) => (
-        <div key={label} className="flex flex-col items-center gap-1 text-center">
-          <Icon className="h-5 w-5 text-real-red" strokeWidth={1.75} />
-          <span className="text-[11px] font-medium leading-tight text-foreground">{label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const eligibilityMap: Record<string, string[]> = {
-  Sedans: ["Uber", "Lyft", "DoorDash", "Instacart", "Uber Eats", "Amazon Flex"],
-  SUVs: ["Uber", "Uber Comfort", "Lyft", "DoorDash", "Instacart", "Amazon Flex"],
-  "XL Vehicles": ["Uber XL", "Lyft XL", "Uber", "Lyft", "Delivery Platforms"],
-};
-
-function VehicleEligibility({ name }: { name: string }) {
-  const platforms = eligibilityMap[name] ?? eligibilityMap.Sedans;
-  return (
-    <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-      {platforms.map((p) => (
-        <span
-          key={p}
-          className="whitespace-nowrap rounded-full border border-border bg-white px-2.5 py-0.5 text-[10px] font-medium text-foreground/80"
-        >
-          {p}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function _WhatYouNeedSection() {
   const items = [
     { Icon: IdCard, title: "Valid Driver's License", body: "Active U.S. driver's license, 21 or older. Out-of-state licenses welcome." },
     { Icon: CreditCard, title: "No Deposit", body: "$0 security deposit. A payment card on file covers tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },

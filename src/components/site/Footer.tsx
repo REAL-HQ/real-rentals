@@ -33,28 +33,11 @@ const ownerLinks: { to: string; label: string; hash?: string }[] = [
   { to: "/partners", hash: "faq", label: "Owner FAQ" },
 ];
 
-export function Footer({ adMode = false }: { adMode?: boolean } = {}) {
+export function Footer() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const matches = useRouterState({ select: (s) => s.matches });
   const isPartners = pathname === "/partners";
   const isCity = matches.some((m) => m.routeId === "/$slug");
-  if (adMode) {
-    return (
-      <footer className="border-t border-border bg-white">
-        <div className="container-real py-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <Logo width={100} offset={false} />
-            <span>© 2026 REAL RENTALS</span>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <Link to="/sms-consent" className="hover:text-foreground transition-colors">SMS Consent</Link>
-            <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>
-            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
-          </div>
-        </div>
-      </footer>
-    );
-  }
   return (
     <footer className={isPartners || isCity ? "" : "mt-24"}>
       {!isPartners && (
