@@ -13,7 +13,6 @@ import {
   IdCard,
   KeyRound,
   MapPin,
-  Mail,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -373,7 +372,7 @@ function WhatYouNeedSection() {
 function ServiceAreaSection({ cityLabel, city }: { cityLabel: string; city: string }) {
   return (
     <section className="bg-soft py-14 md:py-16 border-y border-border">
-      <div className="container-real grid items-center gap-8 md:grid-cols-[auto_1fr_auto]">
+      <div className="container-real grid items-center gap-8 md:grid-cols-[auto_1fr]">
         <FadeUp>
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-real-red text-white">
             <MapPin className="h-7 w-7" strokeWidth={1.75} />
@@ -383,17 +382,9 @@ function ServiceAreaSection({ cityLabel, city }: { cityLabel: string; city: stri
           <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Service Area</div>
           <h2 className="mt-2 text-2xl md:text-3xl font-semibold">Serving {cityLabel} And Surrounding Cities.</h2>
           <p className="mt-3 text-muted-foreground max-w-2xl leading-relaxed">
-            Pickup and support based in Tampa. We rent to gig drivers across the wider metro area.<br />
-            Email us to confirm coverage in your neighborhood.
+            Pickup and support based in Tampa. We rent to gig drivers across the wider metro area.
+            Use the "Check Availability" button to confirm coverage in your neighborhood.
           </p>
-        </FadeUp>
-        <FadeUp>
-          <a
-            href="mailto:leads@drivereal.com"
-            className="inline-flex items-center gap-2 rounded-lg border border-real-red bg-white px-5 py-3 text-sm font-semibold text-real-red transition hover:bg-real-red hover:text-white"
-          >
-            <Mail className="h-4 w-4" strokeWidth={2.25} /> leads@drivereal.com
-          </a>
         </FadeUp>
       </div>
     </section>
