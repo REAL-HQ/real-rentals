@@ -98,7 +98,7 @@ export const Route = createFileRoute("/$slug")({
     const seoTitle = asString(content.seo_title) ?? `Drive For Uber, Lyft & Delivery In ${title}${state} | REAL RENTALS`;
     const seoDescription =
       asString(content.seo_description) ??
-      `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, insurance included, and fast approvals.`;
+      `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, no deposit, and fast approvals.`;
     return {
       meta: [
         { title: seoTitle },
@@ -141,7 +141,7 @@ function CityPage() {
   const headline = interpolate(asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps In ${site.title} This Week`, site, market);
   const subhead = interpolate(
     asString(content.hero_subhead) ??
-      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nInsurance included. Maintenance included. Fast approval. Drive this week.",
+      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nNo deposit. Maintenance included. Fast approval. Drive this week.",
     site,
     market,
   );
@@ -406,7 +406,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
   const defaults: FaqItem[] = [
     { q: "Do I need good credit to qualify?", a: "No. We don't run a credit check. Approval is based on your driving record and gig-platform eligibility." },
     { q: "How fast can I be on the road?", a: "Most drivers are approved the same day and picking up a vehicle within 24 to 48 hours." },
-    { q: "Is insurance included?", a: "Insurance is included with every rental. Our team will walk you through what's included before you sign." },
+    { q: "Do I need my own insurance?", a: "Yes. Drivers maintain their own auto insurance with rideshare or delivery coverage as applicable. Our team will explain exactly what's required on your qualification call and can point you to gig-friendly options." },
     { q: "Are miles unlimited?", a: "Yes. Drive as many miles as you need — there are no per-mile fees." },
     { q: "What if the car needs maintenance?", a: "Routine maintenance is included. If something comes up, we handle it so you can keep earning." },
     { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
