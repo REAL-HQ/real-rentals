@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Tables } from "@/integrations/supabase/types";
-import { DoorOpen, Car, BadgeCheck, Users, Shield, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf, Wallet } from "lucide-react";
+import { DoorOpen, Car, BadgeCheck, Users, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf, Wallet, Headphones } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 type Vehicle = Tables<"vehicles">;
@@ -105,8 +105,8 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           Unlimited Miles
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Insurance Included
+          <Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          24/7 Support
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />

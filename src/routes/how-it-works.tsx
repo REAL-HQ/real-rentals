@@ -119,7 +119,7 @@ function HowItWorks() {
               </div>
               <ul className="mt-6 space-y-4">
                 {[
-                  { I: Shield, t: "Insurance Included" },
+                  { I: Wallet, t: "No Deposit" },
                   { I: Wrench, t: "Routine Maintenance & Oil Changes" },
                   { I: LifeBuoy, t: "24/7 Roadside Assistance" },
                   { I: FileCheck, t: "Vehicle Registration & Inspection" },
