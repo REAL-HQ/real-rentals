@@ -13,7 +13,7 @@ import {
   IdCard,
   KeyRound,
   MapPin,
-  Phone,
+  Mail,
   ShieldCheck,
   Smartphone,
   Sparkles,
@@ -384,15 +384,15 @@ function ServiceAreaSection({ cityLabel, city }: { cityLabel: string; city: stri
           <h2 className="mt-2 text-2xl md:text-3xl font-semibold">Serving {cityLabel} And Surrounding Cities.</h2>
           <p className="mt-3 text-muted-foreground max-w-2xl leading-relaxed">
             Pickup and support based in Tampa. We rent to gig drivers across the wider metro area.<br />
-            Call us to confirm coverage in your neighborhood.
+            Email us to confirm coverage in your neighborhood.
           </p>
         </FadeUp>
         <FadeUp>
           <a
-            href="tel:+18135550100"
+            href="mailto:leads@drivereal.com"
             className="inline-flex items-center gap-2 rounded-lg border border-real-red bg-white px-5 py-3 text-sm font-semibold text-real-red transition hover:bg-real-red hover:text-white"
           >
-            <Phone className="h-4 w-4" strokeWidth={2.25} /> (813) 555-0100
+            <Mail className="h-4 w-4" strokeWidth={2.25} /> leads@drivereal.com
           </a>
         </FadeUp>
       </div>

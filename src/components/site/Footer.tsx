@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Check, Phone, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
+import { Check, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
 import { Logo } from "./Logo";
 
 const trustBar = [
@@ -114,8 +114,7 @@ export function Footer() {
         <div className="md:col-span-3">
           <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Contact</div>
           <ul className="space-y-3 text-muted-foreground">
-            <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> <a href="tel:+18135550100" className="hover:text-foreground">(813) 555-0100</a></li>
-            <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:hello@realrentals.com" className="hover:text-foreground">hello@realrentals.com</a></li>
+            <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:leads@drivereal.com" className="hover:text-foreground">leads@drivereal.com</a></li>
             <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Tampa, Florida</li>
             <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Sat, 9am – 7pm</li>
           </ul>
