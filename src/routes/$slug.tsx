@@ -13,7 +13,6 @@ import {
   IdCard,
   KeyRound,
   MapPin,
-  Mail,
   ShieldCheck,
   Smartphone,
   Sparkles,
