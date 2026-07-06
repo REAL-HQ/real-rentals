@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useMatch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Mail } from "lucide-react";
 import { Logo } from "./Logo";
