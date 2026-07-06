@@ -211,7 +211,7 @@ export function Nav() {
               Book Now
             </Link>
           )}
-          {!session && (
+          {!session && !isCityPage && (
             <button
               className="p-2 -mr-2"
               onClick={() => setOpen((o) => !o)}
