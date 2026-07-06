@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useMatch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Mail } from "lucide-react";
 import { Logo } from "./Logo";
@@ -23,6 +23,7 @@ const menuLinks = [
 
 export function Nav() {
   const location = useLocation();
+  const isCityPage = !!useMatch({ from: "/$slug", shouldThrow: false });
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<any>(null);
@@ -194,7 +195,7 @@ export function Nav() {
               </DropdownMenuContent>
             </DropdownMenu>
             </>
-          ) : !session ? (
+          ) : !session && !isCityPage ? (
             <Link
               to="/admin"
               className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
@@ -210,7 +211,7 @@ export function Nav() {
               Book Now
             </Link>
           )}
-          {!session && (
+          {!session && !isCityPage && (
             <button
               className="p-2 -mr-2"
               onClick={() => setOpen((o) => !o)}
@@ -221,7 +222,7 @@ export function Nav() {
           )}
         </div>
       </div>
-      {open && (
+      {open && !isCityPage && (
         <>
           <div
             className="fixed inset-0 z-40 bg-transparent"
