@@ -195,7 +195,7 @@ export function Nav() {
               </DropdownMenuContent>
             </DropdownMenu>
             </>
-          ) : !session ? (
+          ) : !session && !isCityPage ? (
             <Link
               to="/admin"
               className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
