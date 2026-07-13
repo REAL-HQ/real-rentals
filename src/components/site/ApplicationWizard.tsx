@@ -661,3 +661,95 @@ function FileUploadField({
     </div>
   );
 }
+
+function MultiFileUploadField({
+  label,
+  hint,
+  accept,
+  bucket,
+  applicationId,
+  values,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  accept: string;
+  bucket: string;
+  applicationId: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList) {
+    setUploading(true);
+    const uploaded: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name}: file must be under 10MB.`);
+          continue;
+        }
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+        if (error) {
+          toast.error(error.message);
+          continue;
+        }
+        uploaded.push(path);
+      }
+      if (uploaded.length) {
+        onChange([...values, ...uploaded].slice(0, 10));
+        toast.success(`Uploaded ${uploaded.length}`);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function remove(path: string) {
+    onChange(values.filter((v) => v !== path));
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label} <span className="text-real-red">*</span>
+      </div>
+      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
+      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-4 cursor-pointer hover:border-real-red/60">
+        <input
+          type="file"
+          accept={accept}
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length) handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : <Upload className="h-5 w-5 text-muted-foreground" />}
+        <div className="text-sm text-muted-foreground">
+          Click to upload one or more files (PDF or image, up to 10MB each)
+        </div>
+      </label>
+      {values.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {values.map((path) => (
+            <li key={path} className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm">
+              <span className="truncate text-muted-foreground">{path.split("/").pop()}</span>
+              <button
+                type="button"
+                onClick={() => remove(path)}
+                className="text-[11px] font-semibold text-real-red hover:underline shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
