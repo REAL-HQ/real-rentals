@@ -205,7 +205,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
         </div>
       </div>
 
-      <div className="px-8 py-6 max-w-6xl mx-auto space-y-6">
+      <div className="px-8 py-6 space-y-6">
         {/* Identity header */}
         <div className="flex items-start gap-4">
           <div className="h-16 w-16 shrink-0 rounded-full bg-black text-white grid place-items-center text-xl font-semibold">
