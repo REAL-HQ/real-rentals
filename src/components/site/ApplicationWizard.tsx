@@ -358,14 +358,23 @@ function RentalStep({ state, update, onBack, onNext, saving, source }: StepProps
 }
 
 function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProps & { id: string; onBack: () => void; onNext: () => void }) {
-  const canNext = state.platforms.length > 0;
+  const trips = Number(state.trips_completed);
+  const tripsOk = !Number.isNaN(trips) && trips >= 200;
+  const canNext =
+    state.platforms.length > 0 &&
+    tripsOk &&
+    state.trip_screenshots.length > 0;
   const toggle = (p: string) => {
     const next = state.platforms.includes(p) ? state.platforms.filter((x) => x !== p) : [...state.platforms, p];
     update("platforms", next);
   };
   return (
     <div>
-      <StepHeader eyebrow={stepEyebrow(source, "gig")} title="Your Gig Profile" sub="Help us verify you're an active driver — this gets you to a hot lead status faster." />
+      <StepHeader
+        eyebrow={stepEyebrow(source, "gig")}
+        title="Your Gig Profile"
+        sub="We work with active drivers who've completed 200+ trips or deliveries on any app. Please share your totals and upload a screenshot showing your lifetime trip/delivery count."
+      />
       <div className="space-y-6">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">What Platforms Are You Currently Using?</div>
@@ -380,13 +389,50 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
             })}
           </div>
         </div>
-        <FileUploadField
-          label="Upload A Screenshot Of Your Profile (Trip Details + Ratings) — Optional"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Total Trips / Deliveries Completed <span className="text-real-red">*</span>
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder="e.g. 850"
+              value={state.trips_completed ?? ""}
+              onChange={(e) => update("trips_completed", e.target.value || null)}
+              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            />
+            <span className={`mt-1 block text-[11px] ${tripsOk ? "text-emerald-600" : "text-muted-foreground"}`}>
+              200+ required · combined across all apps
+            </span>
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Driver Rating</span>
+            <input
+              type="number"
+              step="0.01"
+              min={1}
+              max={5}
+              placeholder="e.g. 4.92"
+              value={state.rating ?? ""}
+              onChange={(e) => update("rating", e.target.value === "" ? null : Number(e.target.value))}
+              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            />
+          </label>
+        </div>
+        <MultiFileUploadField
+          label="Upload Screenshots Of Your Trip / Delivery Totals (Required)"
+          hint="One screenshot per app is best (Uber, Lyft, DoorDash, etc.). Must clearly show your lifetime trip or delivery count."
           accept="image/*,application/pdf"
           bucket="profile-screenshots"
           applicationId={id}
-          value={state.profile_screenshot_url}
-          onChange={(v) => update("profile_screenshot_url", v)}
+          values={state.trip_screenshots}
+          onChange={(v) => {
+            update("trip_screenshots", v);
+            // Keep the legacy single field in sync so admin views that only read it still work.
+            update("profile_screenshot_url", v[0] ?? null);
+          }}
         />
       </div>
       <NavRow onBack={onBack} onNext={onNext} saving={saving} canNext={canNext} />
