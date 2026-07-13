@@ -4,7 +4,7 @@ import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Search, Check, ChevronDown } from "lucide-react";
+import { MoreVertical, Search, Check, ChevronDown, ArrowLeft } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -59,6 +59,18 @@ export function DriversPanel() {
   }
 
   const filtered = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+
+  if (open) {
+    return (
+      <DriverDetail
+        driver={open}
+        vehicles={vehicles}
+        onBack={() => setOpen(null)}
+        onUpdate={(p) => update(open.id, p)}
+        onDelete={() => remove(open.id)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -139,28 +151,30 @@ export function DriversPanel() {
         </div>
       </div>
 
-      {open && (
-        <DriverModal driver={open} vehicles={vehicles} onClose={() => setOpen(null)} onUpdate={(p) => update(open.id, p)} onDelete={() => remove(open.id)} />
-      )}
     </div>
   );
 }
 
-function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
-  driver: Application; vehicles: Vehicle[]; onClose: () => void;
+function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
+  driver: Application; vehicles: Vehicle[]; onBack: () => void;
   onUpdate: (patch: Partial<Application>) => void; onDelete: () => void;
 }) {
   const veh = driver.vehicle_id ? vehicles.find(v => v.id === driver.vehicle_id) : null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h2 className="text-xl font-semibold">{driver.full_name}</h2>
-            <div className="text-sm text-muted-foreground">{driver.email} · {driver.phone}</div>
+    <div>
+      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
+        <ArrowLeft className="w-4 h-4" /> Back to drivers
+      </button>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h2 className="text-2xl font-semibold">{driver.full_name}</h2>
+          <div className="text-sm text-muted-foreground">
+            {driver.email && <a href={`mailto:${driver.email}`} className="hover:underline">{driver.email}</a>}
+            {driver.email && driver.phone && " · "}
+            {driver.phone && <a href={`tel:${driver.phone}`} className="hover:underline">{formatPhone(driver.phone)}</a>}
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
+      </div>
 
         <Section title="Lifecycle">
           <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
@@ -253,9 +267,8 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
 
         <div className="mt-6 flex gap-2 justify-end">
           <button onClick={onDelete} className="rounded-md border border-real-red text-real-red px-4 py-2 text-sm hover:bg-real-red hover:text-white">Delete</button>
-          <button onClick={onClose} className="rounded-md bg-black text-white px-4 py-2 text-sm">Close</button>
+          <button onClick={onBack} className="rounded-md bg-black text-white px-4 py-2 text-sm">Back</button>
         </div>
-      </div>
     </div>
   );
 }
