@@ -52,6 +52,9 @@ type WizardState = {
   // gig
   platforms: string[];
   profile_screenshot_url: string | null;
+  trips_completed: string | null;
+  rating: number | null;
+  trip_screenshots: string[];
   // driver
   license_photo_url: string | null;
   full_coverage_insurance: boolean | null;
@@ -94,6 +97,9 @@ export function ApplicationWizard({ id }: { id: string }) {
           rental_duration: row.rental_duration,
           platforms: row.platforms ?? [],
           profile_screenshot_url: row.profile_screenshot_url,
+          trips_completed: (row as any).trips_completed ?? null,
+          rating: (row as any).rating ?? null,
+          trip_screenshots: ((row as any).trip_screenshots as string[] | null) ?? [],
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
           address: row.address,
@@ -166,6 +172,9 @@ export function ApplicationWizard({ id }: { id: string }) {
             <GigStep source={state.source} id={id} state={state} update={update} onBack={goBack} onNext={() => goNext("driver", {
               platforms: state.platforms,
               profile_screenshot_url: state.profile_screenshot_url,
+              trips_completed: state.trips_completed,
+              rating: state.rating,
+              trip_screenshots: state.trip_screenshots,
             })} saving={saving} />
           )}
           {step === "driver" && (
