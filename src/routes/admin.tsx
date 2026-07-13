@@ -83,12 +83,12 @@ function Admin() {
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
         <aside className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} transition-[width] duration-200 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen`}>
-          <div className={`px-3 py-3 flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
+          <div className="relative px-3 py-3 flex items-center justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white"
+              className={`p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white ${collapsed ? "" : "absolute right-2 top-1/2 -translate-y-1/2"}`}
             >
               {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
