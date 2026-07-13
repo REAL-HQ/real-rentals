@@ -10,7 +10,7 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -50,6 +50,13 @@ function Admin() {
   const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
   const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "drivers";
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("admin-sidebar-collapsed") === "1";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("admin-sidebar-collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setChecking(false); });
@@ -75,9 +82,16 @@ function Admin() {
     <div className="min-h-screen flex flex-col bg-white">
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
-        <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
-          <div className="px-4 py-3 flex items-center justify-center">
-            <Logo offset={false} />
+        <aside className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} transition-[width] duration-200 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen`}>
+          <div className={`px-3 py-3 flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
+            {!collapsed && <Logo offset={false} />}
+            <button
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white"
+            >
+              {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
             {TABS.map((t) => {
@@ -87,12 +101,13 @@ function Admin() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+                  title={collapsed ? t.label : undefined}
+                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2.5 rounded-lg text-sm transition ${
                     active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span>{t.label}</span>
+                  {!collapsed && <span>{t.label}</span>}
                 </button>
               );
             })}

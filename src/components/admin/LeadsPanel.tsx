@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
 
 type Lead = {
   id: string;
@@ -30,26 +32,53 @@ export function LeadsPanel({ table, label }: { table: "contact_leads" | "investo
   }
 
   return (
-    <div className="space-y-2">
-      {rows.map((c) => (
-        <div key={c.id} className="rounded-xl bg-soft p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{c.name}</div>
-              <div className="text-xs text-muted-foreground">
-                <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a>
-                {c.phone && <> · <a href={`tel:${c.phone}`} className="hover:underline">{c.phone}</a></>}
-                {c.capital_range && <> · {c.capital_range}</>}
-                {c.vehicles_interested != null && <> · {c.vehicles_interested} vehicles</>}
-              </div>
-              {c.message && <p className="text-sm mt-2 whitespace-pre-wrap">{c.message}</p>}
-              <div className="text-[11px] text-muted-foreground mt-2">{c.created_at && new Date(c.created_at).toLocaleString()}</div>
-            </div>
-            <button onClick={() => remove(c.id)} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
-          </div>
-        </div>
-      ))}
-      {rows.length === 0 && <div className="text-sm text-muted-foreground">No {label.toLowerCase()} yet.</div>}
+    <div className="rounded-lg border border-border overflow-hidden bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Details</th>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Message</th>
+              <th className="text-left font-medium px-4 py-2.5 border-b border-border">Created</th>
+              <th className="px-2 py-2.5 border-b border-border w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id} className="border-b border-border last:border-0 hover:bg-soft/60 transition-colors align-top">
+                <td className="px-4 py-2.5 font-medium whitespace-nowrap">{c.name}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap"><a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a></td>
+                <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">{c.phone ? <a href={`tel:${c.phone}`} className="hover:underline">{c.phone}</a> : "—"}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground text-xs">
+                  {c.capital_range && <div>{c.capital_range}</div>}
+                  {c.vehicles_interested != null && <div>{c.vehicles_interested} vehicles</div>}
+                  {!c.capital_range && c.vehicles_interested == null && "—"}
+                </td>
+                <td className="px-4 py-2.5 text-xs max-w-xs">
+                  <div className="line-clamp-2 whitespace-pre-wrap">{c.message || "—"}</div>
+                </td>
+                <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.created_at && new Date(c.created_at).toLocaleDateString()}</td>
+                <td className="px-2 py-2.5 text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
+                      <MoreVertical className="w-4 h-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={() => remove(c.id)}>Delete</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">No {label.toLowerCase()} yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

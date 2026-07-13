@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -60,36 +62,70 @@ export function DriversPanel() {
           </button>
         ))}
       </div>
-      <div className="space-y-2">
-        {filtered.map((a) => {
-          const veh = a.vehicle_id ? vehicleMap[a.vehicle_id] : null;
-          return (
-          <div key={a.id} onClick={() => setOpen(a)} className="rounded-xl bg-soft p-4 flex flex-wrap items-center gap-3 cursor-pointer hover:shadow-sm transition-shadow">
-            <div className="flex-1 min-w-[240px]">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{a.full_name}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[a.status] || "bg-gray-100"}`}>{a.status}</span>
-              </div>
-              <div className="text-xs text-muted-foreground">{a.email} · {a.phone}</div>
-              <div className="text-[11px] text-muted-foreground mt-1">
-                {new Date(a.created_at!).toLocaleString()}
-                {veh && ` · ${veh.year} ${veh.make} ${veh.model}`}
-                {a.weekly_rent ? ` · $${a.weekly_rent}/wk` : ""}
-                {` · pay: ${a.payment_status} · dep: ${a.deposit_status}`}
-              </div>
-            </div>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Select value={a.status} onValueChange={(status) => update(a.id, { status })}>
-                <SelectTrigger className="h-8 w-32 bg-white text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DRIVER_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <button onClick={(e) => { e.stopPropagation(); remove(a.id); }} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
-          </div>
-        );})}
-        {filtered.length === 0 && <div className="text-sm text-muted-foreground">No drivers.</div>}
+      <div className="rounded-lg border border-border overflow-hidden bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Contact</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Weekly</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Deposit</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Status</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Created</th>
+                <th className="px-2 py-2.5 border-b border-border w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((a) => {
+                const veh = a.vehicle_id ? vehicleMap[a.vehicle_id] : null;
+                return (
+                  <tr key={a.id} onClick={() => setOpen(a)}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
+                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">{a.full_name}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                      <div>{a.email}</div>
+                      <div className="text-[11px]">{a.phone}</div>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                      {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">{a.weekly_rent ? `$${a.weekly_rent}` : "—"}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.payment_status?.replace(/_/g," ")}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.deposit_status?.replace(/_/g," ")}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <Select value={a.status} onValueChange={(status) => update(a.id, { status })}>
+                        <SelectTrigger className={`h-7 w-28 text-xs border-0 ${statusBadge[a.status] || "bg-gray-100"}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DRIVER_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                      {new Date(a.created_at!).toLocaleDateString()}
+                    </td>
+                    <td className="px-2 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
+                          <MoreVertical className="w-4 h-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setOpen(a)}>Open</DropdownMenuItem>
+                          <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={() => remove(a.id)}>Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {open && (
