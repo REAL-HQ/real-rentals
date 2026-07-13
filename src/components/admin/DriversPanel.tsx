@@ -206,6 +206,37 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
           <Field label="Payment method" value={driver.payment_method} />
         </Section>
 
+        <Section title="Gig experience">
+          <Field
+            label="Total trips / deliveries"
+            value={(() => {
+              const n = Number(driver.trips_completed);
+              if (!driver.trips_completed) return null;
+              if (Number.isNaN(n)) return driver.trips_completed;
+              return `${n.toLocaleString()}${n >= 200 ? " ✓" : " (below 200)"}`;
+            })()}
+          />
+          <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
+        </Section>
+
+        {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) && (
+          <div className="mt-4">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Trip / delivery screenshots</div>
+            <TripScreenshots
+              paths={
+                Array.from(
+                  new Set(
+                    [
+                      ...(((driver as any).trip_screenshots as string[] | null) ?? []),
+                      ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
+                    ].filter(Boolean),
+                  ),
+                )
+              }
+            />
+          </div>
+        )}
+
         {driver.license_photo_url && (
           <div className="mt-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">License photo</div>
