@@ -4,7 +4,7 @@ import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Search, Check, ChevronDown } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -184,13 +184,11 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
               <div className="text-sm">{veh.year} {veh.make} {veh.model}<div className="text-xs text-muted-foreground">ID {veh.id.slice(0,8)}</div></div>
             ) : <div className="text-sm text-muted-foreground">None assigned</div>}
             <div className="mt-2">
-              <Select value={driver.vehicle_id || "none"} onValueChange={(v) => onUpdate({ vehicle_id: v === "none" ? null : v })}>
-                <SelectTrigger className="h-8 bg-white text-foreground"><SelectValue placeholder="Assign vehicle" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— None —</SelectItem>
-                  {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <VehiclePicker
+                vehicles={vehicles}
+                value={driver.vehicle_id}
+                onChange={(id) => onUpdate({ vehicle_id: id })}
+              />
             </div>
           </div>
         </Section>
