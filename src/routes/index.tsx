@@ -16,10 +16,10 @@ import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "REAL RENTALS | Start Driving. Start Earning. This Week." },
-      { name: "description", content: "Rent a vehicle for Uber, Lyft, DoorDash and delivery work from $350/week. No deposit. Maintenance included. Fast approval." },
-      { property: "og:title", content: "Start Driving. Start Earning. This Week." },
-      { property: "og:description", content: "No deposit. Maintenance included. Fast approval. Drive this week." },
+      { title: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
+      { name: "description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
+      { property: "og:title", content: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
+      { property: "og:description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
     ],
   }),
   component: Index,
