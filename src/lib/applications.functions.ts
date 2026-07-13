@@ -117,7 +117,16 @@ function computeScore(row: any): number {
   if (platformCount >= 3) s += 18;
   else if (platformCount === 2) s += 12;
   else if (platformCount === 1) s += 7;
-  if (row.profile_screenshot_url) s += 18;
+  if (row.profile_screenshot_url) s += 10;
+  const shotCount = Array.isArray(row.trip_screenshots) ? row.trip_screenshots.length : 0;
+  if (shotCount >= 2) s += 12;
+  else if (shotCount === 1) s += 8;
+  const trips = Number(row.trips_completed);
+  if (!Number.isNaN(trips)) {
+    if (trips >= 1000) s += 14;
+    else if (trips >= 500) s += 10;
+    else if (trips >= 200) s += 8;
+  }
   if (typeof row.rating === "number" && row.rating >= 4.9) s += 10;
   else if (typeof row.rating === "number" && row.rating >= 4.7) s += 6;
   if (row.license_valid === true) s += 12;
