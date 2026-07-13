@@ -97,6 +97,7 @@ const stepUpdateSchema = z.object({
   platforms: z.array(z.string().trim().min(1).max(60)).max(12).nullable().optional(),
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
   trips_completed: z.string().trim().max(40).nullable().optional(),
+  trip_screenshots: z.array(z.string().trim().max(500)).max(10).nullable().optional(),
   rating: z.number().min(1).max(5).nullable().optional(),
   // Driver
   license_photo_url: z.string().trim().max(500).nullable().optional(),
@@ -214,7 +215,7 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      .select("id, full_name, email, phone, city, state, market_id, pickup_date, return_date, current_step, status, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trips_completed, rating, license_photo_url, full_coverage_insurance, address, zip, how_heard")
+      .select("id, full_name, email, phone, city, state, market_id, pickup_date, return_date, current_step, status, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, address, zip, how_heard")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
