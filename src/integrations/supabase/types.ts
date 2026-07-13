@@ -88,6 +88,7 @@ export type Database = {
           start_timing: string | null
           state: string | null
           status: string
+          trip_screenshots: string[]
           trips_completed: string | null
           updated_at: string
           user_id: string | null
@@ -158,6 +159,7 @@ export type Database = {
           start_timing?: string | null
           state?: string | null
           status?: string
+          trip_screenshots?: string[]
           trips_completed?: string | null
           updated_at?: string
           user_id?: string | null
@@ -228,6 +230,7 @@ export type Database = {
           start_timing?: string | null
           state?: string | null
           status?: string
+          trip_screenshots?: string[]
           trips_completed?: string | null
           updated_at?: string
           user_id?: string | null
