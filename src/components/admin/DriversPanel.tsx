@@ -21,6 +21,14 @@ const statusBadge: Record<string,string> = {
   closed: "bg-gray-200 text-gray-700",
 };
 
+function formatPhone(p?: string | null): string {
+  if (!p) return "—";
+  const d = p.replace(/\D/g, "");
+  const n = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  if (n.length === 10) return `${n.slice(0,3)}-${n.slice(3,6)}-${n.slice(6)}`;
+  return p;
+}
+
 export function DriversPanel() {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -68,7 +76,8 @@ export function DriversPanel() {
             <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Contact</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Weekly</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
@@ -86,8 +95,10 @@ export function DriversPanel() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">{a.full_name}</td>
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      <div>{a.email}</div>
-                      <div className="text-[11px]">{a.phone}</div>
+                      {a.email ? <a href={`mailto:${a.email}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{a.email}</a> : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                      {a.phone ? <a href={`tel:${a.phone}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{formatPhone(a.phone)}</a> : "—"}
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                       {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
@@ -121,7 +132,7 @@ export function DriversPanel() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
           </table>
