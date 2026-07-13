@@ -277,3 +277,123 @@ function LicensePhoto({ path }: { path: string }) {
   if (!url) return <div className="aspect-video bg-soft rounded-md" />;
   return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="License" className="rounded-md max-h-64 border border-border" /></a>;
 }
+
+function VehiclePicker({ vehicles, value, onChange }: {
+  vehicles: Vehicle[]; value: string | null; onChange: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [make, setMake] = useState<string>("all");
+  const [body, setBody] = useState<string>("all");
+  const [fuel, setFuel] = useState<string>("all");
+  const [status, setStatus] = useState<string>("all");
+
+  const selected = value ? vehicles.find(v => v.id === value) : null;
+
+  const uniq = (arr: (string | null | undefined)[]) =>
+    Array.from(new Set(arr.filter((x): x is string => !!x))).sort();
+  const makes = useMemo(() => uniq(vehicles.map(v => v.make)), [vehicles]);
+  const bodies = useMemo(() => uniq(vehicles.map(v => v.body_type)), [vehicles]);
+  const fuels = useMemo(() => uniq(vehicles.map(v => v.fuel_type)), [vehicles]);
+  const statuses = useMemo(() => uniq(vehicles.map(v => v.status)), [vehicles]);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return vehicles.filter(v => {
+      if (make !== "all" && v.make !== make) return false;
+      if (body !== "all" && v.body_type !== body) return false;
+      if (fuel !== "all" && v.fuel_type !== fuel) return false;
+      if (status !== "all" && v.status !== status) return false;
+      if (!needle) return true;
+      const hay = `${v.year} ${v.make} ${v.model} ${v.trim ?? ""} ${v.color ?? ""}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [vehicles, q, make, body, fuel, status]);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full h-8 bg-white border border-border rounded-md px-3 text-sm flex items-center justify-between text-left"
+      >
+        <span className={selected ? "" : "text-muted-foreground"}>
+          {selected ? `${selected.year} ${selected.make} ${selected.model}${selected.trim ? " " + selected.trim : ""}` : "Assign vehicle"}
+        </span>
+        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 mt-1 w-full min-w-[320px] bg-white border border-border rounded-md shadow-lg p-2">
+            <div className="relative mb-2">
+              <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search year, make, model…"
+                className="w-full h-8 pl-8 pr-2 text-sm border border-border rounded-md bg-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <FilterSelect label="Make" value={make} onChange={setMake} options={makes} />
+              <FilterSelect label="Body" value={body} onChange={setBody} options={bodies} />
+              <FilterSelect label="Fuel" value={fuel} onChange={setFuel} options={fuels} />
+              <FilterSelect label="Status" value={status} onChange={setStatus} options={statuses} />
+            </div>
+            <div className="max-h-64 overflow-y-auto -mx-1">
+              <button
+                type="button"
+                onClick={() => { onChange(null); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-soft rounded flex items-center gap-2 text-muted-foreground"
+              >
+                {!value && <Check className="w-3.5 h-3.5" />} — None —
+              </button>
+              {filtered.map(v => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => { onChange(v.id); setOpen(false); }}
+                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-soft rounded flex items-center justify-between gap-2"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    {value === v.id && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    <span className="truncate">
+                      {v.year} {v.make} {v.model}{v.trim ? ` ${v.trim}` : ""}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground shrink-0 capitalize">
+                    {[v.body_type, v.fuel_type, v.status].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <div className="px-3 py-4 text-center text-xs text-muted-foreground">No matches</div>
+              )}
+            </div>
+            <div className="mt-1 px-2 pt-1 text-[10px] text-muted-foreground border-t border-border">
+              {filtered.length} of {vehicles.length}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-7 text-xs bg-white border border-border rounded px-1.5 capitalize"
+    >
+      <option value="all">{label}: all</option>
+      {options.map(o => <option key={o} value={o} className="capitalize">{o}</option>)}
+    </select>
+  );
+}
