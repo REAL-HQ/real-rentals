@@ -4,7 +4,14 @@ import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Search, Check, ChevronDown, ArrowLeft } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  MoreVertical, Search, Check, ChevronDown, ArrowLeft,
+  Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
+  User as UserIcon, FileText, Star, Trash2,
+} from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -160,115 +167,263 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
   onUpdate: (patch: Partial<Application>) => void; onDelete: () => void;
 }) {
   const veh = driver.vehicle_id ? vehicles.find(v => v.id === driver.vehicle_id) : null;
+  const initials = (driver.full_name || "?")
+    .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+  const trips = Number(driver.trips_completed);
+  const tripsOk = !Number.isNaN(trips) && trips >= 200;
+
   return (
-    <div>
-      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
-        <ArrowLeft className="w-4 h-4" /> Back to drivers
-      </button>
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h2 className="text-2xl font-semibold">{driver.full_name}</h2>
-          <div className="text-sm text-muted-foreground">
-            {driver.email && <a href={`mailto:${driver.email}`} className="hover:underline">{driver.email}</a>}
-            {driver.email && driver.phone && " · "}
-            {driver.phone && <a href={`tel:${driver.phone}`} className="hover:underline">{formatPhone(driver.phone)}</a>}
+    <div className="-mx-8 -my-8 min-h-full bg-gradient-to-b from-soft/60 to-white">
+      {/* Top bar */}
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-border">
+        <div className="px-8 py-3 flex items-center justify-between">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4" /> Back to drivers
+          </button>
+          <div className="flex items-center gap-2">
+            {driver.email && (
+              <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
+                <Mail className="w-3.5 h-3.5" /> Email
+              </a>
+            )}
+            {driver.phone && (
+              <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
+                <Phone className="w-3.5 h-3.5" /> Call
+              </a>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
+                <MoreVertical className="w-4 h-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={onDelete}>
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete driver
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
 
-        <Section title="Lifecycle">
-          <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
-          <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
-          <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
-          <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
-          <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
-          <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
-        </Section>
+      <div className="px-8 py-6 max-w-6xl mx-auto space-y-6">
+        {/* Identity header */}
+        <div className="flex items-start gap-4">
+          <div className="h-16 w-16 shrink-0 rounded-full bg-black text-white grid place-items-center text-xl font-semibold">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-semibold truncate">{driver.full_name}</h2>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full capitalize ${statusBadge[driver.status] || "bg-gray-100 text-gray-700"}`}>
+                {driver.status}
+              </span>
+              {tripsOk && (
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                  <ShieldCheck className="w-3 h-3 mr-1" /> Verified 200+ trips
+                </Badge>
+              )}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {driver.email && (
+                <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
+                  <Mail className="w-3.5 h-3.5" /> {driver.email}
+                </a>
+              )}
+              {driver.phone && (
+                <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
+                  <Phone className="w-3.5 h-3.5" /> {formatPhone(driver.phone)}
+                </a>
+              )}
+              {(driver.city || driver.state) && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" /> {[driver.city, driver.state].filter(Boolean).join(", ")}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
 
-        <Section title="Financials">
-          <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
-          <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
-          <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
-        </Section>
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            icon={<Car className="w-4 h-4" />}
+            label="Vehicle"
+            value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
+            muted={!veh}
+          />
+          <StatCard
+            icon={<CreditCard className="w-4 h-4" />}
+            label="Weekly rent"
+            value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "—"}
+          />
+          <StatCard
+            icon={<Activity className="w-4 h-4" />}
+            label="Trips completed"
+            value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()}
+            hint={!Number.isNaN(trips) && driver.trips_completed ? (tripsOk ? "Meets 200+" : "Below 200") : undefined}
+            hintTone={tripsOk ? "good" : "warn"}
+          />
+          <StatCard
+            icon={<Star className="w-4 h-4" />}
+            label="Rating"
+            value={driver.rating ? `${driver.rating}/5` : "—"}
+          />
+        </div>
 
-        <Section title="Vehicle">
-          <div className="col-span-2 bg-soft rounded-md px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle assigned</div>
-            {veh ? (
-              <div className="text-sm">{veh.year} {veh.make} {veh.model}<div className="text-xs text-muted-foreground">ID {veh.id.slice(0,8)}</div></div>
-            ) : <div className="text-sm text-muted-foreground">None assigned</div>}
-            <div className="mt-2">
+        {/* Tabs */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="bg-white border border-border">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
+            <TabsTrigger value="financials">Financials</TabsTrigger>
+            <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
+            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="notes">Notes</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="mt-4 space-y-4">
+            <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Field label="DOB" value={driver.dob} />
+                <Field label="License #" value={driver.license_number} />
+                <Field label="License state" value={driver.license_state} />
+                <Field label="License exp." value={driver.license_expiration} />
+                <Field label="Years licensed" value={driver.years_licensed} />
+                <Field label="Address" value={[driver.address, driver.city, driver.state, driver.zip].filter(Boolean).join(", ") || null} />
+                <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
+                <Field label="Weekly hours" value={driver.weekly_hours} />
+                <Field label="Term" value={driver.rental_term} />
+                <Field label="Payment method" value={driver.payment_method} />
+              </div>
+            </Card>
+            <Card title="Gig experience" icon={<Activity className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field
+                  label="Total trips / deliveries"
+                  value={(() => {
+                    const n = Number(driver.trips_completed);
+                    if (!driver.trips_completed) return null;
+                    if (Number.isNaN(n)) return driver.trips_completed;
+                    return `${n.toLocaleString()}${n >= 200 ? " ✓" : " (below 200)"}`;
+                  })()}
+                />
+                <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="lifecycle" className="mt-4">
+            <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
+                <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
+                <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
+                <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
+                <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
+                <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="financials" className="mt-4">
+            <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
+                <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
+                <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="vehicle" className="mt-4">
+            <Card title="Assigned vehicle" icon={<Car className="w-4 h-4" />}>
+              <div className="rounded-lg border border-border bg-soft/50 p-4 mb-3">
+                {veh ? (
+                  <div>
+                    <div className="text-lg font-semibold">{veh.year} {veh.make} {veh.model}{veh.trim ? ` ${veh.trim}` : ""}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {[veh.body_type, veh.fuel_type, veh.status].filter(Boolean).join(" · ")} · ID {veh.id.slice(0, 8)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No vehicle assigned</div>
+                )}
+              </div>
               <VehiclePicker
                 vehicles={vehicles}
                 value={driver.vehicle_id}
                 onChange={(id) => onUpdate({ vehicle_id: id })}
               />
-            </div>
-          </div>
-        </Section>
+            </Card>
+          </TabsContent>
 
-        <Section title="Driver info">
-          <Field label="DOB" value={driver.dob} />
-          <Field label="License #" value={driver.license_number} />
-          <Field label="License state" value={driver.license_state} />
-          <Field label="License exp." value={driver.license_expiration} />
-          <Field label="Years licensed" value={driver.years_licensed} />
-          <Field label="Address" value={[driver.address, driver.city, driver.state, driver.zip].filter(Boolean).join(", ") || null} />
-          <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
-          <Field label="Weekly hours" value={driver.weekly_hours} />
-          <Field label="Term" value={driver.rental_term} />
-          <Field label="Payment method" value={driver.payment_method} />
-        </Section>
+          <TabsContent value="documents" className="mt-4 space-y-4">
+            {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) ? (
+              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
+                <TripScreenshots
+                  paths={Array.from(new Set([
+                    ...(((driver as any).trip_screenshots as string[] | null) ?? []),
+                    ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
+                  ].filter(Boolean)))}
+                />
+              </Card>
+            ) : (
+              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
+                <div className="text-sm text-muted-foreground">No screenshots uploaded.</div>
+              </Card>
+            )}
+            {driver.license_photo_url ? (
+              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
+                <LicensePhoto path={driver.license_photo_url} />
+              </Card>
+            ) : (
+              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
+                <div className="text-sm text-muted-foreground">No license photo uploaded.</div>
+              </Card>
+            )}
+          </TabsContent>
 
-        <Section title="Gig experience">
-          <Field
-            label="Total trips / deliveries"
-            value={(() => {
-              const n = Number(driver.trips_completed);
-              if (!driver.trips_completed) return null;
-              if (Number.isNaN(n)) return driver.trips_completed;
-              return `${n.toLocaleString()}${n >= 200 ? " ✓" : " (below 200)"}`;
-            })()}
-          />
-          <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
-        </Section>
+          <TabsContent value="notes" className="mt-4">
+            <Card title="Internal notes" icon={<FileText className="w-4 h-4" />}>
+              <textarea
+                defaultValue={driver.notes || ""} rows={6} placeholder="Add internal notes about this driver…"
+                onBlur={(e) => onUpdate({ notes: e.target.value })}
+                className="w-full border border-border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/5"
+              />
+              <p className="text-[11px] text-muted-foreground mt-2">Saved automatically when you click away.</p>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
 
-        {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) && (
-          <div className="mt-4">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Trip / delivery screenshots</div>
-            <TripScreenshots
-              paths={
-                Array.from(
-                  new Set(
-                    [
-                      ...(((driver as any).trip_screenshots as string[] | null) ?? []),
-                      ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
-                    ].filter(Boolean),
-                  ),
-                )
-              }
-            />
-          </div>
-        )}
+function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+        <div className="text-sm font-semibold">{title}</div>
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
 
-        {driver.license_photo_url && (
-          <div className="mt-4">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">License photo</div>
-            <LicensePhoto path={driver.license_photo_url} />
-          </div>
-        )}
-
-        <div className="mt-4">
-          <label className="text-xs text-muted-foreground uppercase tracking-wider">Internal notes</label>
-          <textarea defaultValue={driver.notes || ""} rows={3} placeholder="Internal notes…"
-            onBlur={(e) => onUpdate({ notes: e.target.value })}
-            className="mt-1 w-full border border-border rounded-md px-3 py-2 text-sm" />
-        </div>
-
-        <div className="mt-6 flex gap-2 justify-end">
-          <button onClick={onDelete} className="rounded-md border border-real-red text-real-red px-4 py-2 text-sm hover:bg-real-red hover:text-white">Delete</button>
-          <button onClick={onBack} className="rounded-md bg-black text-white px-4 py-2 text-sm">Back</button>
-        </div>
+function StatCard({ icon, label, value, hint, hintTone, muted }: {
+  icon: React.ReactNode; label: string; value: React.ReactNode;
+  hint?: string; hintTone?: "good" | "warn"; muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        {icon}<span>{label}</span>
+      </div>
+      <div className={`mt-2 text-lg font-semibold truncate ${muted ? "text-muted-foreground" : ""}`}>{value}</div>
+      {hint && (
+        <div className={`mt-1 text-[11px] ${hintTone === "good" ? "text-emerald-700" : "text-amber-700"}`}>{hint}</div>
+      )}
     </div>
   );
 }
