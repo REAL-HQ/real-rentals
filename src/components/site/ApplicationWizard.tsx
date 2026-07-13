@@ -52,6 +52,9 @@ type WizardState = {
   // gig
   platforms: string[];
   profile_screenshot_url: string | null;
+  trips_completed: string | null;
+  rating: number | null;
+  trip_screenshots: string[];
   // driver
   license_photo_url: string | null;
   full_coverage_insurance: boolean | null;
@@ -94,6 +97,9 @@ export function ApplicationWizard({ id }: { id: string }) {
           rental_duration: row.rental_duration,
           platforms: row.platforms ?? [],
           profile_screenshot_url: row.profile_screenshot_url,
+          trips_completed: (row as any).trips_completed ?? null,
+          rating: (row as any).rating ?? null,
+          trip_screenshots: ((row as any).trip_screenshots as string[] | null) ?? [],
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
           address: row.address,
@@ -166,6 +172,9 @@ export function ApplicationWizard({ id }: { id: string }) {
             <GigStep source={state.source} id={id} state={state} update={update} onBack={goBack} onNext={() => goNext("driver", {
               platforms: state.platforms,
               profile_screenshot_url: state.profile_screenshot_url,
+              trips_completed: state.trips_completed,
+              rating: state.rating,
+              trip_screenshots: state.trip_screenshots,
             })} saving={saving} />
           )}
           {step === "driver" && (
@@ -349,14 +358,23 @@ function RentalStep({ state, update, onBack, onNext, saving, source }: StepProps
 }
 
 function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProps & { id: string; onBack: () => void; onNext: () => void }) {
-  const canNext = state.platforms.length > 0;
+  const trips = Number(state.trips_completed);
+  const tripsOk = !Number.isNaN(trips) && trips >= 200;
+  const canNext =
+    state.platforms.length > 0 &&
+    tripsOk &&
+    state.trip_screenshots.length > 0;
   const toggle = (p: string) => {
     const next = state.platforms.includes(p) ? state.platforms.filter((x) => x !== p) : [...state.platforms, p];
     update("platforms", next);
   };
   return (
     <div>
-      <StepHeader eyebrow={stepEyebrow(source, "gig")} title="Your Gig Profile" sub="Help us verify you're an active driver — this gets you to a hot lead status faster." />
+      <StepHeader
+        eyebrow={stepEyebrow(source, "gig")}
+        title="Your Gig Profile"
+        sub="We work with active drivers who've completed 200+ trips or deliveries on any app. Please share your totals and upload a screenshot showing your lifetime trip/delivery count."
+      />
       <div className="space-y-6">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">What Platforms Are You Currently Using?</div>
@@ -371,13 +389,50 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
             })}
           </div>
         </div>
-        <FileUploadField
-          label="Upload A Screenshot Of Your Profile (Trip Details + Ratings) — Optional"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Total Trips / Deliveries Completed <span className="text-real-red">*</span>
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder="e.g. 850"
+              value={state.trips_completed ?? ""}
+              onChange={(e) => update("trips_completed", e.target.value || null)}
+              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            />
+            <span className={`mt-1 block text-[11px] ${tripsOk ? "text-emerald-600" : "text-muted-foreground"}`}>
+              200+ required · combined across all apps
+            </span>
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Driver Rating</span>
+            <input
+              type="number"
+              step="0.01"
+              min={1}
+              max={5}
+              placeholder="e.g. 4.92"
+              value={state.rating ?? ""}
+              onChange={(e) => update("rating", e.target.value === "" ? null : Number(e.target.value))}
+              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            />
+          </label>
+        </div>
+        <MultiFileUploadField
+          label="Upload Screenshots Of Your Trip / Delivery Totals (Required)"
+          hint="One screenshot per app is best (Uber, Lyft, DoorDash, etc.). Must clearly show your lifetime trip or delivery count."
           accept="image/*,application/pdf"
           bucket="profile-screenshots"
           applicationId={id}
-          value={state.profile_screenshot_url}
-          onChange={(v) => update("profile_screenshot_url", v)}
+          values={state.trip_screenshots}
+          onChange={(v) => {
+            update("trip_screenshots", v);
+            // Keep the legacy single field in sync so admin views that only read it still work.
+            update("profile_screenshot_url", v[0] ?? null);
+          }}
         />
       </div>
       <NavRow onBack={onBack} onNext={onNext} saving={saving} canNext={canNext} />
@@ -603,6 +658,98 @@ function FileUploadField({
           {value ? <span className="text-foreground">Uploaded: <span className="text-muted-foreground">{filename}</span></span> : <span className="text-muted-foreground">Click to upload (PDF, DOC, or image, up to 10MB)</span>}
         </div>
       </label>
+    </div>
+  );
+}
+
+function MultiFileUploadField({
+  label,
+  hint,
+  accept,
+  bucket,
+  applicationId,
+  values,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  accept: string;
+  bucket: string;
+  applicationId: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList) {
+    setUploading(true);
+    const uploaded: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name}: file must be under 10MB.`);
+          continue;
+        }
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+        if (error) {
+          toast.error(error.message);
+          continue;
+        }
+        uploaded.push(path);
+      }
+      if (uploaded.length) {
+        onChange([...values, ...uploaded].slice(0, 10));
+        toast.success(`Uploaded ${uploaded.length}`);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function remove(path: string) {
+    onChange(values.filter((v) => v !== path));
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label} <span className="text-real-red">*</span>
+      </div>
+      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
+      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-4 cursor-pointer hover:border-real-red/60">
+        <input
+          type="file"
+          accept={accept}
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length) handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : <Upload className="h-5 w-5 text-muted-foreground" />}
+        <div className="text-sm text-muted-foreground">
+          Click to upload one or more files (PDF or image, up to 10MB each)
+        </div>
+      </label>
+      {values.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {values.map((path) => (
+            <li key={path} className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm">
+              <span className="truncate text-muted-foreground">{path.split("/").pop()}</span>
+              <button
+                type="button"
+                onClick={() => remove(path)}
+                className="text-[11px] font-semibold text-real-red hover:underline shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

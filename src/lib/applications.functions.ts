@@ -97,6 +97,7 @@ const stepUpdateSchema = z.object({
   platforms: z.array(z.string().trim().min(1).max(60)).max(12).nullable().optional(),
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
   trips_completed: z.string().trim().max(40).nullable().optional(),
+  trip_screenshots: z.array(z.string().trim().max(500)).max(10).nullable().optional(),
   rating: z.number().min(1).max(5).nullable().optional(),
   // Driver
   license_photo_url: z.string().trim().max(500).nullable().optional(),
@@ -116,7 +117,16 @@ function computeScore(row: any): number {
   if (platformCount >= 3) s += 18;
   else if (platformCount === 2) s += 12;
   else if (platformCount === 1) s += 7;
-  if (row.profile_screenshot_url) s += 18;
+  if (row.profile_screenshot_url) s += 10;
+  const shotCount = Array.isArray(row.trip_screenshots) ? row.trip_screenshots.length : 0;
+  if (shotCount >= 2) s += 12;
+  else if (shotCount === 1) s += 8;
+  const trips = Number(row.trips_completed);
+  if (!Number.isNaN(trips)) {
+    if (trips >= 1000) s += 14;
+    else if (trips >= 500) s += 10;
+    else if (trips >= 200) s += 8;
+  }
   if (typeof row.rating === "number" && row.rating >= 4.9) s += 10;
   else if (typeof row.rating === "number" && row.rating >= 4.7) s += 6;
   if (row.license_valid === true) s += 12;
@@ -214,7 +224,7 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      .select("id, full_name, email, phone, city, state, market_id, pickup_date, return_date, current_step, status, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trips_completed, rating, license_photo_url, full_coverage_insurance, address, zip, how_heard")
+      .select("id, full_name, email, phone, city, state, market_id, pickup_date, return_date, current_step, status, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, address, zip, how_heard")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);

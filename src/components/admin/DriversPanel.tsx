@@ -206,6 +206,37 @@ function DriverModal({ driver, vehicles, onClose, onUpdate, onDelete }: {
           <Field label="Payment method" value={driver.payment_method} />
         </Section>
 
+        <Section title="Gig experience">
+          <Field
+            label="Total trips / deliveries"
+            value={(() => {
+              const n = Number(driver.trips_completed);
+              if (!driver.trips_completed) return null;
+              if (Number.isNaN(n)) return driver.trips_completed;
+              return `${n.toLocaleString()}${n >= 200 ? " ✓" : " (below 200)"}`;
+            })()}
+          />
+          <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
+        </Section>
+
+        {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) && (
+          <div className="mt-4">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Trip / delivery screenshots</div>
+            <TripScreenshots
+              paths={
+                Array.from(
+                  new Set(
+                    [
+                      ...(((driver as any).trip_screenshots as string[] | null) ?? []),
+                      ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
+                    ].filter(Boolean),
+                  ),
+                )
+              }
+            />
+          </div>
+        )}
+
         {driver.license_photo_url && (
           <div className="mt-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">License photo</div>
@@ -276,6 +307,43 @@ function LicensePhoto({ path }: { path: string }) {
   }, [path]);
   if (!url) return <div className="aspect-video bg-soft rounded-md" />;
   return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="License" className="rounded-md max-h-64 border border-border" /></a>;
+}
+
+function TripScreenshots({ paths }: { paths: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const map: Record<string, string> = {};
+      for (const p of paths) {
+        const { data } = await supabase.storage.from("profile-screenshots").createSignedUrl(p, 3600);
+        if (data?.signedUrl) map[p] = data.signedUrl;
+      }
+      if (active) setUrls(map);
+    })();
+    return () => { active = false; };
+  }, [paths.join("|")]);
+  if (!paths.length) return null;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {paths.map((p) => {
+        const url = urls[p];
+        const isPdf = p.toLowerCase().endsWith(".pdf");
+        return (
+          <a key={p} href={url ?? "#"} target="_blank" rel="noreferrer"
+             className="block rounded-md border border-border overflow-hidden bg-soft hover:border-foreground/40">
+            {url && !isPdf ? (
+              <img src={url} alt="Trip screenshot" className="w-full h-32 object-cover" />
+            ) : (
+              <div className="w-full h-32 flex items-center justify-center text-xs text-muted-foreground">
+                {url ? "Open PDF" : "Loading…"}
+              </div>
+            )}
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 function VehiclePicker({ vehicles, value, onChange }: {

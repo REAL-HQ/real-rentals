@@ -1,0 +1,1 @@
+ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS trip_screenshots text[] NOT NULL DEFAULT '{}';
