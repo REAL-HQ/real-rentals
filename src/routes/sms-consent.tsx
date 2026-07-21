@@ -34,7 +34,7 @@ function SmsConsentPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Opt-Out</h2>
-            <p className="mt-3">You can opt out at any time by replying <span className="font-semibold">STOP</span> to any message. For help, reply <span className="font-semibold">HELP</span> or email <a href="mailto:leads@drivereal.com" className="text-real-red underline">leads@drivereal.com</a>.</p>
+            <p className="mt-3">You can opt out at any time by replying <span className="font-semibold">STOP</span> to any message. For help, reply <span className="font-semibold">HELP</span> or email <a href="mailto:go@drivereal.com" className="text-real-red underline">go@drivereal.com</a>.</p>
           </div>
 
           <div>

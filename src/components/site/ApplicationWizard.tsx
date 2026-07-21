@@ -479,7 +479,7 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: Ste
 function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
   const firstName = (state.full_name || "").trim().split(/\s+/)[0] || "there";
   const reference = `RR-${id.replace(/-/g, "").slice(-6).toUpperCase()}`;
-  const email = "leads@drivereal.com";
+  const email = "go@drivereal.com";
   const dateRange =
     state.pickup_date && state.return_date
       ? `${fmtDate(state.pickup_date)} – ${fmtDate(state.return_date)}`
