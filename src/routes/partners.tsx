@@ -117,15 +117,10 @@ function Partners() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const photo_urls: string[] = [];
-      for (const file of photos) {
-        const ext = file.name.split(".").pop() || "jpg";
-        const path = `${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("owner-vehicle-photos").upload(path, file, { contentType: file.type });
-        if (upErr) throw upErr;
-        photo_urls.push(path);
-      }
-      const { error } = await supabase.from("fleet_owner_submissions").insert({
+      // Insert the submission first so uploads can be scoped to its id (RLS
+      // ties storage writes to a real submission row instead of trusting an
+      // arbitrary client-chosen UUID).
+      const { data: created, error } = await supabase.from("fleet_owner_submissions").insert({
         full_name: form.full_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
@@ -140,10 +135,22 @@ function Partners() {
         registration_state: form.registration_state || null,
         currently_insured: form.currently_insured === "" ? null : form.currently_insured === "Yes",
         condition: form.condition || null,
-        photo_urls,
+        photo_urls: [],
         message: form.message.trim() || null,
-      });
+      }).select("id").single();
       if (error) throw error;
+      const submissionId = created.id;
+      const photo_urls: string[] = [];
+      for (const file of photos) {
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = `${submissionId}/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("owner-vehicle-photos").upload(path, file, { contentType: file.type });
+        if (upErr) throw upErr;
+        photo_urls.push(path);
+      }
+      if (photo_urls.length) {
+        await supabase.from("fleet_owner_submissions").update({ photo_urls }).eq("id", submissionId);
+      }
       setSent(true);
     } catch (err: any) {
       setSubmitError(err.message || "Something went wrong. Please try again.");
