@@ -39,7 +39,7 @@ function ThankYouPage() {
               </div>
               <h1 className="mt-4 text-2xl md:text-3xl font-semibold">Your Quote Request Is In</h1>
               <p className="mt-2 text-muted-foreground">
-                Thanks — we've saved your info. Finish the quick profile below so we can match you with the right vehicle and get back to you fast.
+                We've saved your contact info — a few quick questions below and we'll match you with the right vehicle and get back to you fast.
               </p>
             </div>
           </FadeUp>
