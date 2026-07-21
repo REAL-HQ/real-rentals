@@ -224,10 +224,19 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      .select("id, full_name, email, phone, city, state, market_id, pickup_date, return_date, current_step, status, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, address, zip, how_heard")
+      // NOTE: The lead id lives in a shareable /thank-you?id= URL, so this
+      // endpoint is effectively public. Do NOT return contact PII (email,
+      // phone, full address, zip) or admin-only fields (status, notes,
+      // score, user_id). Return only what the wizard needs to resume:
+      // progress state, the driver's first name for greeting, and the
+      // non-sensitive form values the driver themselves entered.
+      .select("id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, how_heard")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Application not found");
-    return row;
+    // Reduce full_name to a first name only. Enough for the greeting,
+    // avoids handing out the lead's full identity to anyone with the URL.
+    const firstName = (row.full_name ?? "").trim().split(/\s+/)[0] ?? "";
+    return { ...row, full_name: firstName };
   });

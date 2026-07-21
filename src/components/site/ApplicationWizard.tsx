@@ -84,8 +84,8 @@ export function ApplicationWizard({ id }: { id: string }) {
       .then((row) => {
         setState({
           full_name: row.full_name ?? "",
-          email: row.email ?? "",
-          phone: row.phone ?? "",
+          email: "",
+          phone: "",
           pickup_date: row.pickup_date,
           return_date: row.return_date,
           city: row.city,
@@ -102,9 +102,9 @@ export function ApplicationWizard({ id }: { id: string }) {
           trip_screenshots: ((row as any).trip_screenshots as string[] | null) ?? [],
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
-          address: row.address,
+          address: null,
           state: row.state,
-          zip: row.zip,
+          zip: null,
           how_heard: row.how_heard,
           current_step: (row.current_step as WizardStep) ?? "eligibility",
         });
