@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
+import { createFleetOwnerSubmission, updateFleetOwnerPhotos } from "@/lib/partner-submissions.functions";
 import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText, Upload, X } from "lucide-react";
 
 export const Route = createFileRoute("/partners")({
@@ -117,33 +118,38 @@ function Partners() {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      // Create the submission via a server function so uploads can be scoped
+      // to a real submission id (storage RLS verifies the id exists).
+      const { id: submissionId } = await createFleetOwnerSubmission({
+        data: {
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          vin: form.vin.trim().toUpperCase(),
+          year: Number(form.year),
+          make: form.make.trim(),
+          model: form.model.trim(),
+          trim: form.trim.trim() || null,
+          mileage: form.mileage ? Number(form.mileage) : null,
+          title_status: form.title_status || null,
+          lien_status: form.lien_status || null,
+          registration_state: form.registration_state || null,
+          currently_insured: form.currently_insured === "" ? null : form.currently_insured === "Yes",
+          condition: form.condition || null,
+          message: form.message.trim() || null,
+        },
+      });
       const photo_urls: string[] = [];
       for (const file of photos) {
         const ext = file.name.split(".").pop() || "jpg";
-        const path = `${crypto.randomUUID()}.${ext}`;
+        const path = `${submissionId}/${crypto.randomUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage.from("owner-vehicle-photos").upload(path, file, { contentType: file.type });
         if (upErr) throw upErr;
         photo_urls.push(path);
       }
-      const { error } = await supabase.from("fleet_owner_submissions").insert({
-        full_name: form.full_name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        vin: form.vin.trim().toUpperCase(),
-        year: Number(form.year),
-        make: form.make.trim(),
-        model: form.model.trim(),
-        trim: form.trim.trim() || null,
-        mileage: form.mileage ? Number(form.mileage) : null,
-        title_status: form.title_status || null,
-        lien_status: form.lien_status || null,
-        registration_state: form.registration_state || null,
-        currently_insured: form.currently_insured === "" ? null : form.currently_insured === "Yes",
-        condition: form.condition || null,
-        photo_urls,
-        message: form.message.trim() || null,
-      });
-      if (error) throw error;
+      if (photo_urls.length) {
+        await updateFleetOwnerPhotos({ data: { id: submissionId, photo_urls } });
+      }
       setSent(true);
     } catch (err: any) {
       setSubmitError(err.message || "Something went wrong. Please try again.");
