@@ -60,7 +60,7 @@ function PrivacyPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Contact</h2>
-            <p className="mt-3">Questions? Email <a href="mailto:leads@drivereal.com" className="text-real-red underline">leads@drivereal.com</a>.</p>
+            <p className="mt-3">Questions? Email <a href="mailto:go@drivereal.com" className="text-real-red underline">go@drivereal.com</a>.</p>
           </div>
         </div>
       </section>
