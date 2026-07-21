@@ -99,7 +99,7 @@ export function HeroQuoteBar({
             </button>
           </div>
           <p className="mt-4 text-center text-xs md:text-sm text-muted-foreground">
-            Quick quote — no deposit, no credit check. We'll confirm your car on a fast call.
+            Quick quote — unlimited miles, no deposit, no credit check. We'll confirm your car on a fast call.
           </p>
         </div>
       </FadeUp>
