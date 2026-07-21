@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -27,6 +28,11 @@ import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 
+const ThankYouRoute = ThankYouRouteImport.update({
+  id: '/thank-you',
+  path: '/thank-you',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
+  '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesByTo {
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
+  '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRoutesById {
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
+  '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
 }
 export interface FileRouteTypes {
@@ -190,6 +199,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
+    | '/thank-you'
     | '/fleet/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
+    | '/thank-you'
     | '/fleet/$id'
   id:
     | '__root__'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sms-consent'
     | '/terms'
+    | '/thank-you'
     | '/fleet/$id'
   fileRoutesById: FileRoutesById
 }
@@ -248,10 +260,18 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
+  ThankYouRoute: typeof ThankYouRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/thank-you': {
+      id: '/thank-you'
+      path: '/thank-you'
+      fullPath: '/thank-you'
+      preLoaderRoute: typeof ThankYouRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/terms': {
       id: '/terms'
       path: '/terms'
@@ -401,17 +421,8 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
+  ThankYouRoute: ThankYouRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
