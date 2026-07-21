@@ -229,12 +229,9 @@ export function ProgressBar({
 }
 
 function stepEyebrow(source: string | null | undefined, step: WizardStep) {
-  // Wizard steps only (excludes "Your Info" and "Done").
-  const segs = getBarSegments(source).filter((s) => s.key !== "complete" && s.key !== "your_info");
-  const total = source === "homepage" ? segs.length + 1 : segs.length;
-  const idx = segs.findIndex((s) => s.key === step);
-  const num = source === "homepage" ? idx + 2 : idx + 1;
-  return `Step ${num} Of ${total}`;
+  // Post-lead profile phase: always 4 wizard steps regardless of entry path.
+  const idx = WIZARD_STEPS.indexOf(step);
+  return `Profile Step ${idx + 1} Of ${WIZARD_STEPS.length}`;
 }
 
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
@@ -304,7 +301,7 @@ type StepProps = {
 };
 
 function EligibilityStep({ state, update, onNext, saving, source }: StepProps & { onNext: () => void }) {
-  const canNext = state.license_valid !== null && !!state.gig_status && !!state.start_timing;
+  const canNext = state.license_valid !== null && !!state.start_timing;
   return (
     <div>
       <StepHeader eyebrow={stepEyebrow(source, "eligibility")} title="Quick Eligibility" sub="A few quick questions so we can match you with the right vehicle." />
@@ -322,7 +319,6 @@ function EligibilityStep({ state, update, onNext, saving, source }: StepProps & 
             })}
           </div>
         </div>
-        <RadioGroup label="Are You Currently Driving Or Planning To Drive For Gig Apps?" value={state.gig_status as any} options={GIG_OPTS} onChange={(v) => update("gig_status", v)} />
         <RadioGroup label="How Soon Do You Want To Start?" value={state.start_timing as any} options={START_OPTS} onChange={(v) => update("start_timing", v)} />
       </div>
       <NavRow onNext={onNext} saving={saving} canNext={canNext} />
