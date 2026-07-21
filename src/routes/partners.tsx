@@ -117,10 +117,12 @@ function Partners() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Insert the submission first so uploads can be scoped to its id (RLS
-      // ties storage writes to a real submission row instead of trusting an
-      // arbitrary client-chosen UUID).
-      const { data: created, error } = await supabase.from("fleet_owner_submissions").insert({
+      // Insert the submission first so uploads can be scoped to its id. RLS
+      // ties storage writes to a real submission row rather than trusting an
+      // arbitrary client-chosen UUID.
+      const submissionId = crypto.randomUUID();
+      const { error } = await supabase.from("fleet_owner_submissions").insert({
+        id: submissionId,
         full_name: form.full_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
@@ -137,9 +139,8 @@ function Partners() {
         condition: form.condition || null,
         photo_urls: [],
         message: form.message.trim() || null,
-      }).select("id").single();
+      });
       if (error) throw error;
-      const submissionId = created.id;
       const photo_urls: string[] = [];
       for (const file of photos) {
         const ext = file.name.split(".").pop() || "jpg";
