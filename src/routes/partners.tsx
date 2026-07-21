@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
+import { createFleetOwnerSubmission, updateFleetOwnerPhotos } from "@/lib/partner-submissions.functions";
 import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText, Upload, X } from "lucide-react";
 
 export const Route = createFileRoute("/partners")({
