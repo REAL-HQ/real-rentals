@@ -134,7 +134,8 @@ export function DriversPanel() {
                       </Select>
                     </td>
                     <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
-                      {new Date(a.created_at!).toLocaleDateString()}
+                      <div>{new Date(a.created_at!).toLocaleDateString()}</div>
+                      <div className="text-[10px] opacity-70">{new Date(a.created_at!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
                     </td>
                     <td className="px-2 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
