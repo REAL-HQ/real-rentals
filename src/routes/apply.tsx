@@ -120,7 +120,7 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
           ...utms,
         },
       });
-      navigate({ to: "/apply", search: { id: data.id, city: "", pickup: "", return: "" } });
+      navigate({ to: "/thank-you", search: { id: data.id } });
     } catch (e: any) {
       toast.error(e?.message ?? "Could not save. Please try again.");
     } finally {

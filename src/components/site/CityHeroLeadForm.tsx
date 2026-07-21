@@ -111,7 +111,7 @@ export function CityHeroLeadForm({
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("lead", { detail: { city: site.slug, applicationId: data.id } }));
       }
-      navigate({ to: "/apply", search: { id: data.id } });
+      navigate({ to: "/thank-you", search: { id: data.id } });
     } catch (error: any) {
       toast.error(error?.message || "Could not submit your application. Please try again.");
     } finally {
