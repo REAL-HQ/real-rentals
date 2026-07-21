@@ -24,7 +24,7 @@ function ThankYouPage() {
   const { id } = Route.useSearch();
 
   if (!id) {
-    return <Navigate to="/" />;
+    return <Navigate to="/apply" />;
   }
 
   return (
