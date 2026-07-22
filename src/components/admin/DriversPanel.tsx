@@ -13,7 +13,7 @@ import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
-  MessageSquare, PhoneOutgoing,
+  MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -240,6 +240,15 @@ export function DriversPanel() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span>{a.full_name}</span>
+                      {a.gclid ? (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-800" title={`Google Ads${a.utm_campaign ? ` — ${a.utm_campaign}` : ""}`}>
+                          <BadgeDollarSign className="w-3 h-3" /> Google Ads
+                        </span>
+                      ) : (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-700" title={a.referrer || "Organic / Direct"}>
+                          <Globe className="w-3 h-3" /> Organic/Direct
+                        </span>
+                      )}
                       {dupeCount > 0 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); if (history.length) toggleExpand(a.id); }}
@@ -508,6 +517,19 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
                   })()}
                 />
                 <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
+              </div>
+            </Card>
+            <Card title="Attribution" icon={driver.gclid ? <BadgeDollarSign className="w-4 h-4" /> : <Globe className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Field label="Source" value={driver.gclid ? "Google Ads" : "Organic / Direct"} />
+                <Field label="gclid" value={driver.gclid} />
+                <Field label="utm_source" value={driver.utm_source} />
+                <Field label="utm_medium" value={driver.utm_medium} />
+                <Field label="utm_campaign" value={driver.utm_campaign} />
+                <Field label="utm_term" value={driver.utm_term} />
+                <Field label="utm_content" value={driver.utm_content} />
+                <Field label="Landing page" value={driver.landing_page} />
+                <Field label="Referrer" value={driver.referrer} />
               </div>
             </Card>
           </TabsContent>

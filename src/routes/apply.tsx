@@ -7,6 +7,7 @@ import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/apply")({
@@ -70,18 +71,7 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
       });
   }, [preCity]);
 
-  const utms = useMemo(() => {
-    if (typeof window === "undefined") return {};
-    const params = new URLSearchParams(window.location.search);
-    return {
-      utm_source: params.get("utm_source"),
-      utm_medium: params.get("utm_medium"),
-      utm_campaign: params.get("utm_campaign"),
-      utm_term: params.get("utm_term"),
-      utm_content: params.get("utm_content"),
-      gclid: params.get("gclid"),
-    };
-  }, []);
+  // Attribution captured in __root; read here at submit time.
 
   function update<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((p) => ({ ...p, [k]: v }));
@@ -117,7 +107,7 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
           pickup_date: prePickup || null,
           return_date: preReturn || null,
           source: "homepage",
-          ...utms,
+          ...getAttribution(),
         },
       });
       navigate({ to: "/thank-you", search: { id: data.id } });

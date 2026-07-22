@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { captureAttribution } from "@/lib/attribution";
 
 function NotFoundComponent() {
   return (
@@ -139,6 +140,13 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Capture gclid / utm_* / landing_page / referrer on first client render so
+  // they survive navigation through the marketing site into /apply and the
+  // thank-you wizard. First-touch wins.
+  useEffect(() => {
+    captureAttribution();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
