@@ -13,19 +13,16 @@ export const Route = createFileRoute("/api/public/cron/wizard-recovery")({
 async function handle(request: Request): Promise<Response> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  // Verify bearer token stored in private.cron_tokens
+  // Verify bearer token stored in private.cron_tokens via SECURITY DEFINER RPC
   const authHeader = request.headers.get("authorization") || "";
   const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-  const { data: tokenRow, error: tokenErr } = await supabaseAdmin
-    .schema("private" as any)
-    .from("cron_tokens")
-    .select("token")
-    .eq("name", "wizard-recovery")
-    .maybeSingle();
-  if (tokenErr || !tokenRow?.token) {
+  const { data: expectedToken, error: tokenErr } = await supabaseAdmin.rpc("get_cron_token", {
+    _name: "wizard-recovery",
+  });
+  if (tokenErr || !expectedToken) {
     return new Response("token config missing", { status: 500 });
   }
-  if (!provided || provided !== tokenRow.token) {
+  if (!provided || provided !== expectedToken) {
     return new Response("unauthorized", { status: 401 });
   }
 
