@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-router";
+import { mergeDuplicateApplications } from "@/lib/applications.functions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
-  User as UserIcon, FileText, Star, Trash2,
+  User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -41,6 +43,9 @@ export function DriversPanel() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [open, setOpen] = useState<Application | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [merging, setMerging] = useState(false);
+  const runMerge = useServerFn(mergeDuplicateApplications);
 
   useEffect(() => {
     supabase.from("applications").select("*").order("created_at", { ascending: false })
@@ -49,6 +54,27 @@ export function DriversPanel() {
   }, []);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map(v => [v.id, v])), [vehicles]);
+
+  // Group by primary_application_id (falls back to id). Primary row = the one
+  // whose id === groupKey; others render as collapsed history.
+  const grouped = useMemo(() => {
+    const filteredRows = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+    const byKey = new Map<string, { primary: Application; history: Application[] }>();
+    for (const row of filteredRows) {
+      const key = row.primary_application_id ?? row.id;
+      const entry = byKey.get(key) ?? { primary: row, history: [] };
+      if (row.id === key) entry.primary = row;
+      else entry.history.push(row);
+      byKey.set(key, entry);
+    }
+    // Sort history within each group newest-first
+    for (const g of byKey.values()) {
+      g.history.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+    }
+    return Array.from(byKey.values()).sort(
+      (a, b) => (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? ""),
+    );
+  }, [drivers, filter]);
 
   async function update(id: string, patch: Partial<Application>) {
     const { error } = await supabase.from("applications").update(patch).eq("id", id);
@@ -65,7 +91,29 @@ export function DriversPanel() {
     toast.success("Deleted");
   }
 
-  const filtered = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+  async function handleMerge() {
+    if (!confirm("Merge existing duplicate leads by phone/email? This links older rows to the newest and cannot be undone.")) return;
+    setMerging(true);
+    try {
+      const res = await runMerge();
+      toast.success(`Linked ${res.merged} duplicate rows.`);
+      const { data } = await supabase.from("applications").select("*").order("created_at", { ascending: false });
+      setDrivers(data || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Merge failed");
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   if (open) {
     return (
