@@ -865,18 +865,31 @@ export function InsuranceVerificationCard({
 /* ------------------------------------------------------------------ */
 
 function ScriptCard({ title, children }: { title: string; children: React.ReactNode }) {
+  // Extract leading "N." from titles like "1. Opening"
+  const m = title.match(/^(\d+)\.\s*(.+)$/);
+  const step = m ? m[1] : null;
+  const label = m ? m[2] : title;
   return (
-    <div className="rounded-xl border border-border bg-white">
-      <div className="border-b border-border px-4 py-2.5 text-sm font-semibold">{title}</div>
+    <details open className="group rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <summary className="flex cursor-pointer list-none items-center gap-3 border-b border-transparent px-4 py-3 hover:bg-soft/40 group-open:border-border">
+        {step && (
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-black text-[11px] font-semibold text-white">
+            {step}
+          </span>
+        )}
+        <div className="text-sm font-semibold">{label}</div>
+        <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-open:rotate-90" />
+      </summary>
       <div className="space-y-3 p-4">{children}</div>
-    </div>
+    </details>
   );
 }
 function Script({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-md border border-border bg-soft/40 px-3 py-2 text-sm italic leading-relaxed text-muted-foreground">
-      {children}
-    </p>
+    <div className="flex items-start gap-2 rounded-md border border-l-4 border-border border-l-real-red bg-soft/30 px-3 py-2 text-sm italic leading-relaxed text-foreground/80">
+      <PhoneCall className="mt-0.5 h-3.5 w-3.5 shrink-0 text-real-red" />
+      <p>{children}</p>
+    </div>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
