@@ -85,17 +85,17 @@ function Admin() {
       <div className="flex flex-1 min-h-0">
         {/* Sidebar — clean light shell */}
         <aside className={`hidden md:flex ${collapsed ? "w-[72px]" : "w-64"} transition-[width] duration-200 flex-col bg-white border-r border-[#ececf0] sticky top-0 h-screen`}>
-          <div className="relative h-16 px-4 flex items-center justify-center border-b border-[#f0f0f3]">
+          <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={`p-1.5 rounded-md hover:bg-[#f5f6f8] text-neutral-500 hover:text-neutral-900 ${collapsed ? "" : "absolute right-2 top-1/2 -translate-y-1/2"}`}
+              className={`p-1.5 rounded-md hover:bg-[#f5f6f8] text-neutral-500 hover:text-neutral-900 ${collapsed ? "" : "absolute right-2 top-4"}`}
             >
               {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
           </div>
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          <nav className="flex-1 px-3 pt-6 pb-4 space-y-0.5 overflow-y-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
