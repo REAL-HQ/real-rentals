@@ -112,7 +112,7 @@ export function OverviewPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard
           icon={Users}
-          label="New leads (7d)"
+          label="New Leads (7d)"
           value={kpis?.leads7 ?? "—"}
           delta={kpis ? trend(kpis.leads7, kpis.leadsPrev7) : undefined}
           hint="vs. previous 7d"
@@ -121,20 +121,20 @@ export function OverviewPanel() {
           icon={TrendingUp}
           label="Applications (7d)"
           value={kpis?.apps7 ?? "—"}
-          hint="Completed profile step"
+          hint="Completed Profile Step"
         />
         <KpiCard
           icon={Flame}
-          label="Hot prospects"
+          label="Hot Prospects"
           value={kpis?.hotLeads ?? "—"}
-          hint="AI-scored"
+          hint="AI-Scored"
           accent="red"
         />
         <KpiCard
           icon={ShieldCheck}
-          label="Screenings pending"
+          label="Screenings Pending"
           value={kpis?.screeningsPending ?? "—"}
-          hint="Interview not completed"
+          hint="Interview Not Completed"
         />
       </div>
 
@@ -144,7 +144,7 @@ export function OverviewPanel() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-neutral-900">Lead & Application Flow</h3>
-              <p className="text-xs text-neutral-500 mt-0.5">Last 30 days</p>
+              <p className="text-xs text-neutral-500 mt-0.5">Last 30 Days</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="inline-flex items-center gap-1.5 text-neutral-600">
@@ -175,11 +175,11 @@ export function OverviewPanel() {
         {/* Fleet summary */}
         <div className="bg-white border border-[#ececf0] rounded-xl p-5">
           <h3 className="text-sm font-semibold text-neutral-900">Fleet</h3>
-          <p className="text-xs text-neutral-500 mt-0.5 mb-4">Inventory at a glance</p>
+          <p className="text-xs text-neutral-500 mt-0.5 mb-4">Inventory At A Glance</p>
           <div className="space-y-4">
-            <SummaryRow icon={Car} label="Total vehicles" value={kpis?.vehicles ?? "—"} />
+            <SummaryRow icon={Car} label="Total Vehicles" value={kpis?.vehicles ?? "—"} />
             <SummaryRow icon={CreditCard} label="Available" value={kpis?.vehiclesAvailable ?? "—"} tone="emerald" />
-            <SummaryRow icon={Users} label="Active drivers" value={kpis?.activeDrivers ?? "—"} />
+            <SummaryRow icon={Users} label="Active Drivers" value={kpis?.activeDrivers ?? "—"} />
           </div>
           <div className="mt-5 pt-4 border-t border-[#f0f0f3]">
             <div className="text-xs text-neutral-500">Utilization</div>
@@ -209,8 +209,8 @@ export function OverviewPanel() {
         <div className="lg:col-span-2 bg-white border border-[#ececf0] rounded-xl">
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
             <div>
-              <h3 className="text-sm font-semibold text-neutral-900">Recent applications</h3>
-              <p className="text-xs text-neutral-500 mt-0.5">Latest driver activity</p>
+              <h3 className="text-sm font-semibold text-neutral-900">Recent Applications</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">Latest Driver Activity</p>
             </div>
             <Link to="/admin" search={{ tab: "drivers" } as any} className="text-xs text-neutral-500 hover:text-neutral-900 inline-flex items-center gap-1">
               View all <ArrowUpRight className="w-3.5 h-3.5" />
@@ -298,9 +298,9 @@ export function OverviewPanel() {
         <div className="bg-white border border-[#ececf0] rounded-xl">
           <div className="px-5 pt-5 pb-3">
             <h3 className="text-sm font-semibold text-neutral-900 flex items-center gap-1.5">
-              <Flame className="w-4 h-4 text-real-red" /> Hot prospects
+              <Flame className="w-4 h-4 text-real-red" /> Hot Prospects
             </h3>
-            <p className="text-xs text-neutral-500 mt-0.5">Top AI-scored leads</p>
+            <p className="text-xs text-neutral-500 mt-0.5">Top AI-Scored Leads</p>
           </div>
           <div className="divide-y divide-[#f0f0f3]">
             {hot.length === 0 && (
