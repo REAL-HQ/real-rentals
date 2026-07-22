@@ -25,6 +25,7 @@ import {
   type RequiredDocType,
   type ScreeningStatus,
 } from "./types";
+import { PlatformLogo, platformLabel } from "./PlatformLogo";
 
 /* ------------------------------------------------------------------ */
 /* Scoring + disqualifier rules                                        */
@@ -326,11 +327,13 @@ export function InterviewTab({
                   key={a}
                   type="button"
                   onClick={() => toggleApp(a)}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs capitalize ${
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
                     on ? "border-real-red bg-red-50 text-red-800" : "border-border bg-white hover:bg-soft"
                   }`}
                 >
-                  {on && <CheckCircle2 className="h-3 w-3" />} {a}
+                  <PlatformLogo platform={a} size={14} />
+                  <span>{platformLabel(a)}</span>
+                  {on && <CheckCircle2 className="h-3 w-3" />}
                 </button>
               );
             })}
