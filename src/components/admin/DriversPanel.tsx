@@ -4,6 +4,7 @@ import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mergeDuplicateApplications } from "@/lib/applications.functions";
+import { scoreApplication } from "@/lib/scoring.functions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +31,24 @@ const statusBadge: Record<string,string> = {
   declined: "bg-red-100 text-red-800",
   closed: "bg-gray-200 text-gray-700",
 };
+
+function TierBadge({ tier, score, size = "sm" }: { tier?: string | null; score?: number | null; size?: "sm" | "md" }) {
+  if (!tier) return null;
+  const t = String(tier).toLowerCase();
+  const cls =
+    t === "hot" ? "bg-red-100 text-red-800 border-red-200"
+    : t === "warm" ? "bg-amber-100 text-amber-800 border-amber-200"
+    : "bg-gray-100 text-gray-700 border-gray-200";
+  const Icon = t === "hot" ? Flame : t === "warm" ? Thermometer : Snowflake;
+  const pad = size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
+  return (
+    <span className={`inline-flex items-center gap-1 font-medium border rounded ${pad} ${cls}`} title={`AI tier: ${t}${score != null ? ` (${score})` : ""}`}>
+      <Icon className={size === "md" ? "w-3.5 h-3.5" : "w-3 h-3"} />
+      <span className="capitalize">{t}</span>
+      {score != null && <span className="opacity-70">{score}</span>}
+    </span>
+  );
+}
 
 function formatPhone(p?: string | null): string {
   if (!p) return "—";
