@@ -347,6 +347,15 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       } catch (e) {
         console.error("[lead-email] complete setup failed", e);
       }
+      // Fire-and-forget AI scoring on wizard completion.
+      try {
+        const { runScoring } = await import("@/lib/scoring.functions");
+        void runScoring(supabaseAdmin, row.id).catch((e) =>
+          console.error("[ai-scoring] complete failed", e),
+        );
+      } catch (e) {
+        console.error("[ai-scoring] complete setup failed", e);
+      }
     }
     return { ok: true, score: newScore };
   });
