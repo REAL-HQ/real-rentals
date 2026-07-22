@@ -165,6 +165,36 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+    // Fire-and-forget lead alert email. Never block the form submission.
+    try {
+      const { sendLeadAlertEmail } = await import("@/lib/email.server");
+      let marketName: string | null = null;
+      if (data.market_id) {
+        const { data: m } = await supabaseAdmin
+          .from("markets")
+          .select("name")
+          .eq("id", data.market_id)
+          .maybeSingle();
+        marketName = m?.name ?? null;
+      }
+      void sendLeadAlertEmail({
+        event: "new",
+        applicationId: row.id,
+        full_name: data.full_name,
+        phone: data.phone,
+        email: data.email,
+        city: data.city ?? null,
+        state: data.state ?? null,
+        market: marketName,
+        pickup_date: data.pickup_date ?? null,
+        return_date: data.return_date ?? null,
+        platforms: null,
+        sms_consent: data.sms_consent,
+        source: data.source,
+      }).catch((e) => console.error("[lead-email] new failed", e));
+    } catch (e) {
+      console.error("[lead-email] new setup failed", e);
+    }
     return { id: row.id };
   });
 
