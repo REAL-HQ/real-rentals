@@ -57,6 +57,7 @@ export type Database = {
           how_heard: string | null
           id: string
           incident_count: number
+          landing_page: string | null
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
@@ -76,6 +77,7 @@ export type Database = {
           primary_application_id: string | null
           profile_screenshot_url: string | null
           rating: number | null
+          referrer: string | null
           rental_duration: string | null
           rental_duration_days: number | null
           rental_length: string | null
@@ -132,6 +134,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -151,6 +154,7 @@ export type Database = {
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
+          referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
@@ -207,6 +211,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -226,6 +231,7 @@ export type Database = {
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
+          referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
