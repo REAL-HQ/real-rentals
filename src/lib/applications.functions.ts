@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
@@ -44,6 +45,74 @@ export const submitApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => submitApplicationSchema.parse(data))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // ---- Duplicate detection: same phone OR email within the last 30 days ----
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: dupes } = await supabaseAdmin
+      .from("applications")
+      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at")
+      .or(`phone.eq.${data.phone},email.eq.${data.email}`)
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const existing = dupes?.[0];
+    if (existing) {
+      const primaryId = existing.primary_application_id ?? existing.id;
+      // Build patch of new/changed fields, ignoring nulls/undefined
+      const patch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== undefined && v !== null && v !== "") patch[k] = v;
+      }
+      const history = Array.isArray(existing.resubmission_history)
+        ? (existing.resubmission_history as unknown[])
+        : [];
+      history.push({
+        at: new Date().toISOString(),
+        source: data.source,
+        pickup_date: data.pickup_date ?? null,
+        return_date: data.return_date ?? null,
+        market_id: data.market_id ?? null,
+      });
+      patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
+      patch.resubmission_history = history;
+      patch.updated_at = new Date().toISOString();
+      const { error: updErr } = await supabaseAdmin
+        .from("applications")
+        .update(patch as any)
+        .eq("id", primaryId);
+      if (updErr) throw new Error(updErr.message);
+      // Fire-and-forget lead alert email so ops still sees the return visit.
+      try {
+        const { sendLeadAlertEmail } = await import("@/lib/email.server");
+        let marketName: string | null = null;
+        if (data.market_id) {
+          const { data: m } = await supabaseAdmin
+            .from("markets")
+            .select("name")
+            .eq("id", data.market_id)
+            .maybeSingle();
+          marketName = m?.name ?? null;
+        }
+        void sendLeadAlertEmail({
+          event: "new",
+          applicationId: primaryId,
+          full_name: data.full_name,
+          phone: data.phone,
+          email: data.email,
+          city: data.city ?? null,
+          state: data.state ?? null,
+          market: marketName,
+          pickup_date: data.pickup_date ?? null,
+          return_date: data.return_date ?? null,
+          platforms: null,
+          sms_consent: data.sms_consent ?? null,
+          source: `${data.source} (resubmission #${patch.resubmission_count})`,
+        }).catch((e) => console.error("[lead-email] resubmission failed", e));
+      } catch (e) {
+        console.error("[lead-email] resubmission setup failed", e);
+      }
+      return { id: primaryId };
+    }
+
     const { data: row, error } = await supabaseAdmin
       .from("applications")
       .insert({ ...data, status: "partial", current_step: "eligibility" })
@@ -301,4 +370,73 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     // avoids handing out the lead's full identity to anyone with the URL.
     const firstName = (row.full_name ?? "").trim().split(/\s+/)[0] ?? "";
     return { ...row, full_name: firstName };
+  });
+
+// ---------------- Admin: merge duplicate applications ----------------
+// One-time cleanup: groups existing applications by phone/email and links
+// older duplicates to the newest surviving record. Admin-only.
+export const mergeDuplicateApplications = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: adminRow } = await context.supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", context.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!adminRow) throw new Error("Forbidden");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: all, error } = await supabaseAdmin
+      .from("applications")
+      .select("id, phone, email, created_at, primary_application_id, resubmission_count")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const groups = new Map<string, typeof all>();
+    for (const row of all ?? []) {
+      for (const key of [
+        row.phone ? `phone:${row.phone.trim().toLowerCase()}` : null,
+        row.email ? `email:${row.email.trim().toLowerCase()}` : null,
+      ]) {
+        if (!key) continue;
+        const arr = groups.get(key) ?? [];
+        arr.push(row);
+        groups.set(key, arr);
+      }
+    }
+
+    const linked = new Set<string>();
+    let mergedCount = 0;
+    for (const rows of groups.values()) {
+      if (rows.length < 2) continue;
+      // rows are ordered newest first; primary = first not already linked
+      const primary = rows.find((r) => !r.primary_application_id) ?? rows[0];
+      for (const r of rows) {
+        if (r.id === primary.id) continue;
+        if (linked.has(r.id)) continue;
+        const { error: uErr } = await supabaseAdmin
+          .from("applications")
+          .update({
+            primary_application_id: primary.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", r.id);
+        if (!uErr) {
+          linked.add(r.id);
+          mergedCount += 1;
+        }
+      }
+      // Bump the primary's resubmission_count to reflect discovered dupes.
+      const bump = rows.length - 1;
+      if (bump > 0) {
+        await supabaseAdmin
+          .from("applications")
+          .update({
+            resubmission_count: (primary.resubmission_count ?? 0) + bump,
+          })
+          .eq("id", primary.id);
+      }
+    }
+    return { merged: mergedCount };
   });

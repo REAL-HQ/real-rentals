@@ -72,12 +72,15 @@ export type Database = {
           platform_active: boolean | null
           platform_status: string | null
           platforms: string[] | null
+          primary_application_id: string | null
           profile_screenshot_url: string | null
           rating: number | null
           rental_duration: string | null
           rental_duration_days: number | null
           rental_length: string | null
           rental_term: string | null
+          resubmission_count: number
+          resubmission_history: Json
           return_date: string | null
           return_time: string | null
           rideshare_history_status: string
@@ -143,12 +146,15 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          resubmission_count?: number
+          resubmission_history?: Json
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
@@ -214,12 +220,15 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          resubmission_count?: number
+          resubmission_history?: Json
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
@@ -252,6 +261,13 @@ export type Database = {
             columns: ["market_id"]
             isOneToOne: false
             referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_primary_application_id_fkey"
+            columns: ["primary_application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
             referencedColumns: ["id"]
           },
           {

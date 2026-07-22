@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { mergeDuplicateApplications } from "@/lib/applications.functions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
-  User as UserIcon, FileText, Star, Trash2,
+  User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -41,6 +43,9 @@ export function DriversPanel() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [open, setOpen] = useState<Application | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [merging, setMerging] = useState(false);
+  const runMerge = useServerFn(mergeDuplicateApplications);
 
   useEffect(() => {
     supabase.from("applications").select("*").order("created_at", { ascending: false })
@@ -49,6 +54,27 @@ export function DriversPanel() {
   }, []);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map(v => [v.id, v])), [vehicles]);
+
+  // Group by primary_application_id (falls back to id). Primary row = the one
+  // whose id === groupKey; others render as collapsed history.
+  const grouped = useMemo(() => {
+    const filteredRows = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+    const byKey = new Map<string, { primary: Application; history: Application[] }>();
+    for (const row of filteredRows) {
+      const key = row.primary_application_id ?? row.id;
+      const entry = byKey.get(key) ?? { primary: row, history: [] };
+      if (row.id === key) entry.primary = row;
+      else entry.history.push(row);
+      byKey.set(key, entry);
+    }
+    // Sort history within each group newest-first
+    for (const g of byKey.values()) {
+      g.history.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+    }
+    return Array.from(byKey.values()).sort(
+      (a, b) => (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? ""),
+    );
+  }, [drivers, filter]);
 
   async function update(id: string, patch: Partial<Application>) {
     const { error } = await supabase.from("applications").update(patch).eq("id", id);
@@ -65,7 +91,29 @@ export function DriversPanel() {
     toast.success("Deleted");
   }
 
-  const filtered = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+  async function handleMerge() {
+    if (!confirm("Merge existing duplicate leads by phone/email? This links older rows to the newest and cannot be undone.")) return;
+    setMerging(true);
+    try {
+      const res = await runMerge();
+      toast.success(`Linked ${res.merged} duplicate rows.`);
+      const { data } = await supabase.from("applications").select("*").order("created_at", { ascending: false });
+      setDrivers(data || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Merge failed");
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   if (open) {
     return (
@@ -88,6 +136,15 @@ export function DriversPanel() {
             {s} {s !== "all" && `(${drivers.filter((a) => a.status === s).length})`}
           </button>
         ))}
+        <div className="ml-auto">
+          <button
+            onClick={handleMerge}
+            disabled={merging}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
+          >
+            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge duplicates"}
+          </button>
+        </div>
       </div>
       <div className="rounded-lg border border-border overflow-hidden bg-white">
         <div className="overflow-x-auto">
@@ -107,12 +164,25 @@ export function DriversPanel() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((a) => {
+              {grouped.flatMap(({ primary: a, history }) => {
                 const veh = a.vehicle_id ? vehicleMap[a.vehicle_id] : null;
-                return (
+                const dupeCount = history.length + (a.resubmission_count ?? 0);
+                const isExpanded = expanded.has(a.id);
+                const rows = [
                   <tr key={a.id} onClick={() => setOpen(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
-                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">{a.full_name}</td>
+                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">
+                      <span>{a.full_name}</span>
+                      {dupeCount > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (history.length) toggleExpand(a.id); }}
+                          className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 hover:bg-amber-200"
+                          title="Duplicate submissions from same phone/email"
+                        >
+                          <Copy className="w-3 h-3" />×{dupeCount + 1}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                       {a.email ? <a href={`mailto:${a.email}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{a.email}</a> : "—"}
                     </td>
@@ -148,10 +218,32 @@ export function DriversPanel() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
-                  </tr>
-                );
+                  </tr>,
+                ];
+                if (isExpanded) {
+                  for (const h of history) {
+                    rows.push(
+                      <tr key={h.id} onClick={() => setOpen(h)} className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60">
+                        <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
+                        <td className="px-4 py-2">{h.email || "—"}</td>
+                        <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
+                        <td className="px-4 py-2">—</td>
+                        <td className="px-4 py-2">—</td>
+                        <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>
+                        <td className="px-4 py-2 capitalize">{h.deposit_status?.replace(/_/g, " ")}</td>
+                        <td className="px-4 py-2 capitalize">{h.status}</td>
+                        <td className="px-4 py-2">
+                          <div>{new Date(h.created_at!).toLocaleDateString()}</div>
+                          <div className="opacity-70">{new Date(h.created_at!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
+                        </td>
+                        <td />
+                      </tr>,
+                    );
+                  }
+                }
+                return rows;
               })}
-              {filtered.length === 0 && (
+              {grouped.length === 0 && (
                 <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
