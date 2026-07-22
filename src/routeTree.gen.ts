@@ -27,6 +27,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 
 const ThankYouRoute = ThankYouRouteImport.update({
   id: '/thank-you',
@@ -118,6 +119,12 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => FleetRoute,
 } as any)
+const ApiPublicCronWizardRecoveryRoute =
+  ApiPublicCronWizardRecoveryRouteImport.update({
+    id: '/api/public/cron/wizard-recovery',
+    path: '/api/public/cron/wizard-recovery',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -158,6 +166,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -179,6 +188,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/thank-you'
     | '/fleet/$id'
+    | '/api/public/cron/wizard-recovery'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/thank-you'
     | '/fleet/$id'
+    | '/api/public/cron/wizard-recovery'
   id:
     | '__root__'
     | '/'
@@ -241,6 +253,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/thank-you'
     | '/fleet/$id'
+    | '/api/public/cron/wizard-recovery'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -261,6 +274,7 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -391,6 +405,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof FleetRoute
     }
+    '/api/public/cron/wizard-recovery': {
+      id: '/api/public/cron/wizard-recovery'
+      path: '/api/public/cron/wizard-recovery'
+      fullPath: '/api/public/cron/wizard-recovery'
+      preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -422,6 +443,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

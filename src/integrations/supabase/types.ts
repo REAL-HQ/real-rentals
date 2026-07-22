@@ -81,6 +81,8 @@ export type Database = {
           primary_application_id: string | null
           profile_screenshot_url: string | null
           rating: number | null
+          recovery_email_sent_24h: string | null
+          recovery_email_sent_72h: string | null
           referrer: string | null
           rental_duration: string | null
           rental_duration_days: number | null
@@ -163,6 +165,8 @@ export type Database = {
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
           referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
@@ -245,6 +249,8 @@ export type Database = {
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
+          recovery_email_sent_24h?: string | null
+          recovery_email_sent_72h?: string | null
           referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
@@ -1529,7 +1535,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_cron_token: { Args: { _name: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user" | "partner" | "driver" | "team"
