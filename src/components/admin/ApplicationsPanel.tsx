@@ -100,15 +100,7 @@ export function ApplicationsPanel() {
                 ))}
               </SelectContent>
             </Select>
-            <button onClick={() => setOpen(a)} className="rounded-md bg-black text-white px-3 py-1.5 text-sm">
-              View
-            </button>
-            <button
-              onClick={() => remove(a.id)}
-              className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red"
-            >
-              Delete
-            </button>
+            <ApplicationActions app={a} onView={() => setOpen(a)} onDelete={() => remove(a.id)} />
           </div>
         ))}
         {filtered.length === 0 && <div className="text-sm text-muted-foreground">No applications.</div>}
