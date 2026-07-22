@@ -259,6 +259,11 @@ export function DriversPanel() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span>{a.full_name}</span>
+                      {a.ai_tier && (
+                        <span className="ml-2 inline-block align-middle">
+                          <TierBadge tier={a.ai_tier} score={a.ai_score ?? null} />
+                        </span>
+                      )}
                       {a.gclid ? (
                         <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-800" title={`Google Ads${a.utm_campaign ? ` — ${a.utm_campaign}` : ""}`}>
                           <BadgeDollarSign className="w-3 h-3" /> Google Ads
