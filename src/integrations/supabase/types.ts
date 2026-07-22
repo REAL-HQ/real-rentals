@@ -394,6 +394,146 @@ export type Database = {
           },
         ]
       }
+      driver_screenings: {
+        Row: {
+          accidents_last_3yr: number | null
+          card_in_own_name: boolean | null
+          created_at: string
+          disqualification_reason: string | null
+          disqualified: boolean
+          drive_type: string | null
+          driver_age: number | null
+          driver_rating: number | null
+          gig_account_status: string | null
+          gig_apps: string[] | null
+          has_current_vehicle: boolean | null
+          has_dui: boolean | null
+          has_personal_insurance: boolean | null
+          id: string
+          insurance_carrier: string | null
+          insurance_carrier_phone: string | null
+          insurance_name_matches_license: boolean | null
+          insurance_policy_number: string | null
+          insurance_verified: boolean
+          insurance_verified_at: string | null
+          insurance_verified_by: string | null
+          interview_completed_at: string | null
+          interview_notes: string | null
+          interviewed_by: string | null
+          lead_id: string
+          license_active: boolean | null
+          license_points: number | null
+          license_state: string | null
+          license_years: number | null
+          major_violations: boolean | null
+          months_on_platform: number | null
+          mvr_authorized: boolean | null
+          needed_by_date: string | null
+          policy_active: boolean | null
+          qualification_score: number | null
+          rate_confirmed: boolean | null
+          rideshare_endorsement: boolean | null
+          status: string
+          trip_count: number | null
+          updated_at: string
+          verification_recording_url: string | null
+        }
+        Insert: {
+          accidents_last_3yr?: number | null
+          card_in_own_name?: boolean | null
+          created_at?: string
+          disqualification_reason?: string | null
+          disqualified?: boolean
+          drive_type?: string | null
+          driver_age?: number | null
+          driver_rating?: number | null
+          gig_account_status?: string | null
+          gig_apps?: string[] | null
+          has_current_vehicle?: boolean | null
+          has_dui?: boolean | null
+          has_personal_insurance?: boolean | null
+          id?: string
+          insurance_carrier?: string | null
+          insurance_carrier_phone?: string | null
+          insurance_name_matches_license?: boolean | null
+          insurance_policy_number?: string | null
+          insurance_verified?: boolean
+          insurance_verified_at?: string | null
+          insurance_verified_by?: string | null
+          interview_completed_at?: string | null
+          interview_notes?: string | null
+          interviewed_by?: string | null
+          lead_id: string
+          license_active?: boolean | null
+          license_points?: number | null
+          license_state?: string | null
+          license_years?: number | null
+          major_violations?: boolean | null
+          months_on_platform?: number | null
+          mvr_authorized?: boolean | null
+          needed_by_date?: string | null
+          policy_active?: boolean | null
+          qualification_score?: number | null
+          rate_confirmed?: boolean | null
+          rideshare_endorsement?: boolean | null
+          status?: string
+          trip_count?: number | null
+          updated_at?: string
+          verification_recording_url?: string | null
+        }
+        Update: {
+          accidents_last_3yr?: number | null
+          card_in_own_name?: boolean | null
+          created_at?: string
+          disqualification_reason?: string | null
+          disqualified?: boolean
+          drive_type?: string | null
+          driver_age?: number | null
+          driver_rating?: number | null
+          gig_account_status?: string | null
+          gig_apps?: string[] | null
+          has_current_vehicle?: boolean | null
+          has_dui?: boolean | null
+          has_personal_insurance?: boolean | null
+          id?: string
+          insurance_carrier?: string | null
+          insurance_carrier_phone?: string | null
+          insurance_name_matches_license?: boolean | null
+          insurance_policy_number?: string | null
+          insurance_verified?: boolean
+          insurance_verified_at?: string | null
+          insurance_verified_by?: string | null
+          interview_completed_at?: string | null
+          interview_notes?: string | null
+          interviewed_by?: string | null
+          lead_id?: string
+          license_active?: boolean | null
+          license_points?: number | null
+          license_state?: string | null
+          license_years?: number | null
+          major_violations?: boolean | null
+          months_on_platform?: number | null
+          mvr_authorized?: boolean | null
+          needed_by_date?: string | null
+          policy_active?: boolean | null
+          qualification_score?: number | null
+          rate_confirmed?: boolean | null
+          rideshare_endorsement?: boolean | null
+          status?: string
+          trip_count?: number | null
+          updated_at?: string
+          verification_recording_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_screenings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_owner_submissions: {
         Row: {
           condition: string | null
@@ -549,6 +689,38 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_documents: {
+        Row: {
+          doc_type: string
+          file_url: string
+          id: string
+          lead_id: string
+          uploaded_at: string
+        }
+        Insert: {
+          doc_type: string
+          file_url: string
+          id?: string
+          lead_id: string
+          uploaded_at?: string
+        }
+        Update: {
+          doc_type?: string
+          file_url?: string
+          id?: string
+          lead_id?: string
+          uploaded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
             referencedColumns: ["id"]
           },
         ]
