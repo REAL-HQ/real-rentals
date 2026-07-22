@@ -13,7 +13,7 @@ import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
-  MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe,
+  MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
