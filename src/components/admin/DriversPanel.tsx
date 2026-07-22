@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
-import { useServerFn } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { mergeDuplicateApplications } from "@/lib/applications.functions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
