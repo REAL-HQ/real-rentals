@@ -519,6 +519,19 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
                 <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
               </div>
             </Card>
+            <Card title="Attribution" icon={driver.gclid ? <BadgeDollarSign className="w-4 h-4" /> : <Globe className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Field label="Source" value={driver.gclid ? "Google Ads" : "Organic / Direct"} />
+                <Field label="gclid" value={driver.gclid} />
+                <Field label="utm_source" value={driver.utm_source} />
+                <Field label="utm_medium" value={driver.utm_medium} />
+                <Field label="utm_campaign" value={driver.utm_campaign} />
+                <Field label="utm_term" value={driver.utm_term} />
+                <Field label="utm_content" value={driver.utm_content} />
+                <Field label="Landing page" value={driver.landing_page} />
+                <Field label="Referrer" value={driver.referrer} />
+              </div>
+            </Card>
           </TabsContent>
 
           <TabsContent value="lifecycle" className="mt-4">
