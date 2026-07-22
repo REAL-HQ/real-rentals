@@ -245,6 +245,38 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     if (newScore !== row.score) {
       await supabaseAdmin.from("applications").update({ score: newScore }).eq("id", id);
     }
+    // Wizard-complete alert email. Fire-and-forget.
+    if (isComplete) {
+      try {
+        const { sendLeadAlertEmail } = await import("@/lib/email.server");
+        let marketName: string | null = null;
+        if (row.market_id) {
+          const { data: m } = await supabaseAdmin
+            .from("markets")
+            .select("name")
+            .eq("id", row.market_id)
+            .maybeSingle();
+          marketName = m?.name ?? null;
+        }
+        void sendLeadAlertEmail({
+          event: "complete",
+          applicationId: row.id,
+          full_name: row.full_name ?? null,
+          phone: row.phone ?? null,
+          email: row.email ?? null,
+          city: row.city ?? null,
+          state: row.state ?? null,
+          market: marketName,
+          pickup_date: row.pickup_date ?? null,
+          return_date: row.return_date ?? null,
+          platforms: Array.isArray(row.platforms) ? row.platforms : null,
+          sms_consent: row.sms_consent ?? null,
+          source: row.source ?? null,
+        }).catch((e) => console.error("[lead-email] complete failed", e));
+      } catch (e) {
+        console.error("[lead-email] complete setup failed", e);
+      }
+    }
     return { ok: true, score: newScore };
   });
 
