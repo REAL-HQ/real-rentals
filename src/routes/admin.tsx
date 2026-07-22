@@ -10,12 +10,13 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown, LayoutDashboard } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
+import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard, description: "Pipeline, fleet and revenue at a glance" },
   { id: "drivers", label: "Drivers", icon: Users, description: "Manage applicants, active renters and driver lifecycle" },
   { id: "vehicles", label: "Vehicles", icon: Car, description: "Fleet Inventory & Vehicle Status" },
   { id: "partners", label: "Partners", icon: Handshake, description: "Vehicle owners, capital partners and lenders" },
@@ -48,7 +50,7 @@ function Admin() {
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
-  const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "drivers";
+  const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -170,6 +172,7 @@ function Admin() {
               </DropdownMenu>
             </header>
             <div className="p-6 md:p-8">
+            {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && <DriversPanel />}
             {tab === "vehicles" && <VehiclesPanel />}
             {tab === "partners" && <PartnersPanel />}
