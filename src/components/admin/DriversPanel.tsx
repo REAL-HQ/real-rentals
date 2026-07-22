@@ -658,6 +658,73 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
   );
 }
 
+function AIScoreCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: Partial<Application>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const rescore = useServerFn(scoreApplication);
+  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
+  async function run() {
+    setBusy(true);
+    try {
+      const res = await rescore({ data: { id: driver.id } });
+      if (res && (res as any).ok !== false) {
+        const r = res as any;
+        onUpdate({
+          ai_score: r.score,
+          ai_tier: r.tier,
+          ai_flags: r.flags,
+          ai_summary: r.summary,
+          scored_at: new Date().toISOString(),
+        } as any);
+        toast.success(`AI scored: ${r.tier} (${r.score})`);
+      } else {
+        toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scoring failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="rounded-xl border border-border bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <span className="text-muted-foreground"><Sparkles className="w-4 h-4" /></span>
+        <div className="text-sm font-semibold">AI Prospect Score</div>
+        {driver.ai_tier && (
+          <span className="ml-1"><TierBadge tier={driver.ai_tier} score={driver.ai_score ?? null} size="md" /></span>
+        )}
+        <button
+          onClick={run}
+          disabled={busy}
+          className="ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
+        >
+          <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : driver.ai_tier ? "Re-score" : "Score now"}
+        </button>
+      </div>
+      <div className="p-4 space-y-3">
+        {driver.ai_summary ? (
+          <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Not yet scored. Click "Score now" to run the AI review of trips, rating, license, and screenshots.</p>
+        )}
+        {flags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {flags.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+                <AlertTriangle className="w-3 h-3" /> {f}
+              </span>
+            ))}
+          </div>
+        )}
+        {scoredAt && (
+          <p className="text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ icon, label, value, hint, hintTone, muted }: {
   icon: React.ReactNode; label: string; value: React.ReactNode;
   hint?: string; hintTone?: "good" | "warn"; muted?: boolean;
