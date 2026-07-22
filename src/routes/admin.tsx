@@ -79,21 +79,21 @@ function Admin() {
   const current = TABS.find((t) => t.id === tab) ?? { id: "messages" as Tab, label: "Messages", description: "Inbound Driver & Partner Conversations" };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-[#f7f8fa]">
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className={`hidden md:flex ${collapsed ? "w-16" : "w-60"} transition-[width] duration-200 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen`}>
-          <div className="relative px-3 py-3 flex items-center justify-center">
+        {/* Sidebar — clean light shell */}
+        <aside className={`hidden md:flex ${collapsed ? "w-[72px]" : "w-64"} transition-[width] duration-200 flex-col bg-white border-r border-[#ececf0] sticky top-0 h-screen`}>
+          <div className="relative h-16 px-4 flex items-center justify-center border-b border-[#f0f0f3]">
             {!collapsed && <Logo offset={false} />}
             <button
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={`p-1.5 rounded hover:bg-white/10 text-white/70 hover:text-white ${collapsed ? "" : "absolute right-2 top-1/2 -translate-y-1/2"}`}
+              className={`p-1.5 rounded-md hover:bg-[#f5f6f8] text-neutral-500 hover:text-neutral-900 ${collapsed ? "" : "absolute right-2 top-1/2 -translate-y-1/2"}`}
             >
               {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
           </div>
-          <nav className="flex-1 px-3 py-4 space-y-1">
+          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
@@ -102,38 +102,74 @@ function Admin() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   title={collapsed ? t.label : undefined}
-                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2.5 rounded-lg text-sm transition ${
-                    active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
+                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition relative ${
+                    active
+                      ? "bg-[#fef2f2] text-real-red"
+                      : "text-neutral-600 hover:bg-[#f5f6f8] hover:text-neutral-900"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  {active && !collapsed && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-real-red" />
+                  )}
+                  <Icon className={`w-[18px] h-[18px] ${active ? "text-real-red" : "text-neutral-500"}`} />
                   {!collapsed && <span>{t.label}</span>}
                 </button>
               );
             })}
           </nav>
+          <div className="border-t border-[#f0f0f3] p-3">
+            <button
+              onClick={signOut}
+              title={collapsed ? "Sign out" : undefined}
+              className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium text-neutral-600 hover:bg-[#f5f6f8] hover:text-neutral-900`}
+            >
+              <LogOut className="w-[18px] h-[18px] text-neutral-500" />
+              {!collapsed && <span>Sign out</span>}
+            </button>
+          </div>
         </aside>
 
         {/* Main column */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <Nav />
           {/* Mobile tab pills */}
-          <div className="md:hidden bg-[#0b0b0d] text-white">
-            <div className="flex overflow-x-auto px-2 py-2 gap-1">
+          <div className="md:hidden bg-white border-b border-[#ececf0]">
+            <div className="flex items-center h-14 px-3">
+              <Logo offset={false} />
+            </div>
+            <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#f0f0f3]">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => setTab(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${tab === t.id ? "bg-[#fef2f2] text-real-red" : "bg-[#f5f6f8] text-neutral-600"}`}>
                   {t.label}
                 </button>
               ))}
             </div>
           </div>
-          <main className="flex-1 min-w-0 bg-white">
-            <header className="bg-white border-b border-border px-8 py-6">
-              <h1 className="text-2xl font-semibold">{current.label}</h1>
-              <p className="text-sm text-muted-foreground mt-1">{current.description}</p>
+          <main className="flex-1 min-w-0 bg-[#f7f8fa]">
+            <header className="bg-white border-b border-[#ececf0] px-8 py-5 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900 truncate">{current.label}</h1>
+                <p className="text-[13px] text-neutral-500 mt-0.5 truncate">{current.description}</p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border border-[#ececf0] bg-white pl-1 pr-3 py-1 hover:bg-[#f5f6f8] transition">
+                  <span className="w-7 h-7 rounded-full bg-[#111] text-white grid place-items-center text-xs font-semibold">
+                    {(session?.user?.email?.[0] || "A").toUpperCase()}
+                  </span>
+                  <span className="text-[13px] text-neutral-700 hidden sm:inline max-w-[160px] truncate">{session?.user?.email}</span>
+                  <ChevronDownIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs text-neutral-500 font-normal">Signed in as</DropdownMenuLabel>
+                  <div className="px-2 pb-2 text-sm truncate">{session?.user?.email}</div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={signOut} className="text-real-red focus:text-real-red">
+                    <LogOut className="w-4 h-4 mr-2" /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </header>
-            <div className="p-8">
+            <div className="p-6 md:p-8">
             {tab === "drivers" && <DriversPanel />}
             {tab === "vehicles" && <VehiclesPanel />}
             {tab === "partners" && <PartnersPanel />}
