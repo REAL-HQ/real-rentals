@@ -224,6 +224,8 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       utm_term: nullableString,
       utm_content: nullableString,
       gclid: nullableString,
+      landing_page: nullableString,
+      referrer: nullableString,
     }).parse(data),
   )
   .handler(async ({ data }) => {
