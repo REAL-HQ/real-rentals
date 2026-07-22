@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Application, Vehicle } from "./types";
+import type { Application, DriverScreening as DriverScreeningRow, LeadDocument, Vehicle } from "./types";
+import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mergeDuplicateApplications } from "@/lib/applications.functions";
 import { scoreApplication } from "@/lib/scoring.functions";
+import {
+  DocumentsCard,
+  InsuranceVerificationCard,
+  InterviewTab,
+  ScreeningBadge,
+  ScreeningPipeline,
+  useDriverScreening,
+} from "./DriverScreening";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -90,6 +99,8 @@ export function DriversPanel() {
   const [filter, setFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
+  const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
+  const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const runMerge = useServerFn(mergeDuplicateApplications);
   const now = useNow();
 
@@ -97,6 +108,22 @@ export function DriversPanel() {
     supabase.from("applications").select("*").order("created_at", { ascending: false })
       .then(({ data }) => setDrivers(data || []));
     supabase.from("vehicles").select("*").then(({ data }) => setVehicles((data as any) || []));
+    supabase.from("driver_screenings").select("*").then(({ data }) => {
+      const map: Record<string, DriverScreeningRow> = {};
+      (data || []).forEach((s) => { map[s.lead_id] = s as DriverScreeningRow; });
+      setScreenings(map);
+    });
+    supabase.from("lead_documents").select("lead_id,doc_type").then(({ data }) => {
+      const counts: Record<string, number> = {};
+      const seen: Record<string, Set<string>> = {};
+      (data || []).forEach((d: any) => {
+        if (!REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)) return;
+        const set = seen[d.lead_id] ?? (seen[d.lead_id] = new Set());
+        set.add(d.doc_type);
+        counts[d.lead_id] = set.size;
+      });
+      setDocCounts(counts);
+    });
   }, []);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map(v => [v.id, v])), [vehicles]);
@@ -197,6 +224,13 @@ export function DriversPanel() {
         onBack={() => setOpen(null)}
         onUpdate={(p) => update(open.id, p)}
         onDelete={() => remove(open.id)}
+        onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
+        onDocsChange={(docs) => {
+          const count = new Set(
+            docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).map((d) => d.doc_type),
+          ).size;
+          setDocCounts((prev) => ({ ...prev, [open.id]: count }));
+        }}
       />
     );
   }
