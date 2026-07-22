@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { getAttribution } from "@/lib/attribution";
 import { FadeUp } from "./FadeUp";
 import heroBg from "@/assets/hero-bg.jpg";
 
@@ -95,7 +96,7 @@ export function CityHeroLeadForm({
       state: market?.state ?? null,
       sms_consent: form.sms_consent,
       source: "city_lp" as const,
-      ...utms,
+      ...getAttribution(),
     };
     try {
       const data = await saveApplication({ data: payload });
