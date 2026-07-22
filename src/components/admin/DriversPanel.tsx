@@ -359,6 +359,9 @@ export function DriversPanel() {
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <ScreeningBadge screening={screenings[a.id] ?? null} docCount={docCounts[a.id] ?? 0} />
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                       {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
                     </td>
@@ -419,7 +422,7 @@ export function DriversPanel() {
                 return rows;
               })}
               {grouped.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr><td colSpan={11} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
           </table>
