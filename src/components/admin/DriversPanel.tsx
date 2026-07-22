@@ -859,6 +859,101 @@ function StatCard({ icon, label, value, hint, hintTone, muted }: {
   );
 }
 
+function SidebarStat({ icon, label, value, tone, muted }: {
+  icon: React.ReactNode; label: string; value: React.ReactNode;
+  tone?: "good" | "warn"; muted?: boolean;
+}) {
+  const toneCls = tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : "";
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="text-muted-foreground">{icon}</span>{label}
+      </dt>
+      <dd className={`text-xs font-medium text-right truncate ${muted ? "text-muted-foreground" : toneCls || "text-foreground"}`}>{value}</dd>
+    </div>
+  );
+}
+
+function AISnapshotCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: Partial<Application>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const rescore = useServerFn(scoreApplication);
+  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
+  const score = typeof driver.ai_score === "number" ? driver.ai_score : null;
+  const tier = driver.ai_tier as string | null | undefined;
+  const tierGrad =
+    tier === "hot" ? "from-red-500 to-orange-500"
+    : tier === "warm" ? "from-amber-400 to-yellow-500"
+    : tier === "cold" ? "from-slate-400 to-slate-500"
+    : "from-slate-200 to-slate-300";
+  async function run() {
+    setBusy(true);
+    try {
+      const res = await rescore({ data: { id: driver.id } });
+      if (res && (res as any).ok !== false) {
+        const r = res as any;
+        onUpdate({
+          ai_score: r.score, ai_tier: r.tier, ai_flags: r.flags,
+          ai_summary: r.summary, scored_at: new Date().toISOString(),
+        } as any);
+        toast.success(`AI scored: ${r.tier} (${r.score})`);
+      } else {
+        toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scoring failed");
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className={`h-1 w-full bg-gradient-to-r ${tierGrad}`} />
+      <div className="p-5">
+        <div className="flex items-start gap-5">
+          <div className="shrink-0">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">AI score</div>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-4xl font-bold tabular-nums">{score ?? "—"}</span>
+              <span className="text-xs text-muted-foreground">/100</span>
+            </div>
+            {tier && <div className="mt-1"><TierBadge tier={tier} score={null} size="md" /></div>}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Sparkles className="w-3.5 h-3.5 text-real-red" /> AI Prospect Snapshot
+              </div>
+              <button
+                onClick={run}
+                disabled={busy}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : tier ? "Re-score" : "Score now"}
+              </button>
+            </div>
+            {driver.ai_summary ? (
+              <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Not yet scored. Run the AI review to grade trips, rating, license, and screenshots.</p>
+            )}
+            {flags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {flags.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+                    <AlertTriangle className="w-3 h-3" /> {f}
+                  </span>
+                ))}
+              </div>
+            )}
+            {scoredAt && (
+              <p className="mt-2 text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mt-4">
