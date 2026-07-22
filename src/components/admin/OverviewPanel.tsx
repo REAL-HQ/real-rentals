@@ -151,23 +151,13 @@ export function OverviewPanel() {
                 <span className="w-2 h-2 rounded-full bg-real-red" /> Leads
               </span>
               <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-neutral-800" /> Apps
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Apps
               </span>
             </div>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={series} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#E61919" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#E61919" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gApps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#111" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#111" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f3" vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#8a8a94" }} axisLine={false} tickLine={false} interval={4} />
                 <YAxis tick={{ fontSize: 11, fill: "#8a8a94" }} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -175,8 +165,8 @@ export function OverviewPanel() {
                   contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
                   labelStyle={{ color: "#111", fontWeight: 600 }}
                 />
-                <Area type="monotone" dataKey="leads" stroke="#E61919" strokeWidth={2} fill="url(#gLeads)" />
-                <Area type="monotone" dataKey="apps" stroke="#111" strokeWidth={2} fill="url(#gApps)" />
+                <Area type="monotone" dataKey="leads" stroke="#E61919" strokeWidth={2} fill="#E61919" fillOpacity={0.06} dot={false} activeDot={{ r: 4 }} />
+                <Area type="monotone" dataKey="apps" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.06} dot={false} activeDot={{ r: 4 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
