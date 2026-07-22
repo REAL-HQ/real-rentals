@@ -433,15 +433,36 @@ export function DriversPanel() {
   );
 }
 
-function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
+function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreeningChange, onDocsChange }: {
   driver: Application; vehicles: Vehicle[]; onBack: () => void;
   onUpdate: (patch: Partial<Application>) => void; onDelete: () => void;
+  onScreeningChange?: (s: DriverScreeningRow) => void;
+  onDocsChange?: (docs: LeadDocument[]) => void;
 }) {
   const veh = driver.vehicle_id ? vehicles.find(v => v.id === driver.vehicle_id) : null;
   const initials = (driver.full_name || "?")
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   const trips = Number(driver.trips_completed);
   const tripsOk = !Number.isNaN(trips) && trips >= 200;
+  const { screening, setScreening, docs, setDocs } = useDriverScreening(driver.id);
+
+  async function advanceStatus(next: import("./types").ScreeningStatus) {
+    try {
+      const base = screening ?? { lead_id: driver.id, status: "new_lead" as import("./types").ScreeningStatus };
+      const { data, error } = await supabase
+        .from("driver_screenings")
+        .upsert({ ...base, lead_id: driver.id, status: next } as any, { onConflict: "lead_id" })
+        .select("*")
+        .single();
+      if (error) throw error;
+      const row = data as DriverScreeningRow;
+      setScreening(row);
+      onScreeningChange?.(row);
+      toast.success(`Status: ${next.replace(/_/g, " ")}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to advance status");
+    }
+  }
 
   return (
     <div className="-mx-8 -my-8 min-h-full bg-gradient-to-b from-soft/60 to-white">
@@ -477,6 +498,8 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
       </div>
 
       <div className="px-8 py-6 space-y-6">
+        <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
+
         {/* Identity header */}
         <div className="flex items-start gap-4">
           <div className="h-16 w-16 shrink-0 rounded-full bg-black text-white grid place-items-center text-xl font-semibold">
@@ -545,12 +568,53 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="bg-white border border-border">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="interview">Interview</TabsTrigger>
+            <TabsTrigger value="screening-docs">Documents</TabsTrigger>
+            <TabsTrigger value="insurance">Insurance</TabsTrigger>
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
             <TabsTrigger value="financials">Financials</TabsTrigger>
             <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="documents">Legacy Docs</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="interview" className="mt-4">
+            <InterviewTab
+              driver={driver}
+              screening={screening}
+              onSaved={(next) => {
+                setScreening(next);
+                onScreeningChange?.(next);
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="screening-docs" className="mt-4">
+            <DocumentsCard
+              leadId={driver.id}
+              docs={docs}
+              onChange={(next) => {
+                setDocs(next);
+                onDocsChange?.(next);
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="insurance" className="mt-4">
+            <InsuranceVerificationCard
+              leadId={driver.id}
+              screening={screening}
+              docs={docs}
+              onScreening={(s) => {
+                setScreening(s);
+                onScreeningChange?.(s);
+              }}
+              onDocs={(d) => {
+                setDocs(d);
+                onDocsChange?.(d);
+              }}
+            />
+          </TabsContent>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
             <AIScoreCard driver={driver} onUpdate={onUpdate} />
