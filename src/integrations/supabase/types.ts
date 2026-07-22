@@ -1535,7 +1535,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_cron_token: { Args: { _name: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "user" | "partner" | "driver" | "team"
