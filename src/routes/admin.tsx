@@ -10,7 +10,7 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -157,7 +157,7 @@ function Admin() {
                     {(session?.user?.email?.[0] || "A").toUpperCase()}
                   </span>
                   <span className="text-[13px] text-neutral-700 hidden sm:inline max-w-[160px] truncate">{session?.user?.email}</span>
-                  <ChevronDownIcon />
+                  <ChevronDown className="w-4 h-4 text-neutral-400" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="text-xs text-neutral-500 font-normal">Signed in as</DropdownMenuLabel>
