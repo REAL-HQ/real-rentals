@@ -141,3 +141,41 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   const opsInbox = process.env.LEAD_ALERT_TO || "go@drivereal.com";
   await sendEmail({ to: opsInbox, subject, html });
 }
+
+type RecoveryArgs = {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  variant: "24h" | "72h";
+};
+
+export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<void> {
+  const name = (firstName || "").trim().split(" ")[0] || "there";
+  const resumeUrl = `https://drivereal.com/apply?id=${encodeURIComponent(applicationId)}`;
+  const subject =
+    variant === "24h"
+      ? `${name}, finish your REAL RENTALS application`
+      : `${name}, your spot won't hold much longer`;
+  const headline = variant === "24h" ? "You're almost there." : "Last nudge — your spot is waiting.";
+  const body =
+    variant === "24h"
+      ? "You started your driver application yesterday but didn't finish. It takes about 2 minutes to complete — then our team can call you to confirm availability and get you on the road."
+      : "We've held your spot for 3 days. Vehicles in your market move fast — finish your application now to lock it in before we release it to the next driver in line.";
+
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #eee">
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#CC0000;font-weight:700">REAL RENTALS</div>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${escapeHtml(headline)}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, ${escapeHtml(body)}</p>
+      <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
+      <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
+    </div>
+  </div>
+</body></html>`;
+
+  await sendEmail({ to, subject, html, replyTo: "hello@drivereal.com" });
+}
