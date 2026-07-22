@@ -4,6 +4,7 @@ import type { Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mergeDuplicateApplications } from "@/lib/applications.functions";
+import { scoreApplication } from "@/lib/scoring.functions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,7 +14,7 @@ import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
-  MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe,
+  MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -30,6 +31,24 @@ const statusBadge: Record<string,string> = {
   declined: "bg-red-100 text-red-800",
   closed: "bg-gray-200 text-gray-700",
 };
+
+function TierBadge({ tier, score, size = "sm" }: { tier?: string | null; score?: number | null; size?: "sm" | "md" }) {
+  if (!tier) return null;
+  const t = String(tier).toLowerCase();
+  const cls =
+    t === "hot" ? "bg-red-100 text-red-800 border-red-200"
+    : t === "warm" ? "bg-amber-100 text-amber-800 border-amber-200"
+    : "bg-gray-100 text-gray-700 border-gray-200";
+  const Icon = t === "hot" ? Flame : t === "warm" ? Thermometer : Snowflake;
+  const pad = size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
+  return (
+    <span className={`inline-flex items-center gap-1 font-medium border rounded ${pad} ${cls}`} title={`AI tier: ${t}${score != null ? ` (${score})` : ""}`}>
+      <Icon className={size === "md" ? "w-3.5 h-3.5" : "w-3 h-3"} />
+      <span className="capitalize">{t}</span>
+      {score != null && <span className="opacity-70">{score}</span>}
+    </span>
+  );
+}
 
 function formatPhone(p?: string | null): string {
   if (!p) return "—";
@@ -240,6 +259,11 @@ export function DriversPanel() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span>{a.full_name}</span>
+                      {a.ai_tier && (
+                        <span className="ml-2 inline-block align-middle">
+                          <TierBadge tier={a.ai_tier} score={a.ai_score ?? null} />
+                        </span>
+                      )}
                       {a.gclid ? (
                         <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-800" title={`Google Ads${a.utm_campaign ? ` — ${a.utm_campaign}` : ""}`}>
                           <BadgeDollarSign className="w-3 h-3" /> Google Ads
@@ -491,6 +515,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete }: {
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
+            <AIScoreCard driver={driver} onUpdate={onUpdate} />
             <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Field label="DOB" value={driver.dob} />
@@ -629,6 +654,73 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
         <div className="text-sm font-semibold">{title}</div>
       </div>
       <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function AIScoreCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: Partial<Application>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const rescore = useServerFn(scoreApplication);
+  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
+  async function run() {
+    setBusy(true);
+    try {
+      const res = await rescore({ data: { id: driver.id } });
+      if (res && (res as any).ok !== false) {
+        const r = res as any;
+        onUpdate({
+          ai_score: r.score,
+          ai_tier: r.tier,
+          ai_flags: r.flags,
+          ai_summary: r.summary,
+          scored_at: new Date().toISOString(),
+        } as any);
+        toast.success(`AI scored: ${r.tier} (${r.score})`);
+      } else {
+        toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scoring failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="rounded-xl border border-border bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <span className="text-muted-foreground"><Sparkles className="w-4 h-4" /></span>
+        <div className="text-sm font-semibold">AI Prospect Score</div>
+        {driver.ai_tier && (
+          <span className="ml-1"><TierBadge tier={driver.ai_tier} score={driver.ai_score ?? null} size="md" /></span>
+        )}
+        <button
+          onClick={run}
+          disabled={busy}
+          className="ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
+        >
+          <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : driver.ai_tier ? "Re-score" : "Score now"}
+        </button>
+      </div>
+      <div className="p-4 space-y-3">
+        {driver.ai_summary ? (
+          <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Not yet scored. Click "Score now" to run the AI review of trips, rating, license, and screenshots.</p>
+        )}
+        {flags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {flags.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+                <AlertTriangle className="w-3 h-3" /> {f}
+              </span>
+            ))}
+          </div>
+        )}
+        {scoredAt && (
+          <p className="text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
+        )}
+      </div>
     </div>
   );
 }

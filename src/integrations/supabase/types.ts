@@ -35,6 +35,10 @@ export type Database = {
       applications: {
         Row: {
           address: string | null
+          ai_flags: Json | null
+          ai_score: number | null
+          ai_summary: string | null
+          ai_tier: string | null
           background_check_status: string
           city: string | null
           consent_background: boolean | null
@@ -88,6 +92,7 @@ export type Database = {
           return_time: string | null
           rideshare_history_status: string
           score: number
+          scored_at: string | null
           sms_consent: boolean | null
           source: string | null
           start_date: string | null
@@ -112,6 +117,10 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
           background_check_status?: string
           city?: string | null
           consent_background?: boolean | null
@@ -165,6 +174,7 @@ export type Database = {
           return_time?: string | null
           rideshare_history_status?: string
           score?: number
+          scored_at?: string | null
           sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
@@ -189,6 +199,10 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          ai_flags?: Json | null
+          ai_score?: number | null
+          ai_summary?: string | null
+          ai_tier?: string | null
           background_check_status?: string
           city?: string | null
           consent_background?: boolean | null
@@ -242,6 +256,7 @@ export type Database = {
           return_time?: string | null
           rideshare_history_status?: string
           score?: number
+          scored_at?: string | null
           sms_consent?: boolean | null
           source?: string | null
           start_date?: string | null
