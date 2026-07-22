@@ -7,6 +7,7 @@ import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/apply")({
