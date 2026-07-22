@@ -32,16 +32,16 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard, description: "Pipeline, fleet and revenue at a glance" },
-  { id: "drivers", label: "Drivers", icon: Users, description: "Manage applicants, active renters and driver lifecycle" },
+  { id: "overview", label: "Overview", icon: LayoutDashboard, description: "Pipeline, Fleet And Revenue At A Glance" },
+  { id: "drivers", label: "Drivers", icon: Users, description: "Manage Applicants, Active Renters And Driver Lifecycle" },
   { id: "vehicles", label: "Vehicles", icon: Car, description: "Fleet Inventory & Vehicle Status" },
-  { id: "partners", label: "Partners", icon: Handshake, description: "Vehicle owners, capital partners and lenders" },
-  { id: "payments", label: "Payments", icon: CreditCard, description: "Rent, deposits and balances" },
+  { id: "partners", label: "Partners", icon: Handshake, description: "Vehicle Owners, Capital Partners And Lenders" },
+  { id: "payments", label: "Payments", icon: CreditCard, description: "Rent, Deposits And Balances" },
   { id: "maintenance", label: "Maintenance", icon: Wrench, description: "Vehicle Service Records, Schedules & Cost Splits" },
-  { id: "shops", label: "Shops", icon: Store, description: "Preferred Maintenance Providers by Market" },
+  { id: "shops", label: "Shops", icon: Store, description: "Preferred Maintenance Providers By Market" },
   { id: "websites", label: "Websites", icon: Globe, description: "Market-Specific Marketing Sites" },
   { id: "team", label: "Team", icon: UserCog, description: "Internal Roles & Access Control" },
-  { id: "settings", label: "Settings", icon: SettingsIcon, description: "Rental terms, payments, admin users and preferences" },
+  { id: "settings", label: "Settings", icon: SettingsIcon, description: "Rental Terms, Payments, Admin Users And Preferences" },
 ] as const;
 type Tab = typeof TABS[number]["id"] | "messages";
 
