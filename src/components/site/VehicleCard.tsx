@@ -42,7 +42,6 @@ export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <div className="text-lg font-semibold text-foreground leading-tight">
             {vehicle.make} {vehicle.model}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">{vehicle.year}</div>
         </div>
         <div className="text-right">
           <div className="car-price text-lg font-semibold transition-colors whitespace-nowrap">
