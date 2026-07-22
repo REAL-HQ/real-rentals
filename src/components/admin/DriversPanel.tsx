@@ -13,6 +13,7 @@ import {
   MoreVertical, Search, Check, ChevronDown, ArrowLeft,
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
+  MessageSquare, PhoneOutgoing,
 } from "lucide-react";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -38,6 +39,31 @@ function formatPhone(p?: string | null): string {
   return p;
 }
 
+function smsHref(p?: string | null): string {
+  if (!p) return "";
+  const d = p.replace(/[^\d+]/g, "");
+  return `sms:${d}`;
+}
+
+function formatDuration(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  if (totalMin < 60) return `${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 24) return `${h}h ${m}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function useNow(intervalMs = 30000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+  return now;
+}
+
 export function DriversPanel() {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -46,6 +72,7 @@ export function DriversPanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const runMerge = useServerFn(mergeDuplicateApplications);
+  const now = useNow();
 
   useEffect(() => {
     supabase.from("applications").select("*").order("created_at", { ascending: false })
@@ -71,17 +98,45 @@ export function DriversPanel() {
     for (const g of byKey.values()) {
       g.history.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
     }
-    return Array.from(byKey.values()).sort(
-      (a, b) => (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? ""),
-    );
+    // Uncontacted "new" leads first (oldest waiting at top). Everything else
+    // sorted by created_at desc.
+    return Array.from(byKey.values()).sort((a, b) => {
+      const aWaiting = !a.primary.contacted_at && (a.primary.status ?? "new") === "new";
+      const bWaiting = !b.primary.contacted_at && (b.primary.status ?? "new") === "new";
+      if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
+      if (aWaiting && bWaiting) {
+        return (a.primary.created_at ?? "").localeCompare(b.primary.created_at ?? "");
+      }
+      return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
+    });
   }, [drivers, filter]);
 
   async function update(id: string, patch: Partial<Application>) {
-    const { error } = await supabase.from("applications").update(patch).eq("id", id);
+    // Stamp contacted_at the first time the admin advances status past "new"
+    // or edits the record while it is still "new" without an existing stamp.
+    const target = drivers.find((x) => x.id === id);
+    const patchWithStamp: Partial<Application> = { ...patch };
+    if (
+      target &&
+      !target.contacted_at &&
+      patch.status &&
+      patch.status !== "new"
+    ) {
+      patchWithStamp.contacted_at = new Date().toISOString();
+    }
+    const { error } = await supabase.from("applications").update(patchWithStamp).eq("id", id);
     if (error) return toast.error(error.message);
-    setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-    if (open?.id === id) setOpen({ ...open, ...patch } as Application);
+    setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
+    if (open?.id === id) setOpen({ ...open, ...patchWithStamp } as Application);
   }
+
+  async function markContacted(id: string) {
+    const target = drivers.find((x) => x.id === id);
+    if (target?.contacted_at) return;
+    await update(id, { contacted_at: new Date().toISOString() });
+    toast.success("Marked contacted");
+  }
+
   async function remove(id: string) {
     if (!confirm("Delete this driver record? This cannot be undone.")) return;
     const { error } = await supabase.from("applications").delete().eq("id", id);
@@ -152,8 +207,8 @@ export function DriversPanel() {
             <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Contact</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Weekly</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
@@ -168,6 +223,18 @@ export function DriversPanel() {
                 const veh = a.vehicle_id ? vehicleMap[a.vehicle_id] : null;
                 const dupeCount = history.length + (a.resubmission_count ?? 0);
                 const isExpanded = expanded.has(a.id);
+                const createdMs = a.created_at ? new Date(a.created_at).getTime() : null;
+                const contactedMs = a.contacted_at ? new Date(a.contacted_at).getTime() : null;
+                const isWaiting = !contactedMs && (a.status ?? "new") === "new";
+                const waitingMs = createdMs ? now - createdMs : 0;
+                const respondedMs =
+                  createdMs && contactedMs ? contactedMs - createdMs : null;
+                const waitColor =
+                  waitingMs < 15 * 60_000
+                    ? "bg-emerald-100 text-emerald-800"
+                    : waitingMs < 60 * 60_000
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-red-100 text-red-800";
                 const rows = [
                   <tr key={a.id} onClick={() => setOpen(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
@@ -183,11 +250,46 @@ export function DriversPanel() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {a.email ? <a href={`mailto:${a.email}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{a.email}</a> : "—"}
+                    <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1">
+                          {a.phone ? (
+                            <>
+                              <a href={`tel:${a.phone}`} title="Call" className="inline-flex items-center gap-1 rounded border border-border bg-white px-1.5 py-0.5 text-[11px] hover:bg-soft">
+                                <Phone className="w-3 h-3" /> Call
+                              </a>
+                              <a href={smsHref(a.phone)} title="Text" className="inline-flex items-center gap-1 rounded border border-border bg-white px-1.5 py-0.5 text-[11px] hover:bg-soft">
+                                <MessageSquare className="w-3 h-3" /> Text
+                              </a>
+                              <span className="text-[11px] text-muted-foreground select-all">{formatPhone(a.phone)}</span>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">No phone</span>
+                          )}
+                        </div>
+                        <div>
+                          {a.email ? (
+                            <a href={`mailto:${a.email}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                              <Mail className="w-3 h-3" /> {a.email}
+                            </a>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">No email</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {a.phone ? <a href={`tel:${a.phone}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{formatPhone(a.phone)}</a> : "—"}
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {contactedMs ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <Check className="w-3 h-3" /> Responded in {formatDuration(respondedMs ?? 0)}
+                        </span>
+                      ) : isWaiting ? (
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded ${waitColor}`}>
+                          <Activity className="w-3 h-3" /> {formatDuration(waitingMs)} waiting
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
                       {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
@@ -214,6 +316,11 @@ export function DriversPanel() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setOpen(a)}>Open</DropdownMenuItem>
+                          {!contactedMs && (
+                            <DropdownMenuItem onClick={() => markContacted(a.id)}>
+                              <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={() => remove(a.id)}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -225,8 +332,8 @@ export function DriversPanel() {
                     rows.push(
                       <tr key={h.id} onClick={() => setOpen(h)} className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60">
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
-                        <td className="px-4 py-2">{h.email || "—"}</td>
-                        <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
+                        <td className="px-4 py-2">{h.email || h.phone ? `${h.email || ""} ${h.phone ? formatPhone(h.phone) : ""}` : "—"}</td>
+                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>

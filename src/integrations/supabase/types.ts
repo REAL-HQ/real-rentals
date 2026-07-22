@@ -41,6 +41,7 @@ export type Database = {
           consent_gps: boolean | null
           consent_prepay: boolean | null
           consent_terms: boolean | null
+          contacted_at: string | null
           created_at: string | null
           current_step: string | null
           deposit_amount: number | null
@@ -115,6 +116,7 @@ export type Database = {
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
+          contacted_at?: string | null
           created_at?: string | null
           current_step?: string | null
           deposit_amount?: number | null
@@ -189,6 +191,7 @@ export type Database = {
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
+          contacted_at?: string | null
           created_at?: string | null
           current_step?: string | null
           deposit_amount?: number | null
