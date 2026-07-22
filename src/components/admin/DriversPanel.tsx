@@ -585,6 +585,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             <TabsTrigger value="interview">Interview</TabsTrigger>
             <TabsTrigger value="screening-docs">Documents</TabsTrigger>
             <TabsTrigger value="insurance">Insurance</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
             <TabsTrigger value="financials">Financials</TabsTrigger>
             <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
@@ -631,7 +632,6 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
           </TabsContent>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
-            <AIScoreCard driver={driver} onUpdate={onUpdate} />
             <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Field label="DOB" value={driver.dob} />
@@ -757,6 +757,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             </Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </div>
   );
