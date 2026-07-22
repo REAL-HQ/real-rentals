@@ -54,18 +54,9 @@ export function CityHeroLeadForm({
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
-  const utms = useMemo(() => {
-    if (typeof window === "undefined") return {};
-    const params = new URLSearchParams(window.location.search);
-    return {
-      utm_source: params.get("utm_source"),
-      utm_medium: params.get("utm_medium"),
-      utm_campaign: params.get("utm_campaign"),
-      utm_term: params.get("utm_term"),
-      utm_content: params.get("utm_content"),
-      gclid: params.get("gclid"),
-    };
-  }, []);
+  // Attribution (gclid + utm_* + landing_page + referrer) is captured
+  // sessionStorage-first in __root and read here at submit time so it
+  // survives navigation.
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
