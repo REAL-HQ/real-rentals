@@ -103,7 +103,7 @@ export const submitApplication = createServerFn({ method: "POST" })
           pickup_date: data.pickup_date ?? null,
           return_date: data.return_date ?? null,
           platforms: null,
-          sms_consent: data.sms_consent,
+          sms_consent: data.sms_consent ?? null,
           source: `${data.source} (resubmission #${patch.resubmission_count})`,
         }).catch((e) => console.error("[lead-email] resubmission failed", e));
       } catch (e) {
