@@ -371,3 +371,72 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const firstName = (row.full_name ?? "").trim().split(/\s+/)[0] ?? "";
     return { ...row, full_name: firstName };
   });
+
+// ---------------- Admin: merge duplicate applications ----------------
+// One-time cleanup: groups existing applications by phone/email and links
+// older duplicates to the newest surviving record. Admin-only.
+export const mergeDuplicateApplications = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: adminRow } = await context.supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", context.userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    if (!adminRow) throw new Error("Forbidden");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: all, error } = await supabaseAdmin
+      .from("applications")
+      .select("id, phone, email, created_at, primary_application_id, resubmission_count")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const groups = new Map<string, typeof all>();
+    for (const row of all ?? []) {
+      for (const key of [
+        row.phone ? `phone:${row.phone.trim().toLowerCase()}` : null,
+        row.email ? `email:${row.email.trim().toLowerCase()}` : null,
+      ]) {
+        if (!key) continue;
+        const arr = groups.get(key) ?? [];
+        arr.push(row);
+        groups.set(key, arr);
+      }
+    }
+
+    const linked = new Set<string>();
+    let mergedCount = 0;
+    for (const rows of groups.values()) {
+      if (rows.length < 2) continue;
+      // rows are ordered newest first; primary = first not already linked
+      const primary = rows.find((r) => !r.primary_application_id) ?? rows[0];
+      for (const r of rows) {
+        if (r.id === primary.id) continue;
+        if (linked.has(r.id)) continue;
+        const { error: uErr } = await supabaseAdmin
+          .from("applications")
+          .update({
+            primary_application_id: primary.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", r.id);
+        if (!uErr) {
+          linked.add(r.id);
+          mergedCount += 1;
+        }
+      }
+      // Bump the primary's resubmission_count to reflect discovered dupes.
+      const bump = rows.length - 1;
+      if (bump > 0) {
+        await supabaseAdmin
+          .from("applications")
+          .update({
+            resubmission_count: (primary.resubmission_count ?? 0) + bump,
+          })
+          .eq("id", primary.id);
+      }
+    }
+    return { merged: mergedCount };
+  });
