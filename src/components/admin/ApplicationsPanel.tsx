@@ -3,9 +3,56 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Application } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
 
 const STATUSES = ["partial", "complete", "new", "reviewing", "approved", "declined", "active"];
 const SOURCES = ["homepage", "city_lp"];
+
+function ApplicationActions({
+  app,
+  onView,
+  onDelete,
+}: {
+  app: Application;
+  onView: () => void;
+  onDelete: () => void;
+}) {
+  const resumeUrl = `${window.location.origin}/apply?id=${app.id}`;
+  const firstName = app.full_name?.split(" ")[0] ?? "there";
+
+  async function copyResumeLink() {
+    try {
+      await navigator.clipboard.writeText(resumeUrl);
+      toast.success("Resume link copied");
+    } catch (err) {
+      toast.error("Failed to copy resume link");
+    }
+  }
+
+  function textResumeLink() {
+    if (!app.phone) return;
+    const message = `Hi ${firstName}, it's REAL RENTALS. Here's your link to finish your application: ${resumeUrl}`;
+    window.open(`sms:${app.phone}?body=${encodeURIComponent(message)}`, "_blank");
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-soft text-muted-foreground">
+        <MoreVertical className="w-4 h-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onView}>View</DropdownMenuItem>
+        <DropdownMenuItem onClick={copyResumeLink}>Copy Resume Link</DropdownMenuItem>
+        {app.phone && <DropdownMenuItem onClick={textResumeLink}>Text Resume Link</DropdownMenuItem>}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={onDelete}>
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function ApplicationsPanel() {
   const [apps, setApps] = useState<Application[]>([]);
@@ -98,15 +145,7 @@ export function ApplicationsPanel() {
                 ))}
               </SelectContent>
             </Select>
-            <button onClick={() => setOpen(a)} className="rounded-md bg-black text-white px-3 py-1.5 text-sm">
-              View
-            </button>
-            <button
-              onClick={() => remove(a.id)}
-              className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-real-red hover:text-white hover:border-real-red"
-            >
-              Delete
-            </button>
+            <ApplicationActions app={a} onView={() => setOpen(a)} onDelete={() => remove(a.id)} />
           </div>
         ))}
         {filtered.length === 0 && <div className="text-sm text-muted-foreground">No applications.</div>}
