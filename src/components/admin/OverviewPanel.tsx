@@ -34,17 +34,16 @@ export function OverviewPanel() {
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
       const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
 
-      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, recentAppsQ, seriesLeadsQ, seriesAppsQ, hotListQ] = await Promise.all([
-        supabase.from("waitlist_contacts").select("id", { count: "exact", head: true }).gte("created_at", d7),
-        supabase.from("waitlist_contacts").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
+      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, recentAppsQ, seriesAppsQ, hotListQ] = await Promise.all([
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7),
+        supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
+        supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7).not("current_step", "is", null),
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("ai_tier", "hot"),
         supabase.from("driver_screenings").select("id", { count: "exact", head: true }).is("interview_completed_at", null),
         supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at").order("created_at", { ascending: false }).limit(6),
-        supabase.from("waitlist_contacts").select("created_at").gte("created_at", d30),
         supabase.from("applications").select("created_at").gte("created_at", d30),
         supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
       ]);
@@ -70,13 +69,12 @@ export function OverviewPanel() {
         buckets[key] = p;
         days.push(p);
       }
-      for (const r of seriesLeadsQ.data ?? []) {
+      for (const r of (seriesAppsQ.data ?? []) as Array<{ created_at: string }>) {
         const k = new Date(r.created_at as string).toISOString().slice(0, 10);
-        if (buckets[k]) buckets[k].leads += 1;
-      }
-      for (const r of seriesAppsQ.data ?? []) {
-        const k = new Date(r.created_at as string).toISOString().slice(0, 10);
-        if (buckets[k]) buckets[k].apps += 1;
+        if (buckets[k]) {
+          buckets[k].leads += 1;
+          buckets[k].apps += 1;
+        }
       }
       setSeries(days);
       setRecent(recentAppsQ.data ?? []);
