@@ -465,22 +465,27 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
   }
 
   return (
-    <div className="-mx-8 -my-8 min-h-full bg-gradient-to-b from-soft/60 to-white">
+    <div className="-mx-8 -my-8 min-h-full bg-[#fafafa]">
       {/* Top bar */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-border">
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-border">
         <div className="px-8 py-3 flex items-center justify-between">
           <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-4 h-4" /> Back to drivers
           </button>
           <div className="flex items-center gap-2">
-            {driver.email && (
-              <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-                <Mail className="w-3.5 h-3.5" /> Email
+            {driver.phone && (
+              <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 rounded-md bg-real-red text-white px-3 py-1.5 text-xs font-medium hover:bg-red-700">
+                <Phone className="w-3.5 h-3.5" /> Call {formatPhone(driver.phone)}
               </a>
             )}
             {driver.phone && (
-              <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-                <Phone className="w-3.5 h-3.5" /> Call
+              <a href={smsHref(driver.phone)} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
+                <MessageSquare className="w-3.5 h-3.5" /> Text
+              </a>
+            )}
+            {driver.email && (
+              <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
+                <Mail className="w-3.5 h-3.5" /> Email
               </a>
             )}
             <DropdownMenu>
@@ -497,80 +502,90 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
         </div>
       </div>
 
-      <div className="px-8 py-6 space-y-6">
-        <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
-
-        {/* Identity header */}
-        <div className="flex items-start gap-4">
-          <div className="h-16 w-16 shrink-0 rounded-full bg-black text-white grid place-items-center text-xl font-semibold">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-semibold truncate">{driver.full_name}</h2>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full capitalize ${statusBadge[driver.status] || "bg-gray-100 text-gray-700"}`}>
-                {driver.status}
-              </span>
+      <div className="px-8 py-6 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+        {/* Left profile sidebar */}
+        <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
+          <div className="rounded-xl border border-border bg-white p-5">
+            <div className="flex items-start gap-3">
+              <div className="h-14 w-14 shrink-0 rounded-full bg-black text-white grid place-items-center text-lg font-semibold">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-base font-semibold truncate">{driver.full_name || "Unnamed"}</div>
+                <div className={`inline-flex mt-1 text-[10px] px-1.5 py-0.5 rounded capitalize ${statusBadge[driver.status] || "bg-gray-100 text-gray-700"}`}>
+                  {driver.status}
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-1.5">
               {tripsOk && (
-                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                  <ShieldCheck className="w-3 h-3 mr-1" /> Verified 200+ trips
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">
+                  <ShieldCheck className="w-3 h-3 mr-1" /> 200+ trips
+                </Badge>
+              )}
+              {driver.license_valid && (
+                <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-[10px]">Licensed</Badge>
+              )}
+              {driver.gclid && (
+                <Badge variant="secondary" className="bg-amber-50 text-amber-800 hover:bg-amber-50 text-[10px]">
+                  <BadgeDollarSign className="w-3 h-3 mr-1" /> Google Ads
                 </Badge>
               )}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {driver.email && (
-                <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
-                  <Mail className="w-3.5 h-3.5" /> {driver.email}
+            <div className="mt-4 space-y-1.5 text-xs">
+              {driver.phone && (
+                <a href={`tel:${driver.phone}`} className="flex items-center gap-2 text-foreground hover:text-real-red">
+                  <Phone className="w-3.5 h-3.5 text-muted-foreground" /> {formatPhone(driver.phone)}
                 </a>
               )}
-              {driver.phone && (
-                <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
-                  <Phone className="w-3.5 h-3.5" /> {formatPhone(driver.phone)}
+              {driver.email && (
+                <a href={`mailto:${driver.email}`} className="flex items-center gap-2 text-foreground hover:text-real-red break-all">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> {driver.email}
                 </a>
               )}
               {(driver.city || driver.state) && (
-                <span className="inline-flex items-center gap-1.5">
+                <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="w-3.5 h-3.5" /> {[driver.city, driver.state].filter(Boolean).join(", ")}
-                </span>
+                </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            icon={<Car className="w-4 h-4" />}
-            label="Vehicle"
-            value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
-            muted={!veh}
-          />
-          <StatCard
-            icon={<CreditCard className="w-4 h-4" />}
-            label="Weekly rent"
-            value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "—"}
-          />
-          <StatCard
-            icon={<Activity className="w-4 h-4" />}
-            label="Trips completed"
-            value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()}
-            hint={!Number.isNaN(trips) && driver.trips_completed ? (tripsOk ? "Meets 200+" : "Below 200") : undefined}
-            hintTone={tripsOk ? "good" : "warn"}
-          />
-          <StatCard
-            icon={<Star className="w-4 h-4" />}
-            label="Rating"
-            value={driver.rating ? `${driver.rating}/5` : "—"}
-          />
-        </div>
+          <div className="rounded-xl border border-border bg-white p-5">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Snapshot</div>
+            <dl className="space-y-3 text-sm">
+              <SidebarStat icon={<Car className="w-3.5 h-3.5" />} label="Vehicle" value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"} muted={!veh} />
+              <SidebarStat icon={<CreditCard className="w-3.5 h-3.5" />} label="Weekly rent" value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "—"} />
+              <SidebarStat icon={<Activity className="w-3.5 h-3.5" />} label="Trips" value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()} tone={tripsOk ? "good" : (driver.trips_completed ? "warn" : undefined)} />
+              <SidebarStat icon={<Star className="w-3.5 h-3.5" />} label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
+            </dl>
+          </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="overview" className="w-full">
+          {(driver.utm_source || driver.utm_campaign || driver.gclid) && (
+            <div className="rounded-xl border border-border bg-white p-5">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Attribution</div>
+              <div className="space-y-2 text-xs">
+                <div><span className="text-muted-foreground">Source: </span>{driver.gclid ? "Google Ads" : (driver.utm_source || "Direct")}</div>
+                {driver.utm_campaign && <div><span className="text-muted-foreground">Campaign: </span>{driver.utm_campaign}</div>}
+                {driver.utm_medium && <div><span className="text-muted-foreground">Medium: </span>{driver.utm_medium}</div>}
+                {driver.landing_page && <div className="truncate"><span className="text-muted-foreground">Landing: </span>{driver.landing_page}</div>}
+              </div>
+            </div>
+          )}
+        </aside>
+
+        {/* Main column */}
+        <div className="min-w-0 space-y-6">
+          <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
+
+          <AISnapshotCard driver={driver} onUpdate={onUpdate} />
+
+          <Tabs defaultValue="interview" className="w-full">
           <TabsList className="bg-white border border-border">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="interview">Interview</TabsTrigger>
             <TabsTrigger value="screening-docs">Documents</TabsTrigger>
             <TabsTrigger value="insurance">Insurance</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
             <TabsTrigger value="financials">Financials</TabsTrigger>
             <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
@@ -617,7 +632,6 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
           </TabsContent>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
-            <AIScoreCard driver={driver} onUpdate={onUpdate} />
             <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Field label="DOB" value={driver.dob} />
@@ -743,6 +757,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             </Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </div>
   );
@@ -840,6 +855,101 @@ function StatCard({ icon, label, value, hint, hintTone, muted }: {
       {hint && (
         <div className={`mt-1 text-[11px] ${hintTone === "good" ? "text-emerald-700" : "text-amber-700"}`}>{hint}</div>
       )}
+    </div>
+  );
+}
+
+function SidebarStat({ icon, label, value, tone, muted }: {
+  icon: React.ReactNode; label: string; value: React.ReactNode;
+  tone?: "good" | "warn"; muted?: boolean;
+}) {
+  const toneCls = tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : "";
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="text-muted-foreground">{icon}</span>{label}
+      </dt>
+      <dd className={`text-xs font-medium text-right truncate ${muted ? "text-muted-foreground" : toneCls || "text-foreground"}`}>{value}</dd>
+    </div>
+  );
+}
+
+function AISnapshotCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: Partial<Application>) => void }) {
+  const [busy, setBusy] = useState(false);
+  const rescore = useServerFn(scoreApplication);
+  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
+  const score = typeof driver.ai_score === "number" ? driver.ai_score : null;
+  const tier = driver.ai_tier as string | null | undefined;
+  const tierGrad =
+    tier === "hot" ? "from-red-500 to-orange-500"
+    : tier === "warm" ? "from-amber-400 to-yellow-500"
+    : tier === "cold" ? "from-slate-400 to-slate-500"
+    : "from-slate-200 to-slate-300";
+  async function run() {
+    setBusy(true);
+    try {
+      const res = await rescore({ data: { id: driver.id } });
+      if (res && (res as any).ok !== false) {
+        const r = res as any;
+        onUpdate({
+          ai_score: r.score, ai_tier: r.tier, ai_flags: r.flags,
+          ai_summary: r.summary, scored_at: new Date().toISOString(),
+        } as any);
+        toast.success(`AI scored: ${r.tier} (${r.score})`);
+      } else {
+        toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scoring failed");
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+      <div className={`h-1 w-full bg-gradient-to-r ${tierGrad}`} />
+      <div className="p-5">
+        <div className="flex items-start gap-5">
+          <div className="shrink-0">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">AI score</div>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-4xl font-bold tabular-nums">{score ?? "—"}</span>
+              <span className="text-xs text-muted-foreground">/100</span>
+            </div>
+            {tier && <div className="mt-1"><TierBadge tier={tier} score={null} size="md" /></div>}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Sparkles className="w-3.5 h-3.5 text-real-red" /> AI Prospect Snapshot
+              </div>
+              <button
+                onClick={run}
+                disabled={busy}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : tier ? "Re-score" : "Score now"}
+              </button>
+            </div>
+            {driver.ai_summary ? (
+              <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Not yet scored. Run the AI review to grade trips, rating, license, and screenshots.</p>
+            )}
+            {flags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {flags.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+                    <AlertTriangle className="w-3 h-3" /> {f}
+                  </span>
+                ))}
+              </div>
+            )}
+            {scoredAt && (
+              <p className="mt-2 text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
