@@ -294,11 +294,6 @@ export function DriversPanel() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span>{a.full_name}</span>
-                      {a.ai_tier && (
-                        <span className="ml-2 inline-block align-middle">
-                          <TierBadge tier={a.ai_tier} score={a.ai_score ?? null} />
-                        </span>
-                      )}
                       <SourceBadge
                         source={a.gclid ? "google" : "organic"}
                         campaign={a.utm_campaign}
@@ -312,6 +307,21 @@ export function DriversPanel() {
                         >
                           <Copy className="w-3 h-3" />×{dupeCount + 1}
                         </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {a.ai_tier ? (
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                          a.ai_tier === "hot" ? "bg-red-50 text-red-700 border-red-100"
+                          : a.ai_tier === "warm" ? "bg-amber-50 text-amber-700 border-amber-100"
+                          : "bg-neutral-50 text-neutral-600 border-neutral-100"
+                        }`}>
+                          {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
+                          <span className="uppercase tracking-wide">{a.ai_tier}</span>
+                          {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">pending</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
