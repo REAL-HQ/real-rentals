@@ -57,6 +57,8 @@ export type Database = {
           deposit_paid: number | null
           deposit_status: string
           dob: string | null
+          doc_request_note: string | null
+          doc_request_sent_at: string | null
           earnings_verified_status: string
           email: string
           full_coverage_insurance: boolean | null
@@ -66,6 +68,7 @@ export type Database = {
           how_heard: string | null
           id: string
           incident_count: number
+          insurance_doc_url: string | null
           landing_page: string | null
           license_expiration: string | null
           license_number: string | null
@@ -88,11 +91,13 @@ export type Database = {
           rating: number | null
           recovery_email_sent_24h: string | null
           recovery_email_sent_72h: string | null
+          recovery_sent_at: string | null
           referrer: string | null
           rental_duration: string | null
           rental_duration_days: number | null
           rental_length: string | null
           rental_term: string | null
+          requested_docs: Json
           resubmission_count: number
           resubmission_history: Json
           return_date: string | null
@@ -148,6 +153,8 @@ export type Database = {
           deposit_paid?: number | null
           deposit_status?: string
           dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
           earnings_verified_status?: string
           email: string
           full_coverage_insurance?: boolean | null
@@ -157,6 +164,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          insurance_doc_url?: string | null
           landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
@@ -179,11 +187,13 @@ export type Database = {
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
           referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          requested_docs?: Json
           resubmission_count?: number
           resubmission_history?: Json
           return_date?: string | null
@@ -239,6 +249,8 @@ export type Database = {
           deposit_paid?: number | null
           deposit_status?: string
           dob?: string | null
+          doc_request_note?: string | null
+          doc_request_sent_at?: string | null
           earnings_verified_status?: string
           email?: string
           full_coverage_insurance?: boolean | null
@@ -248,6 +260,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          insurance_doc_url?: string | null
           landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
@@ -270,11 +283,13 @@ export type Database = {
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
+          recovery_sent_at?: string | null
           referrer?: string | null
           rental_duration?: string | null
           rental_duration_days?: number | null
           rental_length?: string | null
           rental_term?: string | null
+          requested_docs?: Json
           resubmission_count?: number
           resubmission_history?: Json
           return_date?: string | null
