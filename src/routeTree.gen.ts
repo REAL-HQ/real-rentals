@@ -27,6 +27,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 
@@ -120,6 +121,11 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => FleetRoute,
 } as any)
+const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
+  id: '/card/$applicationId',
+  path: '/card/$applicationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -287,6 +299,7 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  CardApplicationIdRoute: typeof CardApplicationIdRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
@@ -419,6 +432,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof FleetRoute
     }
+    '/card/$applicationId': {
+      id: '/card/$applicationId'
+      path: '/card/$applicationId'
+      fullPath: '/card/$applicationId'
+      preLoaderRoute: typeof CardApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -464,6 +484,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  CardApplicationIdRoute: CardApplicationIdRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
