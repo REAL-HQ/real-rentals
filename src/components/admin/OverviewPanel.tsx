@@ -666,13 +666,15 @@ function ActivityDonut({
               <div className="h-2 rounded-full bg-[#f5f6f8] overflow-hidden">
                 <div className="h-full bg-[#22c55e]" style={{ width: `${utilization}%` }} />
               </div>
-              <div className="flex items-center justify-between text-xs pt-1">
-                <span className="inline-flex items-center gap-1.5 text-neutral-500">
-                  <Wrench className="w-3.5 h-3.5" /> Earning Now
+              <div className="text-xs text-neutral-500 pt-1">
+                {fleet.rented} Of {total} On The Road
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-[#ececf0] p-3 bg-[#fafbfc]">
+                <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
+                  <DollarSign className="w-3.5 h-3.5" /> Earning Now
                 </span>
-                <span className="font-semibold text-neutral-900 tabular-nums">
-                  {earning} <span className="text-neutral-400 font-normal">·</span>{" "}
-                  <span className="text-[#16a34a]">${earningRevenue.toLocaleString()}/wk</span>
+                <span className="text-sm font-semibold tabular-nums text-[#16a34a]">
+                  ${earningRevenue.toLocaleString()}/wk
                 </span>
               </div>
             </div>
