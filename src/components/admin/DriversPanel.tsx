@@ -286,8 +286,6 @@ export function DriversPanel() {
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Screening</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Weekly</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Deposit</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Status</th>
@@ -369,10 +367,6 @@ export function DriversPanel() {
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <ScreeningBadge screening={screenings[a.id] ?? null} docCount={docCounts[a.id] ?? 0} />
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{a.weekly_rent ? `$${a.weekly_rent}` : "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.payment_status?.replace(/_/g," ")}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.deposit_status?.replace(/_/g," ")}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -424,8 +418,6 @@ export function DriversPanel() {
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>
                         <td className="px-4 py-2 capitalize">{h.deposit_status?.replace(/_/g, " ")}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
@@ -441,7 +433,7 @@ export function DriversPanel() {
                 return rows;
               })}
               {grouped.length === 0 && (
-                <tr><td colSpan={12} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
           </table>
