@@ -26,6 +26,7 @@ import {
   MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
+import { chargeCardOnRental, type ChargeReason } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
