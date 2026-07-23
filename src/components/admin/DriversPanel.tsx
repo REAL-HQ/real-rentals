@@ -31,6 +31,7 @@ import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeR
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
+import { Timeline, buildDriverTimeline, StatusPill } from "./ui";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -523,9 +524,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               </div>
               <div className="min-w-0">
                 <div className="text-base font-semibold truncate">{driver.full_name || "Unnamed"}</div>
-                <div className={`inline-flex mt-1 text-[10px] px-1.5 py-0.5 rounded capitalize ${statusBadge[driver.status] || "bg-gray-100 text-gray-700"}`}>
-                  {driver.status}
-                </div>
+                <div className="mt-1"><StatusPill status={driver.status} /></div>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-1.5">
@@ -594,6 +593,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             </div>
           )}
           <CardOnFileCard driver={driver} onUpdate={onUpdate} />
+          <Timeline steps={buildDriverTimeline(driver, screening)} />
         </aside>
 
         {/* Main column */}

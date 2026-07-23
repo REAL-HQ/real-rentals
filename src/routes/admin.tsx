@@ -10,7 +10,7 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown, LayoutDashboard, Search, Bell } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, LayoutDashboard, Search, Bell } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -32,25 +32,27 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard, description: "Pipeline, Fleet And Revenue At A Glance" },
-  { id: "drivers", label: "Drivers", icon: Users, description: "Manage Applicants, Active Renters And Driver Lifecycle" },
-  { id: "vehicles", label: "Vehicles", icon: Car, description: "Fleet Inventory & Vehicle Status" },
-  { id: "partners", label: "Partners", icon: Handshake, description: "Vehicle Owners, Capital Partners And Lenders" },
-  { id: "payments", label: "Payments", icon: CreditCard, description: "Rent, Deposits And Balances" },
-  { id: "maintenance", label: "Maintenance", icon: Wrench, description: "Vehicle Service Records, Schedules & Cost Splits" },
-  { id: "shops", label: "Shops", icon: Store, description: "Preferred Maintenance Providers By Market" },
-  { id: "websites", label: "Websites", icon: Globe, description: "Market-Specific Marketing Sites" },
-  { id: "team", label: "Team", icon: UserCog, description: "Internal Roles & Access Control" },
-  { id: "settings", label: "Settings", icon: SettingsIcon, description: "Rental Terms, Payments, Admin Users And Preferences" },
+  { id: "overview",    label: "Overview",    icon: LayoutDashboard, group: "OPERATIONS", description: "Pipeline, Fleet And Revenue At A Glance" },
+  { id: "drivers",     label: "Drivers",     icon: Users,           group: "OPERATIONS", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
+  { id: "payments",    label: "Payments",    icon: CreditCard,      group: "OPERATIONS", description: "Rent, Deposits And Balances" },
+  { id: "messages",    label: "Messages",    icon: MessageSquare,   group: "OPERATIONS", description: "Inbound Driver & Partner Conversations" },
+  { id: "vehicles",    label: "Vehicles",    icon: Car,             group: "FLEET",      description: "Fleet Inventory & Vehicle Status" },
+  { id: "maintenance", label: "Maintenance", icon: Wrench,          group: "FLEET",      description: "Vehicle Service Records, Schedules & Cost Splits" },
+  { id: "shops",       label: "Shops",       icon: Store,           group: "FLEET",      description: "Preferred Maintenance Providers By Market" },
+  { id: "partners",    label: "Partners",    icon: Handshake,       group: "GROWTH",     description: "Vehicle Owners, Capital Partners And Lenders" },
+  { id: "websites",    label: "Websites",    icon: Globe,           group: "GROWTH",     description: "Market-Specific Marketing Sites" },
+  { id: "team",        label: "Team",        icon: UserCog,         group: "SYSTEM",     description: "Internal Roles & Access Control" },
+  { id: "settings",    label: "Settings",    icon: SettingsIcon,    group: "SYSTEM",     description: "Rental Terms, Payments, Admin Users And Preferences" },
 ] as const;
-type Tab = typeof TABS[number]["id"] | "messages";
+type Tab = typeof TABS[number]["id"];
+const GROUP_ORDER = ["OPERATIONS", "FLEET", "GROWTH", "SYSTEM"] as const;
 
 function Admin() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
-  const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "overview";
+  const initialTab: Tab = urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null; created_at: string | null; status: string | null }>>([]);
@@ -110,7 +112,7 @@ function Admin() {
   if (!session) return <SignIn />;
   if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
-  const current = TABS.find((t) => t.id === tab) ?? { id: "messages" as Tab, label: "Messages", description: "Inbound Driver & Partner Conversations" };
+  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const emailName = session?.user?.email ?? "";
   const rawName = (session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || emailName.split("@")[0] || "Admin").toString();
   const firstName = rawName.split(/[.\s]/)[0] || "Admin";
@@ -118,99 +120,143 @@ function Admin() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f7f8fa]">
+    <div className="min-h-screen flex flex-col bg-[#FAFAFB] text-[#111114]">
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar — dark shell */}
-        <aside className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[260px]"} transition-[width] duration-200 flex-col bg-black border-r border-white/10 sticky top-0 h-screen`}>
+        {/* Sidebar — dark shell, grouped, user block at bottom */}
+        <aside className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[248px]"} transition-[width] duration-200 flex-col bg-[#141416] sticky top-0 h-screen`}>
           <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={`p-1.5 rounded-md hover:bg-white/10 text-neutral-400 hover:text-white ${collapsed ? "" : "absolute right-2 top-4"}`}
+              className={`p-1.5 rounded-md hover:bg-white/10 text-[#8E8E96] hover:text-white transition-colors duration-150 ${collapsed ? "" : "absolute right-2 top-4"}`}
             >
-              {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+              {collapsed ? <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.75} /> : <PanelLeftClose className="w-[18px] h-[18px]" strokeWidth={1.75} />}
             </button>
           </div>
-          <nav className="flex-1 px-3 pt-6 pb-4 space-y-0.5 overflow-y-auto">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = tab === t.id;
+          <nav className="flex-1 px-3 pt-4 pb-4 overflow-y-auto">
+            {GROUP_ORDER.map((group) => {
+              const items = TABS.filter((t) => t.group === group);
               return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  title={collapsed ? t.label : undefined}
-                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-4"} py-2.5 rounded-lg text-[0.92rem] font-medium transition relative ${
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-neutral-400 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  {active && !collapsed && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-white" />
+                <div key={group} className="mb-5 last:mb-0">
+                  {!collapsed && (
+                    <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">
+                      {group}
+                    </div>
                   )}
-                  <Icon className={`w-[18px] h-[18px] ${active ? "text-white" : "text-neutral-400"}`} />
-                  {!collapsed && <span>{t.label}</span>}
-                </button>
+                  <div className="space-y-0.5">
+                    {items.map((t) => {
+                      const Icon = t.icon;
+                      const active = tab === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setTab(t.id)}
+                          title={collapsed ? t.label : undefined}
+                          className={`relative w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
+                            active
+                              ? "bg-[#1F1F23] text-white"
+                              : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
+                          }`}
+                        >
+                          {active && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#CC0000]" />
+                          )}
+                          <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
+                          {!collapsed && <span>{t.label}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </nav>
+          {/* Signed-in admin block (bottom) */}
+          <div className="px-3 pb-4 pt-3 border-t border-white/5">
+            <div className={`group relative flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-[#1A1A1E] transition-colors duration-150 ${collapsed ? "justify-center" : ""}`}>
+              <span className="w-8 h-8 shrink-0 rounded-full bg-[#CC0000] text-white grid place-items-center text-[11px] font-semibold">
+                {initials}
+              </span>
+              {!collapsed && (
+                <>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium text-white truncate">{displayName}</div>
+                    <div className="text-[11px] text-[#8E8E96] truncate">{session?.user?.email}</div>
+                  </div>
+                  <button
+                    onClick={signOut}
+                    aria-label="Sign out"
+                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[#8E8E96] hover:text-white transition-opacity duration-150"
+                  >
+                    <LogOut className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </aside>
 
         {/* Main column */}
         <div className="flex-1 min-w-0 flex flex-col">
           {/* Mobile tab pills */}
-          <div className="md:hidden bg-white border-b border-[#ececf0]">
+          <div className="md:hidden bg-white border-b border-[#EDEDF0]">
             <div className="flex items-center h-14 px-3">
               <Logo offset={false} />
             </div>
-            <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#f0f0f3]">
+            <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#EDEDF0]">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => setTab(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${tab === t.id ? "bg-[#fef2f2] text-real-red" : "bg-[#f5f6f8] text-neutral-600"}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium transition-colors duration-150 ${tab === t.id ? "bg-[rgba(204,0,0,0.08)] text-[#CC0000]" : "bg-[#F4F4F6] text-[#55555E]"}`}>
                   {t.label}
                 </button>
               ))}
             </div>
           </div>
-          <main className="flex-1 min-w-0 bg-[#f7f8fa]">
-            <header className="bg-white border-b border-[#ececf0] px-8 py-3 flex items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="search"
-                  placeholder="Search drivers, vehicles, partners…"
-                  value={globalSearch}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setGlobalSearch(v);
-                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
-                  }}
-                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#f5f6f8] border border-transparent focus:border-[#ececf0] focus:bg-white focus:outline-none text-[13px] text-neutral-800 placeholder:text-neutral-400 transition"
-                />
-              </div>
-              <div className="flex items-center gap-3">
+          <main className="flex-1 min-w-0 bg-[#FAFAFB]">
+            <header className="px-8 py-4 flex items-center justify-between gap-4">
+              {/* Left: breadcrumb */}
+              <nav className="flex items-center gap-2 text-[13px] min-w-0" aria-label="Breadcrumb">
+                <span className="text-[#9A9AA3]">{current.group}</span>
+                <span className="text-[#D6D6DB]">/</span>
+                <span className="font-semibold text-[#111114] truncate">{current.label}</span>
+              </nav>
+              {/* Right: search + notifications + date */}
+              <div className="flex items-center gap-2">
+                <div className="relative hidden sm:block w-[320px] max-w-full">
+                  <Search className="w-[18px] h-[18px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
+                  <input
+                    type="search"
+                    placeholder="Search Drivers, Vehicles, Partners…"
+                    value={globalSearch}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setGlobalSearch(v);
+                      if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
+                    }}
+                    className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#CC0000]/40 focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
+                  />
+                </div>
                 <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
                   <DropdownMenuTrigger
                     aria-label="Notifications"
-                    className="relative w-10 h-10 rounded-xl border border-[#ececf0] bg-white grid place-items-center text-neutral-600 hover:bg-[#f5f6f8] transition"
+                    className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
                   >
-                    <Bell className="w-[18px] h-[18px]" />
+                    <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-real-red text-white text-[10px] font-semibold grid place-items-center">
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#CC0000] text-white text-[10px] font-semibold grid place-items-center">
                         {unreadCount}
                       </span>
                     )}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-80 p-0">
-                    <div className="px-3 py-2 border-b border-[#ececf0] flex items-center justify-between">
-                      <div className="text-sm font-semibold text-neutral-800">Notifications</div>
-                      <div className="text-[11px] text-neutral-500">Last 7 days</div>
+                    <div className="px-3 py-2 border-b border-[#EDEDF0] flex items-center justify-between">
+                      <div className="text-sm font-semibold text-[#111114]">Notifications</div>
+                      <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifs.length === 0 && (
-                        <div className="px-3 py-8 text-center text-xs text-neutral-500">No recent activity</div>
+                        <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]">No Recent Activity</div>
                       )}
                       {notifs.map((n) => {
                         const created = n.created_at ? new Date(n.created_at) : null;
@@ -219,15 +265,15 @@ function Admin() {
                           <button
                             key={n.id}
                             onClick={() => setTab("drivers")}
-                            className="w-full text-left px-3 py-2.5 hover:bg-[#f5f6f8] transition border-b border-[#f5f5f7] last:border-0"
+                            className="w-full text-left px-3 py-2.5 hover:bg-[#F4F4F6] transition-colors duration-150 border-b border-[#F4F4F6] last:border-0"
                           >
                             <div className="flex items-center gap-2">
-                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-real-red" />}
-                              <div className="text-[13px] font-medium text-neutral-800 truncate flex-1">
-                                New lead: {n.full_name || n.email || "Unnamed"}
+                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#CC0000]" />}
+                              <div className="text-[13px] font-medium text-[#111114] truncate flex-1">
+                                New Lead: {n.full_name || n.email || "Unnamed"}
                               </div>
                             </div>
-                            <div className="text-[11px] text-neutral-500 mt-0.5 truncate">
+                            <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
                               {n.email || n.phone || "—"} · {created ? created.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
                             </div>
                           </button>
@@ -236,29 +282,15 @@ function Admin() {
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-[#ececf0] bg-white pl-1 pr-3 py-1 hover:bg-[#f5f6f8] transition">
-                    <span className="w-8 h-8 rounded-full bg-real-red text-white grid place-items-center text-[11px] font-semibold">
-                      {initials}
-                    </span>
-                    <span className="text-[13px] font-medium text-neutral-800 hidden sm:inline">{displayName}</span>
-                    <ChevronDown className="w-4 h-4 text-neutral-400" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel className="text-xs text-neutral-500 font-normal">Signed in as</DropdownMenuLabel>
-                    <div className="px-2 pb-2 text-sm truncate">{session?.user?.email}</div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={signOut} className="text-real-red focus:text-real-red">
-                      <LogOut className="w-4 h-4 mr-2" /> Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="hidden md:block text-[13px] text-[#55555E] tabular-nums pl-1">
+                  {new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+                </div>
               </div>
             </header>
             <div className="p-6 md:p-8">
             <div className="mb-6">
-              <h1 className="text-[26px] font-semibold tracking-tight text-neutral-900">{current.label}</h1>
-              <p className="text-[13px] text-neutral-500 mt-1">{current.description}</p>
+              <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
+              <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
             </div>
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && <DriversPanel externalSearch={globalSearch} />}
