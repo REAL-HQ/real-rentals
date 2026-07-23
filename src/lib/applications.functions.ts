@@ -171,6 +171,7 @@ const stepUpdateSchema = z.object({
   // Driver
   license_photo_url: z.string().trim().max(500).nullable().optional(),
   full_coverage_insurance: z.boolean().nullable().optional(),
+  insurance_doc_url: z.string().trim().max(500).nullable().optional(),
   address: z.string().trim().max(200).nullable().optional(),
   city: z.string().trim().max(80).nullable().optional(),
   state: z.string().trim().max(60).nullable().optional(),
