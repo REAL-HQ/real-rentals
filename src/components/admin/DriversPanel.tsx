@@ -24,9 +24,10 @@ import {
   Mail, Phone, MapPin, Car, CreditCard, ShieldCheck, Activity,
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
   MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
+  Wallet,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
-import { chargeCardOnRental, type ChargeReason } from "@/lib/rental-payments.functions";
+import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -492,6 +493,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               </a>
             )}
             <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+            <AutopayActions driver={driver} />
             <DropdownMenu>
               <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
                 <MoreVertical className="w-4 h-4" />
@@ -1328,6 +1330,49 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         </div>
       </div>
     </div>
+  );
+}
+
+function AutopayActions({ driver }: { driver: any }) {
+  const [rental, setRental] = useState<{ id: string; autopay_active: boolean; weekly_rate: number | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function refresh() {
+    const { data } = await supabase
+      .from("rentals")
+      .select("id, autopay_active, weekly_rate")
+      .eq("application_id", driver.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setRental((data as any) ?? null);
+  }
+  useEffect(() => { refresh(); }, [driver.id]);
+
+  if (!rental) return null;
+  const active = rental.autopay_active;
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      const fn = active ? stopRentalAutopay : startRentalAutopay;
+      const res = await fn({ data: { rentalId: rental!.id, environment: getStripeEnvironment() } });
+      if ("error" in res) throw new Error(res.error);
+      toast.success(active ? "Autopay stopped" : "Weekly autopay started");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Autopay update failed");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <button onClick={toggle} disabled={busy}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-soft disabled:opacity-50 ${
+        active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-border bg-white"
+      }`}>
+      <Wallet className="w-3.5 h-3.5" />
+      {busy ? "Working…" : active ? "Autopay On" : "Start Autopay"}
+    </button>
   );
 }
 
