@@ -29,6 +29,7 @@ import {
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { SourceBadge } from "./SourceBadge";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -303,15 +304,11 @@ export function DriversPanel() {
                           <TierBadge tier={a.ai_tier} score={a.ai_score ?? null} />
                         </span>
                       )}
-                      {a.gclid ? (
-                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-800" title={`Google Ads${a.utm_campaign ? ` — ${a.utm_campaign}` : ""}`}>
-                          <BadgeDollarSign className="w-3 h-3" /> Google Ads
-                        </span>
-                      ) : (
-                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-700" title={a.referrer || "Organic / Direct"}>
-                          <Globe className="w-3 h-3" /> Organic/Direct
-                        </span>
-                      )}
+                      <SourceBadge
+                        source={a.gclid ? "google" : "organic"}
+                        campaign={a.utm_campaign}
+                        className="ml-2 align-middle"
+                      />
                       {dupeCount > 0 && (
                         <button
                           onClick={(e) => { e.stopPropagation(); if (history.length) toggleExpand(a.id); }}
