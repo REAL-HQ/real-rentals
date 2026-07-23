@@ -414,7 +414,74 @@ function Field({ label, value }: { label: string; value: any }) {
 }
 
 function PaymentsView({ data }: { data: DriverDashboard }) {
+  const [billing, setBilling] = useState<RentalBilling | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { getRentalBilling().then(setBilling).catch(() => setBilling(null)); }, []);
+
+  async function payNow() {
+    if (!billing?.rentalId || billing.outstandingCents < 50) return;
+    setBusy(true);
+    try {
+      const res = await payRentalBalance({
+        data: { rentalId: billing.rentalId, amountCents: billing.outstandingCents, environment: getStripeEnvironment() },
+      });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Payment submitted");
+      const b = await getRentalBilling(); setBilling(b);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Payment failed");
+    } finally { setBusy(false); }
+  }
+
   return (
+    <div className="space-y-6">
+      {billing && billing.rentalId && (
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Autopay</h3>
+            {billing.autopayActive ? (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800">
+                <CheckCircle2 className="w-3 h-3" /> Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                <XCircle className="w-3 h-3" /> Off
+              </span>
+            )}
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Weekly Rate</div>
+              <div className="mt-1 font-medium">{fmt(billing.weeklyRate)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Next Charge</div>
+              <div className="mt-1 font-medium">{billing.nextChargeDate ? new Date(billing.nextChargeDate).toLocaleDateString() : "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Card</div>
+              <div className="mt-1 font-medium capitalize">{billing.card ? `${billing.card.brand} ····${billing.card.last4}` : "None"}</div>
+            </div>
+          </div>
+          {billing.paymentStatus === "past_due" && (
+            <div className="mt-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm p-3">
+              Your rent payment is past due. Update your card or pay the balance below.
+            </div>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {billing.outstandingCents >= 50 && (
+              <button onClick={payNow} disabled={busy}
+                className="rounded-lg bg-real-red text-white text-sm px-4 py-2 disabled:opacity-50">
+                {busy ? "Charging…" : `Pay Now — ${fmt(billing.outstandingCents / 100)}`}
+              </button>
+            )}
+            <Link to="/card/$applicationId" params={{ applicationId: "self" }} className="hidden" />
+            <UpdateCardButton />
+          </div>
+        </div>
+      )}
+
     <div className="rounded-2xl border border-border bg-white p-5">
       <h3 className="font-semibold">All Payments</h3>
       {data.payments.length === 0 ? (
@@ -422,26 +489,40 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
       ) : (
         <table className="mt-4 w-full text-sm">
           <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
-            <tr><th className="py-2">Date</th><th>Type</th><th>Status</th><th className="text-right">Amount</th><th></th></tr>
+              <tr><th className="py-2">Date</th><th>Type</th><th>Status</th><th className="text-right">Amount</th></tr>
           </thead>
           <tbody className="divide-y divide-border">
             {data.payments.map((p) => (
               <tr key={p.id}>
                 <td className="py-2">{p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "—"}</td>
                 <td className="capitalize">{p.type}</td>
-                <td className="capitalize">{p.status}</td>
+                  <td className="capitalize">
+                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                      p.status === "paid" ? "bg-emerald-100 text-emerald-800" :
+                      p.status === "failed" ? "bg-red-100 text-red-800" :
+                      p.status === "pending" ? "bg-amber-100 text-amber-800" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>{p.status}</span>
+                  </td>
                 <td className="text-right">{fmt(p.amount)}</td>
-                <td className="text-right">
-                  <button onClick={() => toast.info("PDF receipts ship with the payments integration.")} className="text-real-red hover:underline text-xs inline-flex items-center gap-1">
-                    <Download className="w-3 h-3" /> PDF
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
     </div>
+    </div>
+  );
+}
+
+function UpdateCardButton() {
+  return (
+    <button
+      onClick={() => toast.info("Contact support to update your card on file.")}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white text-sm px-4 py-2 hover:bg-soft"
+    >
+      <RefreshCw className="w-4 h-4" /> Update Card
+    </button>
   );
 }
 
