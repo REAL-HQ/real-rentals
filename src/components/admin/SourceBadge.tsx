@@ -1,4 +1,12 @@
+"use client";
+
 import { Sprout } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function GoogleGlyph({ className }: { className?: string }) {
   return (
@@ -24,17 +32,26 @@ export function SourceBadge({
   const label = isGoogle
     ? `Google Ad${campaign ? ` — ${campaign}` : ""}`
     : "Organic / Direct";
+
   return (
-    <span
-      title={label}
-      aria-label={label}
-      className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
-        isGoogle
-          ? "bg-white border-[#e5e7eb]"
-          : "bg-emerald-50 border-emerald-100 text-emerald-700"
-      } ${className}`}
-    >
-      {isGoogle ? <GoogleGlyph className="w-3 h-3" /> : <Sprout className="w-3 h-3" />}
-    </span>
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            aria-label={label}
+            className={`inline-flex items-center justify-center w-5 h-5 rounded-full border ${
+              isGoogle
+                ? "bg-white border-[#e5e7eb]"
+                : "bg-emerald-50 border-emerald-100 text-emerald-700"
+            } ${className}`}
+          >
+            {isGoogle ? <GoogleGlyph className="w-3 h-3" /> : <Sprout className="w-3 h-3" />}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
