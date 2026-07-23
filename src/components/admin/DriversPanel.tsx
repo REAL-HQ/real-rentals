@@ -409,9 +409,8 @@ export function DriversPanel() {
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>
-                        <td className="px-4 py-2 capitalize">{h.deposit_status?.replace(/_/g, " ")}</td>
+                        <td className="px-4 py-2">${Number(h.deposit_paid ?? 0).toLocaleString()}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         <td className="px-4 py-2">
                           <div>{new Date(h.created_at!).toLocaleDateString()}</div>
@@ -425,7 +424,7 @@ export function DriversPanel() {
                 return rows;
               })}
               {grouped.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
           </table>
