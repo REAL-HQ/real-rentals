@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
+import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -348,36 +348,6 @@ export function OverviewPanel() {
           </div>
         </div>
 
-        {/* Fleet summary */}
-        <div className="bg-white border border-[#ececf0] rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-neutral-900">Fleet</h3>
-          <p className="text-xs text-neutral-500 mt-0.5 mb-4">Inventory At A Glance</p>
-          <div className="space-y-4">
-            <SummaryRow icon={Car} label="Total Vehicles" value={kpis?.vehicles ?? "—"} />
-            <SummaryRow icon={CreditCard} label="Available" value={kpis?.vehiclesAvailable ?? "—"} tone="emerald" />
-            <SummaryRow icon={Users} label="Active Drivers" value={kpis?.activeDrivers ?? "—"} />
-          </div>
-          <div className="mt-5 pt-4 border-t border-[#f0f0f3]">
-            <div className="text-xs text-neutral-500">Utilization</div>
-            <div className="mt-2 h-2 rounded-full bg-[#f5f6f8] overflow-hidden">
-              <div
-                className="h-full bg-neutral-900"
-                style={{
-                  width: `${
-                    kpis && kpis.vehicles > 0
-                      ? Math.min(100, Math.round(((kpis.vehicles - kpis.vehiclesAvailable) / kpis.vehicles) * 100))
-                      : 0
-                  }%`,
-                }}
-              />
-            </div>
-            <div className="mt-1.5 text-[11px] text-neutral-500">
-              {kpis && kpis.vehicles > 0
-                ? `${kpis.vehicles - kpis.vehiclesAvailable} of ${kpis.vehicles} on the road`
-                : "—"}
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -537,17 +507,6 @@ function KpiCard({
   );
 }
 
-function SummaryRow({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number | string; tone?: "emerald" }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-[#f5f6f8] grid place-items-center text-neutral-600">
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="flex-1 text-sm text-neutral-700">{label}</div>
-      <div className={`text-sm font-semibold ${tone === "emerald" ? "text-emerald-700" : "text-neutral-900"}`}>{value}</div>
-    </div>
-  );
-}
 
 function ActivityDonut({
   tab,
@@ -668,6 +627,14 @@ function ActivityDonut({
               </div>
               <div className="text-xs text-neutral-500 pt-1">
                 {fleet.rented} Of {total} On The Road
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-[#ececf0] p-3 bg-[#fafbfc]">
+                <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
+                  <DollarSign className="w-3.5 h-3.5" /> Earning Now
+                </span>
+                <span className="text-sm font-semibold tabular-nums text-[#16a34a]">
+                  ${earningRevenue.toLocaleString()}/wk
+                </span>
               </div>
             </div>
           )}
