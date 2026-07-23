@@ -409,6 +409,7 @@ export function DriversPanel() {
                     rows.push(
                       <tr key={h.id} onClick={() => setOpen(h)} className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60">
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
+                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">{h.email || h.phone ? `${h.email || ""} ${h.phone ? formatPhone(h.phone) : ""}` : "—"}</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
