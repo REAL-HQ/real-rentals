@@ -429,7 +429,7 @@ export function DriversPanel() {
                 return rows;
               })}
               {grouped.length === 0 && (
-                <tr><td colSpan={11} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr><td colSpan={12} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
               )}
             </tbody>
           </table>
