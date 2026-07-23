@@ -1037,7 +1037,12 @@ export type Database = {
           notes: string | null
           paid_date: string | null
           payment_method: string | null
+          reason: string | null
+          rental_id: string | null
           status: string
+          stripe_invoice_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_subscription_id: string | null
           type: string
           updated_at: string
           vehicle_id: string | null
@@ -1053,7 +1058,12 @@ export type Database = {
           notes?: string | null
           paid_date?: string | null
           payment_method?: string | null
+          reason?: string | null
+          rental_id?: string | null
           status?: string
+          stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_subscription_id?: string | null
           type?: string
           updated_at?: string
           vehicle_id?: string | null
@@ -1069,7 +1079,12 @@ export type Database = {
           notes?: string | null
           paid_date?: string | null
           payment_method?: string | null
+          reason?: string | null
+          rental_id?: string | null
           status?: string
+          stripe_invoice_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_subscription_id?: string | null
           type?: string
           updated_at?: string
           vehicle_id?: string | null
@@ -1080,6 +1095,13 @@ export type Database = {
             columns: ["driver_id"]
             isOneToOne: false
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
           {
@@ -1183,6 +1205,12 @@ export type Database = {
       rentals: {
         Row: {
           application_id: string | null
+          autopay_active: boolean
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
           created_at: string
           deposit_amount: number
           deposit_held: boolean
@@ -1190,14 +1218,24 @@ export type Database = {
           end_date: string | null
           id: string
           next_payment_due: string | null
+          payment_status: string
           start_date: string
           status: string
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
           updated_at: string
           vehicle_id: string
           weekly_rate: number
         }
         Insert: {
           application_id?: string | null
+          autopay_active?: boolean
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
           created_at?: string
           deposit_amount?: number
           deposit_held?: boolean
@@ -1205,14 +1243,24 @@ export type Database = {
           end_date?: string | null
           id?: string
           next_payment_due?: string | null
+          payment_status?: string
           start_date?: string
           status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string
           vehicle_id: string
           weekly_rate?: number
         }
         Update: {
           application_id?: string | null
+          autopay_active?: boolean
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
           created_at?: string
           deposit_amount?: number
           deposit_held?: boolean
@@ -1220,8 +1268,12 @@ export type Database = {
           end_date?: string | null
           id?: string
           next_payment_due?: string | null
+          payment_status?: string
           start_date?: string
           status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string
           vehicle_id?: string
           weekly_rate?: number
