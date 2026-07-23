@@ -466,6 +466,16 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: Ste
             })}
           </div>
         </div>
+        {state.full_coverage_insurance === true && (
+          <FileUploadField
+            label="Upload Your Insurance Card Or Declaration Page — Optional, Helps Speed Approval"
+            accept="image/*,application/pdf"
+            bucket="license-uploads"
+            applicationId={id}
+            value={state.insurance_doc_url}
+            onChange={(v) => update("insurance_doc_url", v)}
+          />
+        )}
         <TextField label="Street Address" value={state.address ?? ""} onChange={(v) => update("address", v)} />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <TextField label="City" value={state.city ?? ""} onChange={(v) => update("city", v)} />
