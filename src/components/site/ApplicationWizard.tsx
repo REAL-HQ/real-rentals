@@ -58,6 +58,7 @@ type WizardState = {
   // driver
   license_photo_url: string | null;
   full_coverage_insurance: boolean | null;
+  insurance_doc_url: string | null;
   address: string | null;
   state: string | null;
   zip: string | null;
@@ -102,6 +103,7 @@ export function ApplicationWizard({ id }: { id: string }) {
           trip_screenshots: ((row as any).trip_screenshots as string[] | null) ?? [],
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
+          insurance_doc_url: (row as any).insurance_doc_url ?? null,
           address: null,
           state: row.state,
           zip: null,
@@ -181,6 +183,7 @@ export function ApplicationWizard({ id }: { id: string }) {
             <DriverStep source={state.source} id={id} state={state} update={update} onBack={goBack} onSubmit={() => goNext("complete", {
               license_photo_url: state.license_photo_url,
               full_coverage_insurance: state.full_coverage_insurance,
+              insurance_doc_url: state.insurance_doc_url,
               address: state.address,
               city: state.city,
               state: state.state,
