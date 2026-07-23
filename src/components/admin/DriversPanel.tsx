@@ -414,6 +414,7 @@ export function DriversPanel() {
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
+                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>
                         <td className="px-4 py-2 capitalize">{h.deposit_status?.replace(/_/g, " ")}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
