@@ -64,6 +64,28 @@ function TierBadge({ tier, score, size = "sm" }: { tier?: string | null; score?:
   );
 }
 
+function AIScoreDot({ tier, score }: { tier?: string | null; score?: number | null }) {
+  const t = tier ? String(tier).toLowerCase() : null;
+  const label = t
+    ? `AI: ${t}${score != null ? ` (${score})` : ""}`
+    : "AI: not scored yet";
+  const cls =
+    t === "hot" ? "bg-red-500 text-white"
+    : t === "warm" ? "bg-amber-400 text-white"
+    : t === "cold" ? "bg-slate-400 text-white"
+    : "bg-neutral-200 text-neutral-500 border border-dashed border-neutral-300";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${cls}`}>
+          {t === "hot" ? <Flame className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function formatPhone(p?: string | null): string {
   if (!p) return "—";
   const d = p.replace(/\D/g, "");
