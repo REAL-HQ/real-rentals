@@ -503,6 +503,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Mail className="w-3.5 h-3.5" /> Email
               </a>
             )}
+            <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
             <CardOnFileActions driver={driver} onUpdate={onUpdate} />
             <AutopayActions driver={driver} />
             <DropdownMenu>
