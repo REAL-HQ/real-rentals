@@ -102,7 +102,7 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
           )}
         </div>
         <button onClick={() => setEditing("new")}
-          className="inline-flex items-center gap-2 rounded-md bg-real-red text-white px-4 py-2 text-sm font-medium hover:opacity-90 self-start lg:self-auto">
+          className="inline-flex items-center gap-2 rounded-md bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 self-start lg:self-auto">
           <Plus className="w-4 h-4" /> Add Vehicle
         </button>
       </div>
