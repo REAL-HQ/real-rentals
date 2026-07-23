@@ -134,6 +134,28 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     kind: 'payment',
     read: false,
   }).then(() => {}, () => {});
+
+  const driver = await driverForRental(rentalId);
+  if (driver) {
+    if (status === 'paid') {
+      await sendPaymentReceiptEmail({
+        to: driver.email, firstName: driver.name, amount, reason,
+        brand: driver.brand, last4: driver.last4,
+      });
+      if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
+        await sendCardExpiringEmail({
+          to: driver.email, firstName: driver.name,
+          brand: driver.brand, last4: driver.last4,
+          expMonth: driver.expMonth!, expYear: driver.expYear!,
+        });
+      }
+    } else {
+      await sendPaymentFailedEmail({
+        to: driver.email, firstName: driver.name, amount, reason,
+        brand: driver.brand, last4: driver.last4,
+      });
+    }
+  }
 }
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
@@ -187,6 +209,28 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     kind: 'payment',
     read: false,
   }).then(() => {}, () => {});
+
+  const driver = await driverForRental(rental.id);
+  if (driver) {
+    if (status === 'paid') {
+      await sendPaymentReceiptEmail({
+        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+        brand: driver.brand, last4: driver.last4,
+      });
+      if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
+        await sendCardExpiringEmail({
+          to: driver.email, firstName: driver.name,
+          brand: driver.brand, last4: driver.last4,
+          expMonth: driver.expMonth!, expYear: driver.expYear!,
+        });
+      }
+    } else {
+      await sendPaymentFailedEmail({
+        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+        brand: driver.brand, last4: driver.last4,
+      });
+    }
+  }
 }
 
 async function handleSubscriptionUpdated(sub: any) {
