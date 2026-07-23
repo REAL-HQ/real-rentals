@@ -674,7 +674,7 @@ function ActivityDonut({
               </div>
               <div className="flex items-center justify-between rounded-lg border border-[#ececf0] p-3 bg-[#fafbfc]">
                 <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
-                  <DollarSign className="w-3.5 h-3.5" /> Earning Now
+                  <DollarSign className="w-3.5 h-3.5" /> Earning Now:
                 </span>
                 <span className="text-sm font-semibold tabular-nums text-[#16a34a]">
                   ${earningRevenue.toLocaleString()}/wk
