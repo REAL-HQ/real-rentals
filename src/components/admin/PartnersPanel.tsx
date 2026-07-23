@@ -73,7 +73,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
             </button>
           ))}
         </div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-real-red text-white px-3 py-1.5 text-sm">+ Add Partner</button>
+        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#CC0000] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Partner</button>
       </div>
 
       <div className="space-y-2">
@@ -202,7 +202,7 @@ function LinkLoginRow({ partner, onLinked }: { partner: Partner & { user_id?: st
     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
       <span className="text-muted-foreground">Partner login:</span>
       {linked ? (
-        <span className="inline-flex items-center gap-1 rounded-md bg-green-100 text-green-800 px-2 py-0.5">Linked ✓</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#E8F5EE] text-[#127A3E] px-2 py-0.5 text-[11px] font-medium">Linked ✓</span>
       ) : (
         <>
           <input
