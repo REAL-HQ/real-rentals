@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { getDriverDashboard, type DriverDashboard } from "@/lib/portal.functions";
+import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
+import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
@@ -23,6 +25,9 @@ import {
   Phone,
   MapPin,
   ArrowRight,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Tooltip,
