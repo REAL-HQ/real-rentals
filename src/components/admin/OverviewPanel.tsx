@@ -314,10 +314,10 @@ export function OverviewPanel() {
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-real-red" /> Leads
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Leads
               </span>
               <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Apps
+                <span className="w-2 h-2 rounded-full bg-emerald-600" /> Apps
               </span>
             </div>
           </div>
@@ -326,8 +326,8 @@ export function OverviewPanel() {
               <AreaChart data={series} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="fillLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#E61919" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#E61919" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="fillApps" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -341,8 +341,8 @@ export function OverviewPanel() {
                   contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
                   labelStyle={{ color: "#111", fontWeight: 600 }}
                 />
-                <Area type="monotone" dataKey="leads" stroke="#E61919" strokeWidth={2.5} fill="url(#fillLeads)" dot={false} activeDot={{ r: 4 }} />
-                <Area type="monotone" dataKey="apps" stroke="#22c55e" strokeWidth={2.5} fill="url(#fillApps)" dot={false} activeDot={{ r: 4 }} />
+                <Area type="monotone" dataKey="leads" stroke="#22c55e" strokeWidth={2.5} fill="url(#fillLeads)" dot={false} activeDot={{ r: 4 }} />
+                <Area type="monotone" dataKey="apps" stroke="#16a34a" strokeWidth={2.5} fill="url(#fillApps)" dot={false} activeDot={{ r: 4 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
