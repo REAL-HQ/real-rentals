@@ -424,84 +424,90 @@ export function OverviewPanel() {
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-[#f0f0f3]">
-            {listApps.length === 0 && (
+          <div className="overflow-x-auto">
+            {listApps.length === 0 ? (
               <div className="px-5 py-8 text-center text-sm text-neutral-500">No applications in this range.</div>
-            )}
-            {listApps.map((a) => (
-              <Link
-                key={a.id}
-                to="/admin"
-                search={{ tab: "drivers", id: a.id } as any}
-                className="block px-5 py-3.5 hover:bg-[#fafbfc] transition-colors"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#f5f6f8] grid place-items-center text-[12px] font-semibold text-neutral-700 shrink-0">
-                    {(a.full_name || "?").slice(0, 1).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-neutral-900 truncate">{a.full_name || "Unnamed"}</span>
-                      {a.ai_tier ? (
-                        <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                            a.ai_tier === "hot"
-                              ? "bg-red-50 text-red-700 border-red-100"
-                              : a.ai_tier === "warm"
-                              ? "bg-amber-50 text-amber-700 border-amber-100"
-                              : "bg-neutral-50 text-neutral-600 border-neutral-100"
-                          }`}
-                        >
-                          {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
-                          <span className="uppercase tracking-wide">{a.ai_tier}</span>
-                          {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-neutral-500 border-b border-[#f0f0f3] bg-[#fafbfc]">
+                    <th className="px-5 py-2.5 font-medium">Driver</th>
+                    <th className="px-3 py-2.5 font-medium">AI</th>
+                    <th className="px-3 py-2.5 font-medium">Status</th>
+                    <th className="px-3 py-2.5 font-medium">City</th>
+                    <th className="px-3 py-2.5 font-medium">Step</th>
+                    <th className="px-3 py-2.5 font-medium">Rental</th>
+                    <th className="px-3 py-2.5 font-medium">Phone</th>
+                    <th className="px-3 py-2.5 font-medium">Email</th>
+                    <th className="px-5 py-2.5 font-medium text-right">Added</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#f0f0f3]">
+                  {listApps.map((a) => (
+                    <tr
+                      key={a.id}
+                      onClick={() => {
+                        window.location.href = `/admin?tab=drivers&id=${a.id}`;
+                      }}
+                      className="hover:bg-[#fafbfc] transition-colors cursor-pointer"
+                    >
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-[#f5f6f8] grid place-items-center text-[11px] font-semibold text-neutral-700 shrink-0">
+                            {(a.full_name || "?").slice(0, 1).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-neutral-900 truncate max-w-[180px]">{a.full_name || "Unnamed"}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {a.ai_tier ? (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                              a.ai_tier === "hot"
+                                ? "bg-red-50 text-red-700 border-red-100"
+                                : a.ai_tier === "warm"
+                                ? "bg-amber-50 text-amber-700 border-amber-100"
+                                : "bg-neutral-50 text-neutral-600 border-neutral-100"
+                            }`}
+                          >
+                            {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
+                            <span className="uppercase tracking-wide">{a.ai_tier}</span>
+                            {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">pending</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <span className="text-[10px] uppercase tracking-wide font-medium text-neutral-500 border border-[#ececf0] rounded px-1.5 py-0.5">
+                          {a.status || "new"}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">AI: pending</span>
-                      )}
-                      <span className="text-[10px] uppercase tracking-wide font-medium text-neutral-500 border border-[#ececf0] rounded px-1.5 py-0.5">
-                        {a.status || "new"}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 flex-wrap text-xs text-neutral-500">
-                      <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" />{a.city || "—"}</span>
-                      <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(a.created_at)}</span>
-                      <span className="text-neutral-400">•</span>
-                      <span className="text-neutral-600 font-medium">{stepLabel(a)}</span>
-                      {a.rental_duration_days && (
-                        <>
-                          <span className="text-neutral-400">•</span>
-                          <span>{a.rental_duration_days}d rental</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs">
-                      {a.phone && (
-                        <a
-                          href={`tel:${a.phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red"
-                        >
-                          <Phone className="w-3 h-3" />{a.phone}
-                        </a>
-                      )}
-                      {a.email && (
-                        <a
-                          href={`mailto:${a.email}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red truncate max-w-[220px]"
-                        >
-                          <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{a.email}</span>
-                        </a>
-                      )}
-                      {!a.phone && !a.email && (
-                        <span className="text-neutral-400">No contact info yet</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                      </td>
+                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">{a.city || "—"}</td>
+                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">{stepLabel(a)}</td>
+                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">
+                        {a.rental_duration_days ? `${a.rental_duration_days}d` : "—"}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap text-xs">
+                        {a.phone ? (
+                          <a href={`tel:${a.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red">
+                            <Phone className="w-3 h-3" />{a.phone}
+                          </a>
+                        ) : <span className="text-neutral-400">—</span>}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap text-xs max-w-[240px]">
+                        {a.email ? (
+                          <a href={`mailto:${a.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red truncate max-w-full">
+                            <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{a.email}</span>
+                          </a>
+                        ) : <span className="text-neutral-400">—</span>}
+                      </td>
+                      <td className="px-5 py-3 text-neutral-500 whitespace-nowrap text-xs text-right">{timeAgo(a.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
