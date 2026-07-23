@@ -126,7 +126,7 @@ function useNow(intervalMs = 30000) {
   return now;
 }
 
-export function DriversPanel() {
+export function DriversPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [open, setOpen] = useState<Application | null>(null);
@@ -165,7 +165,13 @@ export function DriversPanel() {
   // Group by primary_application_id (falls back to id). Primary row = the one
   // whose id === groupKey; others render as collapsed history.
   const grouped = useMemo(() => {
-    const filteredRows = filter === "all" ? drivers : drivers.filter((a) => a.status === filter);
+    const q = externalSearch.trim().toLowerCase();
+    const filteredRows = (filter === "all" ? drivers : drivers.filter((a) => a.status === filter))
+      .filter((a) => {
+        if (!q) return true;
+        const hay = `${a.full_name ?? ""} ${a.email ?? ""} ${a.phone ?? ""} ${a.city ?? ""} ${a.state ?? ""}`.toLowerCase();
+        return hay.includes(q);
+      });
     const byKey = new Map<string, { primary: Application; history: Application[] }>();
     for (const row of filteredRows) {
       const key = row.primary_application_id ?? row.id;
@@ -183,7 +189,7 @@ export function DriversPanel() {
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter]);
+  }, [drivers, filter, externalSearch]);
 
   async function update(id: string, patch: Partial<Application>) {
     // Stamp contacted_at the first time the admin advances status past "new"

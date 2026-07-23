@@ -9,7 +9,7 @@ import { linkPartnerLogin } from "@/lib/partner.functions";
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
 
-export function PartnersPanel() {
+export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>([]);
   const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>([]);
@@ -54,7 +54,13 @@ export function PartnersPanel() {
     await add({ name: l.name, email: l.email, phone: l.phone || undefined, partner_type: "capital_partner", status: "prospect", notes: [l.capital_range && `Range: ${l.capital_range}`, l.message].filter(Boolean).join(" — ") || null });
   }
 
-  const filtered = filter === "all" ? partners : partners.filter(p => p.partner_type === filter);
+  const q = externalSearch.trim().toLowerCase();
+  const filtered = (filter === "all" ? partners : partners.filter(p => p.partner_type === filter))
+    .filter(p => {
+      if (!q) return true;
+      const hay = `${p.name ?? ""} ${p.email ?? ""} ${p.phone ?? ""} ${p.partner_type ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    });
 
   return (
     <div>

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function VehiclesPanel() {
+export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const [editing, setEditing] = useState<Vehicle | "new" | null>(null);
@@ -49,8 +49,9 @@ export function VehiclesPanel() {
       const pid = (v as any).partner_id ?? null;
       if (partnerFilter === "__none__" ? pid !== null : pid !== partnerFilter) return false;
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
+    const effective = (externalSearch || search).trim();
+    if (effective) {
+      const q = effective.toLowerCase();
       const hay = `${v.year} ${v.make} ${v.model} ${v.trim ?? ""} ${(v as any).color ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
