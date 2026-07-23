@@ -27,7 +27,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   if (!pm || typeof pm === 'string') return;
 
   const card = pm.card;
-  await getSupabase()
+  await (getSupabase() as any)
     .from('applications')
     .update({
       stripe_customer_id: typeof session.customer === 'string' ? session.customer : session.customer?.id,
