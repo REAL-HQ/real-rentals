@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StatusPill } from "./ui";
 
 const STATUSES = ["paid","current","late","past_due","collections"] as const;
 const TYPES = ["rent","deposit","late_fee","other"] as const;
@@ -77,22 +78,22 @@ export function PaymentsPanel() {
           </SelectContent>
         </Select>
         <div className="text-sm text-muted-foreground">Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span></div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-real-red text-white px-3 py-1.5 text-sm">+ Add Payment</button>
+        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#CC0000] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Payment</button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-soft text-xs uppercase tracking-wider text-muted-foreground">
+          <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
             <tr>
-              <th className="text-left px-3 py-2">Driver</th>
-              <th className="text-left px-3 py-2">Vehicle</th>
-              <th className="text-left px-3 py-2">Type</th>
-              <th className="text-right px-3 py-2">Amount</th>
-              <th className="text-left px-3 py-2">Due</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="text-left px-3 py-2">Method</th>
-              <th className="text-right px-3 py-2">Late fees</th>
-              <th className="text-right px-3 py-2">Balance</th>
+              <th className="text-left px-3 py-2.5">Driver</th>
+              <th className="text-left px-3 py-2.5">Vehicle</th>
+              <th className="text-left px-3 py-2.5">Type</th>
+              <th className="text-right px-3 py-2.5">Amount</th>
+              <th className="text-left px-3 py-2.5">Due</th>
+              <th className="text-left px-3 py-2.5">Status</th>
+              <th className="text-left px-3 py-2.5">Method</th>
+              <th className="text-right px-3 py-2.5">Late Fees</th>
+              <th className="text-right px-3 py-2.5">Balance</th>
               <th></th>
             </tr>
           </thead>
