@@ -88,14 +88,14 @@ function Admin() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f7f8fa]">
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar — clean light shell */}
-        <aside className={`hidden md:flex ${collapsed ? "w-[72px]" : "w-64"} transition-[width] duration-200 flex-col bg-white border-r border-[#ececf0] sticky top-0 h-screen`}>
+        {/* Sidebar — dark shell */}
+        <aside className={`hidden md:flex ${collapsed ? "w-[72px]" : "w-64"} transition-[width] duration-200 flex-col bg-black border-r border-white/10 sticky top-0 h-screen`}>
           <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={`p-1.5 rounded-md hover:bg-[#f5f6f8] text-neutral-500 hover:text-neutral-900 ${collapsed ? "" : "absolute right-2 top-4"}`}
+              className={`p-1.5 rounded-md hover:bg-white/10 text-neutral-400 hover:text-white ${collapsed ? "" : "absolute right-2 top-4"}`}
             >
               {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
@@ -111,29 +111,19 @@ function Admin() {
                   title={collapsed ? t.label : undefined}
                   className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition relative ${
                     active
-                      ? "bg-[#fef2f2] text-real-red"
-                      : "text-neutral-600 hover:bg-[#f5f6f8] hover:text-neutral-900"
+                      ? "bg-white/10 text-white"
+                      : "text-neutral-400 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   {active && !collapsed && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-real-red" />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-white" />
                   )}
-                  <Icon className={`w-[18px] h-[18px] ${active ? "text-real-red" : "text-neutral-500"}`} />
+                  <Icon className={`w-[18px] h-[18px] ${active ? "text-white" : "text-neutral-400"}`} />
                   {!collapsed && <span>{t.label}</span>}
                 </button>
               );
             })}
           </nav>
-          <div className="border-t border-[#f0f0f3] p-3">
-            <button
-              onClick={signOut}
-              title={collapsed ? "Sign out" : undefined}
-              className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium text-neutral-600 hover:bg-[#f5f6f8] hover:text-neutral-900`}
-            >
-              <LogOut className="w-[18px] h-[18px] text-neutral-500" />
-              {!collapsed && <span>Sign out</span>}
-            </button>
-          </div>
         </aside>
 
         {/* Main column */}
