@@ -575,6 +575,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               </div>
             </div>
           )}
+          <CardOnFileCard driver={driver} onUpdate={onUpdate} />
         </aside>
 
         {/* Main column */}
