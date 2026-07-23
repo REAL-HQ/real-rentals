@@ -286,8 +286,6 @@ export function DriversPanel() {
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Screening</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Weekly</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Deposit</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Status</th>
