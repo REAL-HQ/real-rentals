@@ -567,8 +567,8 @@ function ActivityDonut({
   ];
   const driverSegs = [
     { key: "Active", value: drivers.active, color: "#22c55e" },
-    { key: "Screening", value: drivers.screening, color: "#0ea5e9" },
-    { key: "Leads", value: drivers.leads, color: "#f59e0b" },
+    { key: "Screening", value: drivers.screening, color: "#facc15" },
+    { key: "Leads", value: drivers.leads, color: "#0ea5e9" },
     { key: "Hot", value: drivers.hot, color: "#E61919" },
   ];
   const segs = tab === "fleet" ? fleetSegs : driverSegs;
