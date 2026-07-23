@@ -689,6 +689,22 @@ function MultiFileUploadField({
   values: string[];
   onChange: (v: string[]) => void;
 }) {
+  label,
+  hint,
+  accept,
+  bucket,
+  applicationId,
+  values,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  accept: string;
+  bucket: string;
+  applicationId: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+}) {
   const [uploading, setUploading] = useState(false);
 
   async function handleFiles(files: FileList) {
