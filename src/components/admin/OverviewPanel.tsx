@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench } from "lucide-react";
+import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
 type Kpis = {
   leads7: number;
@@ -18,6 +18,21 @@ type Kpis = {
 type FleetBreak = { available: number; rented: number; maintenance: number };
 type DriverBreak = { active: number; screening: number; leads: number; hot: number };
 
+type FinancePoint = { day: string; value: number };
+type Finance = {
+  revenue30: number;
+  revenuePrev30: number;
+  revenueSeries: FinancePoint[];
+  outstanding: number;
+  outstandingSeries: FinancePoint[];
+  expenses30: number;
+  expensesPrev30: number;
+  expensesSeries: FinancePoint[];
+  lateFees30: number;
+  lateFeesPrev30: number;
+  lateFeesSeries: FinancePoint[];
+};
+
 type DayPoint = { day: string; leads: number; apps: number };
 
 function fmtDay(d: Date) {
@@ -32,6 +47,7 @@ export function OverviewPanel() {
   const [fleet, setFleet] = useState<FleetBreak>({ available: 0, rented: 0, maintenance: 0 });
   const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, screening: 0, leads: 0, hot: 0 });
   const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
+  const [finance, setFinance] = useState<Finance | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +92,82 @@ export function OverviewPanel() {
         screening: screenQ.count ?? 0,
         leads: leads7q.count ?? 0,
         hot: hotQ.count ?? 0,
+      });
+
+      // ---- Finance ----
+      const d60 = new Date(now.getTime() - 60 * 864e5).toISOString();
+      const d30Date = new Date(now.getTime() - 30 * 864e5);
+      const [payQ, maintCostQ] = await Promise.all([
+        supabase.from("payments").select("amount, late_fees, status, paid_date, due_date, created_at").gte("created_at", d60),
+        supabase.from("maintenance_records").select("total_cost, completed_at, created_at").gte("created_at", d60),
+      ]);
+
+      const buildSeries = (): FinancePoint[] => {
+        const arr: FinancePoint[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(now.getTime() - i * 864e5);
+          arr.push({ day: fmtDay(d), value: 0 });
+        }
+        return arr;
+      };
+      const revenueSeries = buildSeries();
+      const outstandingSeries = buildSeries();
+      const expensesSeries = buildSeries();
+      const lateFeesSeries = buildSeries();
+      const idxFor = (iso: string) => {
+        const days = Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
+        return 29 - days;
+      };
+
+      let revenue30 = 0, revenuePrev30 = 0, expenses30 = 0, expensesPrev30 = 0, lateFees30 = 0, lateFeesPrev30 = 0, outstanding = 0;
+
+      for (const p of (payQ.data ?? []) as any[]) {
+        const amt = Number(p.amount ?? 0);
+        const late = Number(p.late_fees ?? 0);
+        if (p.status === "paid" && p.paid_date) {
+          const paid = new Date(p.paid_date);
+          if (paid >= d30Date) {
+            revenue30 += amt;
+            const i = idxFor(p.paid_date);
+            if (i >= 0 && i < 30) revenueSeries[i].value += amt;
+          } else {
+            revenuePrev30 += amt;
+          }
+        }
+        if (p.status !== "paid") {
+          outstanding += amt;
+          const i = idxFor(p.created_at);
+          if (i >= 0 && i < 30) outstandingSeries[i].value += amt;
+        }
+        if (late > 0) {
+          const when = new Date(p.paid_date ?? p.created_at);
+          if (when >= d30Date) {
+            lateFees30 += late;
+            const i = idxFor((p.paid_date ?? p.created_at) as string);
+            if (i >= 0 && i < 30) lateFeesSeries[i].value += late;
+          } else {
+            lateFeesPrev30 += late;
+          }
+        }
+      }
+      for (const m of (maintCostQ.data ?? []) as any[]) {
+        const cost = Number(m.total_cost ?? 0);
+        if (!cost) continue;
+        const when = new Date(m.completed_at ?? m.created_at);
+        if (when >= d30Date) {
+          expenses30 += cost;
+          const i = idxFor((m.completed_at ?? m.created_at) as string);
+          if (i >= 0 && i < 30) expensesSeries[i].value += cost;
+        } else {
+          expensesPrev30 += cost;
+        }
+      }
+
+      setFinance({
+        revenue30, revenuePrev30, revenueSeries,
+        outstanding, outstandingSeries,
+        expenses30, expensesPrev30, expensesSeries,
+        lateFees30, lateFeesPrev30, lateFeesSeries,
       });
 
       // Build 30-day series
@@ -157,13 +249,60 @@ export function OverviewPanel() {
         />
       </div>
 
-      {/* Activity donut */}
-      <ActivityDonut
-        tab={activityTab}
-        onTab={setActivityTab}
-        fleet={fleet}
-        drivers={drivers}
-      />
+      {/* Finance strip + Activity donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <MiniFinanceCard
+            icon={DollarSign}
+            tone="emerald"
+            label="Revenue"
+            hint="Last 30 Days"
+            value={finance?.revenue30}
+            prev={finance?.revenuePrev30}
+            series={finance?.revenueSeries}
+            format="usd"
+          />
+          <MiniFinanceCard
+            icon={Wallet}
+            tone="sky"
+            label="Outstanding"
+            hint="Open Balances"
+            value={finance?.outstanding}
+            series={finance?.outstandingSeries}
+            format="usd"
+            noDelta
+          />
+          <MiniFinanceCard
+            icon={Receipt}
+            tone="violet"
+            label="Expenses"
+            hint="Maintenance 30d"
+            value={finance?.expenses30}
+            prev={finance?.expensesPrev30}
+            series={finance?.expensesSeries}
+            format="usd"
+            invertDelta
+          />
+          <MiniFinanceCard
+            icon={AlertTriangle}
+            tone="red"
+            label="Late Fees"
+            hint="Collected 30d"
+            value={finance?.lateFees30}
+            prev={finance?.lateFeesPrev30}
+            series={finance?.lateFeesSeries}
+            format="usd"
+          />
+        </div>
+        <div className="lg:col-span-2">
+          <ActivityDonut
+            tab={activityTab}
+            onTab={setActivityTab}
+            fleet={fleet}
+            drivers={drivers}
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Chart */}
