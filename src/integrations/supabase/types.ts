@@ -40,6 +40,11 @@ export type Database = {
           ai_summary: string | null
           ai_tier: string | null
           background_check_status: string
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          card_on_file_at: string | null
           city: string | null
           consent_background: boolean | null
           consent_gps: boolean | null
@@ -101,6 +106,8 @@ export type Database = {
           start_timing: string | null
           state: string | null
           status: string
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
           trip_screenshots: string[]
           trips_completed: string | null
           updated_at: string
@@ -124,6 +131,11 @@ export type Database = {
           ai_summary?: string | null
           ai_tier?: string | null
           background_check_status?: string
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
           city?: string | null
           consent_background?: boolean | null
           consent_gps?: boolean | null
@@ -185,6 +197,8 @@ export type Database = {
           start_timing?: string | null
           state?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
           trip_screenshots?: string[]
           trips_completed?: string | null
           updated_at?: string
@@ -208,6 +222,11 @@ export type Database = {
           ai_summary?: string | null
           ai_tier?: string | null
           background_check_status?: string
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          card_on_file_at?: string | null
           city?: string | null
           consent_background?: boolean | null
           consent_gps?: boolean | null
@@ -269,6 +288,8 @@ export type Database = {
           start_timing?: string | null
           state?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
           trip_screenshots?: string[]
           trips_completed?: string | null
           updated_at?: string
