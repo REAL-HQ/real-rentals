@@ -102,23 +102,25 @@ export function PaymentsPanel() {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
               return (
-                <tr key={p.id} className="border-t border-border">
-                  <td className="px-3 py-2">{d?.full_name || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
-                  <td className="px-3 py-2 capitalize">{p.type.replace(/_/g, " ")}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.amount).toLocaleString()}</td>
-                  <td className="px-3 py-2">{p.due_date || "—"}</td>
-                  <td className="px-3 py-2">
-                    <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
-                      <SelectTrigger className={`h-7 w-32 bg-white text-foreground text-xs`}><SelectValue /></SelectTrigger>
-                      <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <span className={`hidden text-[10px] px-2 py-0.5 rounded-full ${statusBadge[p.status]}`}>{p.status}</span>
+                 <tr key={p.id} className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
+                  <td className="px-3 text-[13px]">{d?.full_name || "—"}</td>
+                  <td className="px-3 text-xs text-[#55555E]">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
+                  <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.amount).toLocaleString()}</td>
+                  <td className="px-3 text-[13px]">{p.due_date || "—"}</td>
+                  <td className="px-3">
+                    <div className="flex items-center gap-2">
+                      <StatusPill status={p.status} />
+                      <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
+                        <SelectTrigger className="h-7 w-28 bg-white text-foreground text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
                   </td>
-                  <td className="px-3 py-2">{p.payment_method || "—"}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.late_fees).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.balance_due).toLocaleString()}</td>
-                  <td className="px-3 py-2"><button onClick={() => remove(p.id)} className="text-xs text-muted-foreground hover:text-real-red">✕</button></td>
+                  <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.late_fees).toLocaleString()}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.balance_due).toLocaleString()}</td>
+                  <td className="px-3"><button onClick={() => remove(p.id)} className="text-xs text-[#9A9AA3] hover:text-[#CC0000] transition-colors duration-150">✕</button></td>
                 </tr>
               );
             })}
