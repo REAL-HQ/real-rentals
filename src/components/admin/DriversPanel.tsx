@@ -367,10 +367,6 @@ export function DriversPanel() {
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       <ScreeningBadge screening={screenings[a.id] ?? null} docCount={docCounts[a.id] ?? 0} />
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {veh ? `${veh.year} ${veh.make} ${veh.model}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">{a.weekly_rent ? `$${a.weekly_rent}` : "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.payment_status?.replace(/_/g," ")}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.deposit_status?.replace(/_/g," ")}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -420,8 +416,6 @@ export function DriversPanel() {
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
-                        <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2 capitalize">{h.payment_status?.replace(/_/g, " ")}</td>
