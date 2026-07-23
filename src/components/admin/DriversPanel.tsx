@@ -387,6 +387,16 @@ export function DriversPanel() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setOpen(a)}>Open</DropdownMenuItem>
+                          {a.phone && (
+                            <DropdownMenuItem onClick={() => window.location.href = `tel:${a.phone}`}>
+                              <Phone className="w-4 h-4 mr-2" /> Call
+                            </DropdownMenuItem>
+                          )}
+                          {a.phone && (
+                            <DropdownMenuItem onClick={() => window.location.href = smsHref(a.phone)}>
+                              <MessageSquare className="w-4 h-4 mr-2" /> Text
+                            </DropdownMenuItem>
+                          )}
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
                               <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
