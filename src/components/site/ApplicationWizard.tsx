@@ -419,7 +419,7 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
         </div>
         <MultiFileUploadField
           label="Upload Screenshots Of Your Trip / Delivery Totals (Required)"
-          hint="One screenshot per app is best (Uber, Lyft, DoorDash, etc.). Must clearly show your lifetime trip or delivery count."
+          hint="Upload a screenshot showing your lifetime trips or deliveries from any app (Uber, Lyft, DoorDash, Instacart, Shipt, etc.). One per app is best."
           accept="image/*,application/pdf"
           bucket="profile-screenshots"
           applicationId={id}
