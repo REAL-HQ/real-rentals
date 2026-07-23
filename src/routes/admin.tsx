@@ -10,7 +10,7 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown, LayoutDashboard } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, User, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, ChevronDown, LayoutDashboard, Search, Bell } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -79,6 +79,11 @@ function Admin() {
   if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
   const current = TABS.find((t) => t.id === tab) ?? { id: "messages" as Tab, label: "Messages", description: "Inbound Driver & Partner Conversations" };
+  const emailName = session?.user?.email ?? "";
+  const rawName = (session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || emailName.split("@")[0] || "Admin").toString();
+  const firstName = rawName.split(/[.\s]/)[0] || "Admin";
+  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f7f8fa]">
@@ -148,30 +153,47 @@ function Admin() {
             </div>
           </div>
           <main className="flex-1 min-w-0 bg-[#f7f8fa]">
-            <header className="bg-white border-b border-[#ececf0] px-8 py-5 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900 truncate">{current.label}</h1>
-                <p className="text-[13px] text-neutral-500 mt-0.5 truncate">{current.description}</p>
+            <header className="bg-white border-b border-[#ececf0] px-8 py-3 flex items-center justify-between gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="search"
+                  placeholder="Search drivers, vehicles, partners…"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#f5f6f8] border border-transparent focus:border-[#ececf0] focus:bg-white focus:outline-none text-[13px] text-neutral-800 placeholder:text-neutral-400 transition"
+                />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border border-[#ececf0] bg-white pl-1 pr-3 py-1 hover:bg-[#f5f6f8] transition">
-                  <span className="w-7 h-7 rounded-full bg-[#111] text-white grid place-items-center text-xs font-semibold">
-                    {(session?.user?.email?.[0] || "A").toUpperCase()}
-                  </span>
-                  <span className="text-[13px] text-neutral-700 hidden sm:inline max-w-[160px] truncate">{session?.user?.email}</span>
-                  <ChevronDown className="w-4 h-4 text-neutral-400" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="text-xs text-neutral-500 font-normal">Signed in as</DropdownMenuLabel>
-                  <div className="px-2 pb-2 text-sm truncate">{session?.user?.email}</div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={signOut} className="text-real-red focus:text-real-red">
-                    <LogOut className="w-4 h-4 mr-2" /> Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-3">
+                <button
+                  aria-label="Notifications"
+                  className="relative w-10 h-10 rounded-xl border border-[#ececf0] bg-white grid place-items-center text-neutral-600 hover:bg-[#f5f6f8] transition"
+                >
+                  <Bell className="w-[18px] h-[18px]" />
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-real-red text-white text-[10px] font-semibold grid place-items-center">2</span>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-[#ececf0] bg-white pl-1 pr-3 py-1 hover:bg-[#f5f6f8] transition">
+                    <span className="w-8 h-8 rounded-full bg-real-red text-white grid place-items-center text-[11px] font-semibold">
+                      {initials}
+                    </span>
+                    <span className="text-[13px] font-medium text-neutral-800 hidden sm:inline">{displayName}</span>
+                    <ChevronDown className="w-4 h-4 text-neutral-400" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel className="text-xs text-neutral-500 font-normal">Signed in as</DropdownMenuLabel>
+                    <div className="px-2 pb-2 text-sm truncate">{session?.user?.email}</div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={signOut} className="text-real-red focus:text-real-red">
+                      <LogOut className="w-4 h-4 mr-2" /> Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </header>
             <div className="p-6 md:p-8">
+            <div className="mb-6">
+              <h1 className="text-[26px] font-semibold tracking-tight text-neutral-900">{current.label}</h1>
+              <p className="text-[13px] text-neutral-500 mt-1">{current.description}</p>
+            </div>
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && <DriversPanel />}
             {tab === "vehicles" && <VehiclesPanel />}
