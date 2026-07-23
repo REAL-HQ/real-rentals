@@ -58,6 +58,7 @@ type WizardState = {
   // driver
   license_photo_url: string | null;
   full_coverage_insurance: boolean | null;
+  insurance_doc_url: string | null;
   address: string | null;
   state: string | null;
   zip: string | null;
@@ -102,6 +103,7 @@ export function ApplicationWizard({ id }: { id: string }) {
           trip_screenshots: ((row as any).trip_screenshots as string[] | null) ?? [],
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
+          insurance_doc_url: (row as any).insurance_doc_url ?? null,
           address: null,
           state: row.state,
           zip: null,
@@ -181,6 +183,7 @@ export function ApplicationWizard({ id }: { id: string }) {
             <DriverStep source={state.source} id={id} state={state} update={update} onBack={goBack} onSubmit={() => goNext("complete", {
               license_photo_url: state.license_photo_url,
               full_coverage_insurance: state.full_coverage_insurance,
+              insurance_doc_url: state.insurance_doc_url,
               address: state.address,
               city: state.city,
               state: state.state,
@@ -419,7 +422,7 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
         </div>
         <MultiFileUploadField
           label="Upload Screenshots Of Your Trip / Delivery Totals (Required)"
-          hint="One screenshot per app is best (Uber, Lyft, DoorDash, etc.). Must clearly show your lifetime trip or delivery count."
+          hint="Upload a screenshot showing your lifetime trips or deliveries from any app (Uber, Lyft, DoorDash, Instacart, Shipt, etc.). One per app is best."
           accept="image/*,application/pdf"
           bucket="profile-screenshots"
           applicationId={id}
@@ -463,6 +466,16 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: Ste
             })}
           </div>
         </div>
+        {state.full_coverage_insurance === true && (
+          <FileUploadField
+            label="Upload Your Insurance Card Or Declaration Page — Optional, Helps Speed Approval"
+            accept="image/*,application/pdf"
+            bucket="license-uploads"
+            applicationId={id}
+            value={state.insurance_doc_url}
+            onChange={(v) => update("insurance_doc_url", v)}
+          />
+        )}
         <TextField label="Street Address" value={state.address ?? ""} onChange={(v) => update("address", v)} />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <TextField label="City" value={state.city ?? ""} onChange={(v) => update("city", v)} />

@@ -171,6 +171,7 @@ const stepUpdateSchema = z.object({
   // Driver
   license_photo_url: z.string().trim().max(500).nullable().optional(),
   full_coverage_insurance: z.boolean().nullable().optional(),
+  insurance_doc_url: z.string().trim().max(500).nullable().optional(),
   address: z.string().trim().max(200).nullable().optional(),
   city: z.string().trim().max(80).nullable().optional(),
   state: z.string().trim().max(60).nullable().optional(),
@@ -372,7 +373,7 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // score, user_id). Return only what the wizard needs to resume:
       // progress state, the driver's first name for greeting, and the
       // non-sensitive form values the driver themselves entered.
-      .select("id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, how_heard")
+      .select("id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, how_heard")
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);

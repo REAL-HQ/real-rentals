@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { sendWizardRecoveryEmail } from "@/lib/email.server";
+import { sendWizardRecoveryEmail, sendAbandonedRecoveryEmail } from "@/lib/email.server";
 
 export const Route = createFileRoute("/api/public/cron/wizard-recovery")({
   server: {
@@ -31,6 +31,8 @@ async function handle(request: Request): Promise<Response> {
   const h26 = new Date(now - 26 * 3600 * 1000).toISOString(); // window: leads created 24–26h ago (avoid backfilling ancient rows)
   const h72 = new Date(now - 72 * 3600 * 1000).toISOString();
   const h96 = new Date(now - 96 * 3600 * 1000).toISOString();
+  const h3 = new Date(now - 3 * 3600 * 1000).toISOString();
+  const h48 = new Date(now - 48 * 3600 * 1000).toISOString();
 
   const cols =
     "id, full_name, email, current_step, status, created_at, recovery_email_sent_24h, recovery_email_sent_72h";
@@ -62,6 +64,47 @@ async function handle(request: Request): Promise<Response> {
 
   let sent24 = 0;
   let sent72 = 0;
+  let sentAbandoned = 0;
+
+  // Abandoned recovery: status='partial' created between 3h and 48h ago, single send.
+  const { data: batchAbandoned } = await supabaseAdmin
+    .from("applications")
+    .select("id, full_name, email, city, state, pickup_date, return_date, market_id, current_step, status")
+    .eq("status", "partial")
+    .lt("created_at", h3)
+    .gte("created_at", h48)
+    .is("recovery_sent_at", null)
+    .not("email", "is", null);
+
+  for (const row of batchAbandoned ?? []) {
+    if (isWizardComplete(row.current_step, row.status)) continue;
+    try {
+      let marketName: string | null = null;
+      if (row.market_id) {
+        const { data: m } = await supabaseAdmin
+          .from("markets")
+          .select("name")
+          .eq("id", row.market_id as string)
+          .maybeSingle();
+        marketName = m?.name ?? null;
+      }
+      await sendAbandonedRecoveryEmail({
+        to: row.email as string,
+        firstName: row.full_name as string | null,
+        applicationId: row.id as string,
+        market: marketName ?? (row.city as string | null),
+        pickupDate: row.pickup_date as string | null,
+        returnDate: row.return_date as string | null,
+      });
+      await supabaseAdmin
+        .from("applications")
+        .update({ recovery_sent_at: new Date().toISOString() })
+        .eq("id", row.id);
+      sentAbandoned++;
+    } catch (err) {
+      console.error("[wizard-recovery] abandoned send failed", row.id, err);
+    }
+  }
 
   for (const row of batch24 ?? []) {
     // Skip rows that already finished the wizard (confirmation is step >= 5)
@@ -106,8 +149,10 @@ async function handle(request: Request): Promise<Response> {
     ok: true,
     considered_24h: batch24?.length ?? 0,
     considered_72h: batch72?.length ?? 0,
+    considered_abandoned: batchAbandoned?.length ?? 0,
     sent_24h: sent24,
     sent_72h: sent72,
+    sent_abandoned: sentAbandoned,
   });
 }
 

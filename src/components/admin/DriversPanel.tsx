@@ -28,9 +28,13 @@ import {
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
+import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -499,6 +503,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Mail className="w-3.5 h-3.5" /> Email
               </a>
             )}
+            <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
             <CardOnFileActions driver={driver} onUpdate={onUpdate} />
             <AutopayActions driver={driver} />
             <DropdownMenu>
@@ -542,6 +547,16 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               {driver.gclid && (
                 <Badge variant="secondary" className="bg-amber-50 text-amber-800 hover:bg-amber-50 text-[10px]">
                   <BadgeDollarSign className="w-3 h-3 mr-1" /> Google Ads
+                </Badge>
+              )}
+              {(driver as any).recovery_sent_at && (
+                <Badge variant="secondary" className="bg-purple-50 text-purple-800 hover:bg-purple-50 text-[10px]" title={`Recovery email sent ${new Date((driver as any).recovery_sent_at).toLocaleString()}`}>
+                  <Mail className="w-3 h-3 mr-1" /> Recovery Sent
+                </Badge>
+              )}
+              {(driver as any).doc_request_sent_at && (
+                <Badge variant="secondary" className="bg-blue-50 text-blue-800 hover:bg-blue-50 text-[10px]" title={`Docs requested ${new Date((driver as any).doc_request_sent_at).toLocaleString()}`}>
+                  <FileText className="w-3 h-3 mr-1" /> Docs Requested
                 </Badge>
               )}
             </div>
@@ -1441,5 +1456,145 @@ function CardOnFileCard({ driver, onUpdate: _onUpdate }: { driver: any; onUpdate
         </div>
       )}
     </div>
+  );
+}
+const DOC_ITEMS: { key: "license" | "gig_screenshot" | "insurance" | "other"; label: string }[] = [
+  { key: "license", label: "License Photo" },
+  { key: "gig_screenshot", label: "Driving Profile Screenshot (Uber, Lyft, DoorDash, etc.)" },
+  { key: "insurance", label: "Insurance Information" },
+  { key: "other", label: "Other (specify below)" },
+];
+
+function RequestDocumentsAction({
+  driver,
+  onUpdate,
+}: {
+  driver: Application;
+  onUpdate: (patch: Partial<Application>) => void;
+}) {
+  const requestDocs = useServerFn(requestApplicationDocuments);
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const sentAt = driver.doc_request_sent_at ? new Date(driver.doc_request_sent_at) : null;
+  const hoursSince = sentAt ? (Date.now() - sentAt.getTime()) / 3600000 : Infinity;
+  const canResend = hoursSince >= 24;
+
+  function toggle(k: string) {
+    setItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
+
+  async function send() {
+    if (items.size === 0) return toast.error("Select at least one item");
+    if (!driver.email) return toast.error("No email on file for this applicant");
+    setSending(true);
+    try {
+      const res: any = await requestDocs({
+        data: {
+          applicationId: driver.id,
+          items: Array.from(items) as any,
+          note: note.trim() || null,
+        },
+      });
+      onUpdate({
+        doc_request_sent_at: res.sent_at,
+        requested_docs: res.items,
+        doc_request_note: note.trim() || null,
+      } as any);
+      toast.success("Document request sent");
+      setOpen(false);
+      setItems(new Set());
+      setNote("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const requested = Array.isArray((driver as any).requested_docs)
+    ? ((driver as any).requested_docs as string[])
+    : [];
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        disabled={!driver.email || (sentAt !== null && !canResend)}
+        title={
+          !driver.email
+            ? "No email on file"
+            : sentAt && !canResend
+              ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
+              : "Request missing documents"
+        }
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <FileText className="w-3.5 h-3.5" />
+        {sentAt ? "Re-request Docs" : "Request Documents"}
+      </button>
+
+      {sentAt && (
+        <span className="text-[10px] text-muted-foreground hidden md:inline">
+          Sent {sentAt.toLocaleDateString()} ({requested.length} items)
+        </span>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Documents</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Select what's needed. We'll email {driver.email} with a checklist and a link back to their application.
+            </p>
+            {DOC_ITEMS.map((it) => (
+              <label key={it.key} className="flex items-start gap-2.5 rounded-md border border-border p-2.5 cursor-pointer hover:bg-soft">
+                <Checkbox
+                  checked={items.has(it.key)}
+                  onCheckedChange={() => toggle(it.key)}
+                  className="mt-0.5"
+                />
+                <span className="text-sm">{it.label}</span>
+              </label>
+            ))}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                Note (optional)
+              </div>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Anything specific the applicant should know"
+                rows={3}
+                maxLength={500}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-border hover:bg-soft"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={send}
+              disabled={sending || items.size === 0}
+              className="px-4 py-2 text-sm rounded-md bg-real-red text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {sending ? "Sending…" : "Send Email"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
