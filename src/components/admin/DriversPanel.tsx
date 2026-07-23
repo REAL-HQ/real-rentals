@@ -490,6 +490,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Mail className="w-3.5 h-3.5" /> Email
               </a>
             )}
+            <CardOnFileActions driver={driver} onUpdate={onUpdate} />
             <DropdownMenu>
               <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
                 <MoreVertical className="w-4 h-4" />
