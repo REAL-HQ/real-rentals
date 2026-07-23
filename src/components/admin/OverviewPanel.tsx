@@ -70,7 +70,7 @@ export function OverviewPanel() {
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("ai_tier", "hot"),
         supabase.from("driver_screenings").select("id", { count: "exact", head: true }).is("interview_completed_at", null),
-        supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days, referral_source").order("created_at", { ascending: false }).limit(500),
+        supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days").order("created_at", { ascending: false }).limit(500),
         supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at, phone, email").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
         supabase.from("rentals").select("vehicle_id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("maintenance_records").select("vehicle_id", { count: "exact", head: true }).neq("status", "completed"),
