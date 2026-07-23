@@ -29,6 +29,9 @@ export function OverviewPanel() {
   const [series, setSeries] = useState<DayPoint[]>([]);
   const [recent, setRecent] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
+  const [fleet, setFleet] = useState<FleetBreak>({ available: 0, rented: 0, maintenance: 0 });
+  const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, screening: 0, leads: 0, hot: 0 });
+  const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
 
   useEffect(() => {
     (async () => {
@@ -37,7 +40,7 @@ export function OverviewPanel() {
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
       const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
 
-      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, recentAppsQ, seriesAppsQ, hotListQ] = await Promise.all([
+      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, recentAppsQ, seriesAppsQ, hotListQ, rentedQ, maintQ] = await Promise.all([
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7).not("current_step", "is", null),
@@ -49,6 +52,8 @@ export function OverviewPanel() {
         supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days, referral_source").order("created_at", { ascending: false }).limit(6),
         supabase.from("applications").select("created_at").gte("created_at", d30),
         supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at, phone, email").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
+        supabase.from("rentals").select("vehicle_id", { count: "exact", head: true }).eq("status", "active"),
+        supabase.from("maintenance_records").select("vehicle_id", { count: "exact", head: true }).neq("status", "completed"),
       ]);
 
       setKpis({
@@ -60,6 +65,17 @@ export function OverviewPanel() {
         vehiclesAvailable: vehiclesAvailQ.count ?? 0,
         hotLeads: hotQ.count ?? 0,
         screeningsPending: screenQ.count ?? 0,
+      });
+
+      const rented = rentedQ.count ?? 0;
+      const maintenance = maintQ.count ?? 0;
+      const available = vehiclesAvailQ.count ?? 0;
+      setFleet({ available, rented, maintenance });
+      setDrivers({
+        active: activeQ.count ?? 0,
+        screening: screenQ.count ?? 0,
+        leads: leads7q.count ?? 0,
+        hot: hotQ.count ?? 0,
       });
 
       // Build 30-day series
