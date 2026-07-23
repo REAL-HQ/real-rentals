@@ -31,7 +31,7 @@ import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeR
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,6 +80,7 @@ function AIScoreDot({ tier, score }: { tier?: string | null; score?: number | nu
     : t === "cold" ? "bg-slate-400 text-white"
     : "bg-neutral-200 text-neutral-500 border border-dashed border-neutral-300";
   return (
+    <TooltipProvider delayDuration={100}>
     <Tooltip>
       <TooltipTrigger asChild>
         <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${cls}`}>
@@ -88,6 +89,7 @@ function AIScoreDot({ tier, score }: { tier?: string | null; score?: number | nu
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+    </TooltipProvider>
   );
 }
 
