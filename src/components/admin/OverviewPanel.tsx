@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
+import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown, List as ListIcon, LineChart as LineChartIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -48,6 +48,11 @@ export function OverviewPanel() {
   const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, screening: 0, leads: 0, hot: 0 });
   const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
   const [finance, setFinance] = useState<Finance | null>(null);
+  const [allApps, setAllApps] = useState<any[]>([]);
+  const [recentTab, setRecentTab] = useState<"list" | "chart">("list");
+  const [range, setRange] = useState<"1W" | "1M" | "TOTAL" | "CUSTOM">("1M");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -56,7 +61,7 @@ export function OverviewPanel() {
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
       const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
 
-      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, recentAppsQ, seriesAppsQ, hotListQ, rentedQ, maintQ] = await Promise.all([
+      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, allAppsQ, hotListQ, rentedQ, maintQ] = await Promise.all([
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7).not("current_step", "is", null),
@@ -65,8 +70,7 @@ export function OverviewPanel() {
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("ai_tier", "hot"),
         supabase.from("driver_screenings").select("id", { count: "exact", head: true }).is("interview_completed_at", null),
-        supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days, referral_source").order("created_at", { ascending: false }).limit(6),
-        supabase.from("applications").select("created_at").gte("created_at", d30),
+        supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days, referral_source").order("created_at", { ascending: false }).limit(500),
         supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at, phone, email").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
         supabase.from("rentals").select("vehicle_id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("maintenance_records").select("vehicle_id", { count: "exact", head: true }).neq("status", "completed"),
@@ -170,25 +174,9 @@ export function OverviewPanel() {
         lateFees30, lateFeesPrev30, lateFeesSeries,
       });
 
-      // Build 30-day series
-      const days: DayPoint[] = [];
-      const buckets: Record<string, DayPoint> = {};
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 864e5);
-        const key = d.toISOString().slice(0, 10);
-        const p = { day: fmtDay(d), leads: 0, apps: 0 } as DayPoint;
-        buckets[key] = p;
-        days.push(p);
-      }
-      for (const r of (seriesAppsQ.data ?? []) as Array<{ created_at: string }>) {
-        const k = new Date(r.created_at as string).toISOString().slice(0, 10);
-        if (buckets[k]) {
-          buckets[k].leads += 1;
-          buckets[k].apps += 1;
-        }
-      }
-      setSeries(days);
-      setRecent(recentAppsQ.data ?? []);
+      const apps = (allAppsQ.data ?? []) as any[];
+      setAllApps(apps);
+      setRecent(apps.slice(0, 6));
       setHot(hotListQ.data ?? []);
     })();
   }, []);
@@ -216,6 +204,53 @@ export function OverviewPanel() {
     if (!a.current_step) return "Lead only";
     return `Step ${a.current_step} of 4`;
   };
+
+  const rangeBounds = useMemo(() => {
+    const now = new Date();
+    if (range === "1W") return { from: new Date(now.getTime() - 7 * 864e5), to: now };
+    if (range === "1M") return { from: new Date(now.getTime() - 30 * 864e5), to: now };
+    if (range === "CUSTOM" && customFrom && customTo) {
+      return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 864e5 - 1) };
+    }
+    // TOTAL or invalid custom
+    const earliest = allApps.length ? new Date(allApps[allApps.length - 1].created_at) : new Date(now.getTime() - 30 * 864e5);
+    return { from: earliest, to: now };
+  }, [range, customFrom, customTo, allApps]);
+
+  const filteredApps = useMemo(() => {
+    return allApps.filter((a) => {
+      const t = new Date(a.created_at).getTime();
+      return t >= rangeBounds.from.getTime() && t <= rangeBounds.to.getTime();
+    });
+  }, [allApps, rangeBounds]);
+
+  const rangeSeries = useMemo<DayPoint[]>(() => {
+    const from = new Date(rangeBounds.from);
+    const to = new Date(rangeBounds.to);
+    const dayMs = 864e5;
+    const startKey = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+    const endKey = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+    const n = Math.max(1, Math.round((endKey - startKey) / dayMs) + 1);
+    const buckets: Record<string, DayPoint> = {};
+    const days: DayPoint[] = [];
+    for (let i = 0; i < n; i++) {
+      const d = new Date(startKey + i * dayMs);
+      const key = d.toISOString().slice(0, 10);
+      const p = { day: fmtDay(d), leads: 0, apps: 0 } as DayPoint;
+      buckets[key] = p;
+      days.push(p);
+    }
+    for (const a of filteredApps) {
+      const k = new Date(a.created_at).toISOString().slice(0, 10);
+      if (buckets[k]) {
+        buckets[k].leads += 1;
+        if (a.current_step != null) buckets[k].apps += 1;
+      }
+    }
+    return days;
+  }, [filteredApps, rangeBounds]);
+
+  const listApps = useMemo(() => filteredApps.slice(0, 20), [filteredApps]);
 
   return (
     <div className="space-y-6">
@@ -304,69 +339,96 @@ export function OverviewPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Chart */}
-        <div className="lg:col-span-2 bg-white border border-[#ececf0] rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-neutral-900">Lead & Application Flow</h3>
-              <p className="text-xs text-neutral-500 mt-0.5">Last 30 Days</p>
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Leads
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-600" /> Apps
-              </span>
-            </div>
+      <div className="bg-white border border-[#ececf0] rounded-xl">
+        {/* Combined header: title, tabs, range selector */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-3 border-b border-[#f0f0f3]">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-900">Recent Applications</h3>
+            <p className="text-xs text-neutral-500 mt-0.5">Latest Driver Activity</p>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="fillLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="fillApps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 4" stroke="#eef0f3" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} interval={4} />
-                <YAxis orientation="right" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
-                <Tooltip
-                  contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#111", fontWeight: 600 }}
-                />
-                <Area type="monotone" dataKey="leads" stroke="#22c55e" strokeWidth={2.5} fill="url(#fillLeads)" dot={false} activeDot={{ r: 4 }} />
-                <Area type="monotone" dataKey="apps" stroke="#16a34a" strokeWidth={2.5} fill="url(#fillApps)" dot={false} activeDot={{ r: 4 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Recent applications */}
-        <div className="lg:col-span-2 bg-white border border-[#ececf0] rounded-xl">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-neutral-900">Recent Applications</h3>
-              <p className="text-xs text-neutral-500 mt-0.5">Latest Driver Activity</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View tabs */}
+            <div className="inline-flex items-center rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
+              <button
+                onClick={() => setRecentTab("list")}
+                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors ${recentTab === "list" ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
+              >
+                <ListIcon className="w-3.5 h-3.5" /> List
+              </button>
+              <button
+                onClick={() => setRecentTab("chart")}
+                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors ${recentTab === "chart" ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
+              >
+                <LineChartIcon className="w-3.5 h-3.5" /> Chart
+              </button>
             </div>
+            {/* Range selector */}
+            <div className="inline-flex items-center rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
+              {(["1W", "1M", "TOTAL", "CUSTOM"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${range === r ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
+                >
+                  {r === "CUSTOM" ? "Custom" : r}
+                </button>
+              ))}
+            </div>
+            {range === "CUSTOM" && (
+              <div className="inline-flex items-center gap-1">
+                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="text-xs border border-[#ececf0] rounded-md px-2 py-1 bg-white" />
+                <span className="text-xs text-neutral-400">–</span>
+                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="text-xs border border-[#ececf0] rounded-md px-2 py-1 bg-white" />
+              </div>
+            )}
             <Link to="/admin" search={{ tab: "drivers" } as any} className="text-xs text-neutral-500 hover:text-neutral-900 inline-flex items-center gap-1">
               View all <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-           <div className="divide-y divide-[#f0f0f3]">
-            {recent.length === 0 && (
-              <div className="px-5 py-8 text-center text-sm text-neutral-500">No applications yet.</div>
+        </div>
+
+        {recentTab === "chart" ? (
+          <div className="p-5">
+            <div className="flex items-center justify-end gap-3 text-xs mb-2">
+              <span className="inline-flex items-center gap-1.5 text-neutral-600">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Leads
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-neutral-600">
+                <span className="w-2 h-2 rounded-full bg-emerald-700" /> Apps
+              </span>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={rangeSeries} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="fillLeads" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="fillApps" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 4" stroke="#eef0f3" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(rangeSeries.length / 8))} />
+                  <YAxis orientation="right" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                  <Tooltip
+                    contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: "#111", fontWeight: 600 }}
+                  />
+                  <Area type="monotone" dataKey="leads" stroke="#22c55e" strokeWidth={2.5} fill="url(#fillLeads)" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="apps" stroke="#16a34a" strokeWidth={2.5} fill="url(#fillApps)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#f0f0f3]">
+            {listApps.length === 0 && (
+              <div className="px-5 py-8 text-center text-sm text-neutral-500">No applications in this range.</div>
             )}
-            {recent.map((a) => (
+            {listApps.map((a) => (
               <Link
                 key={a.id}
                 to="/admin"
@@ -380,9 +442,9 @@ export function OverviewPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-neutral-900 truncate">{a.full_name || "Unnamed"}</span>
-                      {a.ai_tier && (
+                      {a.ai_tier ? (
                         <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                          className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
                             a.ai_tier === "hot"
                               ? "bg-red-50 text-red-700 border-red-100"
                               : a.ai_tier === "warm"
@@ -390,9 +452,12 @@ export function OverviewPanel() {
                               : "bg-neutral-50 text-neutral-600 border-neutral-100"
                           }`}
                         >
-                          {a.ai_tier}
-                          {a.ai_score != null && <span className="ml-1 opacity-70">{a.ai_score}</span>}
+                          {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
+                          <span className="uppercase tracking-wide">{a.ai_tier}</span>
+                          {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
                         </span>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">AI: pending</span>
                       )}
                       <span className="text-[10px] uppercase tracking-wide font-medium text-neutral-500 border border-[#ececf0] rounded px-1.5 py-0.5">
                         {a.status || "new"}
@@ -438,34 +503,7 @@ export function OverviewPanel() {
               </Link>
             ))}
           </div>
-        </div>
-
-        {/* Hot prospects */}
-        <div className="bg-white border border-[#ececf0] rounded-xl">
-          <div className="px-5 pt-5 pb-3">
-            <h3 className="text-sm font-semibold text-neutral-900 flex items-center gap-1.5">
-              <Flame className="w-4 h-4 text-real-red" /> Hot Prospects
-            </h3>
-            <p className="text-xs text-neutral-500 mt-0.5">Top AI-Scored Leads</p>
-          </div>
-          <div className="divide-y divide-[#f0f0f3]">
-            {hot.length === 0 && (
-              <div className="px-5 py-8 text-center text-sm text-neutral-500">No hot prospects yet.</div>
-            )}
-            {hot.map((a) => (
-              <div key={a.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-neutral-900 truncate">{a.full_name || "Unnamed"}</div>
-                  <div className="text-xs text-neutral-500 truncate">{a.city || "—"}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-semibold text-neutral-900">{a.ai_score ?? "—"}</div>
-                  <div className="text-[10px] text-neutral-500">score</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
