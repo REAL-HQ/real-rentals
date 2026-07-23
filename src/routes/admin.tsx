@@ -53,6 +53,11 @@ function Admin() {
   const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [notifs, setNotifs] = useState<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null; created_at: string | null; status: string | null }>>([]);
+  const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
+  });
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("admin-sidebar-collapsed") === "1";
@@ -72,6 +77,32 @@ function Admin() {
     supabase.from("user_roles").select("role").eq("user_id", session.user.id).eq("role", "admin").maybeSingle()
       .then(({ data }) => setIsAdmin(!!data));
   }, [session]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    async function load() {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("applications")
+        .select("id, full_name, email, phone, created_at, status")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (!cancelled) setNotifs(data || []);
+    }
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [isAdmin]);
+
+  const unreadCount = notifs.filter((n) => new Date(n.created_at ?? 0).getTime() > notifSeenAt).length;
+
+  function markNotifsSeen() {
+    const now = Date.now();
+    setNotifSeenAt(now);
+    if (typeof window !== "undefined") window.localStorage.setItem("admin-notif-seen-at", String(now));
+  }
 
   async function signOut() { await supabase.auth.signOut(); toast.success("Signed out"); }
 
@@ -160,13 +191,51 @@ function Admin() {
                 />
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  aria-label="Notifications"
-                  className="relative w-10 h-10 rounded-xl border border-[#ececf0] bg-white grid place-items-center text-neutral-600 hover:bg-[#f5f6f8] transition"
-                >
-                  <Bell className="w-[18px] h-[18px]" />
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-real-red text-white text-[10px] font-semibold grid place-items-center">2</span>
-                </button>
+                <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
+                  <DropdownMenuTrigger
+                    aria-label="Notifications"
+                    className="relative w-10 h-10 rounded-xl border border-[#ececf0] bg-white grid place-items-center text-neutral-600 hover:bg-[#f5f6f8] transition"
+                  >
+                    <Bell className="w-[18px] h-[18px]" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-real-red text-white text-[10px] font-semibold grid place-items-center">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-80 p-0">
+                    <div className="px-3 py-2 border-b border-[#ececf0] flex items-center justify-between">
+                      <div className="text-sm font-semibold text-neutral-800">Notifications</div>
+                      <div className="text-[11px] text-neutral-500">Last 7 days</div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifs.length === 0 && (
+                        <div className="px-3 py-8 text-center text-xs text-neutral-500">No recent activity</div>
+                      )}
+                      {notifs.map((n) => {
+                        const created = n.created_at ? new Date(n.created_at) : null;
+                        const isNew = created && created.getTime() > notifSeenAt;
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => setTab("drivers")}
+                            className="w-full text-left px-3 py-2.5 hover:bg-[#f5f6f8] transition border-b border-[#f5f5f7] last:border-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-real-red" />}
+                              <div className="text-[13px] font-medium text-neutral-800 truncate flex-1">
+                                New lead: {n.full_name || n.email || "Unnamed"}
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5 truncate">
+                              {n.email || n.phone || "—"} · {created ? created.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <DropdownMenu>
                   <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-[#ececf0] bg-white pl-1 pr-3 py-1 hover:bg-[#f5f6f8] transition">
                     <span className="w-8 h-8 rounded-full bg-real-red text-white grid place-items-center text-[11px] font-semibold">
