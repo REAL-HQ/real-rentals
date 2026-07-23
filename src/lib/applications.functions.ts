@@ -321,7 +321,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
 
     const isComplete = step === "complete";
     patch.current_step = step;
-    if (isComplete) patch.status = "complete";
+    if (isComplete) patch.status = "new";
 
     // Derive rental duration from dates whenever both are known on this update.
     // Fetch current row to fill in any missing date.
