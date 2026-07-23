@@ -290,7 +290,6 @@ export function DriversPanel() {
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Screening</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Payment</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Deposit</th>
@@ -358,23 +357,10 @@ export function DriversPanel() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {contactedMs ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <Check className="w-3 h-3" /> Responded in {formatDuration(respondedMs ?? 0)}
-                        </span>
-                      ) : isWaiting ? (
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded ${waitColor}`}>
-                          <Activity className="w-3 h-3" /> {formatDuration(waitingMs)} waiting
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
                       <ScreeningBadge screening={screenings[a.id] ?? null} docCount={docCounts[a.id] ?? 0} />
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.payment_status?.replace(/_/g," ")}</td>
-                    <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.deposit_status?.replace(/_/g," ")}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">${Number(a.deposit_paid ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <Select value={a.status} onValueChange={(status) => update(a.id, { status })}>
                         <SelectTrigger className={`h-7 w-28 text-xs border-0 ${statusBadge[a.status] || "bg-gray-100"}`}><SelectValue /></SelectTrigger>
