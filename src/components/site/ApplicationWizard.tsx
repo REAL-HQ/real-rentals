@@ -611,6 +611,19 @@ function DateField({ label, value, onChange, min }: { label: string; value: stri
   );
 }
 
+function extFromMime(mime: string): string {
+  switch ((mime || "").toLowerCase()) {
+    case "image/png": return "png";
+    case "image/jpeg":
+    case "image/jpg": return "jpg";
+    case "image/webp": return "webp";
+    case "image/heic":
+    case "image/heif": return "heic";
+    case "application/pdf": return "pdf";
+    default: return "jpg";
+  }
+}
+
 function FileUploadField({
   label,
   accept,
@@ -636,14 +649,15 @@ function FileUploadField({
     }
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? "bin";
+      const ext = extFromMime(file.type);
       const path = `${applicationId}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type || undefined });
       if (error) throw error;
       onChange(path);
       toast.success("Uploaded");
     } catch (e: any) {
-      toast.error(e?.message ?? "Upload failed");
+      console.error("[upload] failed", e);
+      toast.error("We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.");
     } finally {
       setUploading(false);
     }
@@ -699,11 +713,12 @@ function MultiFileUploadField({
           toast.error(`${file.name}: file must be under 10MB.`);
           continue;
         }
-        const ext = file.name.split(".").pop() ?? "bin";
+        const ext = extFromMime(file.type);
         const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type || undefined });
         if (error) {
-          toast.error(error.message);
+          console.error("[upload] failed", error);
+          toast.error("We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.");
           continue;
         }
         uploaded.push(path);
