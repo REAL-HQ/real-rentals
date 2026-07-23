@@ -259,6 +259,7 @@ export function DriversPanel() {
             <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">AI</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Contact</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Screening</th>
