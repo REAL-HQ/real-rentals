@@ -409,3 +409,132 @@ function SummaryRow({ icon: Icon, label, value, tone }: { icon: any; label: stri
     </div>
   );
 }
+
+function ActivityDonut({
+  tab,
+  onTab,
+  fleet,
+  drivers,
+}: {
+  tab: "fleet" | "drivers";
+  onTab: (t: "fleet" | "drivers") => void;
+  fleet: FleetBreak;
+  drivers: DriverBreak;
+}) {
+  const fleetSegs = [
+    { key: "Available", value: fleet.available, color: "#22c55e" },
+    { key: "Rented", value: fleet.rented, color: "#0ea5e9" },
+    { key: "Maintenance", value: fleet.maintenance, color: "#f59e0b" },
+  ];
+  const driverSegs = [
+    { key: "Active", value: drivers.active, color: "#22c55e" },
+    { key: "Screening", value: drivers.screening, color: "#0ea5e9" },
+    { key: "Leads", value: drivers.leads, color: "#f59e0b" },
+    { key: "Hot", value: drivers.hot, color: "#E61919" },
+  ];
+  const segs = tab === "fleet" ? fleetSegs : driverSegs;
+  const total = segs.reduce((a, s) => a + s.value, 0);
+  const totalLabel = tab === "fleet" ? "Total Vehicles" : "Total Drivers";
+
+  // Utilization = rented / (available + rented) ignoring maintenance
+  const utilBase = fleet.available + fleet.rented;
+  const utilization = utilBase > 0 ? Math.round((fleet.rented / utilBase) * 100) : 0;
+  const earning = fleet.rented; // rented vehicles are earning
+
+  const pieData = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#eef0f3" }];
+
+  return (
+    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-900">
+            {tab === "fleet" ? "Fleet Activity" : "Driver Activity"}
+          </h3>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            {tab === "fleet" ? "Vehicles By Status" : "Drivers By Stage"}
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
+          {(["fleet", "drivers"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => onTab(t)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition-colors ${
+                tab === t ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-900"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+        <div className="relative h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieData}
+                dataKey="value"
+                nameKey="key"
+                innerRadius="70%"
+                outerRadius="95%"
+                paddingAngle={total > 0 ? 3 : 0}
+                stroke="none"
+                startAngle={90}
+                endAngle={-270}
+              >
+                {pieData.map((s, i) => <Cell key={i} fill={s.color} />)}
+              </Pie>
+              {total > 0 && (
+                <Tooltip
+                  contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
+                />
+              )}
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <div className="text-center">
+              <div className="text-3xl font-semibold tracking-tight text-neutral-900 tabular-nums">
+                {total.toLocaleString()}
+              </div>
+              <div className="mt-1 text-xs text-neutral-500">{totalLabel}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {segs.map((s) => {
+            const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
+            return (
+              <div key={s.key} className="flex items-center gap-3">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                <div className="text-sm text-neutral-800 flex-1">{s.key}</div>
+                <div className="text-sm font-semibold text-neutral-900 tabular-nums">{s.value.toLocaleString()}</div>
+                <div className="text-[11px] text-neutral-500 w-10 text-right tabular-nums">{pct}%</div>
+              </div>
+            );
+          })}
+
+          {tab === "fleet" && (
+            <div className="mt-4 pt-4 border-t border-[#f0f0f3] space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-500">Utilization</span>
+                <span className="font-semibold text-neutral-900 tabular-nums">{utilization}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-[#f5f6f8] overflow-hidden">
+                <div className="h-full bg-neutral-900" style={{ width: `${utilization}%` }} />
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="inline-flex items-center gap-1.5 text-neutral-500">
+                  <Wrench className="w-3.5 h-3.5" /> Earning Now
+                </span>
+                <span className="font-semibold text-neutral-900 tabular-nums">{earning}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
