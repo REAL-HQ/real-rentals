@@ -231,6 +231,43 @@ export const savePartialApplication = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // ---- Duplicate detection: same phone OR email within the last 30 days ----
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: dupes } = await supabaseAdmin
+      .from("applications")
+      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at")
+      .or(`phone.eq.${data.phone},email.eq.${data.email}`)
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const existing = dupes?.[0];
+    if (existing) {
+      const primaryId = existing.primary_application_id ?? existing.id;
+      const patch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== undefined && v !== null && v !== "") patch[k] = v;
+      }
+      const history = Array.isArray(existing.resubmission_history)
+        ? (existing.resubmission_history as unknown[])
+        : [];
+      history.push({
+        at: new Date().toISOString(),
+        source: data.source,
+        pickup_date: data.pickup_date ?? null,
+        return_date: data.return_date ?? null,
+        market_id: data.market_id ?? null,
+      });
+      patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
+      patch.resubmission_history = history;
+      patch.updated_at = new Date().toISOString();
+      const { error: updErr } = await supabaseAdmin
+        .from("applications")
+        .update(patch as any)
+        .eq("id", primaryId);
+      if (updErr) throw new Error(updErr.message);
+      return { id: primaryId };
+    }
+
     const { data: row, error } = await supabaseAdmin
       .from("applications")
       .insert({ ...data, status: "partial", current_step: "eligibility" })
