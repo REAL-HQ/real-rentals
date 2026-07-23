@@ -57,7 +57,7 @@ export const removeCardOnFile = createServerFn({ method: 'POST' })
   .inputValidator((data: { applicationId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
     try {
-      const { data: isAdmin } = await context.supabase.rpc('has_role', {
+      const { data: isAdmin } = await (context.supabase as any).rpc('has_role', {
         _user_id: context.userId,
         _role: 'admin',
       });
