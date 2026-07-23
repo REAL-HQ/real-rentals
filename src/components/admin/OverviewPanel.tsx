@@ -677,3 +677,93 @@ function ActivityDonut({
     </div>
   );
 }
+
+function MiniFinanceCard({
+  icon: Icon,
+  tone,
+  label,
+  hint,
+  value,
+  prev,
+  series,
+  format,
+  invertDelta,
+  noDelta,
+}: {
+  icon: any;
+  tone: "emerald" | "sky" | "violet" | "red";
+  label: string;
+  hint?: string;
+  value?: number;
+  prev?: number;
+  series?: { day: string; value: number }[];
+  format?: "usd";
+  invertDelta?: boolean;
+  noDelta?: boolean;
+}) {
+  const toneMap = {
+    emerald: { text: "text-emerald-600", bg: "bg-emerald-50", stroke: "#22c55e", fill: "rgba(34,197,94,0.12)" },
+    sky: { text: "text-sky-600", bg: "bg-sky-50", stroke: "#0ea5e9", fill: "rgba(14,165,233,0.12)" },
+    violet: { text: "text-violet-600", bg: "bg-violet-50", stroke: "#8b5cf6", fill: "rgba(139,92,246,0.12)" },
+    red: { text: "text-real-red", bg: "bg-red-50", stroke: "#E61919", fill: "rgba(230,25,25,0.12)" },
+  } as const;
+  const t = toneMap[tone];
+
+  const fmt = (n?: number) => {
+    if (n == null) return "—";
+    if (format === "usd") {
+      return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    }
+    return n.toLocaleString();
+  };
+
+  let deltaPct: number | undefined;
+  if (!noDelta && value != null && prev != null) {
+    if (prev === 0) deltaPct = value > 0 ? 100 : 0;
+    else deltaPct = Math.round(((value - prev) / prev) * 100);
+  }
+  const isGood = deltaPct == null ? true : invertDelta ? deltaPct <= 0 : deltaPct >= 0;
+  const gradId = `mini-${tone}-${label.replace(/\s+/g, "")}`;
+
+  return (
+    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className={`w-8 h-8 rounded-lg grid place-items-center ${t.bg} ${t.text}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-neutral-900">{label}</div>
+            {hint && <div className="text-[11px] text-neutral-500">{hint}</div>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[22px] leading-none font-semibold tracking-tight text-neutral-900 tabular-nums">
+            {fmt(value)}
+          </div>
+          {deltaPct !== undefined && (
+            <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${isGood ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+              {isGood ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+              {Math.abs(deltaPct)}%
+            </div>
+          )}
+        </div>
+        <div className="h-12 flex-1 max-w-[140px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={series ?? []} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={t.stroke} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={t.stroke} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="value" stroke={t.stroke} strokeWidth={2} fill={`url(#${gradId})`} dot={false} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
