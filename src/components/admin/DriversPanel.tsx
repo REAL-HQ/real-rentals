@@ -593,6 +593,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             </div>
           )}
           <CardOnFileCard driver={driver} onUpdate={onUpdate} />
+          <Timeline steps={buildDriverTimeline(driver, screening)} />
         </aside>
 
         {/* Main column */}
