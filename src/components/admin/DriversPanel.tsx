@@ -149,15 +149,9 @@ export function DriversPanel() {
     for (const g of byKey.values()) {
       g.history.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
     }
-    // Uncontacted "new" leads first (oldest waiting at top). Everything else
-    // sorted by created_at desc.
+    // Sort by received time, newest first. Filters narrow the set but keep
+    // the same chronological order.
     return Array.from(byKey.values()).sort((a, b) => {
-      const aWaiting = !a.primary.contacted_at && (a.primary.status ?? "new") === "new";
-      const bWaiting = !b.primary.contacted_at && (b.primary.status ?? "new") === "new";
-      if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
-      if (aWaiting && bWaiting) {
-        return (a.primary.created_at ?? "").localeCompare(b.primary.created_at ?? "");
-      }
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
   }, [drivers, filter]);
