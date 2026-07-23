@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock } from "lucide-react";
+import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 
 type Kpis = {
   leads7: number;
@@ -14,6 +14,9 @@ type Kpis = {
   hotLeads: number;
   screeningsPending: number;
 };
+
+type FleetBreak = { available: number; rented: number; maintenance: number };
+type DriverBreak = { active: number; screening: number; leads: number; hot: number };
 
 type DayPoint = { day: string; leads: number; apps: number };
 
