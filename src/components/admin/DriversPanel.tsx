@@ -30,6 +30,7 @@ import { removeCardOnFile } from "@/lib/payments.functions";
 import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
@@ -61,6 +62,28 @@ function TierBadge({ tier, score, size = "sm" }: { tier?: string | null; score?:
       <span className="capitalize">{t}</span>
       {score != null && <span className="opacity-70">{score}</span>}
     </span>
+  );
+}
+
+function AIScoreDot({ tier, score }: { tier?: string | null; score?: number | null }) {
+  const t = tier ? String(tier).toLowerCase() : null;
+  const label = t
+    ? `AI: ${t}${score != null ? ` (${score})` : ""}`
+    : "AI: not scored yet";
+  const cls =
+    t === "hot" ? "bg-red-500 text-white"
+    : t === "warm" ? "bg-amber-400 text-white"
+    : t === "cold" ? "bg-slate-400 text-white"
+    : "bg-neutral-200 text-neutral-500 border border-dashed border-neutral-300";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${cls}`}>
+          {t === "hot" ? <Flame className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -259,8 +282,8 @@ export function DriversPanel() {
             <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">AI</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Contact</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
+                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Response</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Screening</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Vehicle</th>
@@ -293,7 +316,10 @@ export function DriversPanel() {
                   <tr key={a.id} onClick={() => setOpen(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
-                      <span>{a.full_name}</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <AIScoreDot tier={a.ai_tier} score={a.ai_score} />
+                        <span>{a.full_name}</span>
+                      </span>
                       <SourceBadge
                         source={a.gclid ? "google" : "organic"}
                         campaign={a.utm_campaign}
@@ -309,42 +335,23 @@ export function DriversPanel() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      {a.ai_tier ? (
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                          a.ai_tier === "hot" ? "bg-red-50 text-red-700 border-red-100"
-                          : a.ai_tier === "warm" ? "bg-amber-50 text-amber-700 border-amber-100"
-                          : "bg-neutral-50 text-neutral-600 border-neutral-100"
-                        }`}>
-                          {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
-                          <span className="uppercase tracking-wide">{a.ai_tier}</span>
-                          {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
-                        </span>
+                    <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {a.phone ? (
+                        <a href={`tel:${a.phone}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                          <Phone className="w-3 h-3" /> {formatPhone(a.phone)}
+                        </a>
                       ) : (
-                        <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">pending</span>
+                        <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-col gap-1">
-                        <div>
-                          {a.phone ? (
-                            <a href={`tel:${a.phone}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
-                              <Phone className="w-3 h-3" /> {formatPhone(a.phone)}
-                            </a>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground">No phone</span>
-                          )}
-                        </div>
-                        <div>
-                          {a.email ? (
-                            <a href={`mailto:${a.email}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
-                              <Mail className="w-3 h-3" /> {a.email}
-                            </a>
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground">No email</span>
-                          )}
-                        </div>
-                      </div>
+                      {a.email ? (
+                        <a href={`mailto:${a.email}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                          <Mail className="w-3 h-3" /> {a.email}
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {contactedMs ? (
@@ -413,8 +420,8 @@ export function DriversPanel() {
                     rows.push(
                       <tr key={h.id} onClick={() => setOpen(h)} className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60">
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
-                        <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">{h.email || h.phone ? `${h.email || ""} ${h.phone ? formatPhone(h.phone) : ""}` : "—"}</td>
+                        <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
+                        <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">—</td>
