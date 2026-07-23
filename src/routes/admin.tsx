@@ -89,7 +89,7 @@ function Admin() {
     <div className="min-h-screen flex flex-col bg-[#f7f8fa]">
       <div className="flex flex-1 min-h-0">
         {/* Sidebar — dark shell */}
-        <aside className={`hidden md:flex ${collapsed ? "w-[72px]" : "w-64"} transition-[width] duration-200 flex-col bg-black border-r border-white/10 sticky top-0 h-screen`}>
+        <aside className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[260px]"} transition-[width] duration-200 flex-col bg-black border-r border-white/10 sticky top-0 h-screen`}>
           <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
@@ -109,7 +109,7 @@ function Admin() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   title={collapsed ? t.label : undefined}
-                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition relative ${
+                  className={`w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-4"} py-2.5 rounded-lg text-[0.92rem] font-medium transition relative ${
                     active
                       ? "bg-white/10 text-white"
                       : "text-neutral-400 hover:bg-white/5 hover:text-white"
