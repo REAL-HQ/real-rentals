@@ -579,6 +579,8 @@ function ActivityDonut({
   const utilBase = fleet.available + fleet.rented;
   const utilization = utilBase > 0 ? Math.round((fleet.rented / utilBase) * 100) : 0;
   const earning = fleet.rented; // rented vehicles are earning
+  const weeklyRate = 350;
+  const earningRevenue = earning * weeklyRate;
 
   const pieData = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#eef0f3" }];
 
@@ -662,13 +664,16 @@ function ActivityDonut({
                 <span className="font-semibold text-neutral-900 tabular-nums">{utilization}%</span>
               </div>
               <div className="h-2 rounded-full bg-[#f5f6f8] overflow-hidden">
-                <div className="h-full bg-neutral-900" style={{ width: `${utilization}%` }} />
+                <div className="h-full bg-[#22c55e]" style={{ width: `${utilization}%` }} />
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className="inline-flex items-center gap-1.5 text-neutral-500">
                   <Wrench className="w-3.5 h-3.5" /> Earning Now
                 </span>
-                <span className="font-semibold text-neutral-900 tabular-nums">{earning}</span>
+                <span className="font-semibold text-neutral-900 tabular-nums">
+                  {earning} <span className="text-neutral-400 font-normal">·</span>{" "}
+                  <span className="text-[#16a34a]">${earningRevenue.toLocaleString()}/wk</span>
+                </span>
               </div>
             </div>
           )}
