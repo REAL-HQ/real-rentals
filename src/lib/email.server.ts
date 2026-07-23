@@ -179,3 +179,95 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
 
   await sendEmail({ to, subject, html, replyTo: "hello@drivereal.com" });
 }
+
+// -----------------------------------------------------------------------------
+// Driver transactional payment emails
+// -----------------------------------------------------------------------------
+
+function shell(body: string): string {
+  return `<!doctype html>
+<html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #eee">
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#CC0000;font-weight:700">REAL RENTALS</div>
+      ${body}
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
+    </div>
+  </div>
+</body></html>`;
+}
+
+function money(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+type ReceiptArgs = {
+  to: string;
+  firstName: string | null;
+  amount: number;
+  reason: string;
+  last4?: string | null;
+  brand?: string | null;
+  portalUrl?: string;
+};
+
+export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
+  const label = args.reason.replace(/_/g, " ");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Received</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we successfully charged your ${escapeHtml(method)} for <strong>${money(args.amount)}</strong> (${escapeHtml(label)}). Thanks — you're all set.</p>
+      <table cellspacing="0" cellpadding="0" style="width:100%;border-top:1px solid #eee;margin-top:8px">
+        <tr><td style="padding:8px 0;color:#666;font-size:13px">Amount</td><td style="padding:8px 0;font-size:14px;color:#111;text-align:right"><strong>${money(args.amount)}</strong></td></tr>
+        <tr><td style="padding:8px 0;color:#666;font-size:13px">For</td><td style="padding:8px 0;font-size:14px;color:#111;text-align:right">${escapeHtml(label)}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;font-size:13px">Method</td><td style="padding:8px 0;font-size:14px;color:#111;text-align:right">${escapeHtml(method)}</td></tr>
+      </table>
+      <div style="margin-top:20px">
+        <a href="${args.portalUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Payment History</a>
+      </div>`);
+  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: "hello@drivereal.com" });
+}
+
+type FailedArgs = {
+  to: string;
+  firstName: string | null;
+  amount: number;
+  reason: string;
+  last4?: string | null;
+  brand?: string | null;
+  updateCardUrl?: string;
+};
+
+export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
+  const label = args.reason.replace(/_/g, " ");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#CC0000;line-height:1.3">Payment Failed</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
+  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: "hello@drivereal.com" });
+}
+
+type CardExpiringArgs = {
+  to: string;
+  firstName: string | null;
+  last4?: string | null;
+  brand?: string | null;
+  expMonth: number;
+  expYear: number;
+  updateCardUrl?: string;
+};
+
+export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
+  const mm = String(args.expMonth).padStart(2, "0");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
+  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: "hello@drivereal.com" });
+}

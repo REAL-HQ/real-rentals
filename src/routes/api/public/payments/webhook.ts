@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
+import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 function getSupabase() {
@@ -11,6 +12,33 @@ function getSupabase() {
     );
   }
   return _supabase;
+}
+
+async function driverForRental(rentalId: string | undefined) {
+  if (!rentalId) return null;
+  const admin: any = getSupabase();
+  const { data } = await admin
+    .from('rentals')
+    .select('application_id, applications:application_id(email, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
+    .eq('id', rentalId)
+    .maybeSingle();
+  if (!data?.applications?.email) return null;
+  return {
+    email: data.applications.email as string,
+    name: (data.applications.full_name as string | null) ?? null,
+    brand: data.applications.card_brand as string | null,
+    last4: data.applications.card_last4 as string | null,
+    expMonth: data.applications.card_exp_month as number | null,
+    expYear: data.applications.card_exp_year as number | null,
+  };
+}
+
+function cardExpiresSoon(m: number | null, y: number | null): boolean {
+  if (!m || !y) return false;
+  const now = new Date();
+  const soon = new Date(now.getFullYear(), now.getMonth() + 2, 1); // within ~60 days
+  const exp = new Date(y, m, 1);
+  return exp <= soon;
 }
 
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
@@ -106,6 +134,28 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     kind: 'payment',
     read: false,
   }).then(() => {}, () => {});
+
+  const driver = await driverForRental(rentalId);
+  if (driver) {
+    if (status === 'paid') {
+      await sendPaymentReceiptEmail({
+        to: driver.email, firstName: driver.name, amount, reason,
+        brand: driver.brand, last4: driver.last4,
+      });
+      if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
+        await sendCardExpiringEmail({
+          to: driver.email, firstName: driver.name,
+          brand: driver.brand, last4: driver.last4,
+          expMonth: driver.expMonth!, expYear: driver.expYear!,
+        });
+      }
+    } else {
+      await sendPaymentFailedEmail({
+        to: driver.email, firstName: driver.name, amount, reason,
+        brand: driver.brand, last4: driver.last4,
+      });
+    }
+  }
 }
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
@@ -159,6 +209,28 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     kind: 'payment',
     read: false,
   }).then(() => {}, () => {});
+
+  const driver = await driverForRental(rental.id);
+  if (driver) {
+    if (status === 'paid') {
+      await sendPaymentReceiptEmail({
+        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+        brand: driver.brand, last4: driver.last4,
+      });
+      if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
+        await sendCardExpiringEmail({
+          to: driver.email, firstName: driver.name,
+          brand: driver.brand, last4: driver.last4,
+          expMonth: driver.expMonth!, expYear: driver.expYear!,
+        });
+      }
+    } else {
+      await sendPaymentFailedEmail({
+        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+        brand: driver.brand, last4: driver.last4,
+      });
+    }
+  }
 }
 
 async function handleSubscriptionUpdated(sub: any) {
