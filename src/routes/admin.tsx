@@ -52,6 +52,7 @@ function Admin() {
   const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
   const initialTab: Tab = urlTab && (TABS.some((t) => t.id === urlTab) || urlTab === "messages") ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("admin-sidebar-collapsed") === "1";
@@ -149,6 +150,12 @@ function Admin() {
                 <input
                   type="search"
                   placeholder="Search drivers, vehicles, partners…"
+                  value={globalSearch}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGlobalSearch(v);
+                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
+                  }}
                   className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#f5f6f8] border border-transparent focus:border-[#ececf0] focus:bg-white focus:outline-none text-[13px] text-neutral-800 placeholder:text-neutral-400 transition"
                 />
               </div>
@@ -185,9 +192,9 @@ function Admin() {
               <p className="text-[13px] text-neutral-500 mt-1">{current.description}</p>
             </div>
             {tab === "overview" && <OverviewPanel />}
-            {tab === "drivers" && <DriversPanel />}
-            {tab === "vehicles" && <VehiclesPanel />}
-            {tab === "partners" && <PartnersPanel />}
+            {tab === "drivers" && <DriversPanel externalSearch={globalSearch} />}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} />}
+            {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel />}
             {tab === "maintenance" && <MaintenancePanel />}
             {tab === "shops" && <ShopsPanel />}
