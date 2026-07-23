@@ -1,0 +1,1 @@
+UPDATE public.applications SET status = 'active' WHERE id IN (SELECT id FROM public.applications WHERE status = 'new' ORDER BY created_at DESC LIMIT 20);
