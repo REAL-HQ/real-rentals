@@ -1173,6 +1173,7 @@ function cardLinkFor(applicationId: string) {
 function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
   const link = cardLinkFor(driver.id);
   const hasCard = !!driver.card_last4;
+  const [chargeOpen, setChargeOpen] = useState(false);
 
   async function copyLink() {
     try {
@@ -1205,12 +1206,18 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
         <CreditCard className="w-3.5 h-3.5" />
         {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {hasCard && (
+          <DropdownMenuItem onClick={() => setChargeOpen(true)}>
+            <CreditCard className="w-4 h-4 mr-2" /> Charge Card…
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={copyLink}>
           <Copy className="w-4 h-4 mr-2" /> Copy card-on-file link
         </DropdownMenuItem>
@@ -1235,6 +1242,92 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    {chargeOpen && <ChargeCardDialog driver={driver} onClose={() => setChargeOpen(false)} />}
+    </>
+  );
+}
+
+function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => void }) {
+  const [amount, setAmount] = useState<string>("");
+  const [reason, setReason] = useState<ChargeReason>("rent");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [rentalId, setRentalId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("rentals")
+      .select("id")
+      .eq("application_id", driver.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setRentalId((data?.id as string) ?? null));
+  }, [driver.id]);
+
+  async function submit() {
+    const cents = Math.round(parseFloat(amount || "0") * 100);
+    if (!rentalId) return toast.error("No active rental found for this driver");
+    if (!Number.isFinite(cents) || cents < 50) return toast.error("Amount must be at least $0.50");
+    setBusy(true);
+    try {
+      const res = await chargeCardOnRental({
+        data: { rentalId, amountCents: cents, reason, note: note || undefined, environment: getStripeEnvironment() },
+      });
+      if ("error" in res) throw new Error(res.error);
+      toast.success(`Charged $${(cents / 100).toFixed(2)} to card`);
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Charge failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold mb-1">Charge Card On File</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          {driver.card_brand} ····{driver.card_last4} — {driver.full_name}
+        </p>
+        {!rentalId && <p className="text-xs text-real-red mb-3">No active rental linked to this driver.</p>}
+        <div className="space-y-3 text-sm">
+          <label className="block text-xs">
+            Amount (USD)
+            <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+              className="w-full bg-soft rounded-md px-3 py-2 mt-1" placeholder="0.00" autoFocus />
+          </label>
+          <label className="block text-xs">
+            Reason
+            <Select value={reason} onValueChange={(v) => setReason(v as ChargeReason)}>
+              <SelectTrigger className="bg-white text-foreground mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rent">Rent</SelectItem>
+                <SelectItem value="late_fee">Late Fee</SelectItem>
+                <SelectItem value="toll">Toll</SelectItem>
+                <SelectItem value="damage">Damage</SelectItem>
+                <SelectItem value="cleaning">Cleaning</SelectItem>
+                <SelectItem value="fuel">Fuel</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="block text-xs">
+            Note (optional)
+            <input value={note} onChange={(e) => setNote(e.target.value)}
+              className="w-full bg-soft rounded-md px-3 py-2 mt-1" placeholder="Toll from 3/12 SunPass" />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
+          <button onClick={submit} disabled={busy || !rentalId}
+            className="rounded-lg bg-real-red text-white px-4 py-2 text-sm disabled:opacity-50">
+            {busy ? "Charging…" : "Charge Card"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
