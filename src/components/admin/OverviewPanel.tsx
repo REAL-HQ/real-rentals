@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown, List as ListIcon, LineChart as LineChartIcon } from "lucide-react";
+import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown, List as ListIcon, LineChart as LineChartIcon, Info } from "lucide-react";
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Link } from "@tanstack/react-router";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -16,7 +17,7 @@ type Kpis = {
 };
 
 type FleetBreak = { available: number; rented: number; maintenance: number };
-type DriverBreak = { active: number; screening: number; leads: number; hot: number };
+type DriverBreak = { active: number; pending: number; leads: number };
 
 type FinancePoint = { day: string; value: number };
 type Finance = {
@@ -45,7 +46,7 @@ export function OverviewPanel() {
   const [recent, setRecent] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
   const [fleet, setFleet] = useState<FleetBreak>({ available: 0, rented: 0, maintenance: 0 });
-  const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, screening: 0, leads: 0, hot: 0 });
+  const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, pending: 0, leads: 0 });
   const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
   const [finance, setFinance] = useState<Finance | null>(null);
   const [allApps, setAllApps] = useState<any[]>([]);
@@ -61,7 +62,7 @@ export function OverviewPanel() {
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
       const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
 
-      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, allAppsQ, hotListQ, rentedQ, maintQ] = await Promise.all([
+      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, allAppsQ, hotListQ, rentedQ, maintQ, pendingQ, leadsAllQ] = await Promise.all([
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
         supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7).not("current_step", "is", null),
@@ -74,6 +75,8 @@ export function OverviewPanel() {
         supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at, phone, email").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
         supabase.from("rentals").select("vehicle_id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("maintenance_records").select("vehicle_id", { count: "exact", head: true }).neq("status", "completed"),
+        supabase.from("applications").select("id", { count: "exact", head: true }).in("status", ["approved", "complete"]),
+        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "new"),
       ]);
 
       setKpis({
@@ -93,9 +96,8 @@ export function OverviewPanel() {
       setFleet({ available, rented, maintenance });
       setDrivers({
         active: activeQ.count ?? 0,
-        screening: screenQ.count ?? 0,
-        leads: leads7q.count ?? 0,
-        hot: hotQ.count ?? 0,
+        pending: pendingQ.count ?? 0,
+        leads: leadsAllQ.count ?? 0,
       });
 
       // ---- Finance ----
@@ -569,10 +571,9 @@ function ActivityDonut({
     { key: "Maintenance", value: fleet.maintenance, color: "#E61919" },
   ];
   const driverSegs = [
-    { key: "Active", value: drivers.active, color: "#22c55e" },
-    { key: "Screening", value: drivers.screening, color: "#facc15" },
-    { key: "Leads", value: drivers.leads, color: "#0ea5e9" },
-    { key: "Hot", value: drivers.hot, color: "#E61919" },
+    { key: "Active", value: drivers.active, color: "#22c55e", hint: "Drivers currently renting a vehicle." },
+    { key: "Pending", value: drivers.pending, color: "#facc15", hint: "Approved drivers waiting for vehicle assignment (waiting list)." },
+    { key: "Leads", value: drivers.leads, color: "#E61919", hint: "New leads that haven't been screened or approved yet." },
   ];
   const segs = tab === "fleet" ? fleetSegs : driverSegs;
   const total = segs.reduce((a, s) => a + s.value, 0);
@@ -647,13 +648,27 @@ function ActivityDonut({
           </div>
         </div>
 
+        <TooltipProvider delayDuration={100}>
         <div className="space-y-3">
           {segs.map((s) => {
             const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
+            const hint = (s as any).hint as string | undefined;
             return (
               <div key={s.key} className="flex items-center gap-3">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                <div className="text-sm text-neutral-800 flex-1">{s.key}</div>
+                <div className="text-sm text-neutral-800 flex-1 inline-flex items-center gap-1.5">
+                  {s.key}
+                  {hint && (
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="text-neutral-400 hover:text-neutral-600" aria-label={`About ${s.key}`}>
+                          <Info className="w-3.5 h-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs text-xs">{hint}</TooltipContent>
+                    </UITooltip>
+                  )}
+                </div>
                 <div className="text-sm font-semibold text-neutral-900 tabular-nums">{s.value.toLocaleString()}</div>
                 <div className="text-[11px] text-neutral-500 w-10 text-right tabular-nums">{pct}%</div>
               </div>
@@ -683,6 +698,7 @@ function ActivityDonut({
             </div>
           )}
         </div>
+        </TooltipProvider>
       </div>
     </div>
   );
