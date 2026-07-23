@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench } from "lucide-react";
+import { Users, Car, CreditCard, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
 type Kpis = {
   leads7: number;
@@ -18,6 +18,21 @@ type Kpis = {
 type FleetBreak = { available: number; rented: number; maintenance: number };
 type DriverBreak = { active: number; screening: number; leads: number; hot: number };
 
+type FinancePoint = { day: string; value: number };
+type Finance = {
+  revenue30: number;
+  revenuePrev30: number;
+  revenueSeries: FinancePoint[];
+  outstanding: number;
+  outstandingSeries: FinancePoint[];
+  expenses30: number;
+  expensesPrev30: number;
+  expensesSeries: FinancePoint[];
+  lateFees30: number;
+  lateFeesPrev30: number;
+  lateFeesSeries: FinancePoint[];
+};
+
 type DayPoint = { day: string; leads: number; apps: number };
 
 function fmtDay(d: Date) {
@@ -32,6 +47,7 @@ export function OverviewPanel() {
   const [fleet, setFleet] = useState<FleetBreak>({ available: 0, rented: 0, maintenance: 0 });
   const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, screening: 0, leads: 0, hot: 0 });
   const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
+  const [finance, setFinance] = useState<Finance | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +92,82 @@ export function OverviewPanel() {
         screening: screenQ.count ?? 0,
         leads: leads7q.count ?? 0,
         hot: hotQ.count ?? 0,
+      });
+
+      // ---- Finance ----
+      const d60 = new Date(now.getTime() - 60 * 864e5).toISOString();
+      const d30Date = new Date(now.getTime() - 30 * 864e5);
+      const [payQ, maintCostQ] = await Promise.all([
+        supabase.from("payments").select("amount, late_fees, status, paid_date, due_date, created_at").gte("created_at", d60),
+        supabase.from("maintenance_records").select("total_cost, completed_at, created_at").gte("created_at", d60),
+      ]);
+
+      const buildSeries = (): FinancePoint[] => {
+        const arr: FinancePoint[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(now.getTime() - i * 864e5);
+          arr.push({ day: fmtDay(d), value: 0 });
+        }
+        return arr;
+      };
+      const revenueSeries = buildSeries();
+      const outstandingSeries = buildSeries();
+      const expensesSeries = buildSeries();
+      const lateFeesSeries = buildSeries();
+      const idxFor = (iso: string) => {
+        const days = Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
+        return 29 - days;
+      };
+
+      let revenue30 = 0, revenuePrev30 = 0, expenses30 = 0, expensesPrev30 = 0, lateFees30 = 0, lateFeesPrev30 = 0, outstanding = 0;
+
+      for (const p of (payQ.data ?? []) as any[]) {
+        const amt = Number(p.amount ?? 0);
+        const late = Number(p.late_fees ?? 0);
+        if (p.status === "paid" && p.paid_date) {
+          const paid = new Date(p.paid_date);
+          if (paid >= d30Date) {
+            revenue30 += amt;
+            const i = idxFor(p.paid_date);
+            if (i >= 0 && i < 30) revenueSeries[i].value += amt;
+          } else {
+            revenuePrev30 += amt;
+          }
+        }
+        if (p.status !== "paid") {
+          outstanding += amt;
+          const i = idxFor(p.created_at);
+          if (i >= 0 && i < 30) outstandingSeries[i].value += amt;
+        }
+        if (late > 0) {
+          const when = new Date(p.paid_date ?? p.created_at);
+          if (when >= d30Date) {
+            lateFees30 += late;
+            const i = idxFor((p.paid_date ?? p.created_at) as string);
+            if (i >= 0 && i < 30) lateFeesSeries[i].value += late;
+          } else {
+            lateFeesPrev30 += late;
+          }
+        }
+      }
+      for (const m of (maintCostQ.data ?? []) as any[]) {
+        const cost = Number(m.total_cost ?? 0);
+        if (!cost) continue;
+        const when = new Date(m.completed_at ?? m.created_at);
+        if (when >= d30Date) {
+          expenses30 += cost;
+          const i = idxFor((m.completed_at ?? m.created_at) as string);
+          if (i >= 0 && i < 30) expensesSeries[i].value += cost;
+        } else {
+          expensesPrev30 += cost;
+        }
+      }
+
+      setFinance({
+        revenue30, revenuePrev30, revenueSeries,
+        outstanding, outstandingSeries,
+        expenses30, expensesPrev30, expensesSeries,
+        lateFees30, lateFeesPrev30, lateFeesSeries,
       });
 
       // Build 30-day series
@@ -157,13 +249,60 @@ export function OverviewPanel() {
         />
       </div>
 
-      {/* Activity donut */}
-      <ActivityDonut
-        tab={activityTab}
-        onTab={setActivityTab}
-        fleet={fleet}
-        drivers={drivers}
-      />
+      {/* Finance strip + Activity donut */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <MiniFinanceCard
+            icon={DollarSign}
+            tone="emerald"
+            label="Revenue"
+            hint="Last 30 Days"
+            value={finance?.revenue30}
+            prev={finance?.revenuePrev30}
+            series={finance?.revenueSeries}
+            format="usd"
+          />
+          <MiniFinanceCard
+            icon={Wallet}
+            tone="sky"
+            label="Outstanding"
+            hint="Open Balances"
+            value={finance?.outstanding}
+            series={finance?.outstandingSeries}
+            format="usd"
+            noDelta
+          />
+          <MiniFinanceCard
+            icon={Receipt}
+            tone="violet"
+            label="Expenses"
+            hint="Maintenance 30d"
+            value={finance?.expenses30}
+            prev={finance?.expensesPrev30}
+            series={finance?.expensesSeries}
+            format="usd"
+            invertDelta
+          />
+          <MiniFinanceCard
+            icon={AlertTriangle}
+            tone="red"
+            label="Late Fees"
+            hint="Collected 30d"
+            value={finance?.lateFees30}
+            prev={finance?.lateFeesPrev30}
+            series={finance?.lateFeesSeries}
+            format="usd"
+          />
+        </div>
+        <div className="lg:col-span-2">
+          <ActivityDonut
+            tab={activityTab}
+            onTab={setActivityTab}
+            fleet={fleet}
+            drivers={drivers}
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Chart */}
@@ -533,6 +672,96 @@ function ActivityDonut({
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniFinanceCard({
+  icon: Icon,
+  tone,
+  label,
+  hint,
+  value,
+  prev,
+  series,
+  format,
+  invertDelta,
+  noDelta,
+}: {
+  icon: any;
+  tone: "emerald" | "sky" | "violet" | "red";
+  label: string;
+  hint?: string;
+  value?: number;
+  prev?: number;
+  series?: { day: string; value: number }[];
+  format?: "usd";
+  invertDelta?: boolean;
+  noDelta?: boolean;
+}) {
+  const toneMap = {
+    emerald: { text: "text-emerald-600", bg: "bg-emerald-50", stroke: "#22c55e", fill: "rgba(34,197,94,0.12)" },
+    sky: { text: "text-sky-600", bg: "bg-sky-50", stroke: "#0ea5e9", fill: "rgba(14,165,233,0.12)" },
+    violet: { text: "text-violet-600", bg: "bg-violet-50", stroke: "#8b5cf6", fill: "rgba(139,92,246,0.12)" },
+    red: { text: "text-real-red", bg: "bg-red-50", stroke: "#E61919", fill: "rgba(230,25,25,0.12)" },
+  } as const;
+  const t = toneMap[tone];
+
+  const fmt = (n?: number) => {
+    if (n == null) return "—";
+    if (format === "usd") {
+      return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    }
+    return n.toLocaleString();
+  };
+
+  let deltaPct: number | undefined;
+  if (!noDelta && value != null && prev != null) {
+    if (prev === 0) deltaPct = value > 0 ? 100 : 0;
+    else deltaPct = Math.round(((value - prev) / prev) * 100);
+  }
+  const isGood = deltaPct == null ? true : invertDelta ? deltaPct <= 0 : deltaPct >= 0;
+  const gradId = `mini-${tone}-${label.replace(/\s+/g, "")}`;
+
+  return (
+    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className={`w-8 h-8 rounded-lg grid place-items-center ${t.bg} ${t.text}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-neutral-900">{label}</div>
+            {hint && <div className="text-[11px] text-neutral-500">{hint}</div>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[22px] leading-none font-semibold tracking-tight text-neutral-900 tabular-nums">
+            {fmt(value)}
+          </div>
+          {deltaPct !== undefined && (
+            <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${isGood ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+              {isGood ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+              {Math.abs(deltaPct)}%
+            </div>
+          )}
+        </div>
+        <div className="h-12 flex-1 max-w-[140px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={series ?? []} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={t.stroke} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={t.stroke} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="value" stroke={t.stroke} strokeWidth={2} fill={`url(#${gradId})`} dot={false} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>
