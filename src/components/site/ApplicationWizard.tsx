@@ -611,6 +611,19 @@ function DateField({ label, value, onChange, min }: { label: string; value: stri
   );
 }
 
+function extFromMime(mime: string): string {
+  switch ((mime || "").toLowerCase()) {
+    case "image/png": return "png";
+    case "image/jpeg":
+    case "image/jpg": return "jpg";
+    case "image/webp": return "webp";
+    case "image/heic":
+    case "image/heif": return "heic";
+    case "application/pdf": return "pdf";
+    default: return "jpg";
+  }
+}
+
 function FileUploadField({
   label,
   accept,
