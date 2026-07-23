@@ -326,17 +326,11 @@ export function DriversPanel() {
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1">
+                        <div>
                           {a.phone ? (
-                            <>
-                              <a href={`tel:${a.phone}`} title="Call" className="inline-flex items-center gap-1 rounded border border-border bg-white px-1.5 py-0.5 text-[11px] hover:bg-soft">
-                                <Phone className="w-3 h-3" /> Call
-                              </a>
-                              <a href={smsHref(a.phone)} title="Text" className="inline-flex items-center gap-1 rounded border border-border bg-white px-1.5 py-0.5 text-[11px] hover:bg-soft">
-                                <MessageSquare className="w-3 h-3" /> Text
-                              </a>
-                              <span className="text-[11px] text-muted-foreground select-all">{formatPhone(a.phone)}</span>
-                            </>
+                            <a href={`tel:${a.phone}`} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                              <Phone className="w-3 h-3" /> {formatPhone(a.phone)}
+                            </a>
                           ) : (
                             <span className="text-[11px] text-muted-foreground">No phone</span>
                           )}
@@ -393,6 +387,16 @@ export function DriversPanel() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setOpen(a)}>Open</DropdownMenuItem>
+                          {a.phone && (
+                            <DropdownMenuItem onClick={() => window.location.href = `tel:${a.phone}`}>
+                              <Phone className="w-4 h-4 mr-2" /> Call
+                            </DropdownMenuItem>
+                          )}
+                          {a.phone && (
+                            <DropdownMenuItem onClick={() => window.location.href = smsHref(a.phone)}>
+                              <MessageSquare className="w-4 h-4 mr-2" /> Text
+                            </DropdownMenuItem>
+                          )}
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
                               <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
