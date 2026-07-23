@@ -25,6 +25,8 @@ import {
   User as UserIcon, FileText, Star, Trash2, Copy, GitMerge,
   MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
 } from "lucide-react";
+import { removeCardOnFile } from "@/lib/payments.functions";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
 const DEPOSIT_STATUSES = ["not_paid","partially_paid","paid","refunded"] as const;
