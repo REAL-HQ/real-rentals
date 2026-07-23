@@ -476,7 +476,6 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                 {busy ? "Charging…" : `Pay Now — ${fmt(billing.outstandingCents / 100)}`}
               </button>
             )}
-            <Link to="/card/$applicationId" params={{ applicationId: "self" }} className="hidden" />
             <UpdateCardButton />
           </div>
         </div>
