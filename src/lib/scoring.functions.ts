@@ -53,8 +53,8 @@ async function callScoringModel(payload: {
   row: Record<string, any>;
   images: { label: string; url: string }[];
 }): Promise<ScoreResult> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("Missing ANTHROPIC_API_KEY");
 
   const rubric = `You are scoring a rideshare/delivery driver application for a rental company.
 
@@ -85,30 +85,48 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
     current_step: payload.row.current_step ?? null,
   };
 
+  // Fetch each image and inline as base64 for Claude's vision input
+  const imageBlocks = await Promise.all(
+    payload.images.map(async (img) => {
+      try {
+        const r = await fetch(img.url);
+        if (!r.ok) return null;
+        const ct = r.headers.get("content-type") || "image/jpeg";
+        const media_type = ct.split(";")[0].trim();
+        const buf = new Uint8Array(await r.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        const b64 = btoa(bin);
+        return {
+          type: "image" as const,
+          source: { type: "base64" as const, media_type, data: b64 },
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
   const userContent: any[] = [
     {
       type: "text",
-      text: `Applicant claims:\n${JSON.stringify(claimSummary, null, 2)}\n\nAttached images (in order): ${payload.images.map((i) => i.label).join(", ") || "(none)"}\n\nScore now.`,
+      text: `Applicant claims:\n${JSON.stringify(claimSummary, null, 2)}\n\nAttached images (in order): ${payload.images.map((i) => i.label).join(", ") || "(none)"}\n\nScore now. Respond with strict JSON only.`,
     },
-    ...payload.images.map((img) => ({
-      type: "image_url",
-      image_url: { url: img.url },
-    })),
+    ...imageBlocks.filter(Boolean),
   ];
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${key}`,
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
-      messages: [
-        { role: "system", content: rubric },
-        { role: "user", content: userContent },
-      ],
-      response_format: { type: "json_object" },
+      model: "claude-sonnet-4-5",
+      max_tokens: 1024,
+      system: rubric,
+      messages: [{ role: "user", content: userContent }],
     }),
   });
 
@@ -117,9 +135,10 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
     throw new Error(`AI scoring failed (${res.status}): ${t.slice(0, 300)}`);
   }
   const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    content?: Array<{ type: string; text?: string }>;
   };
-  const content = json.choices?.[0]?.message?.content ?? "";
+  const content =
+    json.content?.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n") ?? "";
   let parsed: any;
   try {
     parsed = JSON.parse(content);
