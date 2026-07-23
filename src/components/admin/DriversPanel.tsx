@@ -1163,3 +1163,137 @@ function FilterSelect({ label, value, onChange, options }: {
     </select>
   );
 }
+
+function cardLinkFor(applicationId: string) {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/card/${applicationId}`;
+}
+
+function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
+  const link = cardLinkFor(driver.id);
+  const hasCard = !!driver.card_last4;
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Card-on-file link copied");
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  }
+
+  async function remove() {
+    if (!confirm("Remove card on file?")) return;
+    try {
+      const res = await removeCardOnFile({
+        data: { applicationId: driver.id, environment: getStripeEnvironment() },
+      });
+      if ("error" in res) throw new Error(res.error);
+      onUpdate({
+        stripe_payment_method_id: null,
+        card_brand: null,
+        card_last4: null,
+        card_exp_month: null,
+        card_exp_year: null,
+        card_on_file_at: null,
+      });
+      toast.success("Card removed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to remove card");
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
+        <CreditCard className="w-3.5 h-3.5" />
+        {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={copyLink}>
+          <Copy className="w-4 h-4 mr-2" /> Copy card-on-file link
+        </DropdownMenuItem>
+        {driver.phone && (
+          <DropdownMenuItem asChild>
+            <a href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}>
+              <MessageSquare className="w-4 h-4 mr-2" /> Text link to driver
+            </a>
+          </DropdownMenuItem>
+        )}
+        {driver.email && (
+          <DropdownMenuItem asChild>
+            <a href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}>
+              <Mail className="w-4 h-4 mr-2" /> Email link to driver
+            </a>
+          </DropdownMenuItem>
+        )}
+        {hasCard && (
+          <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={remove}>
+            <Trash2 className="w-4 h-4 mr-2" /> Remove card
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function CardOnFileCard({ driver, onUpdate: _onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
+  const link = cardLinkFor(driver.id);
+  const hasCard = !!driver.card_last4;
+  return (
+    <div className="rounded-xl border border-border bg-white p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Card On File</div>
+        {hasCard ? (
+          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">Saved</Badge>
+        ) : (
+          <Badge variant="secondary" className="bg-gray-100 text-gray-700 hover:bg-gray-100 text-[10px]">Not On File</Badge>
+        )}
+      </div>
+      {hasCard ? (
+        <div className="space-y-1.5 text-sm">
+          <div className="capitalize font-medium">{driver.card_brand} ····{driver.card_last4}</div>
+          {driver.card_exp_month && driver.card_exp_year && (
+            <div className="text-xs text-muted-foreground">
+              Expires {String(driver.card_exp_month).padStart(2, "0")}/{String(driver.card_exp_year).slice(-2)}
+            </div>
+          )}
+          {driver.card_on_file_at && (
+            <div className="text-xs text-muted-foreground">
+              Saved {new Date(driver.card_on_file_at).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Send this driver a secure link to save a card. No charge is made.
+          </p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  toast.success("Link copied");
+                } catch {
+                  toast.error("Failed to copy");
+                }
+              }}
+              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
+            >
+              Copy link
+            </button>
+            <a
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
+            >
+              Preview
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
