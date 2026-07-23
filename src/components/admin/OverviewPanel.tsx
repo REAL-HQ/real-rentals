@@ -165,8 +165,8 @@ export function OverviewPanel() {
                   contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
                   labelStyle={{ color: "#111", fontWeight: 600 }}
                 />
-                <Area type="monotone" dataKey="leads" stroke="#E61919" strokeWidth={2} fill="#E61919" fillOpacity={0.06} dot={false} activeDot={{ r: 4 }} />
-                <Area type="monotone" dataKey="apps" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.06} dot={false} activeDot={{ r: 4 }} />
+                <Area type="monotone" dataKey="leads" stroke="#E61919" strokeWidth={2} fill="#E61919" fillOpacity={0.18} dot={false} activeDot={{ r: 4 }} />
+                <Area type="monotone" dataKey="apps" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.22} dot={false} activeDot={{ r: 4 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
