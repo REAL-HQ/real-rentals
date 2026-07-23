@@ -50,7 +50,7 @@ export function FleetOwnersPanel() {
                   {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <button onClick={() => remove(f.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
+              <button onClick={() => remove(f.id)} className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-xs hover:bg-[#CC0000] hover:text-white hover:border-[#CC0000] transition-colors duration-150">Delete</button>
             </div>
           </div>
           {f.photo_urls && f.photo_urls.length > 0 && (

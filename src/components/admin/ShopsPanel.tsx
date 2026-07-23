@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Store, MapPin, Phone } from "lucide-react";
+import { StatusPill } from "./ui";
 
 type Shop = {
   id: string;
@@ -51,7 +52,7 @@ export function ShopsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{shops.length} shop(s)</span>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
+        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> Add Shop
         </button>
       </div>
@@ -63,15 +64,13 @@ export function ShopsPanel() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {shops.map((s) => (
-            <div key={s.id} className="rounded-xl border border-border p-4 bg-white">
+            <div key={s.id} className="rounded-2xl border border-[#EDEDF0] p-4 bg-white shadow-sm transition-colors duration-150 hover:border-[#D9D9DE]">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-medium">{s.name}</div>
                   <div className="text-xs text-muted-foreground">{markets.find((m) => m.id === s.market_id)?.name ?? "No market"}</div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${s.is_active ? "bg-green-100 text-green-700" : "bg-soft text-muted-foreground"}`}>
-                  {s.is_active ? "Active" : "Inactive"}
-                </span>
+                <StatusPill status={s.is_active ? "active" : "inactive"} />
               </div>
               {s.address && <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{s.address}</div>}
               {s.phone && <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{s.phone}</div>}

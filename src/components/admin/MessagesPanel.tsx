@@ -54,14 +54,14 @@ export function MessagesPanel() {
         <span className="text-sm text-muted-foreground">{visible.length} message(s) in {grouped.size} thread(s)</span>
       </div>
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visible.length === 0 ? (
-        <div className="rounded-xl border border-border p-10 text-center text-muted-foreground">
+        <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-10 text-center text-muted-foreground">
           <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No messages.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {Array.from(grouped.entries()).map(([thread, items]) => (
-            <div key={thread} className="rounded-xl border border-border bg-white">
+            <div key={thread} className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
               <div className="px-4 py-2 border-b border-border text-xs text-muted-foreground">
                 Thread <code>{thread.slice(0, 8)}</code> · {items.length} message(s)
               </div>

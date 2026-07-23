@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StatusPill } from "./ui";
 
 const STATUSES = ["paid","current","late","past_due","collections"] as const;
 const TYPES = ["rent","deposit","late_fee","other"] as const;
@@ -77,22 +78,22 @@ export function PaymentsPanel() {
           </SelectContent>
         </Select>
         <div className="text-sm text-muted-foreground">Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span></div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-real-red text-white px-3 py-1.5 text-sm">+ Add Payment</button>
+        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#CC0000] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Payment</button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-soft text-xs uppercase tracking-wider text-muted-foreground">
+          <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
             <tr>
-              <th className="text-left px-3 py-2">Driver</th>
-              <th className="text-left px-3 py-2">Vehicle</th>
-              <th className="text-left px-3 py-2">Type</th>
-              <th className="text-right px-3 py-2">Amount</th>
-              <th className="text-left px-3 py-2">Due</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="text-left px-3 py-2">Method</th>
-              <th className="text-right px-3 py-2">Late fees</th>
-              <th className="text-right px-3 py-2">Balance</th>
+              <th className="text-left px-3 py-2.5">Driver</th>
+              <th className="text-left px-3 py-2.5">Vehicle</th>
+              <th className="text-left px-3 py-2.5">Type</th>
+              <th className="text-right px-3 py-2.5">Amount</th>
+              <th className="text-left px-3 py-2.5">Due</th>
+              <th className="text-left px-3 py-2.5">Status</th>
+              <th className="text-left px-3 py-2.5">Method</th>
+              <th className="text-right px-3 py-2.5">Late Fees</th>
+              <th className="text-right px-3 py-2.5">Balance</th>
               <th></th>
             </tr>
           </thead>
@@ -101,23 +102,25 @@ export function PaymentsPanel() {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
               return (
-                <tr key={p.id} className="border-t border-border">
-                  <td className="px-3 py-2">{d?.full_name || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
-                  <td className="px-3 py-2 capitalize">{p.type.replace(/_/g, " ")}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.amount).toLocaleString()}</td>
-                  <td className="px-3 py-2">{p.due_date || "—"}</td>
-                  <td className="px-3 py-2">
-                    <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
-                      <SelectTrigger className={`h-7 w-32 bg-white text-foreground text-xs`}><SelectValue /></SelectTrigger>
-                      <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <span className={`hidden text-[10px] px-2 py-0.5 rounded-full ${statusBadge[p.status]}`}>{p.status}</span>
+                 <tr key={p.id} className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
+                  <td className="px-3 text-[13px]">{d?.full_name || "—"}</td>
+                  <td className="px-3 text-xs text-[#55555E]">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
+                  <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.amount).toLocaleString()}</td>
+                  <td className="px-3 text-[13px]">{p.due_date || "—"}</td>
+                  <td className="px-3">
+                    <div className="flex items-center gap-2">
+                      <StatusPill status={p.status} />
+                      <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
+                        <SelectTrigger className="h-7 w-28 bg-white text-foreground text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
                   </td>
-                  <td className="px-3 py-2">{p.payment_method || "—"}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.late_fees).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right">${Number(p.balance_due).toLocaleString()}</td>
-                  <td className="px-3 py-2"><button onClick={() => remove(p.id)} className="text-xs text-muted-foreground hover:text-real-red">✕</button></td>
+                  <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.late_fees).toLocaleString()}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.balance_due).toLocaleString()}</td>
+                  <td className="px-3"><button onClick={() => remove(p.id)} className="text-xs text-[#9A9AA3] hover:text-[#CC0000] transition-colors duration-150">✕</button></td>
                 </tr>
               );
             })}

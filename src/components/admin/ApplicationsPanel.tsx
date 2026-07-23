@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { StatusPill, MicroLabel } from "./ui";
 
 const STATUSES = ["partial", "complete", "new", "reviewing", "approved", "declined", "active"];
 const SOURCES = ["homepage", "city_lp"];
@@ -116,13 +117,14 @@ export function ApplicationsPanel() {
       </div>
       <div className="space-y-2">
         {filtered.map((a) => (
-          <div key={a.id} className="rounded-xl bg-soft p-4 flex flex-wrap items-center gap-3">
+          <div key={a.id} className="rounded-2xl bg-white border border-[#EDEDF0] shadow-sm p-4 flex flex-wrap items-center gap-3 transition-colors duration-150 hover:border-[#D9D9DE]">
             <div className="flex-1 min-w-[240px]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{a.full_name}</span>
                 <ScoreBadge score={a.score ?? 0} />
+                <StatusPill status={a.status} />
                 {a.source && (
-                  <span className="text-[10px] uppercase tracking-wider rounded bg-white border border-border px-1.5 py-0.5 text-muted-foreground">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] rounded bg-[#F4F4F6] px-1.5 py-0.5 text-[#9A9AA3]">
                     {a.source}
                   </span>
                 )}

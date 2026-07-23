@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Globe } from "lucide-react";
+import { StatusPill } from "./ui";
 
 type Site = {
   id: string;
@@ -57,7 +58,7 @@ export function WebsitesPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{sites.length} site(s)</span>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
+        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> New Site
         </button>
       </div>
@@ -83,11 +84,11 @@ export function WebsitesPanel() {
           <p className="text-sm">No market sites yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-soft text-xs uppercase tracking-wider text-muted-foreground text-left">
+            <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
-                <th className="px-4 py-2">Title</th>
+                <th className="px-4 py-2.5">Title</th>
                 <th>Slug</th>
                 <th>Market</th>
                 <th>Status</th>
@@ -98,22 +99,25 @@ export function WebsitesPanel() {
                 <th></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-[#EDEDF0]">
               {sites.map((s) => (
-                <tr key={s.id}>
-                  <td className="px-4 py-2 font-medium">{s.title}</td>
+                <tr key={s.id} className="h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
+                  <td className="px-4 font-medium text-[13px]">{s.title}</td>
                   <td><code className="text-xs">/{s.slug}</code></td>
                   <td className="text-muted-foreground">{markets.find((m) => m.id === s.market_id)?.name ?? "—"}</td>
                   <td>
-                    <select
-                      value={s.status}
-                      onChange={(e) => updateSite(s.id, { status: e.target.value })}
-                      className="text-xs rounded border border-border bg-white px-2 py-1"
-                    >
-                      <option value="live">Live</option>
-                      <option value="coming_soon">Coming Soon</option>
-                      <option value="hidden">Hidden</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <StatusPill status={s.status} />
+                      <select
+                        value={s.status}
+                        onChange={(e) => updateSite(s.id, { status: e.target.value })}
+                        className="text-xs rounded border border-[#EDEDF0] bg-white px-2 py-1"
+                      >
+                        <option value="live">Live</option>
+                        <option value="coming_soon">Coming Soon</option>
+                        <option value="hidden">Hidden</option>
+                      </select>
+                    </div>
                   </td>
                   <td>
                     <input

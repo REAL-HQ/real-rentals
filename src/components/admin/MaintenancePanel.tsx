@@ -60,7 +60,7 @@ export function MaintenancePanel() {
           </select>
           <span className="text-sm text-muted-foreground">{filtered.length} record(s)</span>
         </div>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
+        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> New Record
         </button>
       </div>
@@ -73,9 +73,9 @@ export function MaintenancePanel() {
           <p className="text-sm">No maintenance records yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-soft text-xs uppercase tracking-wider text-muted-foreground text-left">
+            <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr><th className="px-4 py-2">Vehicle</th><th>Item</th><th>Category</th><th>Due</th><th>Cost</th><th>Status</th><th></th></tr>
             </thead>
             <tbody className="divide-y divide-border">
