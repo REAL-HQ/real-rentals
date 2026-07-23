@@ -26,7 +26,7 @@ import {
   MessageSquare, PhoneOutgoing, BadgeDollarSign, Globe, Flame, Thermometer, Snowflake, Sparkles, AlertTriangle,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
-import { chargeCardOnRental, type ChargeReason } from "@/lib/rental-payments.functions";
+import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 
 const DRIVER_STATUSES = ["new","reviewing","approved","active","suspended","declined","closed"] as const;
@@ -492,6 +492,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               </a>
             )}
             <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+            <AutopayActions driver={driver} />
             <DropdownMenu>
               <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
                 <MoreVertical className="w-4 h-4" />
