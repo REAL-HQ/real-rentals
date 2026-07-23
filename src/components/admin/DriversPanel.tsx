@@ -549,6 +549,16 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                   <BadgeDollarSign className="w-3 h-3 mr-1" /> Google Ads
                 </Badge>
               )}
+              {(driver as any).recovery_sent_at && (
+                <Badge variant="secondary" className="bg-purple-50 text-purple-800 hover:bg-purple-50 text-[10px]" title={`Recovery email sent ${new Date((driver as any).recovery_sent_at).toLocaleString()}`}>
+                  <Mail className="w-3 h-3 mr-1" /> Recovery Sent
+                </Badge>
+              )}
+              {(driver as any).doc_request_sent_at && (
+                <Badge variant="secondary" className="bg-blue-50 text-blue-800 hover:bg-blue-50 text-[10px]" title={`Docs requested ${new Date((driver as any).doc_request_sent_at).toLocaleString()}`}>
+                  <FileText className="w-3 h-3 mr-1" /> Docs Requested
+                </Badge>
+              )}
             </div>
             <div className="mt-4 space-y-1.5 text-xs">
               {driver.phone && (
