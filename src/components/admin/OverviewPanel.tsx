@@ -533,22 +533,43 @@ function KpiCard({
   accent?: "red";
 }) {
   const deltaPositive = (delta ?? 0) >= 0;
+  const isPrimary = accent === "red";
   return (
-    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
+    <div
+      className={`rounded-2xl border p-5 shadow-sm transition-colors duration-150 ${
+        isPrimary
+          ? "bg-[#CC0000] text-white border-transparent"
+          : "bg-white text-[#111114] border-[#EDEDF0]"
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <div className={`w-9 h-9 rounded-lg grid place-items-center ${accent === "red" ? "bg-[#fef2f2] text-real-red" : "bg-[#f5f6f8] text-neutral-700"}`}>
-          <Icon className="w-[18px] h-[18px]" />
+        <div
+          className={`w-9 h-9 rounded-lg grid place-items-center ${
+            isPrimary ? "bg-white/15 text-white" : "bg-[#F4F4F6] text-[#55555E]"
+          }`}
+        >
+          <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
         </div>
         {delta !== undefined && (
-          <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${deltaPositive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+          <span
+            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
+              isPrimary
+                ? "bg-white/15 text-white"
+                : deltaPositive
+                ? "bg-[rgba(15,138,75,0.08)] text-[#0F8A4B]"
+                : "bg-[rgba(204,0,0,0.08)] text-[#CC0000]"
+            }`}
+          >
             {deltaPositive ? "+" : ""}
             {delta}%
           </span>
         )}
       </div>
-      <div className="mt-4 text-[26px] leading-none font-semibold tracking-tight text-neutral-900">{value}</div>
-      <div className="mt-1.5 text-xs text-neutral-500">{label}</div>
-      {hint && <div className="mt-0.5 text-[11px] text-neutral-400">{hint}</div>}
+      <div className={`mt-4 text-[26px] leading-none font-semibold tracking-tight tabular-nums ${isPrimary ? "text-white" : "text-[#111114]"}`}>
+        {value}
+      </div>
+      <div className={`mt-1.5 text-xs ${isPrimary ? "text-white/85" : "text-[#55555E]"}`}>{label}</div>
+      {hint && <div className={`mt-0.5 text-[11px] ${isPrimary ? "text-white/70" : "text-[#9A9AA3]"}`}>{hint}</div>}
     </div>
   );
 }
