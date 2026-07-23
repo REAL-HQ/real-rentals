@@ -138,7 +138,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   </div>
 </body></html>`;
 
-  const opsInbox = process.env.LEAD_ALERT_TO || "go@drivereal.com";
+  const opsInbox = process.env.LEAD_ALERT_TO || "team@drivereal.com";
   await sendEmail({ to: opsInbox, subject, html });
 }
 
