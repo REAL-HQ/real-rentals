@@ -275,7 +275,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
         {(["all", ...DRIVER_STATUSES] as const).map((s) => (
           <button key={s} onClick={() => setFilter(s)}
             className={`px-3 py-1.5 rounded-md capitalize ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}>
-            {s} {s !== "all" && `(${drivers.filter((a) => a.status === s).length})`}
+            {s} ({s === "all" ? drivers.length : drivers.filter((a) => a.status === s).length})
           </button>
         ))}
         <div className="ml-auto">
