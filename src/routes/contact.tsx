@@ -64,9 +64,8 @@ function Contact() {
         </FadeUp>
         <FadeUp delay={80}>
           <div className="space-y-6">
-            <Item I={Phone} label="Phone" v="(555) 555-0199" />
-            <Item I={Mail} label="Email" v="drivers@realrentals.com" />
-            <Item I={MapPin} label="Lot" v="2847 Industrial Pkwy, Suite 100" />
+            <Item I={Phone} label="Phone" v="+1 (813) 699-9118" href="tel:+18136999118" />
+            <Item I={Mail} label="Email" v="team@drivereal.com" href="mailto:team@drivereal.com" />
           </div>
         </FadeUp>
       </section>
@@ -83,13 +82,18 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   );
 }
 
-function Item({ I, label, v }: { I: any; label: string; v: string }) {
+function Item({ I, label, v, href }: { I: any; label: string; v: string; href?: string }) {
+  const valueNode = href ? (
+    <a href={href} className="mt-1 font-medium hover:text-real-red transition-colors">{v}</a>
+  ) : (
+    <div className="mt-1 font-medium">{v}</div>
+  );
   return (
     <div className="flex gap-4 items-start">
       <div className="rounded-full bg-soft p-3"><I className="w-5 h-5 text-real-red" strokeWidth={1.75} /></div>
       <div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="mt-1 font-medium">{v}</div>
+        {valueNode}
       </div>
     </div>
   );
