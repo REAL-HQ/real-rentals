@@ -27,6 +27,8 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 
 const ThankYouRoute = ThankYouRouteImport.update({
@@ -119,6 +121,17 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => FleetRoute,
 } as any)
+const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
+  id: '/card/$applicationId',
+  path: '/card/$applicationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronWizardRecoveryRoute =
   ApiPublicCronWizardRecoveryRouteImport.update({
     id: '/api/public/cron/wizard-recovery',
@@ -144,8 +157,10 @@ export interface FileRoutesByFullPath {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -165,8 +180,10 @@ export interface FileRoutesByTo {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -187,8 +204,10 @@ export interface FileRoutesById {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -210,8 +229,10 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -231,8 +252,10 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/payments/webhook'
   id:
     | '__root__'
     | '/'
@@ -252,8 +275,10 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/card/$applicationId'
     | '/fleet/$id'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -274,7 +299,9 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  CardApplicationIdRoute: typeof CardApplicationIdRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -405,6 +432,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof FleetRoute
     }
+    '/card/$applicationId': {
+      id: '/card/$applicationId'
+      path: '/card/$applicationId'
+      fullPath: '/card/$applicationId'
+      preLoaderRoute: typeof CardApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/wizard-recovery': {
       id: '/api/public/cron/wizard-recovery'
       path: '/api/public/cron/wizard-recovery'
@@ -443,18 +484,10 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  CardApplicationIdRoute: CardApplicationIdRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
