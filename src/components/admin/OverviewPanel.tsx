@@ -561,9 +561,9 @@ function ActivityDonut({
   drivers: DriverBreak;
 }) {
   const fleetSegs = [
-    { key: "Available", value: fleet.available, color: "#22c55e" },
-    { key: "Rented", value: fleet.rented, color: "#0ea5e9" },
-    { key: "Maintenance", value: fleet.maintenance, color: "#f59e0b" },
+    { key: "Available", value: fleet.available, color: "#facc15" },
+    { key: "Rented", value: fleet.rented, color: "#22c55e" },
+    { key: "Maintenance", value: fleet.maintenance, color: "#E61919" },
   ];
   const driverSegs = [
     { key: "Active", value: drivers.active, color: "#22c55e" },
