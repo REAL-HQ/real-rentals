@@ -271,3 +271,70 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
   await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: "hello@drivereal.com" });
 }
+
+// -----------------------------------------------------------------------------
+// Applicant-facing: admin-triggered document request
+// -----------------------------------------------------------------------------
+
+type DocRequestArgs = {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  items: string[]; // human-readable labels
+  note?: string | null;
+};
+
+export async function sendDocumentRequestEmail(args: DocRequestArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const resumeUrl = `https://drivereal.com/thank-you?id=${encodeURIComponent(args.applicationId)}`;
+  const subject = `Almost Done, ${name} — A Few Items To Finish Your REAL RENTALS Application`;
+  const list = args.items
+    .map(
+      (i) =>
+        `<li style="padding:6px 0;font-size:14px;color:#111;line-height:1.5">✓ ${escapeHtml(i)}</li>`,
+    )
+    .join("");
+  const noteBlock = args.note
+    ? `<div style="margin-top:16px;padding:12px 14px;background:#FFF5F5;border-left:3px solid #CC0000;border-radius:6px;color:#444;font-size:14px;line-height:1.5"><strong style="color:#CC0000">Note from our team:</strong><br>${escapeHtml(args.note)}</div>`
+    : "";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Almost Done, ${escapeHtml(name)}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks for starting your application with REAL RENTALS. To finish approving you and get you on the road, we just need a few quick items:</p>
+      <ul style="list-style:none;padding:0;margin:8px 0 4px;border-top:1px solid #eee;border-bottom:1px solid #eee">${list}</ul>
+      ${noteBlock}
+      <div style="margin-top:22px">
+        <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload Your Documents</a>
+      </div>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
+  await sendEmail({ to: args.to, subject, html, replyTo: "hello@drivereal.com" });
+}
+
+// Abandoned-application recovery (3–48h partial applications, one-shot).
+type AbandonedArgs = {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  market: string | null;
+  pickupDate: string | null;
+  returnDate: string | null;
+};
+
+export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const resumeUrl = `https://drivereal.com/thank-you?id=${encodeURIComponent(args.applicationId)}`;
+  const subject = "Finish Your REAL RENTALS Quote — Cars Are Moving Fast";
+  const details: string[] = [];
+  if (args.market) details.push(`in <strong>${escapeHtml(args.market)}</strong>`);
+  if (args.pickupDate && args.returnDate) {
+    details.push(`from <strong>${escapeHtml(args.pickupDate)}</strong> to <strong>${escapeHtml(args.returnDate)}</strong>`);
+  }
+  const detailLine = details.length
+    ? `Your quote ${details.join(" ")} is still open — but our fleet moves fast.`
+    : "Your quote is still open — but our fleet moves fast.";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Almost There, ${escapeHtml(name)}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
+      <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
+  await sendEmail({ to: args.to, subject, html, replyTo: "hello@drivereal.com" });
+}
