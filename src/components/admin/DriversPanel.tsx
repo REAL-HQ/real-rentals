@@ -284,7 +284,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
             disabled={merging}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
           >
-            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge duplicates"}
+            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
           </button>
         </div>
       </div>
