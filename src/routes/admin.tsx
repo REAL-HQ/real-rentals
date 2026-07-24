@@ -122,7 +122,7 @@ function Admin() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAFB] text-[#111114]">
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar — dark shell, grouped, user block at bottom */}
+        {/* Sidebar — dark shell, grouped */}
         <aside className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[248px]"} transition-[width] duration-200 flex-col bg-[#141416] sticky top-0 h-screen`}>
           <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
@@ -172,29 +172,6 @@ function Admin() {
               );
             })}
           </nav>
-          {/* Signed-in admin block (bottom) */}
-          <div className="px-3 pb-4 pt-3 border-t border-white/5">
-            <div className={`group relative flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-[#1A1A1E] transition-colors duration-150 ${collapsed ? "justify-center" : ""}`}>
-              <span className="w-8 h-8 shrink-0 rounded-full bg-[#CC0000] text-white grid place-items-center text-[11px] font-semibold">
-                {initials}
-              </span>
-              {!collapsed && (
-                <>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-white truncate">{displayName}</div>
-                    <div className="text-[11px] text-[#8E8E96] truncate">{session?.user?.email}</div>
-                  </div>
-                  <button
-                    onClick={signOut}
-                    aria-label="Sign out"
-                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[#8E8E96] hover:text-white transition-opacity duration-150"
-                  >
-                    <LogOut className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
         </aside>
 
         {/* Main column */}
@@ -215,28 +192,23 @@ function Admin() {
           </div>
           <main className="flex-1 min-w-0 bg-[#FAFAFB]">
             <header className="px-8 py-4 flex items-center justify-between gap-4">
-              {/* Left: breadcrumb */}
-              <nav className="flex items-center gap-2 text-[13px] min-w-0" aria-label="Breadcrumb">
-                <span className="text-[#9A9AA3]">{current.group}</span>
-                <span className="text-[#D6D6DB]">/</span>
-                <span className="font-semibold text-[#111114] truncate">{current.label}</span>
-              </nav>
-              {/* Right: search + notifications + date */}
+              {/* Left: search */}
+              <div className="relative hidden sm:block w-[360px] max-w-full">
+                <Search className="w-[18px] h-[18px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
+                <input
+                  type="search"
+                  placeholder="Search Drivers, Vehicles, Partners…"
+                  value={globalSearch}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGlobalSearch(v);
+                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
+                  }}
+                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#CC0000]/40 focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
+                />
+              </div>
+              {/* Right: notifications + profile */}
               <div className="flex items-center gap-2">
-                <div className="relative hidden sm:block w-[320px] max-w-full">
-                  <Search className="w-[18px] h-[18px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
-                  <input
-                    type="search"
-                    placeholder="Search Drivers, Vehicles, Partners…"
-                    value={globalSearch}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setGlobalSearch(v);
-                      if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
-                    }}
-                    className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#CC0000]/40 focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
-                  />
-                </div>
                 <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
                   <DropdownMenuTrigger
                     aria-label="Notifications"
@@ -285,6 +257,52 @@ function Admin() {
                 <div className="hidden md:block text-[13px] text-[#55555E] tabular-nums pl-1">
                   {new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
                 </div>
+                {/* Profile dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Account"
+                    className="ml-1 w-9 h-9 rounded-full hover:bg-[#F4F4F6] transition-colors duration-150 grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#CC0000]/15 text-[#CC0000] grid place-items-center text-[11px] font-bold">
+                      {initials}
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[300px] p-0 rounded-2xl overflow-hidden">
+                    <div className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 rounded-full bg-[#CC0000]/15 text-[#CC0000] grid place-items-center text-[15px] font-bold">
+                          {initials}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-semibold text-[#111114] capitalize truncate">{displayName}</div>
+                          <div className="text-[12px] text-[#55555E] truncate">{session?.user?.email}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setTab("settings")}
+                        className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
+                      >
+                        <SettingsIcon className="w-[18px] h-[18px] text-[#9A9AA3] shrink-0" strokeWidth={1.75} />
+                        <span>Settings</span>
+                      </button>
+                      <button
+                        onClick={() => setTab("team")}
+                        className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
+                      >
+                        <UserCog className="w-[18px] h-[18px] text-[#9A9AA3] shrink-0" strokeWidth={1.75} />
+                        <span>Team</span>
+                      </button>
+                      <div className="h-px bg-[#EDEDF0] my-3" />
+                      <button
+                        onClick={signOut}
+                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#CC0000] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
+                      >
+                        <LogOut className="w-4 h-4" strokeWidth={2} />
+                        Log Out
+                      </button>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </header>
             <div className="p-6 md:p-8">
