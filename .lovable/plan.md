@@ -1,59 +1,99 @@
-## Section 1 — Partner Portal (`/partner`)
+# Back-Office Redesign — Overview + Driver Profile
 
-Build a real partner-facing portal so a logged-in partner sees only their own data. This turn = Section 1 only; Sections 2–4 (Maintenance DB, role views, AI notifications) follow in subsequent turns.
+Scope: visual/UX redesign only. No changes to data queries, routes, auth, ApplicationWizard, or the public site.
 
-### 1. Migration (one file)
+## 1. Design tokens (reuse existing)
+- Canvas `#FAFAFB`, surface `#FFFFFF`, border `#EDEDF0`, text `#111114 / #55555E / #9A9AA3`
+- Accent `#CC0000` — only primary actions, urgent counts, current lifecycle stage, selected nav
+- 8px spacing scale, 12–16px radius, `shadow-sm` max, Lucide icons only
+- Extend `src/components/admin/ui.tsx` with: `SectionCard`, `MetricCard`, `LifecycleRail`, `QueueRow`, `ReadinessSummary`, `Drawer` (right-side, 760px), `Timeline` (already exists — polish)
 
-- Extend `app_role` enum: add `'partner'` (alongside existing `admin`).
-- `partners`: add `user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL` so a partner row can be linked to a login. Add `revenue_split_pct numeric DEFAULT 50`.
-- `vehicles`: add `partner_id uuid REFERENCES public.partners(id) ON DELETE SET NULL` so we know which partner owns each car.
-- `applications` (drivers) — confirm `background_check_status`, `mvr_status` exist (they do per plan.md); add `rideshare_history_status text`, `earnings_verified_status text` (`pending|passed|failed` each).
-- New `documents` table:
-  - `id, driver_id (→applications), partner_id (→partners), vehicle_id (→vehicles), kind text` (`drivers_license | rental_agreement`), `storage_bucket text, storage_path text, visibility text[] default '{partner,admin}'`, timestamps.
-  - RLS: admin all; partner SELECT where `partner_id` matches their partner row AND `'partner' = ANY(visibility)`.
-  - GRANTs: `SELECT, INSERT, UPDATE, DELETE` to `authenticated`; `ALL` to `service_role`.
-- RLS policy updates:
-  - `partners`: partner can SELECT their own row (`user_id = auth.uid()`).
-  - `vehicles`: partner can SELECT vehicles where `partner_id` matches their partner row.
-  - `applications`: partner can SELECT only the driver currently assigned to one of their vehicles (join via `vehicle_id`), and only the vetting columns + name fields — enforced by a SECURITY DEFINER view `public.partner_driver_view` exposing just `id, full_name, vehicle_id, background_check_status, mvr_status, rideshare_history_status, earnings_verified_status`.
-  - `payments`: partner can SELECT payments where vehicle belongs to their partner row.
+## 2. Overview Dashboard (`src/components/admin/OverviewPanel.tsx`)
+Rebuild layout top→bottom:
 
-### 2. Auth wiring
+**Row A — 4 operational metric cards** (equal width)
+1. Available Vehicles — count + "Ready to rent"
+2. Active Rentals — count + utilization %
+3. Drivers Awaiting Action — count + "X docs · Y interviews · Z approvals"
+4. Weekly Rental Revenue — $ + WoW delta
 
-- Admin grants partner login via existing `user_roles` flow (`role='partner'`) and sets `partners.user_id` to the matched auth user. Add a small "Link Login" action in admin's `PartnersPanel` (input email → look up auth user via server fn → set user_id + insert user_roles row).
-- New route `/partner` — top-level, with its own `beforeLoad` redirect: if not signed in → `/admin` (reuse SignIn), if signed in but no `partner` role → "No partner access" screen.
+Icon + label + big value + one supporting line. No full-red backgrounds unless urgent.
 
-### 3. Partner Dashboard UI (`/partner`)
+**Row B — two columns**
+- Left (2/3): **Revenue & Collections** consolidated card — Revenue / Collected / Outstanding / Expenses / Net + inline sparkline + period selector
+- Right (1/3): **Fleet Activity** — keep existing donut/logic, wrap in redesigned card with Available/Active/Maintenance/Reserved, utilization %, current vs potential weekly earnings
 
-Single page, dark sidebar branding consistent with admin. Panels in this order:
+**Row C — Action Queue** (single card, list rows)
+Each row: icon · count · label · muted description · right-aligned "View" link. Items: missing docs, incomplete interviews, ready for approval, insurance verify, payments due, late payments, maintenance due.
 
-1. **My Vehicles** (top): for each vehicle owned by partner, a card with photo, year/make/model, VIN, current renter name + vetting badges (Background ✓, Rideshare History ✓, Earnings Verified ✓ — green when `passed`, neutral "Pending" otherwise).
-2. **Renter Documents** (per vehicle, expandable): "License" and "Rental Agreement" buttons (Lucide `IdCard`, `FileSignature`). Click → server fn returns signed URL from storage bucket, opens in new tab. No other PII shown.
-3. **Pickup & Roles status note** — static info card with the exact PDF copy.
-4. **How Your Split Works** — info panel with 50/50 explainer, $350 → $175 example, routine-vs-major maintenance language.
-5. **Earnings Breakdown** (per vehicle): table with columns Gross Rent Collected → Your Rent Share (50%) → Maint. Share (50%) → Net. Period selector: This Week / This Month. Computed via a server fn that sums `payments` for the partner's vehicles. Maintenance share shows $0 with a "Coming with Maintenance system" hint (lands in Section 2).
+**Row D — Recent Applications** (5–7 rows)
+Columns: Driver · Stage · Readiness · Needed By · Blocker · Last Activity · Assignee · row-click. Remove phone/email. Footer link "View all drivers".
 
-### 4. Server functions (`src/lib/partner.functions.ts`)
+Keep all existing queries; just reshape the presentation and derive the new fields from data already loaded (fall back to `—` when unavailable).
 
-All use `requireSupabaseAuth` + check partner role + scope by `partners.user_id = auth.uid()`:
-- `getMyPartner()` → partner row + vehicles + current renter per vehicle (with vetting fields).
-- `getRenterDocumentUrl({ documentId })` → signed URL (60s) from storage; verifies partner_id match before signing.
-- `getMyEarnings({ period: 'week'|'month' })` → per-vehicle aggregates.
-- `linkPartnerLogin({ partnerId, email })` (admin-only) → looks up auth user by email via admin client, sets `partners.user_id`, upserts `user_roles` row with `partner`.
+## 3. Driver Profile (`src/components/admin/DriversPanel.tsx` → DriverDetail)
 
-### 5. Out of scope this turn
-- Maintenance tables, shops, notifications (Sections 2–4).
-- Document upload UI (admin uploads via storage console for now; we just read).
-- Major-repair line-items in Earnings (added in Section 2 when `maintenance_records` exists).
+**Header** (compact, single row)
+- Left: avatar/initials · name · status pill · city · phone · email · source · applied date · last contact
+- Right: ONE contextual primary button (Continue Application / Continue Interview / Review Documents / Approve / Assign Vehicle) + icon buttons Call · Text · Email · More (dropdown)
 
-### Technical notes
-- Storage: reuse existing `license-uploads` bucket for licenses; new `rental-agreements` bucket (private) created in the migration via storage API call (or admin manually — confirm in migration).
-- All new tables get standard GRANTs + RLS as per Lovable rules.
-- White dropdowns rule preserved.
-- No edge functions, no Twilio, no AI calls this turn.
+**Lifecycle Rail** (below header, full width)
+Stages: Applied → Contacted → Screening → Documents → Insurance → Approved → Pickup → Active. Completed = green check, current = red filled with % + time-in-stage + blocker caption, future = gray. Horizontal rail with connecting lines and stage labels.
 
-### Build order in this turn
-1. Migration (you approve, I wait for green light).
-2. Server fns + types regenerated.
-3. `/partner` route + panels.
-4. Admin "Link Login" action.
+**Two-column body**
+
+Left sticky sidebar (~320px):
+- Driver Summary (avatar, contacts, city, source, tags)
+- Rental Need (needed-by, weekly rate, FT/PT, current vehicle, card-on-file)
+- Readiness (level, app %, docs %, insurance, screening)
+- Quick Actions (Continue Interview / Request Docs / Run Screening / Add Note / Assign Vehicle)
+
+Right main workspace:
+- **Driver Readiness Summary** card at top: status line, Blockers list, Positive indicators list, Recommended next action + primary CTA
+- **Tabs**: Overview · Application · Documents · Screening · Rental · Payments · Activity · Notes (remove permanent Interview tab)
+
+Tab contents:
+- **Overview**: Readiness Summary (compact) → Driver Facts grid → Requirements Checklist → Recent Activity timeline
+- **Documents**: compact list rows (license, insurance, proof of address, gig screenshots, payment auth, signed agreement, MVR auth) with status pill, upload/expiration, actions View/Replace/Request
+- **Screening / Application / Rental / Payments / Activity / Notes**: keep existing panels wrapped in new `SectionCard`
+
+## 4. Interview Drawer
+- New `InterviewDrawer` component (right-side sheet, 760px desktop, full-screen mobile) using shadcn `Sheet`
+- Triggered by "Continue Interview" button anywhere in profile
+- Steps: Gig Activity → Vehicle Need → License → Insurance → Driving History → Payment Readiness → Notes & Decision
+- One step visible at a time; progress bar top; sticky footer: Save & Close · Previous · Next · Complete
+- Suggested call script hidden behind "View Suggested Script" collapsible per step
+- Autosave indicator, validation inline
+- Reuses existing `DriverScreening` field data — moves it out of main profile
+
+## 5. Readiness (formerly AI Prospect Score)
+- Rename UI label to "Driver Readiness"
+- Component shows: label · score (small) · confidence · helping factors · hurting factors · missing info · recommended next step
+- Distinguish "missing info" vs "risk" visually (gray vs amber)
+
+## 6. Gig platform logos
+- Add `src/components/admin/PlatformLogo.tsx` entries for Uber/Lyft/DoorDash/Instacart/Amazon Flex/Walmart Spark/Shipt/Roadie (component already exists — extend). Use official SVG marks only.
+
+## 7. What is NOT changing
+- ApplicationWizard
+- Data schemas, queries, RPCs, routes, auth
+- Public marketing site
+- Fleet donut chart logic
+- Admin sidebar structure (already redesigned)
+
+## Files touched
+- `src/components/admin/ui.tsx` (add primitives)
+- `src/components/admin/OverviewPanel.tsx` (rebuild)
+- `src/components/admin/DriversPanel.tsx` (DriverDetail rebuild; list untouched)
+- `src/components/admin/DriverScreening.tsx` (extract interview into drawer form)
+- New: `src/components/admin/InterviewDrawer.tsx`
+- New: `src/components/admin/ReadinessSummary.tsx`
+- New: `src/components/admin/LifecycleRail.tsx`
+- `src/components/admin/PlatformLogo.tsx` (extend)
+
+## Delivery order
+1. Add tokens/primitives in `ui.tsx`
+2. Rebuild Overview
+3. Build LifecycleRail + ReadinessSummary + InterviewDrawer
+4. Rebuild DriverDetail layout, wire drawer, consolidate tabs
+5. Polish: hover/focus, empty states, toasts, keyboard nav
