@@ -1,59 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Users, ShieldCheck, TrendingUp, ArrowUpRight, Flame, Phone, Mail, MapPin, Clock, Wrench, DollarSign, Wallet, Receipt, AlertTriangle, ArrowUp, ArrowDown, List as ListIcon, LineChart as LineChartIcon, Info } from "lucide-react";
-import { Tooltip as UITooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Car, Users, ShieldCheck, DollarSign, FileText, ClipboardList, CheckCircle2,
+  CreditCard, AlertTriangle, Wrench, Wallet, ArrowUp, ArrowDown, ArrowUpRight, Flame, Sparkles,
+} from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-
-type Kpis = {
-  leads7: number;
-  leadsPrev7: number;
-  apps7: number;
-  activeDrivers: number;
-  vehicles: number;
-  vehiclesAvailable: number;
-  hotLeads: number;
-  screeningsPending: number;
-};
-
-type FleetBreak = { available: number; rented: number; maintenance: number };
-type DriverBreak = { active: number; pending: number; leads: number };
+import { ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { MetricCard, SectionCard, MicroLabel, ActionQueueRow, StatusPill } from "./ui";
 
 type FinancePoint = { day: string; value: number };
-type Finance = {
-  revenue30: number;
-  revenuePrev30: number;
-  revenueSeries: FinancePoint[];
-  outstanding: number;
-  outstandingSeries: FinancePoint[];
-  expenses30: number;
-  expensesPrev30: number;
-  expensesSeries: FinancePoint[];
-  lateFees30: number;
-  lateFeesPrev30: number;
-  lateFeesSeries: FinancePoint[];
-};
 
-type DayPoint = { day: string; leads: number; apps: number };
-
-function fmtDay(d: Date) {
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function fmtDay(d: Date) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+function usd(n: number | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+function timeAgo(iso?: string | null) {
+  if (!iso) return "—";
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24); return `${d}d ago`;
 }
 
 export function OverviewPanel() {
-  const [kpis, setKpis] = useState<Kpis | null>(null);
-  const [series, setSeries] = useState<DayPoint[]>([]);
+  const [vehiclesAvail, setVehiclesAvail] = useState(0);
+  const [vehiclesTotal, setVehiclesTotal] = useState(0);
+  const [rented, setRented] = useState(0);
+  const [maintOpen, setMaintOpen] = useState(0);
+  const [reserved, setReserved] = useState(0);
+  const [screeningsPending, setScreeningsPending] = useState(0);
+  const [docsPending, setDocsPending] = useState(0);
+  const [approvalReady, setApprovalReady] = useState(0);
+  const [insuranceNeeded, setInsuranceNeeded] = useState(0);
+  const [paymentsDue, setPaymentsDue] = useState(0);
+  const [paymentsLate, setPaymentsLate] = useState(0);
+  const [weekRevenue, setWeekRevenue] = useState<number | null>(null);
+  const [prevWeekRevenue, setPrevWeekRevenue] = useState<number | null>(null);
+
+  const [revenue30, setRevenue30] = useState(0);
+  const [collected30, setCollected30] = useState(0);
+  const [outstanding, setOutstanding] = useState(0);
+  const [expenses30, setExpenses30] = useState(0);
+  const [revenueSeries, setRevenueSeries] = useState<FinancePoint[]>([]);
+
   const [recent, setRecent] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
-  const [fleet, setFleet] = useState<FleetBreak>({ available: 0, rented: 0, maintenance: 0 });
-  const [drivers, setDrivers] = useState<DriverBreak>({ active: 0, pending: 0, leads: 0 });
-  const [activityTab, setActivityTab] = useState<"fleet" | "drivers">("fleet");
-  const [finance, setFinance] = useState<Finance | null>(null);
-  const [allApps, setAllApps] = useState<any[]>([]);
-  const [recentTab, setRecentTab] = useState<"list" | "chart">("list");
-  const [range, setRange] = useState<"1W" | "1M" | "TOTAL" | "CUSTOM">("1M");
-  const [customFrom, setCustomFrom] = useState<string>("");
-  const [customTo, setCustomTo] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -62,755 +55,344 @@ export function OverviewPanel() {
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
       const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
 
-      const [leads7q, leadsPrevQ, apps7q, activeQ, vehiclesQ, vehiclesAvailQ, hotQ, screenQ, allAppsQ, hotListQ, rentedQ, maintQ, pendingQ, leadsAllQ] = await Promise.all([
-        supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7),
-        supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d14).lt("created_at", d7),
-        supabase.from("applications").select("id", { count: "exact", head: true }).gte("created_at", d7).not("current_step", "is", null),
-        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "active"),
+      const [
+        vTotalQ, vAvailQ, vRentedQ, vMaintQ, vReservedQ,
+        screenPendQ, appApprovedNoVehQ, insMissingQ,
+        payDueTodayQ, payLateQ,
+        payWeekQ, payPrevWeekQ,
+        payLast60Q, maintLast60Q,
+        recentAppsQ, hotAppsQ,
+      ] = await Promise.all([
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
-        supabase.from("applications").select("id", { count: "exact", head: true }).eq("ai_tier", "hot"),
+        supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "rented"),
+        supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "maintenance"),
+        supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "reserved"),
         supabase.from("driver_screenings").select("id", { count: "exact", head: true }).is("interview_completed_at", null),
-        supabase.from("applications").select("id, full_name, city, status, ai_tier, ai_score, created_at, phone, email, current_step, source, rental_duration_days").order("created_at", { ascending: false }).limit(500),
-        supabase.from("applications").select("id, full_name, city, ai_score, ai_tier, created_at, phone, email").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(5),
-        supabase.from("rentals").select("vehicle_id", { count: "exact", head: true }).eq("status", "active"),
-        supabase.from("maintenance_records").select("vehicle_id", { count: "exact", head: true }).neq("status", "completed"),
-        supabase.from("applications").select("id", { count: "exact", head: true }).in("status", ["approved", "complete"]),
-        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "new"),
+        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "approved").is("vehicle_id", null),
+        supabase.from("driver_screenings").select("id", { count: "exact", head: true }).eq("insurance_verified", false),
+        supabase.from("payments").select("id", { count: "exact", head: true }).neq("status", "paid").lte("due_date", new Date(now.getTime() + 864e5).toISOString().slice(0,10)),
+        supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "past_due"),
+        supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d7),
+        supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
+        supabase.from("payments").select("amount, status, paid_date, created_at").gte("created_at", d30),
+        supabase.from("maintenance_records").select("total_cost, completed_at, created_at").gte("created_at", d30),
+        supabase.from("applications").select("id, full_name, city, status, current_step, ai_tier, ai_score, created_at, source").order("created_at", { ascending: false }).limit(7),
+        supabase.from("applications").select("id, full_name, ai_score").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(3),
       ]);
 
-      setKpis({
-        leads7: leads7q.count ?? 0,
-        leadsPrev7: leadsPrevQ.count ?? 0,
-        apps7: apps7q.count ?? 0,
-        activeDrivers: activeQ.count ?? 0,
-        vehicles: vehiclesQ.count ?? 0,
-        vehiclesAvailable: vehiclesAvailQ.count ?? 0,
-        hotLeads: hotQ.count ?? 0,
-        screeningsPending: screenQ.count ?? 0,
-      });
+      setVehiclesTotal(vTotalQ.count ?? 0);
+      setVehiclesAvail(vAvailQ.count ?? 0);
+      setRented(vRentedQ.count ?? 0);
+      setMaintOpen(vMaintQ.count ?? 0);
+      setReserved(vReservedQ.count ?? 0);
+      setScreeningsPending(screenPendQ.count ?? 0);
+      setApprovalReady(appApprovedNoVehQ.count ?? 0);
+      setInsuranceNeeded(insMissingQ.count ?? 0);
+      setPaymentsDue(payDueTodayQ.count ?? 0);
+      setPaymentsLate(payLateQ.count ?? 0);
+      // Rough: docs pending = drivers with screening in "docs_pending" — approximate via count of screenings where status = 'docs_pending'
+      const { count: docsCount } = await supabase.from("driver_screenings").select("id", { count: "exact", head: true }).eq("status", "docs_pending");
+      setDocsPending(docsCount ?? 0);
 
-      const rented = rentedQ.count ?? 0;
-      const maintenance = maintQ.count ?? 0;
-      const available = vehiclesAvailQ.count ?? 0;
-      setFleet({ available, rented, maintenance });
-      setDrivers({
-        active: activeQ.count ?? 0,
-        pending: pendingQ.count ?? 0,
-        leads: leadsAllQ.count ?? 0,
-      });
+      const sumPay = (rows?: any[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
+      setWeekRevenue(sumPay(payWeekQ.data));
+      setPrevWeekRevenue(sumPay(payPrevWeekQ.data));
 
-      // ---- Finance ----
-      const d60 = new Date(now.getTime() - 60 * 864e5).toISOString();
-      const d30Date = new Date(now.getTime() - 30 * 864e5);
-      const [payQ, maintCostQ] = await Promise.all([
-        supabase.from("payments").select("amount, late_fees, status, paid_date, due_date, created_at").gte("created_at", d60),
-        supabase.from("maintenance_records").select("total_cost, completed_at, created_at").gte("created_at", d60),
-      ]);
-
-      const buildSeries = (): FinancePoint[] => {
-        const arr: FinancePoint[] = [];
-        for (let i = 29; i >= 0; i--) {
-          const d = new Date(now.getTime() - i * 864e5);
-          arr.push({ day: fmtDay(d), value: 0 });
-        }
-        return arr;
-      };
-      const revenueSeries = buildSeries();
-      const outstandingSeries = buildSeries();
-      const expensesSeries = buildSeries();
-      const lateFeesSeries = buildSeries();
-      const idxFor = (iso: string) => {
-        const days = Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
-        return 29 - days;
-      };
-
-      let revenue30 = 0, revenuePrev30 = 0, expenses30 = 0, expensesPrev30 = 0, lateFees30 = 0, lateFeesPrev30 = 0, outstanding = 0;
-
-      for (const p of (payQ.data ?? []) as any[]) {
+      // Revenue & Collections aggregate (30d)
+      let rev = 0, out = 0, exp = 0;
+      const series: FinancePoint[] = [];
+      for (let i = 29; i >= 0; i--) series.push({ day: fmtDay(new Date(now.getTime() - i * 864e5)), value: 0 });
+      const idxFor = (iso: string) => 29 - Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
+      for (const p of (payLast60Q.data ?? []) as any[]) {
         const amt = Number(p.amount ?? 0);
-        const late = Number(p.late_fees ?? 0);
         if (p.status === "paid" && p.paid_date) {
-          const paid = new Date(p.paid_date);
-          if (paid >= d30Date) {
-            revenue30 += amt;
-            const i = idxFor(p.paid_date);
-            if (i >= 0 && i < 30) revenueSeries[i].value += amt;
-          } else {
-            revenuePrev30 += amt;
-          }
-        }
-        if (p.status !== "paid") {
-          outstanding += amt;
-          const i = idxFor(p.created_at);
-          if (i >= 0 && i < 30) outstandingSeries[i].value += amt;
-        }
-        if (late > 0) {
-          const when = new Date(p.paid_date ?? p.created_at);
-          if (when >= d30Date) {
-            lateFees30 += late;
-            const i = idxFor((p.paid_date ?? p.created_at) as string);
-            if (i >= 0 && i < 30) lateFeesSeries[i].value += late;
-          } else {
-            lateFeesPrev30 += late;
-          }
+          rev += amt;
+          const i = idxFor(p.paid_date);
+          if (i >= 0 && i < 30) series[i].value += amt;
+        } else if (p.status !== "paid") {
+          out += amt;
         }
       }
-      for (const m of (maintCostQ.data ?? []) as any[]) {
-        const cost = Number(m.total_cost ?? 0);
-        if (!cost) continue;
-        const when = new Date(m.completed_at ?? m.created_at);
-        if (when >= d30Date) {
-          expenses30 += cost;
-          const i = idxFor((m.completed_at ?? m.created_at) as string);
-          if (i >= 0 && i < 30) expensesSeries[i].value += cost;
-        } else {
-          expensesPrev30 += cost;
-        }
+      for (const m of (maintLast60Q.data ?? []) as any[]) {
+        exp += Number(m.total_cost ?? 0);
       }
+      setRevenue30(rev);
+      setCollected30(rev);
+      setOutstanding(out);
+      setExpenses30(exp);
+      setRevenueSeries(series);
 
-      setFinance({
-        revenue30, revenuePrev30, revenueSeries,
-        outstanding, outstandingSeries,
-        expenses30, expensesPrev30, expensesSeries,
-        lateFees30, lateFeesPrev30, lateFeesSeries,
-      });
-
-      const apps = (allAppsQ.data ?? []) as any[];
-      setAllApps(apps);
-      setRecent(apps.slice(0, 3));
-      setHot(hotListQ.data ?? []);
+      setRecent(recentAppsQ.data ?? []);
+      setHot(hotAppsQ.data ?? []);
     })();
   }, []);
 
-  const trend = (curr: number, prev: number) => {
-    if (prev === 0) return curr > 0 ? 100 : 0;
-    return Math.round(((curr - prev) / prev) * 100);
-  };
-
-  const timeAgo = (iso: string) => {
-    const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-    if (s < 60) return `${s}s ago`;
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    return `${d}d ago`;
-  };
-
-  const stepLabel = (a: any) => {
-    if (a.status === "active") return "Active driver";
-    if (a.status === "approved") return "Approved";
-    if (a.status === "rejected") return "Rejected";
-    if (!a.current_step) return "Lead only";
-    return `Step ${a.current_step} of 4`;
-  };
-
-  const rangeBounds = useMemo(() => {
-    const now = new Date();
-    if (range === "1W") return { from: new Date(now.getTime() - 7 * 864e5), to: now };
-    if (range === "1M") return { from: new Date(now.getTime() - 30 * 864e5), to: now };
-    if (range === "CUSTOM" && customFrom && customTo) {
-      return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 864e5 - 1) };
-    }
-    // TOTAL or invalid custom
-    const earliest = allApps.length ? new Date(allApps[allApps.length - 1].created_at) : new Date(now.getTime() - 30 * 864e5);
-    return { from: earliest, to: now };
-  }, [range, customFrom, customTo, allApps]);
-
-  const filteredApps = useMemo(() => {
-    return allApps.filter((a) => {
-      const t = new Date(a.created_at).getTime();
-      return t >= rangeBounds.from.getTime() && t <= rangeBounds.to.getTime();
-    });
-  }, [allApps, rangeBounds]);
-
-  const rangeSeries = useMemo<DayPoint[]>(() => {
-    const from = new Date(rangeBounds.from);
-    const to = new Date(rangeBounds.to);
-    const dayMs = 864e5;
-    const startKey = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
-    const endKey = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
-    const n = Math.max(1, Math.round((endKey - startKey) / dayMs) + 1);
-    const buckets: Record<string, DayPoint> = {};
-    const days: DayPoint[] = [];
-    for (let i = 0; i < n; i++) {
-      const d = new Date(startKey + i * dayMs);
-      const key = d.toISOString().slice(0, 10);
-      const p = { day: fmtDay(d), leads: 0, apps: 0 } as DayPoint;
-      buckets[key] = p;
-      days.push(p);
-    }
-    for (const a of filteredApps) {
-      const k = new Date(a.created_at).toISOString().slice(0, 10);
-      if (buckets[k]) {
-        buckets[k].leads += 1;
-        if (a.current_step != null) buckets[k].apps += 1;
-      }
-    }
-    return days;
-  }, [filteredApps, rangeBounds]);
-
-  const listApps = useMemo(() => filteredApps.slice(0, 20), [filteredApps]);
+  const awaitingTotal = docsPending + screeningsPending + approvalReady;
+  const utilBase = vehiclesAvail + rented;
+  const utilization = utilBase > 0 ? Math.round((rented / utilBase) * 100) : 0;
+  const potentialWeekly = utilBase * 350;
+  const currentWeekly = rented * 350;
+  const netRev = revenue30 - expenses30;
+  const weekDelta = useMemo(() => {
+    if (weekRevenue == null || prevWeekRevenue == null) return undefined;
+    if (prevWeekRevenue === 0) return weekRevenue > 0 ? 100 : 0;
+    return Math.round(((weekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100);
+  }, [weekRevenue, prevWeekRevenue]);
 
   return (
     <div className="space-y-6">
-      {/* KPI cards */}
+      {/* Row A — operational metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard
-          icon={Users}
-          label="New Leads (7d)"
-          value={kpis?.leads7 ?? "—"}
-          delta={kpis ? trend(kpis.leads7, kpis.leadsPrev7) : undefined}
-          hint="vs. previous 7d"
+        <MetricCard
+          icon={Car}
+          label="Available Vehicles"
+          value={vehiclesAvail}
+          hint={`${vehiclesTotal} in fleet · ready to rent`}
         />
-        <KpiCard
-          icon={TrendingUp}
-          label="Applications (7d)"
-          value={kpis?.apps7 ?? "—"}
-          hint="Completed Profile Step"
-        />
-        <KpiCard
-          icon={Flame}
-          label="Hot Prospects"
-          value={kpis?.hotLeads ?? "—"}
-          hint="AI-Scored"
-          accent="red"
-        />
-        <KpiCard
+        <MetricCard
           icon={ShieldCheck}
-          label="Screenings Pending"
-          value={kpis?.screeningsPending ?? "—"}
-          hint="Interview Not Completed"
+          label="Active Rentals"
+          value={rented}
+          hint={`${utilization}% utilization`}
+        />
+        <MetricCard
+          icon={ClipboardList}
+          label="Drivers Awaiting Action"
+          value={awaitingTotal}
+          hint={`${docsPending} docs · ${screeningsPending} interviews · ${approvalReady} approvals`}
+          urgent={awaitingTotal > 10}
+        />
+        <MetricCard
+          icon={DollarSign}
+          label="Weekly Rental Revenue"
+          value={usd(weekRevenue ?? 0)}
+          hint="vs previous 7 days"
+          delta={weekDelta}
         />
       </div>
 
-      {/* Finance strip + Activity donut */}
+      {/* Row B — Revenue & Collections + Fleet Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <MiniFinanceCard
-            icon={DollarSign}
-            tone="emerald"
-            label="Revenue"
-            hint="Last 30 Days"
-            value={finance?.revenue30}
-            prev={finance?.revenuePrev30}
-            series={finance?.revenueSeries}
-            format="usd"
-          />
-          <MiniFinanceCard
-            icon={Wallet}
-            tone="sky"
-            label="Outstanding"
-            hint="Open Balances"
-            value={finance?.outstanding}
-            series={finance?.outstandingSeries}
-            format="usd"
-            noDelta
-          />
-          <MiniFinanceCard
-            icon={Receipt}
-            tone="violet"
-            label="Expenses"
-            hint="Maintenance 30d"
-            value={finance?.expenses30}
-            prev={finance?.expensesPrev30}
-            series={finance?.expensesSeries}
-            format="usd"
-            invertDelta
-          />
-          <MiniFinanceCard
-            icon={AlertTriangle}
-            tone="red"
-            label="Late Fees"
-            hint="Collected 30d"
-            value={finance?.lateFees30}
-            prev={finance?.lateFeesPrev30}
-            series={finance?.lateFeesSeries}
-            format="usd"
-          />
-        </div>
-        <div className="lg:col-span-2">
-          <ActivityDonut
-            tab={activityTab}
-            onTab={setActivityTab}
-            fleet={fleet}
-            drivers={drivers}
-          />
-        </div>
+        <SectionCard
+          className="lg:col-span-3"
+          title="Revenue & Collections"
+          subtitle="Last 30 days"
+          right={<MicroLabel>USD</MicroLabel>}
+        >
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FinanceStat label="Revenue" value={revenue30} tone="ink" />
+            <FinanceStat label="Collected" value={collected30} tone="green" />
+            <FinanceStat label="Outstanding" value={outstanding} tone="amber" />
+            <FinanceStat label="Expenses" value={expenses30} tone="ink" />
+            <FinanceStat label="Net" value={netRev} tone={netRev >= 0 ? "green" : "red"} />
+          </div>
+          <div className="mt-4 h-24">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={revenueSeries} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#0F8A4B" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#0F8A4B" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="value" stroke="#0F8A4B" strokeWidth={2} fill="url(#revGrad)" dot={false} isAnimationActive={false} />
+                <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} formatter={(v: any) => usd(Number(v))} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard className="lg:col-span-2" title="Fleet Activity" subtitle="Vehicles by status">
+          <FleetDonut available={vehiclesAvail} rented={rented} maintenance={maintOpen} reserved={reserved} />
+          <div className="mt-4 pt-4 border-t border-[#EDEDF0] space-y-2">
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-[#55555E]">Utilization</span>
+              <span className="font-semibold text-[#111114] tabular-nums">{utilization}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[#F4F4F6] overflow-hidden">
+              <div className="h-full bg-[#0F8A4B]" style={{ width: `${utilization}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-[12px] pt-1">
+              <span className="text-[#55555E]">Earning now</span>
+              <span className="font-semibold text-[#111114] tabular-nums">{usd(currentWeekly)}/wk</span>
+            </div>
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="text-[#55555E]">Potential at full utilization</span>
+              <span className="text-[#9A9AA3] tabular-nums">{usd(potentialWeekly)}/wk</span>
+            </div>
+          </div>
+        </SectionCard>
       </div>
 
-      <div className="bg-white border border-[#ececf0] rounded-xl">
-        {/* Combined header: title, tabs, range selector */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-3 border-b border-[#f0f0f3]">
-          <div>
-            <h3 className="text-sm font-semibold text-neutral-900">Recent Applications</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">Latest Driver Activity</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* View tabs */}
-            <div className="inline-flex items-center rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
-              <button
-                onClick={() => setRecentTab("list")}
-                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors ${recentTab === "list" ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
-              >
-                <ListIcon className="w-3.5 h-3.5" /> List
-              </button>
-              <button
-                onClick={() => setRecentTab("chart")}
-                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors ${recentTab === "chart" ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
-              >
-                <LineChartIcon className="w-3.5 h-3.5" /> Chart
-              </button>
-            </div>
-            {/* Range selector */}
-            <div className="inline-flex items-center rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
-              {(["1W", "1M", "TOTAL", "CUSTOM"] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${range === r ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-800"}`}
-                >
-                  {r === "CUSTOM" ? "Custom" : r}
-                </button>
-              ))}
-            </div>
-            {range === "CUSTOM" && (
-              <div className="inline-flex items-center gap-1">
-                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="text-xs border border-[#ececf0] rounded-md px-2 py-1 bg-white" />
-                <span className="text-xs text-neutral-400">–</span>
-                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="text-xs border border-[#ececf0] rounded-md px-2 py-1 bg-white" />
-              </div>
-            )}
-            <Link to="/admin" search={{ tab: "drivers" } as any} className="text-xs text-neutral-500 hover:text-neutral-900 inline-flex items-center gap-1">
-              View all <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
+      {/* Row C — Action Queue */}
+      <SectionCard title="Action Queue" subtitle="What needs your attention today" padded={false}>
+        <ActionQueueRow icon={FileText} label="Drivers missing documents" count={docsPending}
+          description="Complete license, insurance, and profile uploads."
+          tone="amber"
+          onAction={() => (window.location.href = "/admin?tab=drivers")} />
+        <ActionQueueRow icon={ClipboardList} label="Interviews incomplete" count={screeningsPending}
+          description="Screening interview not yet completed."
+          tone="amber"
+          onAction={() => (window.location.href = "/admin?tab=drivers")} />
+        <ActionQueueRow icon={CheckCircle2} label="Drivers ready for approval" count={approvalReady}
+          description="Approved status with no vehicle assigned yet."
+          tone="green"
+          onAction={() => (window.location.href = "/admin?tab=drivers")} />
+        <ActionQueueRow icon={ShieldCheck} label="Insurance verification required" count={insuranceNeeded}
+          description="Screening flagged insurance as unverified."
+          tone="amber"
+          onAction={() => (window.location.href = "/admin?tab=drivers")} />
+        <ActionQueueRow icon={CreditCard} label="Payments due today" count={paymentsDue}
+          description="Unpaid invoices with due date today or earlier."
+          tone="neutral"
+          onAction={() => (window.location.href = "/admin?tab=payments")} />
+        <ActionQueueRow icon={AlertTriangle} label="Late payments" count={paymentsLate}
+          description="Rentals in past-due state."
+          tone="red"
+          onAction={() => (window.location.href = "/admin?tab=payments")} />
+        <ActionQueueRow icon={Wrench} label="Vehicles needing maintenance" count={maintOpen}
+          description="Open maintenance items across the fleet."
+          tone="amber"
+          onAction={() => (window.location.href = "/admin?tab=maintenance")} />
+      </SectionCard>
 
-        {recentTab === "chart" ? (
-          <div className="p-5">
-            <div className="flex items-center justify-end gap-3 text-xs mb-2">
-              <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Leads
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-neutral-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-700" /> Apps
-              </span>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={rangeSeries} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="fillLeads" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="fillApps" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="2 4" stroke="#eef0f3" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(rangeSeries.length / 8))} />
-                  <YAxis orientation="right" tick={{ fontSize: 11, fill: "#9aa0a6" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
-                  <Tooltip
-                    contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
-                    labelStyle={{ color: "#111", fontWeight: 600 }}
-                  />
-                  <Area type="monotone" dataKey="leads" stroke="#22c55e" strokeWidth={2.5} fill="url(#fillLeads)" dot={false} activeDot={{ r: 4 }} />
-                  <Area type="monotone" dataKey="apps" stroke="#16a34a" strokeWidth={2.5} fill="url(#fillApps)" dot={false} activeDot={{ r: 4 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+      {/* Row D — Recent Applications */}
+      <SectionCard
+        title="Recent Applications"
+        subtitle="Latest driver activity"
+        padded={false}
+        right={
+          <Link to="/admin" search={{ tab: "drivers" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#CC0000]">
+            View all drivers <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        }
+      >
+        {recent.length === 0 ? (
+          <div className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]">No applications yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            {listApps.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-neutral-500">No applications in this range.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-neutral-500 border-b border-[#f0f0f3] bg-[#fafbfc]">
-                    <th className="px-5 py-2.5 font-medium">Driver</th>
-                    <th className="px-3 py-2.5 font-medium">AI</th>
-                    <th className="px-3 py-2.5 font-medium">Status</th>
-                    <th className="px-3 py-2.5 font-medium">City</th>
-                    <th className="px-3 py-2.5 font-medium">Step</th>
-                    <th className="px-3 py-2.5 font-medium">Rental</th>
-                    <th className="px-3 py-2.5 font-medium">Phone</th>
-                    <th className="px-3 py-2.5 font-medium">Email</th>
-                    <th className="px-5 py-2.5 font-medium text-right">Added</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#f0f0f3]">
-                  {listApps.map((a) => (
-                    <tr
-                      key={a.id}
-                      onClick={() => {
-                        window.location.href = `/admin?tab=drivers&id=${a.id}`;
-                      }}
-                      className="hover:bg-[#fafbfc] transition-colors cursor-pointer"
-                    >
-                      <td className="px-5 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-[#f5f6f8] grid place-items-center text-[11px] font-semibold text-neutral-700 shrink-0">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left border-b border-[#EDEDF0] bg-[#FAFAFB]">
+                  <th className="px-5 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Driver</th>
+                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Stage</th>
+                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Readiness</th>
+                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Needed By</th>
+                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Blocker</th>
+                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Last Activity</th>
+                  <th className="px-5 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3] text-right">Assigned</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F4F4F6]">
+                {recent.slice(0, 7).map((a) => {
+                  const stage = a.status === "active" ? "Active" : a.status === "approved" ? "Approved" : a.current_step ? `Step ${a.current_step}/4` : "Lead";
+                  const blocker = a.current_step && a.current_step < 4 ? "Incomplete wizard" : (a.status === "approved" ? "Assign vehicle" : "Interview");
+                  return (
+                    <tr key={a.id} onClick={() => (window.location.href = `/admin?tab=drivers&id=${a.id}`)}
+                        className="hover:bg-[#FAFAFB] cursor-pointer transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-[#F4F4F6] grid place-items-center text-[11px] font-semibold text-[#55555E] shrink-0">
                             {(a.full_name || "?").slice(0, 1).toUpperCase()}
                           </div>
-                          <span className="font-semibold text-neutral-900 truncate max-w-[180px]">{a.full_name || "Unnamed"}</span>
+                          <span className="font-medium text-[#111114] truncate max-w-[180px]">{a.full_name || "Unnamed"}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
+                      <td className="px-3 py-3"><StatusPill status={stage} /></td>
+                      <td className="px-3 py-3">
                         {a.ai_tier ? (
-                          <span
-                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                              a.ai_tier === "hot"
-                                ? "bg-red-50 text-red-700 border-red-100"
-                                : a.ai_tier === "warm"
-                                ? "bg-amber-50 text-amber-700 border-amber-100"
-                                : "bg-neutral-50 text-neutral-600 border-neutral-100"
-                            }`}
-                          >
-                            {a.ai_tier === "hot" && <Flame className="w-3 h-3" />}
-                            <span className="uppercase tracking-wide">{a.ai_tier}</span>
-                            {a.ai_score != null && <span className="opacity-70">· {a.ai_score}</span>}
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium">
+                            {a.ai_tier === "hot" ? <Flame className="w-3 h-3 text-[#CC0000]" /> : <Sparkles className="w-3 h-3 text-[#9A9AA3]" />}
+                            <span className="capitalize text-[#111114]">{a.ai_tier}</span>
+                            {a.ai_score != null && <span className="text-[#9A9AA3]">· {a.ai_score}</span>}
                           </span>
-                        ) : (
-                          <span className="text-[10px] text-neutral-400 border border-dashed border-neutral-200 rounded px-1.5 py-0.5">pending</span>
-                        )}
+                        ) : <span className="text-[#9A9AA3] text-[11px]">Unscored</span>}
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <span className="text-[10px] uppercase tracking-wide font-medium text-neutral-500 border border-[#ececf0] rounded px-1.5 py-0.5">
-                          {a.status || "new"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">{a.city || "—"}</td>
-                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">{stepLabel(a)}</td>
-                      <td className="px-3 py-3 text-neutral-700 whitespace-nowrap text-xs">
-                        {a.rental_duration_days ? `${a.rental_duration_days}d` : "—"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-xs">
-                        {a.phone ? (
-                          <a href={`tel:${a.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red">
-                            <Phone className="w-3 h-3" />{a.phone}
-                          </a>
-                        ) : <span className="text-neutral-400">—</span>}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-xs max-w-[240px]">
-                        {a.email ? (
-                          <a href={`mailto:${a.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-neutral-700 hover:text-real-red truncate max-w-full">
-                            <Mail className="w-3 h-3 shrink-0" /><span className="truncate">{a.email}</span>
-                          </a>
-                        ) : <span className="text-neutral-400">—</span>}
-                      </td>
-                      <td className="px-5 py-3 text-neutral-500 whitespace-nowrap text-xs text-right">{timeAgo(a.created_at)}</td>
+                      <td className="px-3 py-3 text-[#55555E]">—</td>
+                      <td className="px-3 py-3 text-[#55555E] text-[12px]">{blocker}</td>
+                      <td className="px-3 py-3 text-[#55555E] text-[12px] tabular-nums">{timeAgo(a.created_at)}</td>
+                      <td className="px-5 py-3 text-right text-[#9A9AA3] text-[12px]">Unassigned</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
+      </SectionCard>
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  delta,
-  hint,
-  accent,
-}: {
-  icon: any;
-  label: string;
-  value: number | string;
-  delta?: number;
-  hint?: string;
-  accent?: "red";
-}) {
-  const deltaPositive = (delta ?? 0) >= 0;
-  const isPrimary = accent === "red";
-  return (
-    <div
-      className={`rounded-2xl border p-5 shadow-sm transition-colors duration-150 ${
-        isPrimary
-          ? "bg-[#CC0000] text-white border-transparent"
-          : "bg-white text-[#111114] border-[#EDEDF0]"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <div
-          className={`w-9 h-9 rounded-lg grid place-items-center ${
-            isPrimary ? "bg-white/15 text-white" : "bg-[#F4F4F6] text-[#55555E]"
-          }`}
-        >
-          <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
-        </div>
-        {delta !== undefined && (
-          <span
-            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
-              isPrimary
-                ? "bg-white/15 text-white"
-                : deltaPositive
-                ? "bg-[rgba(15,138,75,0.08)] text-[#0F8A4B]"
-                : "bg-[rgba(204,0,0,0.08)] text-[#CC0000]"
-            }`}
-          >
-            {deltaPositive ? "+" : ""}
-            {delta}%
-          </span>
-        )}
-      </div>
-      <div className={`mt-4 text-[26px] leading-none font-semibold tracking-tight tabular-nums ${isPrimary ? "text-white" : "text-[#111114]"}`}>
-        {value}
-      </div>
-      <div className={`mt-1.5 text-xs ${isPrimary ? "text-white/85" : "text-[#55555E]"}`}>{label}</div>
-      {hint && <div className={`mt-0.5 text-[11px] ${isPrimary ? "text-white/70" : "text-[#9A9AA3]"}`}>{hint}</div>}
-    </div>
-  );
-}
-
-
-function ActivityDonut({
-  tab,
-  onTab,
-  fleet,
-  drivers,
-}: {
-  tab: "fleet" | "drivers";
-  onTab: (t: "fleet" | "drivers") => void;
-  fleet: FleetBreak;
-  drivers: DriverBreak;
-}) {
-  const fleetSegs = [
-    { key: "Available", value: fleet.available, color: "#facc15" },
-    { key: "Rented", value: fleet.rented, color: "#22c55e" },
-    { key: "Maintenance", value: fleet.maintenance, color: "#E61919" },
-  ];
-  const driverSegs = [
-    { key: "Active", value: drivers.active, color: "#22c55e", hint: "Drivers currently renting a vehicle." },
-    { key: "Pending", value: drivers.pending, color: "#facc15", hint: "Approved drivers waiting for vehicle assignment (waiting list)." },
-    { key: "Leads", value: drivers.leads, color: "#E61919", hint: "New leads that haven't been screened or approved yet." },
-  ];
-  const segs = tab === "fleet" ? fleetSegs : driverSegs;
-  const total = segs.reduce((a, s) => a + s.value, 0);
-  const totalLabel = tab === "fleet" ? "Total Vehicles" : "Total Drivers";
-
-  // Utilization = rented / (available + rented) ignoring maintenance
-  const utilBase = fleet.available + fleet.rented;
-  const utilization = utilBase > 0 ? Math.round((fleet.rented / utilBase) * 100) : 0;
-  const earning = fleet.rented; // rented vehicles are earning
-  const weeklyRate = 350;
-  const earningRevenue = earning * weeklyRate;
-
-  const pieData = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#eef0f3" }];
-
-  return (
-    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-neutral-900">
-            {tab === "fleet" ? "Fleet Activity" : "Driver Activity"}
-          </h3>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            {tab === "fleet" ? "Vehicles By Status" : "Drivers By Stage"}
-          </p>
-        </div>
-        <div className="inline-flex rounded-lg border border-[#ececf0] p-0.5 bg-[#fafbfc]">
-          {(["fleet", "drivers"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => onTab(t)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition-colors ${
-                tab === t ? "bg-white text-neutral-900 shadow-sm border border-[#ececf0]" : "text-neutral-500 hover:text-neutral-900"
-              }`}
-            >
-              {t}
-            </button>
+      {/* Hot prospects — subtle secondary strip */}
+      {hot.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]">
+          <MicroLabel>Hot Prospects</MicroLabel>
+          {hot.map((h) => (
+            <Link key={h.id} to="/admin" search={{ tab: "drivers", id: h.id } as any}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 hover:border-[#CC0000] transition-colors">
+              <Flame className="w-3 h-3 text-[#CC0000]" /> {h.full_name} · {h.ai_score}
+            </Link>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-        <div className="relative h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                nameKey="key"
-                innerRadius="70%"
-                outerRadius="95%"
-                paddingAngle={total > 0 ? 3 : 0}
-                stroke="none"
-                startAngle={90}
-                endAngle={-270}
-              >
-                {pieData.map((s, i) => <Cell key={i} fill={s.color} />)}
-              </Pie>
-              {total > 0 && (
-                <Tooltip
-                  contentStyle={{ background: "#fff", border: "1px solid #ececf0", borderRadius: 8, fontSize: 12 }}
-                />
-              )}
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 grid place-items-center pointer-events-none">
-            <div className="text-center">
-              <div className="text-3xl font-semibold tracking-tight text-neutral-900 tabular-nums">
-                {total.toLocaleString()}
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">{totalLabel}</div>
-            </div>
-          </div>
-        </div>
-
-        <TooltipProvider delayDuration={100}>
-        <div className="space-y-3">
-          {segs.map((s) => {
-            const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
-            const hint = (s as any).hint as string | undefined;
-            return (
-              <div key={s.key} className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                <div className="text-sm text-neutral-800 flex-1 inline-flex items-center gap-1.5">
-                  {s.key}
-                  {hint && (
-                    <UITooltip>
-                      <TooltipTrigger asChild>
-                        <button type="button" className="text-neutral-400 hover:text-neutral-600" aria-label={`About ${s.key}`}>
-                          <Info className="w-3.5 h-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs text-xs">{hint}</TooltipContent>
-                    </UITooltip>
-                  )}
-                </div>
-                <div className="text-sm font-semibold text-neutral-900 tabular-nums">{s.value.toLocaleString()}</div>
-                <div className="text-[11px] text-neutral-500 w-10 text-right tabular-nums">{pct}%</div>
-              </div>
-            );
-          })}
-
-          {tab === "fleet" && (
-            <div className="mt-4 pt-4 border-t border-[#f0f0f3] space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-neutral-500">Utilization</span>
-                <span className="font-semibold text-neutral-900 tabular-nums">{utilization}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-[#f5f6f8] overflow-hidden">
-                <div className="h-full bg-[#22c55e]" style={{ width: `${utilization}%` }} />
-              </div>
-              <div className="text-xs text-neutral-500 pt-1">
-                {fleet.rented} Of {total} On The Road
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-[#ececf0] p-3 bg-[#fafbfc]">
-                <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
-                  <DollarSign className="w-3.5 h-3.5" /> Earning Now:
-                </span>
-                <span className="text-sm font-semibold tabular-nums text-[#16a34a]">
-                  ${earningRevenue.toLocaleString()}/wk
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-        </TooltipProvider>
-      </div>
+      )}
     </div>
   );
 }
 
-function MiniFinanceCard({
-  icon: Icon,
-  tone,
-  label,
-  hint,
-  value,
-  prev,
-  series,
-  format,
-  invertDelta,
-  noDelta,
-}: {
-  icon: any;
-  tone: "emerald" | "sky" | "violet" | "red";
-  label: string;
-  hint?: string;
-  value?: number;
-  prev?: number;
-  series?: { day: string; value: number }[];
-  format?: "usd";
-  invertDelta?: boolean;
-  noDelta?: boolean;
-}) {
-  const toneMap = {
-    emerald: { text: "text-emerald-600", bg: "bg-emerald-50", stroke: "#22c55e", fill: "rgba(34,197,94,0.12)" },
-    sky: { text: "text-sky-600", bg: "bg-sky-50", stroke: "#0ea5e9", fill: "rgba(14,165,233,0.12)" },
-    violet: { text: "text-violet-600", bg: "bg-violet-50", stroke: "#8b5cf6", fill: "rgba(139,92,246,0.12)" },
-    red: { text: "text-real-red", bg: "bg-red-50", stroke: "#E61919", fill: "rgba(230,25,25,0.12)" },
-  } as const;
-  const t = toneMap[tone];
-
-  const fmt = (n?: number) => {
-    if (n == null) return "—";
-    if (format === "usd") {
-      return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-    }
-    return n.toLocaleString();
-  };
-
-  let deltaPct: number | undefined;
-  if (!noDelta && value != null && prev != null) {
-    if (prev === 0) deltaPct = value > 0 ? 100 : 0;
-    else deltaPct = Math.round(((value - prev) / prev) * 100);
-  }
-  const isGood = deltaPct == null ? true : invertDelta ? deltaPct <= 0 : deltaPct >= 0;
-  const gradId = `mini-${tone}-${label.replace(/\s+/g, "")}`;
-
+function FinanceStat({ label, value, tone }: { label: string; value: number; tone: "ink" | "green" | "amber" | "red" }) {
+  const color =
+    tone === "green" ? "text-[#0F8A4B]" :
+    tone === "amber" ? "text-[#B77900]" :
+    tone === "red" ? "text-[#CC0000]" : "text-[#111114]";
   return (
-    <div className="bg-white border border-[#ececf0] rounded-xl p-5">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className={`w-8 h-8 rounded-lg grid place-items-center ${t.bg} ${t.text}`}>
-            <Icon className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-neutral-900">{label}</div>
-            {hint && <div className="text-[11px] text-neutral-500">{hint}</div>}
+    <div>
+      <MicroLabel>{label}</MicroLabel>
+      <div className={`mt-1 text-[18px] font-semibold tracking-tight tabular-nums ${color}`}>{usd(value)}</div>
+    </div>
+  );
+}
+
+function FleetDonut({ available, rented, maintenance, reserved }: {
+  available: number; rented: number; maintenance: number; reserved: number;
+}) {
+  const segs = [
+    { key: "Available", value: available, color: "#facc15" },
+    { key: "Rented", value: rented, color: "#0F8A4B" },
+    { key: "Reserved", value: reserved, color: "#3B82F6" },
+    { key: "Maintenance", value: maintenance, color: "#CC0000" },
+  ];
+  const total = segs.reduce((a, s) => a + s.value, 0);
+  const pie = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#F4F4F6" }];
+  return (
+    <div className="grid grid-cols-2 gap-4 items-center">
+      <div className="relative h-40">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={pie} dataKey="value" nameKey="key" innerRadius="70%" outerRadius="95%" paddingAngle={total > 0 ? 3 : 0} stroke="none" startAngle={90} endAngle={-270}>
+              {pie.map((s, i) => <Cell key={i} fill={s.color} />)}
+            </Pie>
+            {total > 0 && <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} />}
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <div className="text-center">
+            <div className="text-[22px] font-semibold tracking-tight text-[#111114] tabular-nums">{total}</div>
+            <div className="text-[10px] uppercase tracking-[0.12em] text-[#9A9AA3] mt-0.5">Vehicles</div>
           </div>
         </div>
       </div>
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          <div className="text-[22px] leading-none font-semibold tracking-tight text-neutral-900 tabular-nums">
-            {fmt(value)}
-          </div>
-          {deltaPct !== undefined && (
-            <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${isGood ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-              {isGood ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-              {Math.abs(deltaPct)}%
-            </div>
-          )}
-        </div>
-        <div className="h-12 flex-1 max-w-[140px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series ?? []} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={t.stroke} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={t.stroke} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Area type="monotone" dataKey="value" stroke={t.stroke} strokeWidth={2} fill={`url(#${gradId})`} dot={false} isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      <ul className="space-y-2">
+        {segs.map((s) => {
+          const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
+          return (
+            <li key={s.key} className="flex items-center gap-2 text-[12px]">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
+              <span className="text-[#55555E] flex-1 truncate">{s.key}</span>
+              <span className="font-semibold text-[#111114] tabular-nums">{s.value}</span>
+              <span className="text-[10px] text-[#9A9AA3] tabular-nums w-8 text-right">{pct}%</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

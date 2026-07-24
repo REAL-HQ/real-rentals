@@ -31,7 +31,9 @@ import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeR
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
-import { Timeline, buildDriverTimeline, StatusPill } from "./ui";
+import { Timeline, buildDriverTimeline, StatusPill, LifecycleRail, ReadinessSummary, SectionCard, MicroLabel, type LifecycleStage, type Readiness } from "./ui";
+import { InterviewDrawer } from "./InterviewDrawer";
+import { ClipboardList } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -473,293 +475,480 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
     }
   }
 
+  const [interviewOpen, setInterviewOpen] = useState(false);
+
+  // ---- Derive lifecycle stages from driver + screening ------------------
+  const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
+  const dStatus = String(driver.status ?? "").toLowerCase();
+  const contacted = !!driver.contacted_at || scrStatus !== "new_lead";
+  const screeningDone = !!screening?.interview_completed_at;
+  const docsComplete = docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).length >= 4;
+  const insuranceOk = !!(screening as any)?.insurance_verified;
+  const approved = dStatus === "approved" || dStatus === "active";
+  const pickedUp = !!(driver as any).pickup_at || dStatus === "active";
+  const active = dStatus === "active";
+
+  const stageFlags: { key: string; label: string; done: boolean }[] = [
+    { key: "applied",   label: "Applied",    done: true },
+    { key: "contacted", label: "Contacted",  done: contacted },
+    { key: "screening", label: "Screening",  done: screeningDone },
+    { key: "docs",      label: "Documents",  done: docsComplete },
+    { key: "insurance", label: "Insurance",  done: insuranceOk },
+    { key: "approved",  label: "Approved",   done: approved },
+    { key: "pickup",    label: "Pickup",     done: pickedUp },
+    { key: "active",    label: "Active",     done: active },
+  ];
+  let markedCurrent = false;
+  const lifecycle: LifecycleStage[] = stageFlags.map((s) => {
+    if (s.done) return { key: s.key, label: s.label, state: "done" };
+    if (!markedCurrent) { markedCurrent = true; return { key: s.key, label: s.label, state: "current" }; }
+    return { key: s.key, label: s.label, state: "upcoming" };
+  });
+  const currentStage = lifecycle.find((s) => s.state === "current") ?? lifecycle[lifecycle.length - 1];
+  const doneCount = lifecycle.filter((s) => s.state === "done").length;
+  const percentComplete = Math.round((doneCount / lifecycle.length) * 100);
+
+  // Time in current stage — best-effort from most relevant timestamp
+  const stageStartIso =
+    currentStage.key === "contacted" ? (driver.created_at as any)
+    : currentStage.key === "screening" ? (driver.contacted_at as any) ?? (driver.created_at as any)
+    : currentStage.key === "docs" ? (screening as any)?.interview_completed_at ?? (driver.created_at as any)
+    : (driver.created_at as any);
+  const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
+
+  // ---- Derive readiness ------------------------------------------------
+  const blockers: string[] = [];
+  const positives: string[] = [];
+  const missing: string[] = [];
+  if (driver.rating != null) positives.push(`Rating ${driver.rating}/5`);
+  else missing.push("Driver rating");
+  if (tripsOk) positives.push(`${trips.toLocaleString()} trips completed`);
+  else if (!driver.trips_completed) missing.push("Trip history");
+  else blockers.push(`Only ${trips} trips (need 200+)`);
+  if (driver.license_valid || driver.license_photo_url) positives.push("License on file");
+  else missing.push("License image");
+  if (insuranceOk) positives.push("Insurance verified");
+  else if ((screening as any)?.has_personal_insurance === false) blockers.push("No personal insurance policy");
+  else missing.push("Insurance verification");
+  if ((screening as any)?.card_in_own_name === false) blockers.push("Payment card not in driver's name");
+  if ((screening as any)?.has_dui === true) blockers.push("DUI on record");
+  if (driver.card_last4) positives.push(`Card on file ····${driver.card_last4}`);
+  if ((screening as any)?.drive_type === "full_time") positives.push("Full-time driver");
+  if ((screening as any)?.needed_by_date) {
+    const days = Math.ceil((new Date((screening as any).needed_by_date).getTime() - Date.now()) / 864e5);
+    if (days > 0 && days <= 7) positives.push(`Needs vehicle within ${days} days`);
+  }
+
+  const readinessStatus: Readiness["status"] =
+    blockers.length > 0 ? "not_ready"
+    : missing.length > 0 || !screeningDone || !docsComplete || !insuranceOk ? "almost"
+    : "ready";
+  const readinessLabel =
+    readinessStatus === "ready" ? "Ready For Approval"
+    : readinessStatus === "almost" ? "Almost Ready"
+    : "Not Ready";
+  const nextAction =
+    !screeningDone ? "Continue interview and capture qualification signals"
+    : !docsComplete ? "Request the remaining documents from the driver"
+    : !insuranceOk ? "Complete insurance verification call"
+    : !approved ? "Approve driver and prepare pickup"
+    : !driver.card_last4 ? "Send card-on-file link"
+    : !pickedUp ? "Schedule vehicle pickup"
+    : "Monitor active rental";
+
+  const readiness: Readiness = {
+    status: readinessStatus,
+    label: readinessLabel,
+    blockers,
+    positives,
+    missing,
+    nextAction,
+  };
+
+  // ---- Primary action -------------------------------------------------
+  const primaryAction = !screeningDone
+    ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
+    : !docsComplete
+    ? { label: "Review Documents", onClick: () => document.getElementById("tab-documents")?.click(), icon: FileText }
+    : !insuranceOk
+    ? { label: "Verify Insurance", onClick: () => document.getElementById("tab-screening")?.click(), icon: ShieldCheck }
+    : !approved
+    ? { label: "Approve Driver", onClick: () => onUpdate({ status: "approved" }), icon: Check }
+    : !veh
+    ? { label: "Assign Vehicle", onClick: () => document.getElementById("tab-rental")?.click(), icon: Car }
+    : { label: "View Rental", onClick: () => document.getElementById("tab-rental")?.click(), icon: Car };
+  const PrimaryIcon = primaryAction.icon;
+
   return (
-    <div className="-mx-8 -my-8 min-h-full bg-[#fafafa]">
-      {/* Top bar */}
-      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-border">
+    <div className="-mx-8 -my-8 min-h-full bg-[#FAFAFB]">
+      {/* Compact header */}
+      <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
         <div className="px-8 py-3 flex items-center justify-between">
-          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" /> Back to drivers
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Drivers
           </button>
           <div className="flex items-center gap-2">
+            <button
+              onClick={primaryAction.onClick}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#CC0000] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+            >
+              <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
+            </button>
             {driver.phone && (
-              <a href={`tel:${driver.phone}`} className="inline-flex items-center gap-1.5 rounded-md bg-real-red text-white px-3 py-1.5 text-xs font-medium hover:bg-red-700">
-                <Phone className="w-3.5 h-3.5" /> Call {formatPhone(driver.phone)}
+              <a href={`tel:${driver.phone}`} className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors" title="Call">
+                <Phone className="w-3.5 h-3.5" />
               </a>
             )}
             {driver.phone && (
-              <a href={smsHref(driver.phone)} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-                <MessageSquare className="w-3.5 h-3.5" /> Text
+              <a href={smsHref(driver.phone)} className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors" title="Text">
+                <MessageSquare className="w-3.5 h-3.5" />
               </a>
             )}
             {driver.email && (
-              <a href={`mailto:${driver.email}`} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-                <Mail className="w-3.5 h-3.5" /> Email
+              <a href={`mailto:${driver.email}`} className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors" title="Email">
+                <Mail className="w-3.5 h-3.5" />
               </a>
             )}
-            <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
-            <CardOnFileActions driver={driver} onUpdate={onUpdate} />
-            <AutopayActions driver={driver} />
             <DropdownMenu>
-              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
+              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors">
                 <MoreVertical className="w-4 h-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={onDelete}>
+                <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
+                  <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
+                </DropdownMenuItem>
+                <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+                <DropdownMenuItem className="text-[#CC0000] focus:text-[#CC0000]" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" /> Delete driver
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
-      </div>
-
-      <div className="px-8 py-6 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
-        {/* Left profile sidebar */}
-        <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
-          <div className="rounded-xl border border-border bg-white p-5">
-            <div className="flex items-start gap-3">
-              <div className="h-14 w-14 shrink-0 rounded-full bg-black text-white grid place-items-center text-lg font-semibold">
-                {initials}
-              </div>
-              <div className="min-w-0">
-                <div className="text-base font-semibold truncate">{driver.full_name || "Unnamed"}</div>
-                <div className="mt-1"><StatusPill status={driver.status} /></div>
-              </div>
+        {/* Identity strip */}
+        <div className="px-8 pb-4 flex items-center gap-4">
+          <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-[18px] font-semibold text-[#111114] truncate">{driver.full_name || "Unnamed"}</h2>
+              <StatusPill status={driver.status} />
+              {driver.gclid && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B77900] bg-[rgba(183,121,0,0.08)] rounded px-1.5 py-0.5">Google Ads</span>}
             </div>
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {tripsOk && (
-                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px]">
-                  <ShieldCheck className="w-3 h-3 mr-1" /> 200+ trips
-                </Badge>
-              )}
-              {driver.license_valid && (
-                <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-[10px]">Licensed</Badge>
-              )}
-              {driver.gclid && (
-                <Badge variant="secondary" className="bg-amber-50 text-amber-800 hover:bg-amber-50 text-[10px]">
-                  <BadgeDollarSign className="w-3 h-3 mr-1" /> Google Ads
-                </Badge>
-              )}
-              {(driver as any).recovery_sent_at && (
-                <Badge variant="secondary" className="bg-purple-50 text-purple-800 hover:bg-purple-50 text-[10px]" title={`Recovery email sent ${new Date((driver as any).recovery_sent_at).toLocaleString()}`}>
-                  <Mail className="w-3 h-3 mr-1" /> Recovery Sent
-                </Badge>
-              )}
-              {(driver as any).doc_request_sent_at && (
-                <Badge variant="secondary" className="bg-blue-50 text-blue-800 hover:bg-blue-50 text-[10px]" title={`Docs requested ${new Date((driver as any).doc_request_sent_at).toLocaleString()}`}>
-                  <FileText className="w-3 h-3 mr-1" /> Docs Requested
-                </Badge>
-              )}
-            </div>
-            <div className="mt-4 space-y-1.5 text-xs">
-              {driver.phone && (
-                <a href={`tel:${driver.phone}`} className="flex items-center gap-2 text-foreground hover:text-real-red">
-                  <Phone className="w-3.5 h-3.5 text-muted-foreground" /> {formatPhone(driver.phone)}
-                </a>
-              )}
-              {driver.email && (
-                <a href={`mailto:${driver.email}`} className="flex items-center gap-2 text-foreground hover:text-real-red break-all">
-                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> {driver.email}
-                </a>
-              )}
+            <div className="mt-1 flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
               {(driver.city || driver.state) && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="w-3.5 h-3.5" /> {[driver.city, driver.state].filter(Boolean).join(", ")}
-                </div>
+                <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3 text-[#9A9AA3]" /> {[driver.city, driver.state].filter(Boolean).join(", ")}</span>
+              )}
+              {driver.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3 h-3 text-[#9A9AA3]" /> {formatPhone(driver.phone)}</span>}
+              {driver.email && <span className="inline-flex items-center gap-1 truncate max-w-[240px]"><Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}</span>}
+              {driver.created_at && (
+                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">Applied {new Date(driver.created_at).toLocaleDateString()}</span>
+              )}
+              {driver.contacted_at && (
+                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">· Last contact {new Date(driver.contacted_at).toLocaleDateString()}</span>
               )}
             </div>
           </div>
-
-          <div className="rounded-xl border border-border bg-white p-5">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Snapshot</div>
-            <dl className="space-y-3 text-sm">
-              <SidebarStat icon={<Car className="w-3.5 h-3.5" />} label="Vehicle" value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"} muted={!veh} />
-              <SidebarStat icon={<CreditCard className="w-3.5 h-3.5" />} label="Weekly rent" value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "—"} />
-              <SidebarStat icon={<Activity className="w-3.5 h-3.5" />} label="Trips" value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()} tone={tripsOk ? "good" : (driver.trips_completed ? "warn" : undefined)} />
-              <SidebarStat icon={<Star className="w-3.5 h-3.5" />} label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
-            </dl>
-          </div>
-
-          {(driver.utm_source || driver.utm_campaign || driver.gclid) && (
-            <div className="rounded-xl border border-border bg-white p-5">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Attribution</div>
-              <div className="space-y-2 text-xs">
-                <div><span className="text-muted-foreground">Source: </span>{driver.gclid ? "Google Ads" : (driver.utm_source || "Direct")}</div>
-                {driver.utm_campaign && <div><span className="text-muted-foreground">Campaign: </span>{driver.utm_campaign}</div>}
-                {driver.utm_medium && <div><span className="text-muted-foreground">Medium: </span>{driver.utm_medium}</div>}
-                {driver.landing_page && <div className="truncate"><span className="text-muted-foreground">Landing: </span>{driver.landing_page}</div>}
-              </div>
-            </div>
-          )}
-          <CardOnFileCard driver={driver} onUpdate={onUpdate} />
-          <Timeline steps={buildDriverTimeline(driver, screening)} />
-        </aside>
-
-        {/* Main column */}
-        <div className="min-w-0 space-y-6">
-          <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
-
-          <AISnapshotCard driver={driver} onUpdate={onUpdate} />
-
-          <Tabs defaultValue="interview" className="w-full">
-          <TabsList className="bg-white border border-[#EDEDF0]">
-            <TabsTrigger value="interview">Interview</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
-            <TabsTrigger value="application">Application</TabsTrigger>
-            <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
-            <TabsTrigger value="notes">Notes</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="interview" className="mt-4">
-            <InterviewTab
-              driver={driver}
-              screening={screening}
-              onSaved={(next) => {
-                setScreening(next);
-                onScreeningChange?.(next);
-              }}
-            />
-          </TabsContent>
-
-          <TabsContent value="documents" className="mt-4 space-y-4">
-            <DocumentsCard
-              leadId={driver.id}
-              docs={docs}
-              onChange={(next) => {
-                setDocs(next);
-                onDocsChange?.(next);
-              }}
-            />
-            <InsuranceVerificationCard
-              leadId={driver.id}
-              screening={screening}
-              docs={docs}
-              onScreening={(s) => {
-                setScreening(s);
-                onScreeningChange?.(s);
-              }}
-              onDocs={(d) => {
-                setDocs(d);
-                onDocsChange?.(d);
-              }}
-            />
-            {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) ? (
-              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
-                <TripScreenshots
-                  paths={Array.from(new Set([
-                    ...(((driver as any).trip_screenshots as string[] | null) ?? []),
-                    ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
-                  ].filter(Boolean)))}
-                />
-              </Card>
-            ) : null}
-            {driver.license_photo_url ? (
-              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
-                <LicensePhoto path={driver.license_photo_url} />
-              </Card>
-            ) : null}
-          </TabsContent>
-
-          <TabsContent value="application" className="mt-4 space-y-4">
-            <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <Field label="DOB" value={driver.dob} />
-                <Field label="License #" value={driver.license_number} />
-                <Field label="License state" value={driver.license_state} />
-                <Field label="License exp." value={driver.license_expiration} />
-                <Field label="Years licensed" value={driver.years_licensed} />
-                <Field label="Address" value={[driver.address, driver.city, driver.state, driver.zip].filter(Boolean).join(", ") || null} />
-                <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
-                <Field label="Weekly hours" value={driver.weekly_hours} />
-                <Field label="Term" value={driver.rental_term} />
-                <Field label="Payment method" value={driver.payment_method} />
-              </div>
-            </Card>
-            <Card title="Gig experience" icon={<Activity className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field
-                  label="Total trips / deliveries"
-                  value={(() => {
-                    const n = Number(driver.trips_completed);
-                    if (!driver.trips_completed) return null;
-                    if (Number.isNaN(n)) return driver.trips_completed;
-                    return `${n.toLocaleString()}${n >= 200 ? " ✓" : " (below 200)"}`;
-                  })()}
-                />
-                <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
-              </div>
-            </Card>
-            <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
-                <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
-                <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
-                <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
-                <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
-                <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
-              </div>
-            </Card>
-            <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
-                <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
-                <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
-              </div>
-            </Card>
-            <Card title="Attribution" icon={driver.gclid ? <BadgeDollarSign className="w-4 h-4" /> : <Globe className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <Field label="Source" value={driver.gclid ? "Google Ads" : "Organic / Direct"} />
-                <Field label="gclid" value={driver.gclid} />
-                <Field label="utm_source" value={driver.utm_source} />
-                <Field label="utm_medium" value={driver.utm_medium} />
-                <Field label="utm_campaign" value={driver.utm_campaign} />
-                <Field label="utm_term" value={driver.utm_term} />
-                <Field label="utm_content" value={driver.utm_content} />
-                <Field label="Landing page" value={driver.landing_page} />
-                <Field label="Referrer" value={driver.referrer} />
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="vehicle" className="mt-4">
-            <Card title="Assigned vehicle" icon={<Car className="w-4 h-4" />}>
-              <div className="rounded-lg border border-border bg-soft/50 p-4 mb-3">
-                {veh ? (
-                  <div>
-                    <div className="text-lg font-semibold">{veh.year} {veh.make} {veh.model}{veh.trim ? ` ${veh.trim}` : ""}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {[veh.body_type, veh.fuel_type, veh.status].filter(Boolean).join(" · ")} · ID {veh.id.slice(0, 8)}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground">No vehicle assigned</div>
-                )}
-              </div>
-              <VehiclePicker
-                vehicles={vehicles}
-                value={driver.vehicle_id}
-                onChange={(id) => onUpdate({ vehicle_id: id })}
-              />
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="notes" className="mt-4">
-            <Card title="Internal notes" icon={<FileText className="w-4 h-4" />}>
-              <textarea
-                defaultValue={driver.notes || ""} rows={6} placeholder="Add internal notes about this driver…"
-                onBlur={(e) => onUpdate({ notes: e.target.value })}
-                className="w-full border border-border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/5"
-              />
-              <p className="text-[11px] text-muted-foreground mt-2">Saved automatically when you click away.</p>
-            </Card>
-          </TabsContent>
-        </Tabs>
         </div>
       </div>
+
+      <div className="px-8 py-6 space-y-6">
+        <LifecycleRail
+          stages={lifecycle}
+          percent={percentComplete}
+          timeInStage={timeInStage}
+          blocker={readiness.blockers[0]}
+        />
+
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+          {/* Sidebar */}
+          <aside className="space-y-4 lg:sticky lg:top-32 lg:self-start">
+            <SectionCard title="Driver Summary">
+              <div className="space-y-1.5 text-[12px]">
+                {driver.phone && <div className="flex items-center gap-2 text-[#111114]"><Phone className="w-3.5 h-3.5 text-[#9A9AA3]" /> {formatPhone(driver.phone)}</div>}
+                {driver.email && <div className="flex items-center gap-2 text-[#111114] break-all"><Mail className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" /> {driver.email}</div>}
+                {(driver.city || driver.state) && <div className="flex items-center gap-2 text-[#111114]"><MapPin className="w-3.5 h-3.5 text-[#9A9AA3]" /> {[driver.city, driver.state].filter(Boolean).join(", ")}</div>}
+                <div className="flex items-center gap-2 text-[#55555E]"><Globe className="w-3.5 h-3.5 text-[#9A9AA3]" /> {driver.gclid ? "Google Ads" : (driver.utm_source || "Direct")}</div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Rental Need">
+              <dl className="space-y-2.5 text-[12px]">
+                <Row2 label="Needed by" value={(screening as any)?.needed_by_date ? new Date((screening as any).needed_by_date).toLocaleDateString() : "—"} />
+                <Row2 label="Weekly rate" value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "$350"} />
+                <Row2 label="Drive type" value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"} />
+                <Row2 label="Current vehicle" value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"} />
+                <Row2 label="Card on file" value={driver.card_last4 ? `····${driver.card_last4}` : "Not saved"} />
+              </dl>
+            </SectionCard>
+
+            <SectionCard title="Readiness Signals">
+              <dl className="space-y-2.5 text-[12px]">
+                <SignalRow label="Interview" ok={screeningDone} />
+                <SignalRow label="Documents" ok={docsComplete} detail={`${docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).length}/4`} />
+                <SignalRow label="Insurance" ok={insuranceOk} />
+                <SignalRow label="Card on file" ok={!!driver.card_last4} />
+                <SignalRow label="Approved" ok={approved} />
+              </dl>
+            </SectionCard>
+
+            <SectionCard title="Quick Actions">
+              <div className="space-y-1.5">
+                <QuickAction icon={ClipboardList} label="Continue interview" onClick={() => setInterviewOpen(true)} />
+                <QuickAction icon={FileText} label="Request documents" onClick={() => (document.getElementById("tab-documents") as HTMLElement | null)?.click()} />
+                <QuickAction icon={ShieldCheck} label="Verify insurance" onClick={() => (document.getElementById("tab-screening") as HTMLElement | null)?.click()} />
+                <QuickAction icon={Car} label="Assign vehicle" onClick={() => (document.getElementById("tab-rental") as HTMLElement | null)?.click()} />
+                <QuickAction icon={FileText} label="Add note" onClick={() => (document.getElementById("tab-notes") as HTMLElement | null)?.click()} />
+              </div>
+            </SectionCard>
+          </aside>
+
+          {/* Main workspace */}
+          <div className="min-w-0 space-y-6">
+            <ReadinessSummary
+              readiness={readiness}
+              score={typeof driver.ai_score === "number" ? driver.ai_score : null}
+              primary={
+                <button
+                  onClick={primaryAction.onClick}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#CC0000] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+                >
+                  <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
+                </button>
+              }
+            />
+
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList className="bg-white border border-[#EDEDF0]">
+                <TabsTrigger value="overview" id="tab-overview">Overview</TabsTrigger>
+                <TabsTrigger value="application" id="tab-application">Application</TabsTrigger>
+                <TabsTrigger value="documents" id="tab-documents">Documents</TabsTrigger>
+                <TabsTrigger value="screening" id="tab-screening">Screening</TabsTrigger>
+                <TabsTrigger value="rental" id="tab-rental">Rental</TabsTrigger>
+                <TabsTrigger value="payments" id="tab-payments">Payments</TabsTrigger>
+                <TabsTrigger value="notes" id="tab-notes">Notes</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="mt-4 space-y-4">
+                <SectionCard title="Driver Facts">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Fact label="Platforms" value={(driver.platforms?.length ? driver.platforms.join(", ") : (screening as any)?.gig_apps?.join(", ")) || "—"} />
+                    <Fact label="Trips" value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()} />
+                    <Fact label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
+                    <Fact label="Years licensed" value={driver.years_licensed ?? "—"} />
+                    <Fact label="Weekly hours" value={driver.weekly_hours ?? "—"} />
+                    <Fact label="Accidents (3y)" value={(screening as any)?.accidents_last_3yr ?? "—"} />
+                    <Fact label="License points" value={(screening as any)?.license_points ?? "—"} />
+                    <Fact label="Drive type" value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"} />
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Requirements Checklist">
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <ReqRow ok={screeningDone} label="Interview complete" />
+                    <ReqRow ok={!!driver.license_photo_url || !!driver.license_valid} label="License uploaded" />
+                    <ReqRow ok={insuranceOk} label="Insurance verified" />
+                    <ReqRow ok={!!(screening as any)?.mvr_authorized} label="MVR authorized" />
+                    <ReqRow ok={!!driver.card_last4} label="Card on file" />
+                    <ReqRow ok={!!(driver as any).agreement_signed_at} label="Agreement signed" />
+                    <ReqRow ok={!!(driver as any).pickup_at} label="Pickup scheduled" />
+                    <ReqRow ok={docsComplete} label="All documents received" />
+                  </ul>
+                </SectionCard>
+
+                <SectionCard title="Recent Activity" padded={false}>
+                  <div className="p-5">
+                    <Timeline steps={buildDriverTimeline(driver, screening)} title="Rental Timeline" />
+                  </div>
+                </SectionCard>
+              </TabsContent>
+
+              <TabsContent value="documents" className="mt-4 space-y-4">
+                <DocumentsCard
+                  leadId={driver.id}
+                  docs={docs}
+                  onChange={(next) => { setDocs(next); onDocsChange?.(next); }}
+                />
+                {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) ? (
+                  <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
+                    <TripScreenshots
+                      paths={Array.from(new Set([
+                        ...(((driver as any).trip_screenshots as string[] | null) ?? []),
+                        ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
+                      ].filter(Boolean)))}
+                    />
+                  </Card>
+                ) : null}
+                {driver.license_photo_url ? (
+                  <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
+                    <LicensePhoto path={driver.license_photo_url} />
+                  </Card>
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="screening" className="mt-4 space-y-4">
+                <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
+                <InsuranceVerificationCard
+                  leadId={driver.id}
+                  screening={screening}
+                  docs={docs}
+                  onScreening={(s) => { setScreening(s); onScreeningChange?.(s); }}
+                  onDocs={(d) => { setDocs(d); onDocsChange?.(d); }}
+                />
+                <AISnapshotCard driver={driver} onUpdate={onUpdate} />
+              </TabsContent>
+
+              <TabsContent value="application" className="mt-4 space-y-4">
+                <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <Field label="DOB" value={driver.dob} />
+                    <Field label="License #" value={driver.license_number} />
+                    <Field label="License state" value={driver.license_state} />
+                    <Field label="License exp." value={driver.license_expiration} />
+                    <Field label="Years licensed" value={driver.years_licensed} />
+                    <Field label="Address" value={[driver.address, driver.city, driver.state, driver.zip].filter(Boolean).join(", ") || null} />
+                    <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
+                    <Field label="Weekly hours" value={driver.weekly_hours} />
+                    <Field label="Term" value={driver.rental_term} />
+                    <Field label="Payment method" value={driver.payment_method} />
+                  </div>
+                </Card>
+                <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
+                    <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
+                    <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
+                    <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
+                    <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
+                    <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
+                  </div>
+                </Card>
+                <Card title="Attribution" icon={driver.gclid ? <BadgeDollarSign className="w-4 h-4" /> : <Globe className="w-4 h-4" />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <Field label="Source" value={driver.gclid ? "Google Ads" : "Organic / Direct"} />
+                    <Field label="utm_source" value={driver.utm_source} />
+                    <Field label="utm_medium" value={driver.utm_medium} />
+                    <Field label="utm_campaign" value={driver.utm_campaign} />
+                    <Field label="Landing page" value={driver.landing_page} />
+                    <Field label="Referrer" value={driver.referrer} />
+                  </div>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="rental" className="mt-4">
+                <Card title="Assigned vehicle" icon={<Car className="w-4 h-4" />}>
+                  <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
+                    {veh ? (
+                      <div>
+                        <div className="text-[15px] font-semibold text-[#111114]">{veh.year} {veh.make} {veh.model}{veh.trim ? ` ${veh.trim}` : ""}</div>
+                        <div className="text-[11px] text-[#55555E] mt-1">
+                          {[veh.body_type, veh.fuel_type, veh.status].filter(Boolean).join(" · ")} · ID {veh.id.slice(0, 8)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-[13px] text-[#55555E]">No vehicle assigned</div>
+                    )}
+                  </div>
+                  <VehiclePicker
+                    vehicles={vehicles}
+                    value={driver.vehicle_id}
+                    onChange={(id) => onUpdate({ vehicle_id: id })}
+                  />
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="payments" className="mt-4 space-y-4">
+                <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
+                    <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
+                    <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
+                  </div>
+                </Card>
+                <CardOnFileCard driver={driver} onUpdate={onUpdate} />
+              </TabsContent>
+
+              <TabsContent value="notes" className="mt-4">
+                <Card title="Internal notes" icon={<FileText className="w-4 h-4" />}>
+                  <textarea
+                    defaultValue={driver.notes || ""} rows={6} placeholder="Add internal notes about this driver…"
+                    onBlur={(e) => onUpdate({ notes: e.target.value })}
+                    className="w-full border border-[#EDEDF0] rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#CC0000]/15"
+                  />
+                  <p className="text-[11px] text-[#9A9AA3] mt-2">Saved automatically when you click away.</p>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+
+      <InterviewDrawer
+        open={interviewOpen}
+        onOpenChange={setInterviewOpen}
+        driver={driver}
+        screening={screening}
+        onSaved={(next) => { setScreening(next); onScreeningChange?.(next); }}
+      />
     </div>
   );
 }
+
+function Row2({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-[#9A9AA3]">{label}</dt>
+      <dd className="font-medium text-[#111114] text-right truncate max-w-[180px]">{value ?? "—"}</dd>
+    </div>
+  );
+}
+function SignalRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-[#55555E] inline-flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-[#0F8A4B]" : "bg-[#C4C4CB]"}`} />
+        {label}
+      </dt>
+      <dd className={`text-[11px] font-medium tabular-nums ${ok ? "text-[#0F8A4B]" : "text-[#9A9AA3]"}`}>
+        {detail ?? (ok ? "Ready" : "Pending")}
+      </dd>
+    </div>
+  );
+}
+function QuickAction({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[12px] text-[#111114] hover:bg-[#FAFAFB] transition-colors text-left"
+    >
+      <Icon className="w-3.5 h-3.5 text-[#55555E]" strokeWidth={1.75} />
+      {label}
+    </button>
+  );
+}
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <MicroLabel>{label}</MicroLabel>
+      <div className="mt-1 text-[13px] font-medium text-[#111114] truncate">{value ?? "—"}</div>
+    </div>
+  );
+}
+function ReqRow({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className={`flex items-center gap-2 rounded-md border px-3 py-2 text-[12px] ${
+      ok ? "border-[#EDEDF0] bg-[#FAFAFB] text-[#111114]" : "border-[#EDEDF0] bg-white text-[#55555E]"
+    }`}>
+      <span className={`h-4 w-4 rounded-full grid place-items-center ${ok ? "bg-[#0F8A4B] text-white" : "bg-[#F4F4F6] text-[#9A9AA3]"}`}>
+        {ok ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : <span className="text-[8px]">·</span>}
+      </span>
+      {label}
+    </li>
+  );
+}
+
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
