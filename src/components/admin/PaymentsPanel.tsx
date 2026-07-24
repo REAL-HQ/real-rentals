@@ -4,16 +4,22 @@ import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusPill } from "./ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreVertical, ChevronDown, Check } from "lucide-react";
 
-const STATUSES = ["paid","current","late","past_due","collections"] as const;
-const TYPES = ["rent","deposit","late_fee","other"] as const;
-const statusBadge: Record<string,string> = {
-  paid: "bg-green-100 text-green-800",
-  current: "bg-blue-100 text-blue-800",
-  late: "bg-amber-100 text-amber-800",
-  past_due: "bg-orange-100 text-orange-800",
-  collections: "bg-red-100 text-red-800",
+const STATUSES = ["upcoming","current","paid","past_due","failed","collections","waived"] as const;
+const STATUS_LABEL: Record<string,string> = {
+  upcoming: "Upcoming", current: "Due", paid: "Paid", past_due: "Past Due",
+  failed: "Failed", collections: "In Collections", waived: "Waived", late: "Late",
 };
+const TYPES = ["rent","deposit","late_fee","other"] as const;
+
+function fmtDate(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
 
 export function PaymentsPanel() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -101,26 +107,53 @@ export function PaymentsPanel() {
             {filtered.map(p => {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
+              const driverName = d?.full_name || (p.driver_id ? "Unnamed driver" : "—");
+              const lateFees = Number(p.late_fees || 0);
               return (
                  <tr key={p.id} className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
-                  <td className="px-3 text-[13px]">{d?.full_name || "—"}</td>
+                  <td className="px-3 text-[13px] font-medium text-[#111114]">{driverName}</td>
                   <td className="px-3 text-xs text-[#55555E]">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
                   <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
                   <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.amount).toLocaleString()}</td>
-                  <td className="px-3 text-[13px]">{p.due_date || "—"}</td>
+                  <td className="px-3 text-[13px] text-[#55555E] tabular-nums">{fmtDate(p.due_date)}</td>
                   <td className="px-3">
-                    <div className="flex items-center gap-2">
-                      <StatusPill status={p.status} />
-                      <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
-                        <SelectTrigger className="h-7 w-28 bg-white text-foreground text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
+                    <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
+                      <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
+                        <span className="inline-flex items-center gap-1">
+                          <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? p.status.replace(/_/g," ")}</StatusPill>
+                          <ChevronDown className="w-3 h-3 text-[#9A9AA3]" />
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent align="start" className="min-w-[11rem]">
+                        {STATUSES.map(s => (
+                          <SelectItem key={s} value={s} className="text-[13px]">
+                            {STATUS_LABEL[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
-                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.late_fees).toLocaleString()}</td>
+                  <td className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#CC0000] font-medium" : "text-[#9A9AA3]"}`}>
+                    ${lateFees.toLocaleString()}
+                  </td>
                   <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.balance_due).toLocaleString()}</td>
-                  <td className="px-3"><button onClick={() => remove(p.id)} className="text-xs text-[#9A9AA3] hover:text-[#CC0000] transition-colors duration-150">✕</button></td>
+                  <td className="px-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-[#F4F4F6] text-[#9A9AA3]">
+                        <MoreVertical className="w-4 h-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => update(p.id, { status: "paid", paid_date: new Date().toISOString().slice(0,10) })}>
+                          <Check className="w-4 h-4 mr-2" /> Mark as paid
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>Waive</DropdownMenuItem>
+                        <DropdownMenuItem className="text-[#CC0000] focus:text-[#CC0000]" onClick={() => remove(p.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
                 </tr>
               );
             })}
