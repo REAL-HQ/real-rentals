@@ -85,34 +85,34 @@ export function MetricCard({
   const positive = (delta ?? 0) >= 0;
   return (
     <div
-      className={`rounded-2xl border p-5 shadow-sm transition-colors ${
+      className={`rounded-2xl border px-5 py-4 shadow-sm transition-colors ${
         urgent ? "bg-[#CC0000] text-white border-transparent" : "bg-white text-[#111114] border-[#EDEDF0]"
       }`}
     >
       <div className="flex items-center justify-between">
-        <div className={`h-9 w-9 rounded-lg grid place-items-center ${
+        <div className={`h-8 w-8 rounded-full grid place-items-center ${
           urgent ? "bg-white/15 text-white" : "bg-[#F4F4F6] text-[#55555E]"
         }`}>
-          <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+          <Icon className="w-4 h-4" strokeWidth={1.75} />
         </div>
         {hasDelta && (
-          <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium px-1.5 py-0.5 rounded ${
+          <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium ${
             urgent
-              ? "bg-white/15 text-white"
+              ? "text-white/90"
               : positive
-                ? "bg-[rgba(15,138,75,0.08)] text-[#0F8A4B]"
-                : "bg-[rgba(204,0,0,0.08)] text-[#CC0000]"
+                ? "text-[#0F8A4B]"
+                : "text-[#CC0000]"
           }`}>
             {positive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
             {Math.abs(delta!)}%
           </span>
         )}
       </div>
-      <div className={`mt-4 text-[26px] leading-none font-semibold tracking-tight tabular-nums ${urgent ? "text-white" : "text-[#111114]"}`}>
+      <div className={`mt-3 text-[24px] leading-none font-semibold tracking-tight tabular-nums ${urgent ? "text-white" : "text-[#111114]"}`}>
         {value}
       </div>
-      <div className={`mt-1.5 text-[12px] font-medium ${urgent ? "text-white/90" : "text-[#111114]"}`}>{label}</div>
-      {hint && <div className={`mt-1 text-[11px] ${urgent ? "text-white/70" : "text-[#55555E]"}`}>{hint}</div>}
+      <div className={`mt-1 text-[12px] font-medium ${urgent ? "text-white/90" : "text-[#111114]"}`}>{label}</div>
+      {hint && <div className={`mt-0.5 text-[11px] ${urgent ? "text-white/70" : "text-[#55555E]"}`}>{hint}</div>}
       {deltaLabel && hasDelta && (
         <div className={`mt-0.5 text-[10px] ${urgent ? "text-white/60" : "text-[#9A9AA3]"}`}>{deltaLabel}</div>
       )}
