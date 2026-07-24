@@ -74,7 +74,7 @@ export function MessagesPanel() {
       }
     }
     if (partnerIds.length) {
-      const { data: pt } = await supabase
+      const { data: pt } = await (supabase as any)
         .from("partner_submissions")
         .select("id, full_name, company")
         .in("id", partnerIds);
