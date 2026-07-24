@@ -603,15 +603,11 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
           <AISnapshotCard driver={driver} onUpdate={onUpdate} />
 
           <Tabs defaultValue="interview" className="w-full">
-          <TabsList className="bg-white border border-border">
+          <TabsList className="bg-white border border-[#EDEDF0]">
             <TabsTrigger value="interview">Interview</TabsTrigger>
-            <TabsTrigger value="screening-docs">Documents</TabsTrigger>
-            <TabsTrigger value="insurance">Insurance</TabsTrigger>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
-            <TabsTrigger value="financials">Financials</TabsTrigger>
+            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="application">Application</TabsTrigger>
             <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
-            <TabsTrigger value="documents">Legacy Docs</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
           </TabsList>
 
@@ -626,7 +622,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             />
           </TabsContent>
 
-          <TabsContent value="screening-docs" className="mt-4">
+          <TabsContent value="documents" className="mt-4 space-y-4">
             <DocumentsCard
               leadId={driver.id}
               docs={docs}
@@ -635,9 +631,6 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 onDocsChange?.(next);
               }}
             />
-          </TabsContent>
-
-          <TabsContent value="insurance" className="mt-4">
             <InsuranceVerificationCard
               leadId={driver.id}
               screening={screening}
@@ -651,9 +644,24 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 onDocsChange?.(d);
               }}
             />
+            {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) ? (
+              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
+                <TripScreenshots
+                  paths={Array.from(new Set([
+                    ...(((driver as any).trip_screenshots as string[] | null) ?? []),
+                    ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
+                  ].filter(Boolean)))}
+                />
+              </Card>
+            ) : null}
+            {driver.license_photo_url ? (
+              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
+                <LicensePhoto path={driver.license_photo_url} />
+              </Card>
+            ) : null}
           </TabsContent>
 
-          <TabsContent value="overview" className="mt-4 space-y-4">
+          <TabsContent value="application" className="mt-4 space-y-4">
             <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Field label="DOB" value={driver.dob} />
@@ -682,6 +690,23 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Field label="Driver rating" value={driver.rating ? `${driver.rating} / 5` : null} />
               </div>
             </Card>
+            <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
+                <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
+                <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
+                <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
+                <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
+                <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
+              </div>
+            </Card>
+            <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
+                <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
+                <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
+              </div>
+            </Card>
             <Card title="Attribution" icon={driver.gclid ? <BadgeDollarSign className="w-4 h-4" /> : <Globe className="w-4 h-4" />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Field label="Source" value={driver.gclid ? "Google Ads" : "Organic / Direct"} />
@@ -693,29 +718,6 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Field label="utm_content" value={driver.utm_content} />
                 <Field label="Landing page" value={driver.landing_page} />
                 <Field label="Referrer" value={driver.referrer} />
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="lifecycle" className="mt-4">
-            <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <SelField label="Driver status" value={driver.status} options={[...DRIVER_STATUSES]} onChange={(v) => onUpdate({ status: v })} />
-                <SelField label="Deposit status" value={driver.deposit_status} options={[...DEPOSIT_STATUSES]} onChange={(v) => onUpdate({ deposit_status: v })} />
-                <SelField label="Payment status" value={driver.payment_status} options={[...PAYMENT_STATUSES]} onChange={(v) => onUpdate({ payment_status: v })} />
-                <SelField label="Background check" value={driver.background_check_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ background_check_status: v })} />
-                <SelField label="MVR status" value={driver.mvr_status} options={[...CHECK_STATUSES]} onChange={(v) => onUpdate({ mvr_status: v })} />
-                <NumField label="Incident count" value={driver.incident_count} onSave={(v) => onUpdate({ incident_count: v ?? 0 })} />
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="financials" className="mt-4">
-            <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <NumField label="Deposit amount ($)" value={driver.deposit_amount as any} onSave={(v) => onUpdate({ deposit_amount: v as any })} />
-                <NumField label="Deposit paid ($)" value={driver.deposit_paid as any} onSave={(v) => onUpdate({ deposit_paid: v as any })} />
-                <NumField label="Weekly rent ($)" value={driver.weekly_rent as any} onSave={(v) => onUpdate({ weekly_rent: v as any })} />
               </div>
             </Card>
           </TabsContent>
@@ -740,32 +742,6 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 onChange={(id) => onUpdate({ vehicle_id: id })}
               />
             </Card>
-          </TabsContent>
-
-          <TabsContent value="documents" className="mt-4 space-y-4">
-            {((driver as any).trip_screenshots?.length || driver.profile_screenshot_url) ? (
-              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
-                <TripScreenshots
-                  paths={Array.from(new Set([
-                    ...(((driver as any).trip_screenshots as string[] | null) ?? []),
-                    ...(driver.profile_screenshot_url ? [driver.profile_screenshot_url] : []),
-                  ].filter(Boolean)))}
-                />
-              </Card>
-            ) : (
-              <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
-                <div className="text-sm text-muted-foreground">No screenshots uploaded.</div>
-              </Card>
-            )}
-            {driver.license_photo_url ? (
-              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
-                <LicensePhoto path={driver.license_photo_url} />
-              </Card>
-            ) : (
-              <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
-                <div className="text-sm text-muted-foreground">No license photo uploaded.</div>
-              </Card>
-            )}
           </TabsContent>
 
           <TabsContent value="notes" className="mt-4">
@@ -927,50 +903,36 @@ function AISnapshotCard({ driver, onUpdate }: { driver: Application; onUpdate: (
     } finally { setBusy(false); }
   }
   return (
-    <div className="rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-      <div className={`h-1 w-full bg-gradient-to-r ${tierGrad}`} />
-      <div className="p-5">
-        <div className="flex items-start gap-5">
-          <div className="shrink-0">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">AI score</div>
-            <div className="mt-1 flex items-baseline gap-1">
-              <span className="text-4xl font-bold tabular-nums">{score ?? "—"}</span>
-              <span className="text-xs text-muted-foreground">/100</span>
-            </div>
-            {tier && <div className="mt-1"><TierBadge tier={tier} score={null} size="md" /></div>}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Sparkles className="w-3.5 h-3.5 text-real-red" /> AI Prospect Snapshot
-              </div>
-              <button
-                onClick={run}
-                disabled={busy}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : tier ? "Re-score" : "Score now"}
-              </button>
-            </div>
-            {driver.ai_summary ? (
-              <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Not yet scored. Run the AI review to grade trips, rating, license, and screenshots.</p>
-            )}
-            {flags.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {flags.map((f, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
-                    <AlertTriangle className="w-3 h-3" /> {f}
-                  </span>
-                ))}
-              </div>
-            )}
-            {scoredAt && (
-              <p className="mt-2 text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
-            )}
-          </div>
+    <div className="rounded-xl border border-[#EDEDF0] bg-white px-4 py-3 flex items-center gap-4">
+      <div className="shrink-0 flex items-center gap-2.5">
+        <span className={`h-8 w-8 rounded-full bg-gradient-to-br ${tierGrad} grid place-items-center text-white text-[11px] font-bold tabular-nums`}>
+          {score ?? "—"}
+        </span>
+        <div className="leading-tight">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">AI Score</div>
+          <div className="text-[12px] font-semibold text-[#111114] capitalize">{tier ?? "Unscored"}</div>
         </div>
+      </div>
+      <div className="min-w-0 flex-1 flex items-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-[#CC0000] shrink-0" />
+        <p className="text-[12px] text-[#55555E] leading-snug truncate">
+          {driver.ai_summary || "Not yet scored. Run the AI review to grade trips, rating, license, and screenshots."}
+        </p>
+        {flags.length > 0 && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+            <AlertTriangle className="w-3 h-3" /> {flags.length}
+          </span>
+        )}
+      </div>
+      <div className="shrink-0 flex items-center gap-2">
+        {scoredAt && <span className="hidden sm:block text-[11px] text-[#9A9AA3]">{scoredAt.toLocaleDateString()}</span>}
+        <button
+          onClick={run}
+          disabled={busy}
+          className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-md border border-[#EDEDF0] bg-white hover:bg-[#FAFAFB] disabled:opacity-60 transition-colors"
+        >
+          <Sparkles className="w-3.5 h-3.5" /> {busy ? "Scoring…" : tier ? "Re-score" : "Score"}
+        </button>
       </div>
     </div>
   );

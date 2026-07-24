@@ -144,7 +144,7 @@ export function ScreeningPipeline({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-4">
+    <div className="rounded-xl border border-[#EDEDF0] bg-white p-4">
       {isDq && screening?.disqualification_reason && (
         <div className="mb-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -154,38 +154,53 @@ export function ScreeningPipeline({
           </div>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-1">
-        {PIPELINE.map((p, i) => {
-          const done = !isDq && i < activeIdx;
-          const active = !isDq && i === activeIdx;
-          const cls = isDq
-            ? "bg-gray-100 text-gray-400 border-gray-200"
-            : done
-              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-              : active
-                ? "bg-black text-white border-black"
-                : "bg-white text-muted-foreground border-border";
-          return (
-            <div key={p.key} className="flex items-center">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+            Stage {isDq ? "—" : `${activeIdx + 1} of ${PIPELINE.length}`}
+          </div>
+          <div className="text-[13px] font-semibold text-[#111114] truncate">
+            {isDq ? "Disqualified" : PIPELINE[activeIdx]?.label}
+          </div>
+        </div>
+        <div className="text-[11px] text-[#9A9AA3] tabular-nums">
+          {isDq ? "" : `${Math.round(((activeIdx + 1) / PIPELINE.length) * 100)}%`}
+        </div>
+      </div>
+      <div className="relative flex items-center">
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#EDEDF0]" />
+        <div
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#CC0000] transition-all duration-200"
+          style={{ width: isDq ? "0%" : `${(activeIdx / (PIPELINE.length - 1)) * 100}%` }}
+        />
+        <div className="relative z-10 flex w-full items-center justify-between">
+          {PIPELINE.map((p, i) => {
+            const done = !isDq && i < activeIdx;
+            const active = !isDq && i === activeIdx;
+            const dotCls = isDq
+              ? "bg-white border-[#EDEDF0] text-[#C4C4CB]"
+              : done
+                ? "bg-[#CC0000] border-[#CC0000] text-white"
+                : active
+                  ? "bg-white border-[#CC0000] text-[#CC0000] ring-4 ring-[#CC0000]/10"
+                  : "bg-white border-[#EDEDF0] text-[#C4C4CB]";
+            return (
               <button
+                key={p.key}
                 type="button"
                 onClick={() => attempt(p.key)}
-                title={`Set status to ${p.label}`}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${cls}`}
+                title={p.label}
+                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors ${dotCls}`}
               >
-                {done ? (
-                  <CheckCircle2 className="h-3 w-3" />
-                ) : active ? (
-                  <div className="h-2 w-2 rounded-full bg-white" />
-                ) : (
-                  <CircleDashed className="h-3 w-3" />
-                )}
-                {p.label}
+                {done ? <CheckCircle2 className="h-3 w-3" /> : <span className="text-[10px] font-semibold">{i + 1}</span>}
               </button>
-              {i < PIPELINE.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" />}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[10px] text-[#9A9AA3]">
+        <span>{PIPELINE[0].label}</span>
+        <span>{PIPELINE[PIPELINE.length - 1].label}</span>
       </div>
     </div>
   );
