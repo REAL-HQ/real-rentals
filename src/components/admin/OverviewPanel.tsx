@@ -5,10 +5,10 @@ import {
   CreditCard, AlertTriangle, Wrench, Wallet, ArrowUp, ArrowDown, ArrowUpRight, Flame, Sparkles,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { MetricCard, SectionCard, MicroLabel, ActionQueueRow, StatusPill } from "./ui";
 
-type FinancePoint = { day: string; value: number };
+type FinancePoint = { day: string; billed: number; collected: number };
 
 function fmtDay(d: Date) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
 function usd(n: number | undefined) {
@@ -102,14 +102,16 @@ export function OverviewPanel() {
       // Revenue & Collections aggregate (30d)
       let rev = 0, out = 0, exp = 0;
       const series: FinancePoint[] = [];
-      for (let i = 29; i >= 0; i--) series.push({ day: fmtDay(new Date(now.getTime() - i * 864e5)), value: 0 });
+      for (let i = 29; i >= 0; i--) series.push({ day: fmtDay(new Date(now.getTime() - i * 864e5)), billed: 0, collected: 0 });
       const idxFor = (iso: string) => 29 - Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
       for (const p of (payLast60Q.data ?? []) as any[]) {
         const amt = Number(p.amount ?? 0);
+        const createdIdx = p.created_at ? idxFor(p.created_at) : -1;
+        if (createdIdx >= 0 && createdIdx < 30) series[createdIdx].billed += amt;
         if (p.status === "paid" && p.paid_date) {
           rev += amt;
           const i = idxFor(p.paid_date);
-          if (i >= 0 && i < 30) series[i].value += amt;
+          if (i >= 0 && i < 30) series[i].collected += amt;
         } else if (p.status !== "paid") {
           out += amt;
         }
@@ -146,59 +148,56 @@ export function OverviewPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <MetricCard
           icon={Car}
-          label="Available Vehicles"
+          label="Available Fleet"
           value={vehiclesAvail}
-          hint={`${vehiclesTotal} in fleet · ready to rent`}
+          hint={`${vehiclesTotal} total · Ready to rent`}
         />
         <MetricCard
           icon={ShieldCheck}
           label="Active Rentals"
           value={rented}
-          hint={`${utilization}% utilization`}
+          hint={`${utilization}% fleet utilization`}
         />
         <MetricCard
           icon={ClipboardList}
-          label="Drivers Awaiting Action"
+          label="Driver Actions"
           value={awaitingTotal}
-          hint={`${docsPending} docs · ${screeningsPending} interviews · ${approvalReady} approvals`}
-          urgent={awaitingTotal > 10}
+          hint={`${docsPending} document${docsPending===1?"":"s"} · ${screeningsPending} interview${screeningsPending===1?"":"s"}`}
         />
         <MetricCard
           icon={DollarSign}
-          label="Weekly Rental Revenue"
+          label="Weekly Revenue"
           value={usd(weekRevenue ?? 0)}
-          hint="vs previous 7 days"
+          hint={weekDelta != null ? `${weekDelta >= 0 ? weekDelta : Math.abs(weekDelta)}% ${weekDelta >= 0 ? "above" : "below"} prior week` : "vs previous 7 days"}
           delta={weekDelta}
         />
       </div>
 
-      {/* Row B — Revenue & Collections + Fleet Activity */}
+      {/* Row B — Collections + Fleet Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <SectionCard
           className="lg:col-span-3"
-          title="Revenue & Collections"
-          subtitle="Last 30 days"
-          right={<MicroLabel>USD</MicroLabel>}
+          title="Collections"
+          subtitle="Billed vs collected · Last 30 days"
         >
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FinanceStat label="Revenue" value={revenue30} tone="ink" />
+            <FinanceStat label="Billed" value={revenue30 + outstanding} tone="ink" />
             <FinanceStat label="Collected" value={collected30} tone="green" />
-            <FinanceStat label="Outstanding" value={outstanding} tone="amber" />
+            <FinanceStat label="Outstanding" value={outstanding} tone={outstanding > 0 ? "amber" : "ink"} />
             <FinanceStat label="Expenses" value={expenses30} tone="ink" />
             <FinanceStat label="Net" value={netRev} tone={netRev >= 0 ? "green" : "red"} />
           </div>
-          <div className="mt-4 h-24">
+          <div className="mt-4 h-[180px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueSeries} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0F8A4B" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#0F8A4B" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="value" stroke="#0F8A4B" strokeWidth={2} fill="url(#revGrad)" dot={false} isAnimationActive={false} />
-                <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} formatter={(v: any) => usd(Number(v))} />
-              </AreaChart>
+              <LineChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="#EDEDF0" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="day" tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#EDEDF0" }} interval={5} />
+                <YAxis tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `$${Math.round(v/1000)}k` : `$${v}`} width={44} />
+                <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} formatter={(v: any, name: any) => [usd(Number(v)), name === "billed" ? "Billed" : "Collected"]} />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} iconType="circle" formatter={(v) => v === "billed" ? "Billed" : "Collected"} />
+                <Line type="monotone" dataKey="billed" stroke="#9A9AA3" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="collected" stroke="#0F8A4B" strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </SectionCard>
@@ -229,11 +228,11 @@ export function OverviewPanel() {
       <SectionCard title="Action Queue" subtitle="What needs your attention today" padded={false}>
         <ActionQueueRow icon={FileText} label="Drivers missing documents" count={docsPending}
           description="Complete license, insurance, and profile uploads."
-          tone="amber"
+          tone="neutral"
           onAction={() => (window.location.href = "/admin?tab=drivers")} />
         <ActionQueueRow icon={ClipboardList} label="Interviews incomplete" count={screeningsPending}
           description="Screening interview not yet completed."
-          tone="amber"
+          tone="neutral"
           onAction={() => (window.location.href = "/admin?tab=drivers")} />
         <ActionQueueRow icon={CheckCircle2} label="Drivers ready for approval" count={approvalReady}
           description="Approved status with no vehicle assigned yet."
@@ -241,7 +240,7 @@ export function OverviewPanel() {
           onAction={() => (window.location.href = "/admin?tab=drivers")} />
         <ActionQueueRow icon={ShieldCheck} label="Insurance verification required" count={insuranceNeeded}
           description="Screening flagged insurance as unverified."
-          tone="amber"
+          tone="neutral"
           onAction={() => (window.location.href = "/admin?tab=drivers")} />
         <ActionQueueRow icon={CreditCard} label="Payments due today" count={paymentsDue}
           description="Unpaid invoices with due date today or earlier."
@@ -249,17 +248,17 @@ export function OverviewPanel() {
           onAction={() => (window.location.href = "/admin?tab=payments")} />
         <ActionQueueRow icon={AlertTriangle} label="Late payments" count={paymentsLate}
           description="Rentals in past-due state."
-          tone="red"
+          tone={paymentsLate > 0 ? "red" : "neutral"}
           onAction={() => (window.location.href = "/admin?tab=payments")} />
         <ActionQueueRow icon={Wrench} label="Vehicles needing maintenance" count={maintOpen}
           description="Open maintenance items across the fleet."
-          tone="amber"
+          tone="neutral"
           onAction={() => (window.location.href = "/admin?tab=maintenance")} />
       </SectionCard>
 
       {/* Row D — Recent Applications */}
       <SectionCard
-        title="Recent Applications"
+        title="Recent Drivers"
         subtitle="Latest driver activity"
         padded={false}
         right={
@@ -286,8 +285,22 @@ export function OverviewPanel() {
               </thead>
               <tbody className="divide-y divide-[#F4F4F6]">
                 {recent.slice(0, 7).map((a) => {
-                  const stage = a.status === "active" ? "Active" : a.status === "approved" ? "Approved" : a.current_step ? `Step ${a.current_step}/4` : "Lead";
-                  const blocker = a.current_step && a.current_step < 4 ? "Incomplete wizard" : (a.status === "approved" ? "Assign vehicle" : "Interview");
+                  const stage = a.status === "active" ? "Active"
+                    : a.status === "approved" ? "Approved"
+                    : a.current_step ? "Interview"
+                    : "Lead";
+                  const blocker = a.current_step && a.current_step < 4 ? "Application incomplete"
+                    : a.status === "approved" ? "Assign vehicle"
+                    : "Interview incomplete";
+                  const readinessLabel = a.ai_tier === "hot" ? "High Readiness"
+                    : a.ai_tier === "warm" ? "Medium Readiness"
+                    : a.ai_tier === "cold" ? "Low Readiness"
+                    : "Unscored";
+                  const readinessTone: "green" | "amber" | "red" | "neutral" =
+                    a.ai_tier === "hot" ? "green"
+                    : a.ai_tier === "warm" ? "amber"
+                    : a.ai_tier === "cold" ? "red"
+                    : "neutral";
                   return (
                     <tr key={a.id} onClick={() => (window.location.href = `/admin?tab=drivers&id=${a.id}`)}
                         className="hover:bg-[#FAFAFB] cursor-pointer transition-colors">
@@ -301,13 +314,9 @@ export function OverviewPanel() {
                       </td>
                       <td className="px-3 py-3"><StatusPill status={stage} /></td>
                       <td className="px-3 py-3">
-                        {a.ai_tier ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium">
-                            {a.ai_tier === "hot" ? <Flame className="w-3 h-3 text-[#CC0000]" /> : <Sparkles className="w-3 h-3 text-[#9A9AA3]" />}
-                            <span className="capitalize text-[#111114]">{a.ai_tier}</span>
-                            {a.ai_score != null && <span className="text-[#9A9AA3]">· {a.ai_score}</span>}
-                          </span>
-                        ) : <span className="text-[#9A9AA3] text-[11px]">Unscored</span>}
+                        <StatusPill tone={readinessTone}>
+                          {readinessLabel}{a.ai_score != null ? ` · ${a.ai_score}` : ""}
+                        </StatusPill>
                       </td>
                       <td className="px-3 py-3 text-[#55555E]">—</td>
                       <td className="px-3 py-3 text-[#55555E] text-[12px]">{blocker}</td>
@@ -355,9 +364,9 @@ function FleetDonut({ available, rented, maintenance, reserved }: {
   available: number; rented: number; maintenance: number; reserved: number;
 }) {
   const segs = [
-    { key: "Available", value: available, color: "#facc15" },
+    { key: "Available", value: available, color: "#111114" },
     { key: "Rented", value: rented, color: "#0F8A4B" },
-    { key: "Reserved", value: reserved, color: "#3B82F6" },
+    { key: "Reserved", value: reserved, color: "#9A9AA3" },
     { key: "Maintenance", value: maintenance, color: "#CC0000" },
   ];
   const total = segs.reduce((a, s) => a + s.value, 0);
