@@ -949,7 +949,6 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-}
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
