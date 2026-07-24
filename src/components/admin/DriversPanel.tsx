@@ -371,10 +371,22 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
                     <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">{a.payment_status?.replace(/_/g," ")}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">${Number(a.deposit_paid ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <Select value={a.status} onValueChange={(status) => update(a.id, { status })}>
-                        <SelectTrigger className={`h-7 w-28 text-xs border-0 ${statusBadge[a.status] || "bg-gray-100"}`}><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {DRIVER_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      <Select value={a.status || ""} onValueChange={(status) => update(a.id, { status })}>
+                        <SelectTrigger className="h-7 w-auto min-w-[7rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
+                          {a.status ? (
+                            <StatusPill status={a.status} />
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
+                              Select status <ChevronDown className="w-3 h-3" />
+                            </span>
+                          )}
+                        </SelectTrigger>
+                        <SelectContent align="start" className="min-w-[10rem]">
+                          {DRIVER_STATUSES.map((s) => (
+                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
+                              {s}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </td>
