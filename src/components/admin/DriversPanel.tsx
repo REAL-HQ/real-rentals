@@ -617,8 +617,8 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
                   <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
                 </DropdownMenuItem>
-                <RequestDocumentsAction driver={driver} onUpdate={onUpdate} asMenuItem />
-                <CardOnFileActions driver={driver} onUpdate={onUpdate} asMenuItem />
+                <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                <CardOnFileActions driver={driver} onUpdate={onUpdate} />
                 <DropdownMenuItem className="text-[#CC0000] focus:text-[#CC0000]" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" /> Delete driver
                 </DropdownMenuItem>
@@ -752,7 +752,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                     <ReqRow ok={insuranceOk} label="Insurance verified" />
                     <ReqRow ok={!!(screening as any)?.mvr_authorized} label="MVR authorized" />
                     <ReqRow ok={!!driver.card_last4} label="Card on file" />
-                    <ReqRow ok={!!driver.agreement_signed_at} label="Agreement signed" />
+                    <ReqRow ok={!!(driver as any).agreement_signed_at} label="Agreement signed" />
                     <ReqRow ok={!!(driver as any).pickup_at} label="Pickup scheduled" />
                     <ReqRow ok={docsComplete} label="All documents received" />
                   </ul>
