@@ -122,7 +122,8 @@ function Admin() {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAFB] text-[#111114]">
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar — dark shell, grouped, user block at bottom */}
+        {/* Sidebar — dark shell, grouped */}
+        <aside className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[248px]"} transition-[width] duration-200 flex-col bg-[#141416] sticky top-0 h-screen`}>
           <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
             {!collapsed && <Logo offset={false} />}
             <button
