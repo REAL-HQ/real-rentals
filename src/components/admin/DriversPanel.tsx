@@ -497,14 +497,14 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 <Mail className="w-3.5 h-3.5" /> Email
               </a>
             )}
+            <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+            <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+            <AutopayActions driver={driver} />
             <DropdownMenu>
               <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-border bg-white hover:bg-soft">
                 <MoreVertical className="w-4 h-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <RequestDocumentsAction driver={driver} onUpdate={onUpdate} asMenuItem />
-                <CardOnFileActions driver={driver} onUpdate={onUpdate} asMenuItem />
-                <AutopayActions driver={driver} asMenuItem />
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" /> Delete driver
                 </DropdownMenuItem>
