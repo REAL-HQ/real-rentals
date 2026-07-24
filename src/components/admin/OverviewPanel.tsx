@@ -178,7 +178,7 @@ export function OverviewPanel() {
 
       const apps = (allAppsQ.data ?? []) as any[];
       setAllApps(apps);
-      setRecent(apps.slice(0, 6));
+      setRecent(apps.slice(0, 3));
       setHot(hotListQ.data ?? []);
     })();
   }, []);
