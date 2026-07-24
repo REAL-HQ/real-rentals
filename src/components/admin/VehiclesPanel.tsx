@@ -119,16 +119,11 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
                 <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}</div>
                 <div className="mt-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
-                  <Select
-                    value={(v as any).partner_id ?? "__none__"}
-                    onValueChange={(val) => assignPartner(v, val === "__none__" ? null : val)}
-                  >
-                    <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Unassigned</SelectItem>
-                      {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <PartnerAssignSelect
+                    value={(v as any).partner_id ?? null}
+                    partners={partners}
+                    onChange={(pid) => assignPartner(v, pid)}
+                  />
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => setEditing(v)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
