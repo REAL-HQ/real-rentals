@@ -7,6 +7,33 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+function PartnerAssignSelect({ value, partners, onChange }: { value: string | null; partners: Array<{ id: string; name: string }>; onChange: (pid: string | null) => void }) {
+  const [q, setQ] = useState("");
+  const filtered = partners.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <Select
+      value={value ?? "__none__"}
+      onValueChange={(val) => onChange(val === "__none__" ? null : val)}
+    >
+      <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+      <SelectContent>
+        <div className="p-1 sticky top-0 bg-white z-10 border-b border-border">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            placeholder="Search partners…"
+            className="w-full h-7 px-2 text-xs border border-border rounded-md outline-none focus:border-real-red"
+          />
+        </div>
+        <SelectItem value="__none__">Unassigned</SelectItem>
+        {filtered.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+        {filtered.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
@@ -119,16 +146,11 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
                 <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}</div>
                 <div className="mt-2">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
-                  <Select
-                    value={(v as any).partner_id ?? "__none__"}
-                    onValueChange={(val) => assignPartner(v, val === "__none__" ? null : val)}
-                  >
-                    <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Unassigned</SelectItem>
-                      {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <PartnerAssignSelect
+                    value={(v as any).partner_id ?? null}
+                    partners={partners}
+                    onChange={(pid) => assignPartner(v, pid)}
+                  />
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => setEditing(v)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
