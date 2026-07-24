@@ -7,6 +7,33 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+function PartnerAssignSelect({ value, partners, onChange }: { value: string | null; partners: Array<{ id: string; name: string }>; onChange: (pid: string | null) => void }) {
+  const [q, setQ] = useState("");
+  const filtered = partners.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <Select
+      value={value ?? "__none__"}
+      onValueChange={(val) => onChange(val === "__none__" ? null : val)}
+    >
+      <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+      <SelectContent>
+        <div className="p-1 sticky top-0 bg-white z-10 border-b border-border">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            placeholder="Search partners…"
+            className="w-full h-7 px-2 text-xs border border-border rounded-md outline-none focus:border-real-red"
+          />
+        </div>
+        <SelectItem value="__none__">Unassigned</SelectItem>
+        {filtered.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+        {filtered.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
