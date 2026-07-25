@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Car, Users, ShieldCheck, DollarSign, FileText, ClipboardList, CheckCircle2,
-  CreditCard, AlertTriangle, Wrench, Wallet, ArrowUp, ArrowDown, ArrowUpRight, Flame, Sparkles,
+  Car, Users, CreditCard, MessageSquare, ArrowUpRight, Plus, Flame,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
-import { MetricCard, SectionCard, MicroLabel, ActionQueueRow, StatusPill } from "./ui";
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { SectionCard, MicroLabel, StatusPill, toneFor } from "./ui";
+import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 type FinancePoint = { day: string; billed: number; collected: number };
 
