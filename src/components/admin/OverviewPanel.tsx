@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  Car, Users, ShieldCheck, DollarSign, FileText, ClipboardList, CheckCircle2,
-  CreditCard, AlertTriangle, Wrench, Wallet, ArrowUp, ArrowDown, ArrowUpRight, Flame, Sparkles,
-} from "lucide-react";
+import { Car, Users, CreditCard, MessageSquare, ArrowUpRight, Plus, Flame } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
-import { MetricCard, SectionCard, MicroLabel, ActionQueueRow, StatusPill } from "./ui";
+import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { SectionCard, MicroLabel, StatusPill } from "./ui";
+import { resolvePhotoUrl } from "@/lib/photoUrl";
 
-type FinancePoint = { day: string; billed: number; collected: number };
+type WeekPoint = { label: string; iso: string; amount: number };
 
-function fmtDay(d: Date) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
-function usd(n: number | undefined) {
+function usd(n: number | undefined | null) {
   if (n == null) return "—";
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
@@ -23,6 +20,10 @@ function timeAgo(iso?: string | null) {
   const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24); return `${d}d ago`;
 }
+function initials(name?: string | null) {
+  const parts = (name || "?").trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
 
 export function OverviewPanel() {
   const [vehiclesAvail, setVehiclesAvail] = useState(0);
@@ -30,22 +31,15 @@ export function OverviewPanel() {
   const [rented, setRented] = useState(0);
   const [maintOpen, setMaintOpen] = useState(0);
   const [reserved, setReserved] = useState(0);
-  const [screeningsPending, setScreeningsPending] = useState(0);
-  const [docsPending, setDocsPending] = useState(0);
-  const [approvalReady, setApprovalReady] = useState(0);
-  const [insuranceNeeded, setInsuranceNeeded] = useState(0);
-  const [paymentsDue, setPaymentsDue] = useState(0);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const [newApps, setNewApps] = useState(0);
   const [paymentsLate, setPaymentsLate] = useState(0);
-  const [weekRevenue, setWeekRevenue] = useState<number | null>(null);
-  const [prevWeekRevenue, setPrevWeekRevenue] = useState<number | null>(null);
-
-  const [revenue30, setRevenue30] = useState(0);
-  const [collected30, setCollected30] = useState(0);
-  const [outstanding, setOutstanding] = useState(0);
-  const [expenses30, setExpenses30] = useState(0);
-  const [revenueSeries, setRevenueSeries] = useState<FinancePoint[]>([]);
-
-  const [recent, setRecent] = useState<any[]>([]);
+  const [outstandingAmt, setOutstandingAmt] = useState(0);
+  const [weekly, setWeekly] = useState<WeekPoint[]>([]);
+  const [weekTotal, setWeekTotal] = useState(0);
+  const [prevWeekTotal, setPrevWeekTotal] = useState(0);
+  const [vehiclePreview, setVehiclePreview] = useState<any[]>([]);
+  const [recentApps, setRecentApps] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
 
   useEffect(() => {
@@ -53,31 +47,28 @@ export function OverviewPanel() {
       const now = new Date();
       const d7 = new Date(now.getTime() - 7 * 864e5).toISOString();
       const d14 = new Date(now.getTime() - 14 * 864e5).toISOString();
-      const d30 = new Date(now.getTime() - 30 * 864e5).toISOString();
+      const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
 
       const [
         vTotalQ, vAvailQ, vRentedQ, vMaintQ, vReservedQ,
-        screenPendQ, appApprovedNoVehQ, insMissingQ,
-        payDueTodayQ, payLateQ,
-        payWeekQ, payPrevWeekQ,
-        payLast60Q, maintLast60Q,
-        recentAppsQ, hotAppsQ,
+        newAppsQ, paymentsLateQ, paymentsOutQ, unreadQ,
+        payWeekQ, payPrevWeekQ, pay12wQ,
+        vehiclePreviewQ, recentAppsQ, hotAppsQ,
       ] = await Promise.all([
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "rented"),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "maintenance"),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "reserved"),
-        supabase.from("driver_screenings").select("id", { count: "exact", head: true }).is("interview_completed_at", null),
-        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "approved").is("vehicle_id", null),
-        supabase.from("driver_screenings").select("id", { count: "exact", head: true }).eq("insurance_verified", false),
-        supabase.from("payments").select("id", { count: "exact", head: true }).neq("status", "paid").lte("due_date", new Date(now.getTime() + 864e5).toISOString().slice(0,10)),
+        supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "new"),
         supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "past_due"),
-        supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d7),
-        supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
-        supabase.from("payments").select("amount, status, paid_date, created_at").gte("created_at", d30),
-        supabase.from("maintenance_records").select("total_cost, completed_at, created_at").gte("created_at", d30),
-        supabase.from("applications").select("id, full_name, city, status, current_step, ai_tier, ai_score, created_at, source").order("created_at", { ascending: false }).limit(7),
+        supabase.from("payments").select("amount").neq("status", "paid"),
+        supabase.from("messages").select("id", { count: "exact", head: true }).eq("read", false),
+        supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d7),
+        supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
+        supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d84),
+        supabase.from("vehicles").select("id, make, model, status, photos").order("updated_at", { ascending: false }).limit(6),
+        supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, created_at").order("created_at", { ascending: false }).limit(5),
         supabase.from("applications").select("id, full_name, ai_score").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(3),
       ]);
 
@@ -86,252 +77,227 @@ export function OverviewPanel() {
       setRented(vRentedQ.count ?? 0);
       setMaintOpen(vMaintQ.count ?? 0);
       setReserved(vReservedQ.count ?? 0);
-      setScreeningsPending(screenPendQ.count ?? 0);
-      setApprovalReady(appApprovedNoVehQ.count ?? 0);
-      setInsuranceNeeded(insMissingQ.count ?? 0);
-      setPaymentsDue(payDueTodayQ.count ?? 0);
-      setPaymentsLate(payLateQ.count ?? 0);
-      // Rough: docs pending = drivers with screening in "docs_pending" — approximate via count of screenings where status = 'docs_pending'
-      const { count: docsCount } = await supabase.from("driver_screenings").select("id", { count: "exact", head: true }).eq("status", "docs_pending");
-      setDocsPending(docsCount ?? 0);
+      setNewApps(newAppsQ.count ?? 0);
+      setPaymentsLate(paymentsLateQ.count ?? 0);
+      setUnreadMsgs(unreadQ.count ?? 0);
+      const sumAmt = (rows?: any[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
+      setOutstandingAmt(sumAmt(paymentsOutQ.data));
+      setWeekTotal(sumAmt(payWeekQ.data));
+      setPrevWeekTotal(sumAmt(payPrevWeekQ.data));
 
-      const sumPay = (rows?: any[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
-      setWeekRevenue(sumPay(payWeekQ.data));
-      setPrevWeekRevenue(sumPay(payPrevWeekQ.data));
-
-      // Revenue & Collections aggregate (30d)
-      let rev = 0, out = 0, exp = 0;
-      const series: FinancePoint[] = [];
-      for (let i = 29; i >= 0; i--) series.push({ day: fmtDay(new Date(now.getTime() - i * 864e5)), billed: 0, collected: 0 });
-      const idxFor = (iso: string) => 29 - Math.floor((now.getTime() - new Date(iso).getTime()) / 864e5);
-      for (const p of (payLast60Q.data ?? []) as any[]) {
-        const amt = Number(p.amount ?? 0);
-        const createdIdx = p.created_at ? idxFor(p.created_at) : -1;
-        if (createdIdx >= 0 && createdIdx < 30) series[createdIdx].billed += amt;
-        if (p.status === "paid" && p.paid_date) {
-          rev += amt;
-          const i = idxFor(p.paid_date);
-          if (i >= 0 && i < 30) series[i].collected += amt;
-        } else if (p.status !== "paid") {
-          out += amt;
-        }
+      // 12-week weekly buckets
+      const bucketStart = (d: Date) => { const c = new Date(d); c.setHours(0,0,0,0); c.setDate(c.getDate() - c.getDay()); return c; };
+      const start = bucketStart(new Date(now.getTime() - 11 * 7 * 864e5));
+      const series: WeekPoint[] = [];
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(start.getTime() + i * 7 * 864e5);
+        series.push({ label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), iso: d.toISOString(), amount: 0 });
       }
-      for (const m of (maintLast60Q.data ?? []) as any[]) {
-        exp += Number(m.total_cost ?? 0);
+      for (const p of (pay12wQ.data ?? []) as any[]) {
+        if (!p.paid_date) continue;
+        const w = bucketStart(new Date(p.paid_date));
+        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
+        if (idx >= 0 && idx < 12) series[idx].amount += Number(p.amount ?? 0);
       }
-      setRevenue30(rev);
-      setCollected30(rev);
-      setOutstanding(out);
-      setExpenses30(exp);
-      setRevenueSeries(series);
-
-      setRecent(recentAppsQ.data ?? []);
+      setWeekly(series);
+      setVehiclePreview(vehiclePreviewQ.data ?? []);
+      setRecentApps(recentAppsQ.data ?? []);
       setHot(hotAppsQ.data ?? []);
     })();
   }, []);
 
-  const awaitingTotal = docsPending + screeningsPending + approvalReady;
-  const utilBase = vehiclesAvail + rented;
-  const utilization = utilBase > 0 ? Math.round((rented / utilBase) * 100) : 0;
-  const potentialWeekly = utilBase * 350;
-  const currentWeekly = rented * 350;
-  const netRev = revenue30 - expenses30;
+  const utilBase = vehiclesAvail + rented + reserved + maintOpen;
+  const onRentPct = utilBase > 0 ? Math.round((rented / utilBase) * 100) : 0;
+  const availPct = utilBase > 0 ? Math.round((vehiclesAvail / utilBase) * 100) : 0;
   const weekDelta = useMemo(() => {
-    if (weekRevenue == null || prevWeekRevenue == null) return undefined;
-    if (prevWeekRevenue === 0) return weekRevenue > 0 ? 100 : 0;
-    return Math.round(((weekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100);
-  }, [weekRevenue, prevWeekRevenue]);
+    if (prevWeekTotal === 0) return weekTotal > 0 ? 100 : 0;
+    return Math.round(((weekTotal - prevWeekTotal) / prevWeekTotal) * 100);
+  }, [weekTotal, prevWeekTotal]);
 
   return (
     <div className="space-y-6">
-      {/* Row A — operational metrics */}
+      {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricCard
+        <QuickAction
           icon={Car}
-          label="Available Fleet"
-          value={vehiclesAvail}
-          hint={`${vehiclesTotal} total · Ready to rent`}
+          eyebrow="Fleet"
+          title="Add Vehicle"
+          hint={`${vehiclesTotal} In Fleet`}
+          href="/admin?tab=vehicles"
         />
-        <MetricCard
-          icon={ShieldCheck}
-          label="Active Rentals"
-          value={rented}
-          hint={`${utilization}% fleet utilization`}
+        <QuickAction
+          icon={Users}
+          eyebrow="Applications"
+          title="Review Drivers"
+          hint={`${newApps} New`}
+          badge={newApps > 0 ? newApps : undefined}
+          href="/admin?tab=drivers"
         />
-        <MetricCard
-          icon={ClipboardList}
-          label="Driver Actions"
-          value={awaitingTotal}
-          hint={`${docsPending} document${docsPending===1?"":"s"} · ${screeningsPending} interview${screeningsPending===1?"":"s"}`}
+        <QuickAction
+          icon={CreditCard}
+          eyebrow="Collections"
+          title="Payments"
+          hint={paymentsLate > 0 ? `${paymentsLate} Past Due` : "All Current"}
+          badge={paymentsLate > 0 ? paymentsLate : undefined}
+          href="/admin?tab=payments"
+          solid
         />
-        <MetricCard
-          icon={DollarSign}
-          label="Weekly Revenue"
-          value={usd(weekRevenue ?? 0)}
-          hint={weekDelta != null ? `${weekDelta >= 0 ? weekDelta : Math.abs(weekDelta)}% ${weekDelta >= 0 ? "above" : "below"} prior week` : "vs previous 7 days"}
-          delta={weekDelta}
+        <QuickAction
+          icon={MessageSquare}
+          eyebrow="Inbox"
+          title="Messages"
+          hint={unreadMsgs > 0 ? `${unreadMsgs} Unread` : "All Read"}
+          badge={unreadMsgs > 0 ? unreadMsgs : undefined}
+          href="/admin?tab=messages"
         />
       </div>
 
-      {/* Row B — Collections + Fleet Activity */}
+      {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <SectionCard
           className="lg:col-span-3"
-          title="Collections"
-          subtitle="Billed vs collected · Last 30 days"
+          title="Fleet Snapshot"
+          subtitle="Utilization And Current Inventory"
+          right={
+            <Link to="/admin" search={{ tab: "vehicles" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]">
+              Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          }
         >
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <FinanceStat label="Billed" value={revenue30 + outstanding} tone="ink" />
-            <FinanceStat label="Collected" value={collected30} tone="green" />
-            <FinanceStat label="Outstanding" value={outstanding} tone={outstanding > 0 ? "amber" : "ink"} />
-            <FinanceStat label="Expenses" value={expenses30} tone="ink" />
-            <FinanceStat label="Net" value={netRev} tone={netRev >= 0 ? "green" : "red"} />
+          <div className="grid grid-cols-2 gap-4 sm:gap-6 items-center">
+            <ProgressRing label="On Rent" value={rented} pct={onRentPct} color="#50C060" total={utilBase} />
+            <ProgressRing label="Available" value={vehiclesAvail} pct={availPct} color="#9A9AA3" total={utilBase} />
           </div>
-          <div className="mt-4 h-[180px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#EDEDF0" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#EDEDF0" }} interval={5} />
-                <YAxis tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `$${Math.round(v/1000)}k` : `$${v}`} width={44} />
-                <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} formatter={(v: any, name: any) => [usd(Number(v)), name === "billed" ? "Billed" : "Collected"]} />
-                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} iconType="circle" formatter={(v) => v === "billed" ? "Billed" : "Collected"} />
-                <Line type="monotone" dataKey="billed" stroke="#9A9AA3" strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="collected" stroke="#50C060" strokeWidth={2} dot={false} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="mt-5 pt-5 border-t border-[#EDEDF0]">
+            <div className="flex items-center justify-between mb-3">
+              <MicroLabel>Recent Vehicles</MicroLabel>
+              <div className="flex items-center gap-3 text-[11px] text-[#9A9AA3]">
+                <LegendDot color="#50C060" label="Rented" />
+                <LegendDot color="#9A9AA3" label="Available" />
+                <LegendDot color="#F0C040" label="Reserved" />
+                <LegendDot color="#D03020" label="Maintenance" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {vehiclePreview.slice(0, 6).map((v) => {
+                const img = resolvePhotoUrl(v.photos?.[0]);
+                const dot = v.status === "rented" ? "#50C060"
+                  : v.status === "reserved" ? "#F0C040"
+                  : v.status === "maintenance" ? "#D03020"
+                  : "#9A9AA3";
+                return (
+                  <Link
+                    key={v.id}
+                    to="/admin"
+                    search={{ tab: "vehicles" } as any}
+                    className="flex items-center gap-2.5 rounded-xl border border-[#EDEDF0] bg-white p-2 hover:border-[#D03020] transition-colors min-w-0"
+                  >
+                    <div className="h-10 w-14 rounded-md bg-[#F4F4F6] overflow-hidden shrink-0 grid place-items-center">
+                      {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <Car className="w-4 h-4 text-[#9A9AA3]" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-medium text-[#111114] truncate">{v.make} {v.model}</div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-[#55555E] mt-0.5 capitalize">
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+                        {v.status || "—"}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+              {vehiclePreview.length === 0 && (
+                <div className="col-span-3 text-[12px] text-[#9A9AA3] py-4 text-center">No Vehicles Yet.</div>
+              )}
+            </div>
           </div>
         </SectionCard>
 
-        <SectionCard className="lg:col-span-2" title="Fleet Activity" subtitle="Vehicles by status">
-          <FleetDonut available={vehiclesAvail} rented={rented} maintenance={maintOpen} reserved={reserved} />
-          <div className="mt-4 pt-4 border-t border-[#EDEDF0] space-y-2">
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-[#55555E]">Utilization</span>
-              <span className="font-semibold text-[#111114] tabular-nums">{utilization}%</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-[#F4F4F6] overflow-hidden">
-              <div className="h-full bg-[#50C060]" style={{ width: `${utilization}%` }} />
-            </div>
-            <div className="flex items-center justify-between text-[12px] pt-1">
-              <span className="text-[#55555E]">Earning now</span>
-              <span className="font-semibold text-[#111114] tabular-nums">{usd(currentWeekly)}/wk</span>
-            </div>
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-[#55555E]">Potential at full utilization</span>
-              <span className="text-[#9A9AA3] tabular-nums">{usd(potentialWeekly)}/wk</span>
-            </div>
-          </div>
+        <SectionCard
+          className="lg:col-span-2"
+          title="Applications Queue"
+          subtitle={`${newApps} New · ${recentApps.length} Recent`}
+          padded={false}
+          right={
+            <Link to="/admin" search={{ tab: "drivers" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]">
+              View All <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          }
+        >
+          {recentApps.length === 0 ? (
+            <div className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]">No Applications Yet.</div>
+          ) : (
+            <ul>
+              {recentApps.map((a) => {
+                const stage = a.status === "active" ? "Active"
+                  : a.status === "approved" ? "Approved"
+                  : a.current_step ? "In Wizard"
+                  : "New Lead";
+                const tone = a.ai_tier === "hot" ? "green"
+                  : a.ai_tier === "warm" ? "amber"
+                  : a.ai_tier === "cold" ? "red"
+                  : "neutral";
+                return (
+                  <li key={a.id}>
+                    <Link
+                      to="/admin"
+                      search={{ tab: "drivers", id: a.id } as any}
+                      className="flex items-center gap-3 px-5 py-3 border-b border-[#F4F4F6] last:border-0 hover:bg-[#FAFAFB] transition-colors"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E] shrink-0">
+                        {initials(a.full_name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-[#111114] truncate">{a.full_name || "Unnamed Driver"}</div>
+                        <div className="text-[11px] text-[#9A9AA3] mt-0.5">{timeAgo(a.created_at)}</div>
+                      </div>
+                      <StatusPill status={stage} />
+                      {a.ai_score != null && (
+                        <StatusPill tone={tone as any}>{a.ai_score}</StatusPill>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </SectionCard>
       </div>
 
-      {/* Row C — Action Queue */}
-      <SectionCard title="Action Queue" subtitle="What needs your attention today" padded={false}>
-        <ActionQueueRow icon={FileText} label="Drivers missing documents" count={docsPending}
-          description="Complete license, insurance, and profile uploads."
-          tone="neutral"
-          onAction={() => (window.location.href = "/admin?tab=drivers")} />
-        <ActionQueueRow icon={ClipboardList} label="Interviews incomplete" count={screeningsPending}
-          description="Screening interview not yet completed."
-          tone="neutral"
-          onAction={() => (window.location.href = "/admin?tab=drivers")} />
-        <ActionQueueRow icon={CheckCircle2} label="Drivers ready for approval" count={approvalReady}
-          description="Approved status with no vehicle assigned yet."
-          tone="green"
-          onAction={() => (window.location.href = "/admin?tab=drivers")} />
-        <ActionQueueRow icon={ShieldCheck} label="Insurance verification required" count={insuranceNeeded}
-          description="Screening flagged insurance as unverified."
-          tone="neutral"
-          onAction={() => (window.location.href = "/admin?tab=drivers")} />
-        <ActionQueueRow icon={CreditCard} label="Payments due today" count={paymentsDue}
-          description="Unpaid invoices with due date today or earlier."
-          tone="neutral"
-          onAction={() => (window.location.href = "/admin?tab=payments")} />
-        <ActionQueueRow icon={AlertTriangle} label="Late payments" count={paymentsLate}
-          description="Rentals in past-due state."
-          tone={paymentsLate > 0 ? "red" : "neutral"}
-          onAction={() => (window.location.href = "/admin?tab=payments")} />
-        <ActionQueueRow icon={Wrench} label="Vehicles needing maintenance" count={maintOpen}
-          description="Open maintenance items across the fleet."
-          tone="neutral"
-          onAction={() => (window.location.href = "/admin?tab=maintenance")} />
-      </SectionCard>
-
-      {/* Row D — Recent Applications */}
+      {/* Weekly Rent Collected — full width */}
       <SectionCard
-        title="Recent Drivers"
-        subtitle="Latest driver activity"
-        padded={false}
+        title="Weekly Rent Collected"
+        subtitle="Last 12 Weeks"
         right={
-          <Link to="/admin" search={{ tab: "drivers" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]">
-            View all drivers <ArrowUpRight className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-baseline gap-3">
+            <div className="text-[20px] font-semibold text-[#111114] tabular-nums leading-none">{usd(weekTotal)}</div>
+            <span className={`text-[11px] font-medium ${weekDelta >= 0 ? "text-[#50C060]" : "text-[#D03020]"}`}>
+              {weekDelta >= 0 ? "+" : ""}{weekDelta}% vs Prior Week
+            </span>
+            <span className="text-[11px] text-[#9A9AA3]">· {usd(outstandingAmt)} Outstanding</span>
+          </div>
         }
       >
-        {recent.length === 0 ? (
-          <div className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]">No applications yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-left border-b border-[#EDEDF0] bg-[#FAFAFB]">
-                  <th className="px-5 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Driver</th>
-                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Stage</th>
-                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Readiness</th>
-                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Needed By</th>
-                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Blocker</th>
-                  <th className="px-3 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3]">Last Activity</th>
-                  <th className="px-5 py-2.5 font-medium text-[11px] uppercase tracking-wide text-[#9A9AA3] text-right">Assigned</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F4F4F6]">
-                {recent.slice(0, 7).map((a) => {
-                  const stage = a.status === "active" ? "Active"
-                    : a.status === "approved" ? "Approved"
-                    : a.current_step ? "Interview"
-                    : "Lead";
-                  const blocker = a.current_step && a.current_step < 4 ? "Application incomplete"
-                    : a.status === "approved" ? "Assign vehicle"
-                    : "Interview incomplete";
-                  const readinessLabel = a.ai_tier === "hot" ? "High Readiness"
-                    : a.ai_tier === "warm" ? "Medium Readiness"
-                    : a.ai_tier === "cold" ? "Low Readiness"
-                    : "Unscored";
-                  const readinessTone: "green" | "amber" | "red" | "neutral" =
-                    a.ai_tier === "hot" ? "green"
-                    : a.ai_tier === "warm" ? "amber"
-                    : a.ai_tier === "cold" ? "red"
-                    : "neutral";
-                  return (
-                    <tr key={a.id} onClick={() => (window.location.href = `/admin?tab=drivers&id=${a.id}`)}
-                        className="hover:bg-[#FAFAFB] cursor-pointer transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-[#F4F4F6] grid place-items-center text-[11px] font-semibold text-[#55555E] shrink-0">
-                            {(a.full_name || "?").slice(0, 1).toUpperCase()}
-                          </div>
-                          <span className="font-medium text-[#111114] truncate max-w-[180px]">{a.full_name || "Unnamed"}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3"><StatusPill status={stage} /></td>
-                      <td className="px-3 py-3">
-                        <StatusPill tone={readinessTone}>
-                          {readinessLabel}{a.ai_score != null ? ` · ${a.ai_score}` : ""}
-                        </StatusPill>
-                      </td>
-                      <td className="px-3 py-3 text-[#55555E]">—</td>
-                      <td className="px-3 py-3 text-[#55555E] text-[12px]">{blocker}</td>
-                      <td className="px-3 py-3 text-[#55555E] text-[12px] tabular-nums">{timeAgo(a.created_at)}</td>
-                      <td className="px-5 py-3 text-right text-[#9A9AA3] text-[12px]">Unassigned</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div className="h-[240px] -mx-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={weekly} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="rentGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#50C060" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="#50C060" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#EDEDF0" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#EDEDF0" }} />
+              <YAxis tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={false} width={48}
+                tickFormatter={(v) => v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`} />
+              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }}
+                formatter={(v: any) => [usd(Number(v)), "Collected"]} />
+              <Area type="monotone" dataKey="amount" stroke="#50C060" strokeWidth={2.5} fill="url(#rentGrad)" isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </SectionCard>
 
-      {/* Hot prospects — subtle secondary strip */}
       {hot.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]">
           <MicroLabel>Hot Prospects</MicroLabel>
@@ -347,61 +313,81 @@ export function OverviewPanel() {
   );
 }
 
-function FinanceStat({ label, value, tone }: { label: string; value: number; tone: "ink" | "green" | "amber" | "red" }) {
-  const color =
-    tone === "green" ? "text-[#50C060]" :
-    tone === "amber" ? "text-[#C68A12]" :
-    tone === "red" ? "text-[#D03020]" : "text-[#111114]";
+function QuickAction({
+  icon: Icon, eyebrow, title, hint, href, badge, solid,
+}: {
+  icon: any; eyebrow: string; title: string; hint?: string;
+  href: string; badge?: number; solid?: boolean;
+}) {
+  const base = solid
+    ? "bg-[#D03020] text-white border-transparent hover:bg-[#B82818]"
+    : "bg-white text-[#111114] border-[#EDEDF0] hover:border-[#D03020]";
   return (
-    <div>
-      <MicroLabel>{label}</MicroLabel>
-      <div className={`mt-1 text-[18px] font-semibold tracking-tight tabular-nums ${color}`}>{usd(value)}</div>
+    <Link
+      to={href}
+      className={`group relative rounded-2xl border shadow-sm px-5 py-4 transition-colors ${base}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className={`h-9 w-9 rounded-full grid place-items-center ${solid ? "bg-white/15 text-white" : "bg-[#F4F4F6] text-[#55555E]"}`}>
+          <Icon className="w-4 h-4" strokeWidth={1.75} />
+        </div>
+        <div className={`h-7 w-7 rounded-full grid place-items-center ${solid ? "bg-white/15 text-white" : "bg-[#111114] text-white group-hover:bg-[#D03020]"} transition-colors`}>
+          <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+        </div>
+      </div>
+      <div className={`mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold ${solid ? "text-white/70" : "text-[#9A9AA3]"}`}>
+        {eyebrow}
+      </div>
+      <div className="mt-1 flex items-baseline gap-2">
+        <div className={`text-[18px] font-semibold tracking-tight ${solid ? "text-white" : "text-[#111114]"}`}>{title}</div>
+        {badge != null && (
+          <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${solid ? "bg-white text-[#D03020]" : "bg-[#D03020] text-white"}`}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {hint && (
+        <div className={`mt-0.5 text-[11px] ${solid ? "text-white/80" : "text-[#55555E]"}`}>{hint}</div>
+      )}
+    </Link>
+  );
+}
+
+function ProgressRing({ label, value, pct, color, total }: {
+  label: string; value: number; pct: number; color: string; total: number;
+}) {
+  const size = 120, stroke = 10, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const off = c - (pct / 100) * c;
+  return (
+    <div className="flex items-center gap-4">
+      <div className="relative shrink-0" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle cx={size/2} cy={size/2} r={r} stroke="#F4F4F6" strokeWidth={stroke} fill="none" />
+          <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth={stroke} fill="none"
+            strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+            style={{ transition: "stroke-dashoffset 600ms ease" }} />
+        </svg>
+        <div className="absolute inset-0 grid place-items-center">
+          <div className="text-center">
+            <div className="text-[20px] font-semibold text-[#111114] tabular-nums leading-none">{pct}%</div>
+            <div className="text-[10px] text-[#9A9AA3] mt-1 tabular-nums">{value}/{total}</div>
+          </div>
+        </div>
+      </div>
+      <div className="min-w-0">
+        <MicroLabel>{label}</MicroLabel>
+        <div className="mt-1 text-[15px] font-semibold text-[#111114] tabular-nums">{value} Vehicles</div>
+        <div className="text-[11px] text-[#9A9AA3] mt-0.5">Of {total} In Fleet</div>
+      </div>
     </div>
   );
 }
 
-function FleetDonut({ available, rented, maintenance, reserved }: {
-  available: number; rented: number; maintenance: number; reserved: number;
-}) {
-  const segs = [
-    { key: "Available", value: available, color: "#9A9AA3" },
-    { key: "Rented", value: rented, color: "#50C060" },
-    { key: "Reserved", value: reserved, color: "#F0C040" },
-    { key: "Maintenance", value: maintenance, color: "#D03020" },
-  ];
-  const total = segs.reduce((a, s) => a + s.value, 0);
-  const pie = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#F4F4F6" }];
+function LegendDot({ color, label }: { color: string; label: string }) {
   return (
-    <div className="grid grid-cols-2 gap-4 items-center">
-      <div className="relative h-40">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={pie} dataKey="value" nameKey="key" innerRadius="70%" outerRadius="95%" paddingAngle={total > 0 ? 3 : 0} stroke="none" startAngle={90} endAngle={-270}>
-              {pie.map((s, i) => <Cell key={i} fill={s.color} />)}
-            </Pie>
-            {total > 0 && <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} />}
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 grid place-items-center pointer-events-none">
-          <div className="text-center">
-            <div className="text-[22px] font-semibold tracking-tight text-[#111114] tabular-nums">{total}</div>
-            <div className="text-[10px] uppercase tracking-[0.12em] text-[#9A9AA3] mt-0.5">Vehicles</div>
-          </div>
-        </div>
-      </div>
-      <ul className="space-y-2">
-        {segs.map((s) => {
-          const pct = total > 0 ? Math.round((s.value / total) * 100) : 0;
-          return (
-            <li key={s.key} className="flex items-center gap-2 text-[12px]">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
-              <span className="text-[#55555E] flex-1 truncate">{s.key}</span>
-              <span className="font-semibold text-[#111114] tabular-nums">{s.value}</span>
-              <span className="text-[10px] text-[#9A9AA3] tabular-nums w-8 text-right">{pct}%</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <span className="inline-flex items-center gap-1">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
   );
 }
