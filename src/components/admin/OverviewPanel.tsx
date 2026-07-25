@@ -63,7 +63,7 @@ export function OverviewPanel() {
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "new"),
         supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "past_due"),
         supabase.from("payments").select("amount").neq("status", "paid"),
-        supabase.from("message_threads").select("id", { count: "exact", head: true }).gt("unread_count", 0),
+        supabase.from("messages").select("id", { count: "exact", head: true }).eq("read", false),
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d7),
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
         supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d84),
