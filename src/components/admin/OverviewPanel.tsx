@@ -364,9 +364,9 @@ function FleetDonut({ available, rented, maintenance, reserved }: {
   available: number; rented: number; maintenance: number; reserved: number;
 }) {
   const segs = [
-    { key: "Available", value: available, color: "#111114" },
+    { key: "Available", value: available, color: "#9A9AA3" },
     { key: "Rented", value: rented, color: "#50C060" },
-    { key: "Reserved", value: reserved, color: "#9A9AA3" },
+    { key: "Reserved", value: reserved, color: "#F0C040" },
     { key: "Maintenance", value: maintenance, color: "#D03020" },
   ];
   const total = segs.reduce((a, s) => a + s.value, 0);
