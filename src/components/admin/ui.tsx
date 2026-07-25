@@ -3,16 +3,16 @@ import { Check, ArrowRight, ArrowUp, ArrowDown } from "lucide-react";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
-// Muted #9A9AA3 · Accent #CC0000 · Semantic: green #0F8A4B · amber #B77900
-// · red #CC0000 · neutral gray. Type: DM Sans. Micro-label 10px uppercase
+// Muted #9A9AA3 · Accent #D03020 · Semantic: green #50C060 · amber #C68A12
+// · red #D03020 · neutral gray. Type: DM Sans. Micro-label 10px uppercase
 // tracking-[0.12em] #9A9AA3 semibold. Icons Lucide 18px stroke 1.75.
 
 type Tone = "green" | "amber" | "red" | "neutral";
 
 const TONE: Record<Tone, { bg: string; fg: string; ring: string }> = {
-  green:   { bg: "rgba(15,138,75,0.08)",  fg: "#0F8A4B", ring: "#0F8A4B" },
-  amber:   { bg: "rgba(183,121,0,0.08)",  fg: "#B77900", ring: "#B77900" },
-  red:     { bg: "rgba(204,0,0,0.08)",    fg: "#CC0000", ring: "#CC0000" },
+  green:   { bg: "rgba(80,192,96,0.08)",  fg: "#50C060", ring: "#50C060" },
+  amber:   { bg: "rgba(240,192,64,0.08)",  fg: "#C68A12", ring: "#C68A12" },
+  red:     { bg: "rgba(208,48,32,0.08)",    fg: "#D03020", ring: "#D03020" },
   neutral: { bg: "rgba(85,85,94,0.08)",   fg: "#55555E", ring: "#9A9AA3" },
 };
 
@@ -86,7 +86,7 @@ export function MetricCard({
   return (
     <div
       className={`rounded-2xl border px-5 py-4 shadow-sm transition-colors ${
-        urgent ? "bg-[#CC0000] text-white border-transparent" : "bg-white text-[#111114] border-[#EDEDF0]"
+        urgent ? "bg-[#D03020] text-white border-transparent" : "bg-white text-[#111114] border-[#EDEDF0]"
       }`}
     >
       <div className="flex items-center justify-between">
@@ -100,8 +100,8 @@ export function MetricCard({
             urgent
               ? "text-white/90"
               : positive
-                ? "text-[#0F8A4B]"
-                : "text-[#CC0000]"
+                ? "text-[#50C060]"
+                : "text-[#D03020]"
           }`}>
             {positive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
             {Math.abs(delta!)}%
@@ -143,7 +143,7 @@ export function LifecycleRail({
             {current?.label ?? "—"}
             {timeInStage && <span className="ml-2 text-[12px] font-normal text-[#9A9AA3]">· {timeInStage} in stage</span>}
           </div>
-          {blocker && <div className="text-[12px] text-[#CC0000] mt-0.5 truncate">Blocker: {blocker}</div>}
+          {blocker && <div className="text-[12px] text-[#D03020] mt-0.5 truncate">Blocker: {blocker}</div>}
         </div>
         <div className="text-right shrink-0">
           <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-none">{percent ?? 0}%</div>
@@ -159,8 +159,8 @@ export function LifecycleRail({
               <div className="flex flex-col items-center gap-1.5">
                 <span
                   className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
-                    done ? "bg-[#0F8A4B] border-[#0F8A4B] text-white"
-                    : cur ? "bg-white border-[#CC0000] text-[#CC0000] ring-4 ring-[#CC0000]/10"
+                    done ? "bg-[#50C060] border-[#50C060] text-white"
+                    : cur ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
                     : "bg-white border-[#EDEDF0] text-[#C4C4CB]"
                   }`}
                 >
@@ -173,7 +173,7 @@ export function LifecycleRail({
               {i < stages.length - 1 && (
                 <span
                   className="h-[2px] w-8 mt-[-14px] rounded"
-                  style={{ backgroundColor: done ? "#0F8A4B" : "#EDEDF0" }}
+                  style={{ backgroundColor: done ? "#50C060" : "#EDEDF0" }}
                 />
               )}
             </li>
@@ -206,7 +206,7 @@ export function ActionQueueRow({
       {onAction && (
         <button
           onClick={onAction}
-          className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#CC0000] transition-colors shrink-0"
+          className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020] transition-colors shrink-0"
         >
           {action ?? "View"} <ArrowRight className="w-3.5 h-3.5" />
         </button>
@@ -232,9 +232,9 @@ export function ReadinessSummary({
   readiness: Readiness; score?: number | null; primary?: ReactNode;
 }) {
   const statusColor =
-    readiness.status === "ready" ? { bg: "rgba(15,138,75,0.08)", fg: "#0F8A4B" }
-    : readiness.status === "almost" ? { bg: "rgba(183,121,0,0.08)", fg: "#B77900" }
-    : { bg: "rgba(204,0,0,0.08)", fg: "#CC0000" };
+    readiness.status === "ready" ? { bg: "rgba(80,192,96,0.08)", fg: "#50C060" }
+    : readiness.status === "almost" ? { bg: "rgba(240,192,64,0.08)", fg: "#C68A12" }
+    : { bg: "rgba(208,48,32,0.08)", fg: "#D03020" };
   return (
     <section className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm overflow-hidden">
       <header className="flex items-center gap-3 px-5 py-4 border-b border-[#EDEDF0]">
@@ -260,7 +260,7 @@ export function ReadinessSummary({
             <ul className="space-y-1.5">
               {readiness.blockers.map((b, i) => (
                 <li key={`b${i}`} className="flex items-start gap-2 text-[12px] text-[#111114]">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#CC0000] shrink-0" />{b}
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#D03020] shrink-0" />{b}
                 </li>
               ))}
               {readiness.missing.map((m, i) => (
@@ -279,7 +279,7 @@ export function ReadinessSummary({
             <ul className="space-y-1.5">
               {readiness.positives.map((p, i) => (
                 <li key={i} className="flex items-start gap-2 text-[12px] text-[#111114]">
-                  <Check className="w-3.5 h-3.5 mt-0.5 text-[#0F8A4B] shrink-0" strokeWidth={2.5} />{p}
+                  <Check className="w-3.5 h-3.5 mt-0.5 text-[#50C060] shrink-0" strokeWidth={2.5} />{p}
                 </li>
               ))}
             </ul>
@@ -324,7 +324,7 @@ export function Timeline({ steps, title = "Rental Timeline" }: { steps: Timeline
               {!last && (
                 <span
                   className="absolute left-[11px] top-6 bottom-0 w-px"
-                  style={{ backgroundColor: done ? "#0F8A4B" : "#EDEDF0" }}
+                  style={{ backgroundColor: done ? "#50C060" : "#EDEDF0" }}
                 />
               )}
               <span
@@ -332,13 +332,13 @@ export function Timeline({ steps, title = "Rental Timeline" }: { steps: Timeline
                   done
                     ? "border-transparent"
                     : cur
-                    ? "border-[#CC0000] bg-white"
+                    ? "border-[#D03020] bg-white"
                     : "border-[#EDEDF0] bg-white"
                 }`}
-                style={done ? { backgroundColor: "#0F8A4B" } : undefined}
+                style={done ? { backgroundColor: "#50C060" } : undefined}
               >
                 {done ? <Check className="h-3.5 w-3.5 text-white" strokeWidth={2.5} /> :
-                  cur ? <span className="h-2 w-2 rounded-full bg-[#CC0000]" /> :
+                  cur ? <span className="h-2 w-2 rounded-full bg-[#D03020]" /> :
                   <span className="h-1.5 w-1.5 rounded-full bg-[#D6D6DB]" />}
               </span>
               <div className="flex items-baseline justify-between gap-3">

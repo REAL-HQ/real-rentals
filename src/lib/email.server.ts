@@ -124,14 +124,14 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #eee">
-      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#CC0000;font-weight:600">${heading}</div>
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:600">${heading}</div>
       <h1 style="margin:8px 0 4px;font-size:22px;color:#111">${escapeHtml(name)}</h1>
       <div style="color:#666;font-size:14px;margin-bottom:16px">${escapeHtml(marketLabel)}</div>
       <table cellspacing="0" cellpadding="0" style="width:100%;border-top:1px solid #eee;margin-top:8px">
         ${rowsHtml}
       </table>
       <div style="margin-top:20px">
-        <a href="${adminLink}" style="display:inline-block;background:#CC0000;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>
+        <a href="${adminLink}" style="display:inline-block;background:#D03020;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>
       </div>
       <div style="margin-top:16px;color:#999;font-size:12px">Lead ID: ${escapeHtml(applicationId)}</div>
     </div>
@@ -166,10 +166,10 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #eee">
-      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#CC0000;font-weight:700">REAL RENTALS</div>
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">REAL RENTALS</div>
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${escapeHtml(headline)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, ${escapeHtml(body)}</p>
-      <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
+      <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
       <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
       <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
@@ -189,7 +189,7 @@ function shell(body: string): string {
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #eee">
-      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#CC0000;font-weight:700">REAL RENTALS</div>
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">REAL RENTALS</div>
       ${body}
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
       <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
@@ -245,9 +245,9 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#CC0000;line-height:1.3">Payment Failed</h1>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
-      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
   await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: "hello@drivereal.com" });
 }
 
@@ -268,7 +268,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
-      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
   await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: "hello@drivereal.com" });
 }
 
@@ -295,7 +295,7 @@ export async function sendDocumentRequestEmail(args: DocRequestArgs): Promise<vo
     )
     .join("");
   const noteBlock = args.note
-    ? `<div style="margin-top:16px;padding:12px 14px;background:#FFF5F5;border-left:3px solid #CC0000;border-radius:6px;color:#444;font-size:14px;line-height:1.5"><strong style="color:#CC0000">Note from our team:</strong><br>${escapeHtml(args.note)}</div>`
+    ? `<div style="margin-top:16px;padding:12px 14px;background:#FFF5F5;border-left:3px solid #D03020;border-radius:6px;color:#444;font-size:14px;line-height:1.5"><strong style="color:#D03020">Note from our team:</strong><br>${escapeHtml(args.note)}</div>`
     : "";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Almost Done, ${escapeHtml(name)}</h1>
@@ -303,7 +303,7 @@ export async function sendDocumentRequestEmail(args: DocRequestArgs): Promise<vo
       <ul style="list-style:none;padding:0;margin:8px 0 4px;border-top:1px solid #eee;border-bottom:1px solid #eee">${list}</ul>
       ${noteBlock}
       <div style="margin-top:22px">
-        <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload Your Documents</a>
+        <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload Your Documents</a>
       </div>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
   await sendEmail({ to: args.to, subject, html, replyTo: "hello@drivereal.com" });
@@ -334,7 +334,7 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Almost There, ${escapeHtml(name)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
-      <a href="${resumeUrl}" style="display:inline-block;background:#CC0000;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
+      <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
   await sendEmail({ to: args.to, subject, html, replyTo: "hello@drivereal.com" });
 }

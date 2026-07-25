@@ -170,7 +170,7 @@ export function ScreeningPipeline({
       <div className="relative flex items-center">
         <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#EDEDF0]" />
         <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#CC0000] transition-all duration-200"
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#D03020] transition-all duration-200"
           style={{ width: isDq ? "0%" : `${(activeIdx / (PIPELINE.length - 1)) * 100}%` }}
         />
         <div className="relative z-10 flex w-full items-center justify-between">
@@ -180,9 +180,9 @@ export function ScreeningPipeline({
             const dotCls = isDq
               ? "bg-white border-[#EDEDF0] text-[#C4C4CB]"
               : done
-                ? "bg-[#CC0000] border-[#CC0000] text-white"
+                ? "bg-[#D03020] border-[#D03020] text-white"
                 : active
-                  ? "bg-white border-[#CC0000] text-[#CC0000] ring-4 ring-[#CC0000]/10"
+                  ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
                   : "bg-white border-[#EDEDF0] text-[#C4C4CB]";
             return (
               <button

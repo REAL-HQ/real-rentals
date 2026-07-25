@@ -28,7 +28,7 @@ export function InterviewDrawer({
       >
         <SheetHeader className="px-6 py-4 border-b border-[#EDEDF0] bg-white shrink-0">
           <SheetTitle className="flex items-center gap-2 text-[15px]">
-            <ClipboardList className="w-4 h-4 text-[#CC0000]" strokeWidth={1.75} />
+            <ClipboardList className="w-4 h-4 text-[#D03020]" strokeWidth={1.75} />
             Interview · {driver.full_name ?? "Driver"}
           </SheetTitle>
           <p className="text-[12px] text-[#55555E] mt-1">
