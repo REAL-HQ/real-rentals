@@ -602,7 +602,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
           <div className="flex items-center gap-2">
             <button
               onClick={primaryAction.onClick}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#CC0000] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
             >
               <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
             </button>
@@ -631,7 +631,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                 </DropdownMenuItem>
                 <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
                 <CardOnFileActions driver={driver} onUpdate={onUpdate} />
-                <DropdownMenuItem className="text-[#CC0000] focus:text-[#CC0000]" onClick={onDelete}>
+                <DropdownMenuItem className="text-[#D03020] focus:text-[#D03020]" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" /> Delete driver
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -647,7 +647,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-[18px] font-semibold text-[#111114] truncate">{driver.full_name || "Unnamed"}</h2>
               <StatusPill status={driver.status} />
-              {driver.gclid && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B77900] bg-[rgba(183,121,0,0.08)] rounded px-1.5 py-0.5">Google Ads</span>}
+              {driver.gclid && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">Google Ads</span>}
             </div>
             <div className="mt-1 flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
               {(driver.city || driver.state) && (
@@ -725,7 +725,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               primary={
                 <button
                   onClick={primaryAction.onClick}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#CC0000] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
                 >
                   <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
                 </button>
@@ -887,7 +887,7 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
                   <textarea
                     defaultValue={driver.notes || ""} rows={6} placeholder="Add internal notes about this driver…"
                     onBlur={(e) => onUpdate({ notes: e.target.value })}
-                    className="w-full border border-[#EDEDF0] rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#CC0000]/15"
+                    className="w-full border border-[#EDEDF0] rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#D03020]/15"
                   />
                   <p className="text-[11px] text-[#9A9AA3] mt-2">Saved automatically when you click away.</p>
                 </Card>
@@ -920,10 +920,10 @@ function SignalRow({ label, ok, detail }: { label: string; ok: boolean; detail?:
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-[#55555E] inline-flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-[#0F8A4B]" : "bg-[#C4C4CB]"}`} />
+        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-[#50C060]" : "bg-[#C4C4CB]"}`} />
         {label}
       </dt>
-      <dd className={`text-[11px] font-medium tabular-nums ${ok ? "text-[#0F8A4B]" : "text-[#9A9AA3]"}`}>
+      <dd className={`text-[11px] font-medium tabular-nums ${ok ? "text-[#50C060]" : "text-[#9A9AA3]"}`}>
         {detail ?? (ok ? "Ready" : "Pending")}
       </dd>
     </div>
@@ -953,7 +953,7 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
     <li className={`flex items-center gap-2 rounded-md border px-3 py-2 text-[12px] ${
       ok ? "border-[#EDEDF0] bg-[#FAFAFB] text-[#111114]" : "border-[#EDEDF0] bg-white text-[#55555E]"
     }`}>
-      <span className={`h-4 w-4 rounded-full grid place-items-center ${ok ? "bg-[#0F8A4B] text-white" : "bg-[#F4F4F6] text-[#9A9AA3]"}`}>
+      <span className={`h-4 w-4 rounded-full grid place-items-center ${ok ? "bg-[#50C060] text-white" : "bg-[#F4F4F6] text-[#9A9AA3]"}`}>
         {ok ? <Check className="w-2.5 h-2.5" strokeWidth={3} /> : <span className="text-[8px]">·</span>}
       </span>
       {label}
@@ -1115,7 +1115,7 @@ function AISnapshotCard({ driver, onUpdate }: { driver: Application; onUpdate: (
         </div>
       </div>
       <div className="min-w-0 flex-1 flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#CC0000] shrink-0" />
+        <Sparkles className="w-3.5 h-3.5 text-[#D03020] shrink-0" />
         <p className="text-[12px] text-[#55555E] leading-snug truncate">
           {driver.ai_summary || "Not yet scored. Run the AI review to grade trips, rating, license, and screenshots."}
         </p>

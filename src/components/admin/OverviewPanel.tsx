@@ -196,7 +196,7 @@ export function OverviewPanel() {
                 <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }} formatter={(v: any, name: any) => [usd(Number(v)), name === "billed" ? "Billed" : "Collected"]} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} iconType="circle" formatter={(v) => v === "billed" ? "Billed" : "Collected"} />
                 <Line type="monotone" dataKey="billed" stroke="#9A9AA3" strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="collected" stroke="#0F8A4B" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="collected" stroke="#50C060" strokeWidth={2} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -210,7 +210,7 @@ export function OverviewPanel() {
               <span className="font-semibold text-[#111114] tabular-nums">{utilization}%</span>
             </div>
             <div className="h-1.5 rounded-full bg-[#F4F4F6] overflow-hidden">
-              <div className="h-full bg-[#0F8A4B]" style={{ width: `${utilization}%` }} />
+              <div className="h-full bg-[#50C060]" style={{ width: `${utilization}%` }} />
             </div>
             <div className="flex items-center justify-between text-[12px] pt-1">
               <span className="text-[#55555E]">Earning now</span>
@@ -262,7 +262,7 @@ export function OverviewPanel() {
         subtitle="Latest driver activity"
         padded={false}
         right={
-          <Link to="/admin" search={{ tab: "drivers" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#CC0000]">
+          <Link to="/admin" search={{ tab: "drivers" } as any} className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]">
             View all drivers <ArrowUpRight className="w-3.5 h-3.5" />
           </Link>
         }
@@ -337,8 +337,8 @@ export function OverviewPanel() {
           <MicroLabel>Hot Prospects</MicroLabel>
           {hot.map((h) => (
             <Link key={h.id} to="/admin" search={{ tab: "drivers", id: h.id } as any}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 hover:border-[#CC0000] transition-colors">
-              <Flame className="w-3 h-3 text-[#CC0000]" /> {h.full_name} · {h.ai_score}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 hover:border-[#D03020] transition-colors">
+              <Flame className="w-3 h-3 text-[#D03020]" /> {h.full_name} · {h.ai_score}
             </Link>
           ))}
         </div>
@@ -349,9 +349,9 @@ export function OverviewPanel() {
 
 function FinanceStat({ label, value, tone }: { label: string; value: number; tone: "ink" | "green" | "amber" | "red" }) {
   const color =
-    tone === "green" ? "text-[#0F8A4B]" :
-    tone === "amber" ? "text-[#B77900]" :
-    tone === "red" ? "text-[#CC0000]" : "text-[#111114]";
+    tone === "green" ? "text-[#50C060]" :
+    tone === "amber" ? "text-[#C68A12]" :
+    tone === "red" ? "text-[#D03020]" : "text-[#111114]";
   return (
     <div>
       <MicroLabel>{label}</MicroLabel>
@@ -365,9 +365,9 @@ function FleetDonut({ available, rented, maintenance, reserved }: {
 }) {
   const segs = [
     { key: "Available", value: available, color: "#111114" },
-    { key: "Rented", value: rented, color: "#0F8A4B" },
+    { key: "Rented", value: rented, color: "#50C060" },
     { key: "Reserved", value: reserved, color: "#9A9AA3" },
-    { key: "Maintenance", value: maintenance, color: "#CC0000" },
+    { key: "Maintenance", value: maintenance, color: "#D03020" },
   ];
   const total = segs.reduce((a, s) => a + s.value, 0);
   const pie = total > 0 ? segs : [{ key: "Empty", value: 1, color: "#F4F4F6" }];

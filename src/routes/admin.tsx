@@ -160,7 +160,7 @@ function Admin() {
                           }`}
                         >
                           {active && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#CC0000]" />
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#D03020]" />
                           )}
                           <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
                           {!collapsed && <span>{t.label}</span>}
@@ -184,7 +184,7 @@ function Admin() {
             <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#EDEDF0]">
               {TABS.map((t) => (
                 <button key={t.id} onClick={() => setTab(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium transition-colors duration-150 ${tab === t.id ? "bg-[rgba(204,0,0,0.08)] text-[#CC0000]" : "bg-[#F4F4F6] text-[#55555E]"}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium transition-colors duration-150 ${tab === t.id ? "bg-[rgba(208,48,32,0.08)] text-[#D03020]" : "bg-[#F4F4F6] text-[#55555E]"}`}>
                   {t.label}
                 </button>
               ))}
@@ -204,7 +204,7 @@ function Admin() {
                     setGlobalSearch(v);
                     if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
                   }}
-                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#CC0000]/40 focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
+                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
                 />
               </div>
               {/* Right: notifications + profile */}
@@ -216,7 +216,7 @@ function Admin() {
                   >
                     <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#CC0000] text-white text-[10px] font-semibold grid place-items-center">
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">
                         {unreadCount}
                       </span>
                     )}
@@ -240,7 +240,7 @@ function Admin() {
                             className="w-full text-left px-3 py-2.5 hover:bg-[#F4F4F6] transition-colors duration-150 border-b border-[#F4F4F6] last:border-0"
                           >
                             <div className="flex items-center gap-2">
-                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#CC0000]" />}
+                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
                               <div className="text-[13px] font-medium text-[#111114] truncate flex-1">
                                 New Lead: {n.full_name || n.email || "Unnamed"}
                               </div>
@@ -261,16 +261,16 @@ function Admin() {
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     aria-label="Account"
-                    className="ml-1 w-9 h-9 rounded-full hover:bg-[#F4F4F6] transition-colors duration-150 grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#CC0000]/20"
+                    className="ml-1 w-9 h-9 rounded-full hover:bg-[#F4F4F6] transition-colors duration-150 grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#D03020]/20"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[#CC0000]/15 text-[#CC0000] grid place-items-center text-[11px] font-bold">
+                    <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">
                       {initials}
                     </div>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[300px] p-0 rounded-2xl overflow-hidden">
                     <div className="p-4">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-12 h-12 rounded-full bg-[#CC0000]/15 text-[#CC0000] grid place-items-center text-[15px] font-bold">
+                        <div className="w-12 h-12 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[15px] font-bold">
                           {initials}
                         </div>
                         <div className="min-w-0">
@@ -295,7 +295,7 @@ function Admin() {
                       <div className="h-px bg-[#EDEDF0] my-3" />
                       <button
                         onClick={signOut}
-                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#CC0000] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
                       >
                         <LogOut className="w-4 h-4" strokeWidth={2} />
                         Log Out

@@ -76,14 +76,14 @@
   --secondary-foreground: oklch(0.18 0 0);
   --muted: oklch(0.97 0.001 286);              /* #F5F5F7 */
   --muted-foreground: oklch(0.45 0 0);         /* #555555 */
-  --accent: oklch(0.553 0.232 27.5);           /* #CC0000 red */
+  --accent: oklch(0.553 0.232 27.5);           /* #D03020 red */
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.553 0.232 27.5);
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.92 0 0);                   /* #E5E5E7 */
   --input: oklch(0.92 0 0);
   --ring: oklch(0 0 0);
-  --real-red: oklch(0.553 0.232 27.5);         /* #CC0000 */
+  --real-red: oklch(0.553 0.232 27.5);         /* #D03020 */
   --caption: oklch(0.62 0 0);                  /* #888888 */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -161,9 +161,9 @@
 }
 
 @layer utilities {
-  .text-real-red { color: #CC0000; }
-  .bg-real-red { background-color: #CC0000; }
-  .border-real-red { border-color: #CC0000; }
+  .text-real-red { color: #D03020; }
+  .bg-real-red { background-color: #D03020; }
+  .border-real-red { border-color: #D03020; }
   .bg-soft { background-color: #F5F5F7; }
 
   .select-soft {
@@ -214,7 +214,7 @@
   .car-card:hover .car-img {
     transform: scale(1.08);
   }
-  .car-card:hover .car-price { color: #CC0000; }
+  .car-card:hover .car-price { color: #D03020; }
 
   /* Gig platform logo marquee */
   @keyframes marquee {

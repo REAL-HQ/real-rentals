@@ -200,7 +200,7 @@ export function MessagesPanel() {
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[12px] text-[#55555E] truncate flex-1">{t.latest.body}</span>
-                            {t.unread > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#CC0000] shrink-0" />}
+                            {t.unread > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020] shrink-0" />}
                           </div>
                         </div>
                       </button>
@@ -261,7 +261,7 @@ export function MessagesPanel() {
                         <div className={`mt-1 text-[10px] ${outbound ? "text-white/60" : "text-[#9A9AA3]"} flex items-center gap-1.5`}>
                           <span>{fmtWhen(m.created_at)}</span>
                           {!m.read && !outbound && (
-                            <button onClick={() => markRead(m.id)} className="underline hover:text-[#CC0000]">Mark read</button>
+                            <button onClick={() => markRead(m.id)} className="underline hover:text-[#D03020]">Mark read</button>
                           )}
                         </div>
                       </div>
@@ -277,7 +277,7 @@ export function MessagesPanel() {
                   placeholder="Write a message…"
                   className="flex-1 h-9 px-3 text-[13px] rounded-lg border border-[#EDEDF0] focus:outline-none focus:border-[#C4C4CB] bg-white"
                 />
-                <button className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-[#CC0000] text-white text-[13px] font-medium hover:opacity-90">
+                <button className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white text-[13px] font-medium hover:opacity-90">
                   <Send className="w-3.5 h-3.5" /> Send
                 </button>
               </footer>

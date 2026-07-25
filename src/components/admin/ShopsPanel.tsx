@@ -52,7 +52,7 @@ export function ShopsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{shops.length} shop(s)</span>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
+        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> Add Shop
         </button>
       </div>

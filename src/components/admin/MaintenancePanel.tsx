@@ -60,7 +60,7 @@ export function MaintenancePanel() {
           </select>
           <span className="text-sm text-muted-foreground">{filtered.length} record(s)</span>
         </div>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#CC0000] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
+        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> New Record
         </button>
       </div>

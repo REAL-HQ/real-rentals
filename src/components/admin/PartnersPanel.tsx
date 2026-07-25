@@ -73,7 +73,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
             </button>
           ))}
         </div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#CC0000] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Partner</button>
+        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Partner</button>
       </div>
 
       <div className="space-y-2">

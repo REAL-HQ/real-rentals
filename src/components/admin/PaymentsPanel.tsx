@@ -84,7 +84,7 @@ export function PaymentsPanel() {
           </SelectContent>
         </Select>
         <div className="text-sm text-muted-foreground">Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span></div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#CC0000] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Payment</button>
+        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Payment</button>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
@@ -134,7 +134,7 @@ export function PaymentsPanel() {
                     </Select>
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
-                  <td className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#CC0000] font-medium" : "text-[#9A9AA3]"}`}>
+                  <td className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}>
                     ${lateFees.toLocaleString()}
                   </td>
                   <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.balance_due).toLocaleString()}</td>
@@ -148,7 +148,7 @@ export function PaymentsPanel() {
                           <Check className="w-4 h-4 mr-2" /> Mark as paid
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>Waive</DropdownMenuItem>
-                        <DropdownMenuItem className="text-[#CC0000] focus:text-[#CC0000]" onClick={() => remove(p.id)}>
+                        <DropdownMenuItem className="text-[#D03020] focus:text-[#D03020]" onClick={() => remove(p.id)}>
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
