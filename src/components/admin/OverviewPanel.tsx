@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Car, Users, CreditCard, MessageSquare, ArrowUpRight, Plus, Flame } from "lucide-react";
+import { Car, Users, CreditCard, Wrench, ArrowUpRight, Plus, Flame, CheckCircle2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { SectionCard, MicroLabel, StatusPill } from "./ui";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { computeDueReasons } from "./MaintenancePanel";
 
 type WeekPoint = { label: string; iso: string; amount: number };
 
@@ -31,7 +32,6 @@ export function OverviewPanel() {
   const [rented, setRented] = useState(0);
   const [maintOpen, setMaintOpen] = useState(0);
   const [reserved, setReserved] = useState(0);
-  const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [newApps, setNewApps] = useState(0);
   const [paymentsLate, setPaymentsLate] = useState(0);
   const [outstandingAmt, setOutstandingAmt] = useState(0);
@@ -41,6 +41,7 @@ export function OverviewPanel() {
   const [vehiclePreview, setVehiclePreview] = useState<any[]>([]);
   const [recentApps, setRecentApps] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
+  const [serviceDue, setServiceDue] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -51,9 +52,9 @@ export function OverviewPanel() {
 
       const [
         vTotalQ, vAvailQ, vRentedQ, vMaintQ, vReservedQ,
-        newAppsQ, paymentsLateQ, paymentsOutQ, unreadQ,
+        newAppsQ, paymentsLateQ, paymentsOutQ,
         payWeekQ, payPrevWeekQ, pay12wQ,
-        vehiclePreviewQ, recentAppsQ, hotAppsQ,
+        vehiclePreviewQ, recentAppsQ, hotAppsQ, allVehiclesQ,
       ] = await Promise.all([
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
@@ -63,13 +64,13 @@ export function OverviewPanel() {
         supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "new"),
         supabase.from("payments").select("id", { count: "exact", head: true }).eq("status", "past_due"),
         supabase.from("payments").select("amount").neq("status", "paid"),
-        supabase.from("messages").select("id", { count: "exact", head: true }).eq("read", false),
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d7),
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
         supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d84),
         supabase.from("vehicles").select("id, make, model, status, photos").order("updated_at", { ascending: false }).limit(6),
-        supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, created_at").order("created_at", { ascending: false }).limit(5),
-        supabase.from("applications").select("id, full_name, ai_score").eq("ai_tier", "hot").order("ai_score", { ascending: false }).limit(3),
+        supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, score, created_at").order("score", { ascending: false, nullsFirst: false } as any).order("created_at", { ascending: false }).limit(5),
+        supabase.from("applications").select("id, full_name, score").gte("score", 80).order("score", { ascending: false }).limit(3),
+        supabase.from("vehicles").select("id, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date"),
       ]);
 
       setVehiclesTotal(vTotalQ.count ?? 0);
@@ -79,11 +80,12 @@ export function OverviewPanel() {
       setReserved(vReservedQ.count ?? 0);
       setNewApps(newAppsQ.count ?? 0);
       setPaymentsLate(paymentsLateQ.count ?? 0);
-      setUnreadMsgs(unreadQ.count ?? 0);
       const sumAmt = (rows?: any[] | null) => (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
       setOutstandingAmt(sumAmt(paymentsOutQ.data));
       setWeekTotal(sumAmt(payWeekQ.data));
       setPrevWeekTotal(sumAmt(payPrevWeekQ.data));
+      const dueCount = (allVehiclesQ.data ?? []).filter((v: any) => v.status !== "maintenance" && computeDueReasons(v).length > 0).length;
+      setServiceDue(dueCount);
 
       // 12-week weekly buckets
       const bucketStart = (d: Date) => { const c = new Date(d); c.setHours(0,0,0,0); c.setDate(c.getDate() - c.getDay()); return c; };
@@ -106,9 +108,10 @@ export function OverviewPanel() {
     })();
   }, []);
 
-  const utilBase = vehiclesAvail + rented + reserved + maintOpen;
-  const onRentPct = utilBase > 0 ? Math.round((rented / utilBase) * 100) : 0;
-  const availPct = utilBase > 0 ? Math.round((vehiclesAvail / utilBase) * 100) : 0;
+  const total = vehiclesAvail + rented + reserved + maintOpen;
+  const rentable = Math.max(0, total - maintOpen);
+  const utilPct = rentable > 0 ? Math.round((rented / rentable) * 100) : 0;
+  const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   const weekDelta = useMemo(() => {
     if (prevWeekTotal === 0) return weekTotal > 0 ? 100 : 0;
     return Math.round(((weekTotal - prevWeekTotal) / prevWeekTotal) * 100);
@@ -133,22 +136,33 @@ export function OverviewPanel() {
           badge={newApps > 0 ? newApps : undefined}
           href="/admin?tab=drivers"
         />
+        {paymentsLate > 0 ? (
+          <QuickAction
+            icon={CreditCard}
+            eyebrow="Collections"
+            title="Payments"
+            hint={`${paymentsLate} Past Due`}
+            badge={paymentsLate}
+            href="/admin?tab=payments"
+            solid
+          />
+        ) : (
+          <QuickAction
+            icon={CheckCircle2}
+            eyebrow="Collections"
+            title="All Current"
+            hint="$0 Outstanding"
+            href="/admin?tab=payments"
+          />
+        )}
         <QuickAction
-          icon={CreditCard}
-          eyebrow="Collections"
-          title="Payments"
-          hint={paymentsLate > 0 ? `${paymentsLate} Past Due` : "All Current"}
-          badge={paymentsLate > 0 ? paymentsLate : undefined}
-          href="/admin?tab=payments"
-          solid
-        />
-        <QuickAction
-          icon={MessageSquare}
-          eyebrow="Inbox"
-          title="Messages"
-          hint={unreadMsgs > 0 ? `${unreadMsgs} Unread` : "All Read"}
-          badge={unreadMsgs > 0 ? unreadMsgs : undefined}
-          href="/admin?tab=messages"
+          icon={Wrench}
+          eyebrow="Service"
+          title="Service"
+          hint={`${maintOpen} Down · ${serviceDue} Due`}
+          badge={maintOpen > 0 ? maintOpen : serviceDue > 0 ? serviceDue : undefined}
+          href="/admin?tab=maintenance"
+          tint={maintOpen > 0 ? "red" : serviceDue > 0 ? "amber" : undefined}
         />
       </div>
 
@@ -164,27 +178,54 @@ export function OverviewPanel() {
             </Link>
           }
         >
-          <div className="grid grid-cols-2 gap-4 sm:gap-6 items-center">
-            <ProgressRing label="On Rent" value={rented} pct={onRentPct} color="#50C060" total={utilBase} />
-            <ProgressRing label="Available" value={vehiclesAvail} pct={availPct} color="#9A9AA3" total={utilBase} />
+          <div className="grid grid-cols-[auto_1fr] gap-6 items-center">
+            <SegmentedDonut
+              total={total}
+              segments={[
+                { key: "rented",      label: "Rented",      value: rented,        color: "#0F8A4B" },
+                { key: "reserved",    label: "Reserved",    value: reserved,      color: "#B77900" },
+                { key: "available",   label: "Available",   value: vehiclesAvail, color: "#B4B2A9" },
+                { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#CC0000" },
+              ]}
+            />
+            <div>
+              <ul className="space-y-1.5">
+                {[
+                  { key: "rented",      label: "Rented",      value: rented,        color: "#0F8A4B" },
+                  { key: "reserved",    label: "Reserved",    value: reserved,      color: "#B77900" },
+                  { key: "available",   label: "Available",   value: vehiclesAvail, color: "#B4B2A9" },
+                  { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#CC0000" },
+                ].map((s) => (
+                  <li key={s.key} className="flex items-center gap-2 text-[13px]">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="text-[#111114] flex-1">{s.label}</span>
+                    <span className="tabular-nums font-medium text-[#111114]">{s.value}</span>
+                    <span className="tabular-nums text-[11px] text-[#9A9AA3] w-9 text-right">{pctOf(s.value)}%</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-4">
+                <div className="flex items-baseline justify-between mb-1">
+                  <MicroLabel>Utilization {utilPct}% (Of Rentable)</MicroLabel>
+                  <span className="text-[11px] text-[#9A9AA3] tabular-nums">{rented}/{rentable}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-[#EDEDF0] overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${utilPct}%`, background: "#0F8A4B" }} />
+                </div>
+              </div>
+            </div>
           </div>
           <div className="mt-5 pt-5 border-t border-[#EDEDF0]">
             <div className="flex items-center justify-between mb-3">
               <MicroLabel>Recent Vehicles</MicroLabel>
-              <div className="flex items-center gap-3 text-[11px] text-[#9A9AA3]">
-                <LegendDot color="#50C060" label="Rented" />
-                <LegendDot color="#9A9AA3" label="Available" />
-                <LegendDot color="#F0C040" label="Reserved" />
-                <LegendDot color="#D03020" label="Maintenance" />
-              </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {vehiclePreview.slice(0, 6).map((v) => {
                 const img = resolvePhotoUrl(v.photos?.[0]);
-                const dot = v.status === "rented" ? "#50C060"
-                  : v.status === "reserved" ? "#F0C040"
-                  : v.status === "maintenance" ? "#D03020"
-                  : "#9A9AA3";
+                const dot = v.status === "rented" ? "#0F8A4B"
+                  : v.status === "reserved" ? "#B77900"
+                  : v.status === "maintenance" ? "#CC0000"
+                  : "#B4B2A9";
                 return (
                   <Link
                     key={v.id}
@@ -232,10 +273,6 @@ export function OverviewPanel() {
                   : a.status === "approved" ? "Approved"
                   : a.current_step ? "In Wizard"
                   : "New Lead";
-                const tone = a.ai_tier === "hot" ? "green"
-                  : a.ai_tier === "warm" ? "amber"
-                  : a.ai_tier === "cold" ? "red"
-                  : "neutral";
                 return (
                   <li key={a.id}>
                     <Link
@@ -251,9 +288,7 @@ export function OverviewPanel() {
                         <div className="text-[11px] text-[#9A9AA3] mt-0.5">{timeAgo(a.created_at)}</div>
                       </div>
                       <StatusPill status={stage} />
-                      {a.ai_score != null && (
-                        <StatusPill tone={tone as any}>{a.ai_score}</StatusPill>
-                      )}
+                      <ScorePill score={a.score} />
                     </Link>
                   </li>
                 );
@@ -304,7 +339,7 @@ export function OverviewPanel() {
           {hot.map((h) => (
             <Link key={h.id} to="/admin" search={{ tab: "drivers", id: h.id } as any}
               className="inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 hover:border-[#D03020] transition-colors">
-              <Flame className="w-3 h-3 text-[#D03020]" /> {h.full_name} · {h.ai_score}
+              <Flame className="w-3 h-3 text-[#D03020]" /> {h.full_name} · {h.score}
             </Link>
           ))}
         </div>
@@ -314,14 +349,23 @@ export function OverviewPanel() {
 }
 
 function QuickAction({
-  icon: Icon, eyebrow, title, hint, href, badge, solid,
+  icon: Icon, eyebrow, title, hint, href, badge, solid, tint,
 }: {
   icon: any; eyebrow: string; title: string; hint?: string;
-  href: string; badge?: number; solid?: boolean;
+  href: string; badge?: number; solid?: boolean; tint?: "red" | "amber";
 }) {
   const base = solid
-    ? "bg-[#D03020] text-white border-transparent hover:bg-[#B82818]"
-    : "bg-white text-[#111114] border-[#EDEDF0] hover:border-[#D03020]";
+    ? "bg-[#CC0000] text-white border-transparent hover:bg-[#B00000]"
+    : tint === "red"
+      ? "bg-white text-[#111114] border-[#CC0000]/40 hover:border-[#CC0000]"
+      : tint === "amber"
+        ? "bg-white text-[#111114] border-[#B77900]/40 hover:border-[#B77900]"
+        : "bg-white text-[#111114] border-[#EDEDF0] hover:border-[#D03020]";
+  const badgeBg = solid
+    ? "bg-white text-[#CC0000]"
+    : tint === "amber"
+      ? "bg-[#B77900] text-white"
+      : "bg-[#CC0000] text-white";
   return (
     <Link
       to={href}
@@ -331,7 +375,7 @@ function QuickAction({
         <div className={`h-9 w-9 rounded-full grid place-items-center ${solid ? "bg-white/15 text-white" : "bg-[#F4F4F6] text-[#55555E]"}`}>
           <Icon className="w-4 h-4" strokeWidth={1.75} />
         </div>
-        <div className={`h-7 w-7 rounded-full grid place-items-center ${solid ? "bg-white/15 text-white" : "bg-[#111114] text-white group-hover:bg-[#D03020]"} transition-colors`}>
+        <div className={`h-7 w-7 rounded-full grid place-items-center ${solid ? "bg-white/15 text-white" : "bg-[#111114] text-white group-hover:bg-[#CC0000]"} transition-colors`}>
           <Plus className="w-3.5 h-3.5" strokeWidth={2} />
         </div>
       </div>
@@ -341,7 +385,7 @@ function QuickAction({
       <div className="mt-1 flex items-baseline gap-2">
         <div className={`text-[18px] font-semibold tracking-tight ${solid ? "text-white" : "text-[#111114]"}`}>{title}</div>
         {badge != null && (
-          <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${solid ? "bg-white text-[#D03020]" : "bg-[#D03020] text-white"}`}>
+          <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${badgeBg}`}>
             {badge}
           </span>
         )}
@@ -353,41 +397,48 @@ function QuickAction({
   );
 }
 
-function ProgressRing({ label, value, pct, color, total }: {
-  label: string; value: number; pct: number; color: string; total: number;
-}) {
-  const size = 120, stroke = 10, r = (size - stroke) / 2, c = 2 * Math.PI * r;
-  const off = c - (pct / 100) * c;
-  return (
-    <div className="flex items-center gap-4">
-      <div className="relative shrink-0" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size/2} cy={size/2} r={r} stroke="#F4F4F6" strokeWidth={stroke} fill="none" />
-          <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth={stroke} fill="none"
-            strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
-            style={{ transition: "stroke-dashoffset 600ms ease" }} />
-        </svg>
-        <div className="absolute inset-0 grid place-items-center">
-          <div className="text-center">
-            <div className="text-[20px] font-semibold text-[#111114] tabular-nums leading-none">{pct}%</div>
-            <div className="text-[10px] text-[#9A9AA3] mt-1 tabular-nums">{value}/{total}</div>
-          </div>
-        </div>
-      </div>
-      <div className="min-w-0">
-        <MicroLabel>{label}</MicroLabel>
-        <div className="mt-1 text-[15px] font-semibold text-[#111114] tabular-nums">{value} Vehicles</div>
-        <div className="text-[11px] text-[#9A9AA3] mt-0.5">Of {total} In Fleet</div>
-      </div>
-    </div>
-  );
+function ScorePill({ score }: { score: number | null | undefined }) {
+  if (score == null) return null;
+  const tone = score >= 80 ? "green" : score >= 50 ? "amber" : "neutral";
+  return <StatusPill tone={tone as any}>{score}</StatusPill>;
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function SegmentedDonut({ total, segments }: {
+  total: number;
+  segments: { key: string; label: string; value: number; color: string }[];
+}) {
+  const size = 160, stroke = 16, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const gap = 2; // px gap between segments
+  let offset = 0;
+  const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-      {label}
-    </span>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size/2} cy={size/2} r={r} stroke="#EDEDF0" strokeWidth={stroke} fill="none" />
+        {segments.map((s) => {
+          if (s.value <= 0) return null;
+          const len = (s.value / sum) * c;
+          const dash = Math.max(0, len - gap);
+          const el = (
+            <circle
+              key={s.key}
+              cx={size/2} cy={size/2} r={r}
+              stroke={s.color} strokeWidth={stroke} fill="none"
+              strokeDasharray={`${dash} ${c - dash}`}
+              strokeDashoffset={-offset}
+              strokeLinecap="butt"
+            />
+          );
+          offset += len;
+          return el;
+        })}
+      </svg>
+      <div className="absolute inset-0 grid place-items-center">
+        <div className="text-center">
+          <div className="text-[26px] font-semibold text-[#111114] tabular-nums leading-none">{total}</div>
+          <div className="text-[10px] text-[#9A9AA3] mt-1 uppercase tracking-[0.12em] font-semibold">Total Vehicles</div>
+        </div>
+      </div>
+    </div>
   );
 }

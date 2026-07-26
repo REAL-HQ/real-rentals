@@ -37,7 +37,7 @@ const TABS = [
   { id: "payments",    label: "Payments",    icon: CreditCard,      group: "OPERATIONS", description: "Rent, Deposits And Balances" },
   { id: "messages",    label: "Messages",    icon: MessageSquare,   group: "OPERATIONS", description: "Inbound Driver & Partner Conversations" },
   { id: "vehicles",    label: "Vehicles",    icon: Car,             group: "FLEET",      description: "Fleet Inventory & Vehicle Status" },
-  { id: "maintenance", label: "Maintenance", icon: Wrench,          group: "FLEET",      description: "Vehicle Service Records, Schedules & Cost Splits" },
+  { id: "maintenance", label: "Service",     icon: Wrench,          group: "FLEET",      description: "Vehicles Down, Due, Scheduled And In Shop" },
   { id: "shops",       label: "Shops",       icon: Store,           group: "FLEET",      description: "Preferred Maintenance Providers By Market" },
   { id: "partners",    label: "Partners",    icon: Handshake,       group: "GROWTH",     description: "Vehicle Owners, Capital Partners And Lenders" },
   { id: "websites",    label: "Websites",    icon: Globe,           group: "GROWTH",     description: "Market-Specific Marketing Sites" },
@@ -56,6 +56,7 @@ function Admin() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null; created_at: string | null; status: string | null }>>([]);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;
     return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
@@ -92,6 +93,11 @@ function Admin() {
         .order("created_at", { ascending: false })
         .limit(15);
       if (!cancelled) setNotifs(data || []);
+      const { count } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("read", false);
+      if (!cancelled) setUnreadMsgs(count ?? 0);
     }
     load();
     const t = setInterval(load, 60_000);
@@ -209,6 +215,19 @@ function Admin() {
               </div>
               {/* Right: notifications + profile */}
               <div className="flex items-center gap-2">
+                {/* Messages */}
+                <button
+                  aria-label="Messages"
+                  onClick={() => setTab("messages")}
+                  className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
+                >
+                  <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                  {unreadMsgs > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">
+                      {unreadMsgs}
+                    </span>
+                  )}
+                </button>
                 <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
                   <DropdownMenuTrigger
                     aria-label="Notifications"

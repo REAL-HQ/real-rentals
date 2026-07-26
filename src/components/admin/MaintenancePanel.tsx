@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Wrench, Plus, X } from "lucide-react";
+import { Wrench, Plus, X, AlertTriangle, Clock } from "lucide-react";
+import { StatusPill } from "./ui";
 
 type Row = {
   id: string;
@@ -15,9 +16,44 @@ type Row = {
   created_at: string;
 };
 
+type VehicleLite = {
+  id: string;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  status: string | null;
+  current_odometer: number | null;
+  last_oil_change_miles: number | null;
+  oil_interval_miles: number | null;
+  last_tire_date: string | null;
+  last_brake_inspection_date: string | null;
+};
+
+function monthsSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  return (Date.now() - t) / (1000 * 60 * 60 * 24 * 30.44);
+}
+
+export function computeDueReasons(v: VehicleLite): string[] {
+  const reasons: string[] = [];
+  const cur = v.current_odometer ?? null;
+  const last = v.last_oil_change_miles ?? null;
+  const interval = v.oil_interval_miles ?? 5000;
+  if (cur != null && last != null && cur - last >= interval) {
+    reasons.push(`Oil change (+${(cur - last).toLocaleString()} mi)`);
+  }
+  const tireMonths = monthsSince(v.last_tire_date);
+  if (tireMonths == null || tireMonths >= 12) reasons.push("Tires 12+ mo");
+  const brakeMonths = monthsSince(v.last_brake_inspection_date);
+  if (brakeMonths == null || brakeMonths >= 12) reasons.push("Brake inspection 12+ mo");
+  return reasons;
+}
+
 export function MaintenancePanel() {
   const [rows, setRows] = useState<Row[]>([]);
-  const [vehicles, setVehicles] = useState<{ id: string; year: number | null; make: string | null; model: string | null }[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
@@ -26,7 +62,9 @@ export function MaintenancePanel() {
     setLoading(true);
     const [m, v] = await Promise.all([
       supabase.from("maintenance_records").select("*").order("created_at", { ascending: false }),
-      supabase.from("vehicles").select("id, year, make, model").order("created_at", { ascending: false }),
+      supabase.from("vehicles")
+        .select("id, year, make, model, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date")
+        .order("created_at", { ascending: false }),
     ]);
     if (m.error) toast.error(m.error.message);
     setRows((m.data as any) ?? []);
@@ -35,7 +73,16 @@ export function MaintenancePanel() {
   }
   useEffect(() => { load(); }, []);
 
-  const filtered = statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
+  const downVehicles = vehicles.filter((v) => v.status === "maintenance");
+  const dueVehicles = vehicles
+    .filter((v) => v.status !== "maintenance")
+    .map((v) => ({ v, reasons: computeDueReasons(v) }))
+    .filter((x) => x.reasons.length > 0);
+
+  let filtered = rows;
+  if (statusFilter === "scheduled") filtered = rows.filter((r) => r.status === "scheduled");
+  else if (statusFilter === "in_shop") filtered = rows.filter((r) => r.status === "in_progress");
+  else if (statusFilter === "down" || statusFilter === "due") filtered = [];
   const vName = (id: string) => {
     const v = vehicles.find((x) => x.id === id);
     return v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() : id.slice(0, 8);
@@ -50,16 +97,67 @@ export function MaintenancePanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-border bg-white px-3 py-2 text-sm">
-            <option value="all">All Statuses</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-          </select>
-          <span className="text-sm text-muted-foreground">{filtered.length} record(s)</span>
+      {/* Status filter chips */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {[
+          { id: "all", label: "All", count: rows.length + downVehicles.length + dueVehicles.length },
+          { id: "down", label: "Down", count: downVehicles.length },
+          { id: "due", label: "Due", count: dueVehicles.length },
+          { id: "scheduled", label: "Scheduled", count: rows.filter((r) => r.status === "scheduled").length },
+          { id: "in_shop", label: "In Shop", count: rows.filter((r) => r.status === "in_progress").length },
+        ].map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setStatusFilter(s.id)}
+            className={`px-3 py-1.5 rounded-md border transition-colors ${
+              statusFilter === s.id ? "bg-black text-white border-black" : "bg-white border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
+            }`}
+          >
+            {s.label} <span className="opacity-70">({s.count})</span>
+          </button>
+        ))}
+      </div>
+
+      {(statusFilter === "all" || statusFilter === "down") && downVehicles.length > 0 && (
+        <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+          <header className="px-5 py-3 border-b border-[#EDEDF0] flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-[#D03020]" />
+            <div className="text-[13px] font-semibold text-[#111114]">Down ({downVehicles.length})</div>
+            <div className="text-[11px] text-[#9A9AA3]">Currently Out Of Service</div>
+          </header>
+          <ul className="divide-y divide-[#F4F4F6]">
+            {downVehicles.map((v) => (
+              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+                <div className="text-[13px] text-[#111114] flex-1">{`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}</div>
+                <StatusPill tone="red">Maintenance</StatusPill>
+                <div className="text-[11px] text-[#9A9AA3] tabular-nums">{v.current_odometer?.toLocaleString() ?? "—"} mi</div>
+              </li>
+            ))}
+          </ul>
         </div>
+      )}
+
+      {(statusFilter === "all" || statusFilter === "due") && dueVehicles.length > 0 && (
+        <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+          <header className="px-5 py-3 border-b border-[#EDEDF0] flex items-center gap-2">
+            <Clock className="w-4 h-4 text-[#C68A12]" />
+            <div className="text-[13px] font-semibold text-[#111114]">Due ({dueVehicles.length})</div>
+            <div className="text-[11px] text-[#9A9AA3]">Routine Service Overdue</div>
+          </header>
+          <ul className="divide-y divide-[#F4F4F6]">
+            {dueVehicles.map(({ v, reasons }) => (
+              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
+                <div className="text-[13px] text-[#111114] flex-1 min-w-[180px]">{`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}</div>
+                {reasons.map((r) => <StatusPill key={r} tone="amber">{r}</StatusPill>)}
+                <div className="text-[11px] text-[#9A9AA3] tabular-nums">{v.current_odometer?.toLocaleString() ?? "—"} mi</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-sm text-muted-foreground">{filtered.length} record(s)</div>
         <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
           <Plus className="w-4 h-4" /> New Record
         </button>

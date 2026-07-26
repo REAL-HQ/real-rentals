@@ -30,6 +30,11 @@ type FormState = {
   badges: string[];
   uber_eligibility: string[];
   photos: string[];
+  current_odometer: number | null;
+  last_oil_change_miles: number | null;
+  oil_interval_miles: number | null;
+  last_tire_date: string;
+  last_brake_inspection_date: string;
 };
 
 function init(v: Vehicle | null): FormState {
@@ -52,6 +57,11 @@ function init(v: Vehicle | null): FormState {
     badges: v?.badges ?? [],
     uber_eligibility: v?.uber_eligibility ?? [],
     photos: v?.photos ?? [],
+    current_odometer: (v as any)?.current_odometer ?? null,
+    last_oil_change_miles: (v as any)?.last_oil_change_miles ?? null,
+    oil_interval_miles: (v as any)?.oil_interval_miles ?? 5000,
+    last_tire_date: (v as any)?.last_tire_date ?? "",
+    last_brake_inspection_date: (v as any)?.last_brake_inspection_date ?? "",
   };
 }
 
@@ -82,6 +92,11 @@ export function VehicleEditor({ vehicle, onClose, onSaved }: {
       status: f.status, description: f.description || null,
       maintenance_status: f.maintenance_status || null,
       badges: f.badges, uber_eligibility: f.uber_eligibility, photos: f.photos,
+      current_odometer: f.current_odometer,
+      last_oil_change_miles: f.last_oil_change_miles,
+      oil_interval_miles: f.oil_interval_miles ?? 5000,
+      last_tire_date: f.last_tire_date || null,
+      last_brake_inspection_date: f.last_brake_inspection_date || null,
     };
     const { error } = vehicle
       ? await supabase.from("vehicles").update(payload).eq("id", vehicle.id)
@@ -177,6 +192,35 @@ export function VehicleEditor({ vehicle, onClose, onSaved }: {
           <CSV label="Badges (comma separated)" v={f.badges} onChange={(a) => set("badges", a)} />
           <CSV label="Uber eligibility (comma separated, e.g. UberX, Comfort)" v={f.uber_eligibility} onChange={(a) => set("uber_eligibility", a)} />
 
+          <div className="rounded-xl border border-[#EDEDF0] p-4 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Service Tracking</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Num label="Current Odometer" v={f.current_odometer} onChange={(n) => set("current_odometer", n)} />
+              <Num label="Last Oil Change (mi)" v={f.last_oil_change_miles} onChange={(n) => set("last_oil_change_miles", n)} />
+              <Num label="Oil Interval (mi)" v={f.oil_interval_miles} onChange={(n) => set("oil_interval_miles", n)} />
+              <DateField label="Last Tire Service" v={f.last_tire_date} onChange={(s) => set("last_tire_date", s)} />
+              <DateField label="Last Brake Inspection" v={f.last_brake_inspection_date} onChange={(s) => set("last_brake_inspection_date", s)} />
+            </div>
+            {vehicle && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = prompt("Log new odometer reading (miles):", String(f.current_odometer ?? ""));
+                  if (!next) return;
+                  const n = Number(next);
+                  if (Number.isNaN(n) || n < 0) return toast.error("Invalid mileage");
+                  set("current_odometer", n);
+                  const { error } = await supabase.from("vehicles").update({ current_odometer: n }).eq("id", vehicle.id);
+                  if (error) toast.error(error.message);
+                  else toast.success("Odometer logged");
+                }}
+                className="text-xs rounded-md border border-border px-3 py-1.5 hover:bg-soft"
+              >
+                Log Odometer
+              </button>
+            )}
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs uppercase tracking-wider text-muted-foreground">Photos (first is primary)</label>
@@ -264,6 +308,15 @@ function CSV({ label, v, onChange }: { label: string; v: string[]; onChange: (a:
       <span className="text-xs uppercase tracking-wider text-muted-foreground">{label}</span>
       <input value={v.join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((x) => x.trim()).filter(Boolean))}
         className="mt-1 w-full border border-border rounded-md px-3 py-2 text-sm" />
+    </label>
+  );
+}
+function DateField({ label, v, onChange }: { label: string; v: string; onChange: (s: string) => void }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <input type="date" value={v} onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full border border-border rounded-md px-2 py-1.5 text-sm" />
     </label>
   );
 }

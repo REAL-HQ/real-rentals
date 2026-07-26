@@ -1469,11 +1469,15 @@ export type Database = {
           body_type: string | null
           color: string | null
           created_at: string | null
+          current_odometer: number | null
           deposit: number | null
           description: string | null
           doors: number | null
           fuel_type: string
           id: string
+          last_brake_inspection_date: string | null
+          last_oil_change_miles: number | null
+          last_tire_date: string | null
           maintenance_status: string | null
           make: string
           market_id: string | null
@@ -1481,6 +1485,7 @@ export type Database = {
           model: string
           monthly_rate: number | null
           mpg: number | null
+          oil_interval_miles: number
           partner_id: string | null
           photos: string[] | null
           seats: number | null
@@ -1495,11 +1500,15 @@ export type Database = {
           body_type?: string | null
           color?: string | null
           created_at?: string | null
+          current_odometer?: number | null
           deposit?: number | null
           description?: string | null
           doors?: number | null
           fuel_type?: string
           id?: string
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
           maintenance_status?: string | null
           make: string
           market_id?: string | null
@@ -1507,6 +1516,7 @@ export type Database = {
           model: string
           monthly_rate?: number | null
           mpg?: number | null
+          oil_interval_miles?: number
           partner_id?: string | null
           photos?: string[] | null
           seats?: number | null
@@ -1521,11 +1531,15 @@ export type Database = {
           body_type?: string | null
           color?: string | null
           created_at?: string | null
+          current_odometer?: number | null
           deposit?: number | null
           description?: string | null
           doors?: number | null
           fuel_type?: string
           id?: string
+          last_brake_inspection_date?: string | null
+          last_oil_change_miles?: number | null
+          last_tire_date?: string | null
           maintenance_status?: string | null
           make?: string
           market_id?: string | null
@@ -1533,6 +1547,7 @@ export type Database = {
           model?: string
           monthly_rate?: number | null
           mpg?: number | null
+          oil_interval_miles?: number
           partner_id?: string | null
           photos?: string[] | null
           seats?: number | null
