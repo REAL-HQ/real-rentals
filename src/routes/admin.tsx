@@ -56,6 +56,7 @@ function Admin() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<Array<{ id: string; full_name: string | null; email: string | null; phone: string | null; created_at: string | null; status: string | null }>>([]);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;
     return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
@@ -92,6 +93,11 @@ function Admin() {
         .order("created_at", { ascending: false })
         .limit(15);
       if (!cancelled) setNotifs(data || []);
+      const { count } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("read", false);
+      if (!cancelled) setUnreadMsgs(count ?? 0);
     }
     load();
     const t = setInterval(load, 60_000);
