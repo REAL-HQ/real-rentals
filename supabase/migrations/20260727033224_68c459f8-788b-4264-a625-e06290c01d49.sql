@@ -1,0 +1,3 @@
+ALTER TABLE public.applications DROP CONSTRAINT IF EXISTS applications_status_check;
+ALTER TABLE public.applications ADD CONSTRAINT applications_status_check CHECK (status = ANY (ARRAY['partial','new','complete','reviewing','approved','active','suspended','declined','closed','duplicate']));
+UPDATE public.applications SET status='duplicate', updated_at=now() WHERE primary_application_id IS NOT NULL AND status <> 'duplicate';
