@@ -142,7 +142,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
   const now = useNow();
 
   useEffect(() => {
-    supabase.from("applications").select("*").order("created_at", { ascending: false })
+    supabase.from("applications").select("*").neq("status", "duplicate").order("created_at", { ascending: false })
       .then(({ data }) => setDrivers(data || []));
     supabase.from("vehicles").select("*").then(({ data }) => setVehicles((data as any) || []));
     supabase.from("driver_screenings").select("*").then(({ data }) => {
@@ -235,7 +235,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
     try {
       const res = await runMerge();
       toast.success(`Linked ${res.merged} duplicate rows.`);
-      const { data } = await supabase.from("applications").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase.from("applications").select("*").neq("status", "duplicate").order("created_at", { ascending: false });
       setDrivers(data || []);
     } catch (e: any) {
       toast.error(e?.message || "Merge failed");
