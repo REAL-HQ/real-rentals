@@ -65,6 +65,7 @@ export function ApplicationsPanel() {
     supabase
       .from("applications")
       .select("*")
+      .neq("status", "duplicate")
       .order("score", { ascending: false })
       .order("created_at", { ascending: false })
       .then(({ data }) => setApps(data || []));

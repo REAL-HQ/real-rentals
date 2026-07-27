@@ -142,7 +142,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
   const now = useNow();
 
   useEffect(() => {
-    supabase.from("applications").select("*").order("created_at", { ascending: false })
+    supabase.from("applications").select("*").neq("status", "duplicate").order("created_at", { ascending: false })
       .then(({ data }) => setDrivers(data || []));
     supabase.from("vehicles").select("*").then(({ data }) => setVehicles((data as any) || []));
     supabase.from("driver_screenings").select("*").then(({ data }) => {
@@ -235,7 +235,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
     try {
       const res = await runMerge();
       toast.success(`Linked ${res.merged} duplicate rows.`);
-      const { data } = await supabase.from("applications").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase.from("applications").select("*").neq("status", "duplicate").order("created_at", { ascending: false });
       setDrivers(data || []);
     } catch (e: any) {
       toast.error(e?.message || "Merge failed");
@@ -648,6 +648,11 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               <h2 className="text-[18px] font-semibold text-[#111114] truncate">{driver.full_name || "Unnamed"}</h2>
               <StatusPill status={driver.status} />
               {driver.gclid && <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">Google Ads</span>}
+              {(driver.resubmission_count ?? 0) > 0 && (
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E] bg-[#F4F4F6] rounded px-1.5 py-0.5">
+                  Merged {driver.resubmission_count} Duplicate{driver.resubmission_count === 1 ? "" : "(s)"}
+                </span>
+              )}
             </div>
             <div className="mt-1 flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
               {(driver.city || driver.state) && (
