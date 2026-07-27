@@ -45,16 +45,23 @@ export const submitApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => submitApplicationSchema.parse(data))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // ---- Duplicate detection: same phone OR email within the last 30 days ----
+    // ---- Duplicate detection: normalized phone OR email, active records ----
+    const emailNorm = data.email.trim().toLowerCase();
+    const phoneDigits = data.phone.replace(/\D+/g, "");
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: dupes } = await supabaseAdmin
       .from("applications")
-      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at")
-      .or(`phone.eq.${data.phone},email.eq.${data.email}`)
+      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at, phone, email, status")
+      .or(`phone.ilike.%${phoneDigits.slice(-10)}%,email.ilike.${emailNorm}`)
+      .neq("status", "duplicate")
       .gte("created_at", cutoff)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const existing = dupes?.[0];
+      .order("updated_at", { ascending: false })
+      .limit(5);
+    const existing = (dupes ?? []).find((r) => {
+      const p = (r.phone ?? "").replace(/\D+/g, "");
+      const e = (r.email ?? "").trim().toLowerCase();
+      return (phoneDigits && p.endsWith(phoneDigits.slice(-10))) || (emailNorm && e === emailNorm);
+    });
     if (existing) {
       const primaryId = existing.primary_application_id ?? existing.id;
       // Build patch of new/changed fields, ignoring nulls/undefined
