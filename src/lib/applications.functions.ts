@@ -475,6 +475,7 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
           .from("applications")
           .update({
             primary_application_id: primary.id,
+            status: "duplicate",
             updated_at: new Date().toISOString(),
           })
           .eq("id", r.id);
