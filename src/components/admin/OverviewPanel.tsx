@@ -5,7 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { SectionCard, MicroLabel, StatusPill } from "./ui";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
-import { computeDueReasons } from "./MaintenancePanel";
+import { computeDueReasons, needsOdometer } from "./MaintenancePanel";
 
 type WeekPoint = { label: string; iso: string; amount: number };
 
@@ -42,6 +42,7 @@ export function OverviewPanel() {
   const [recentApps, setRecentApps] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
   const [serviceDue, setServiceDue] = useState(0);
+  const [serviceNeedsOdo, setServiceNeedsOdo] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -68,8 +69,8 @@ export function OverviewPanel() {
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
         supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d84),
         supabase.from("vehicles").select("id, make, model, status, photos").order("updated_at", { ascending: false }).limit(6),
-        supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, score, created_at").order("score", { ascending: false, nullsFirst: false } as any).order("created_at", { ascending: false }).limit(5),
-        supabase.from("applications").select("id, full_name, score").gte("score", 80).order("score", { ascending: false }).limit(3),
+        supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, score, created_at").neq("status", "duplicate").order("score", { ascending: false, nullsFirst: false } as any).order("created_at", { ascending: false }).limit(5),
+        supabase.from("applications").select("id, full_name, score").neq("status", "duplicate").gte("score", 80).order("score", { ascending: false }).limit(3),
         supabase.from("vehicles").select("id, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date"),
       ]);
 
@@ -86,6 +87,8 @@ export function OverviewPanel() {
       setPrevWeekTotal(sumAmt(payPrevWeekQ.data));
       const dueCount = (allVehiclesQ.data ?? []).filter((v: any) => v.status !== "maintenance" && computeDueReasons(v).length > 0).length;
       setServiceDue(dueCount);
+      const needsOdoCount = (allVehiclesQ.data ?? []).filter((v: any) => v.status !== "maintenance" && needsOdometer(v)).length;
+      setServiceNeedsOdo(needsOdoCount);
 
       // 12-week weekly buckets
       const bucketStart = (d: Date) => { const c = new Date(d); c.setHours(0,0,0,0); c.setDate(c.getDate() - c.getDay()); return c; };
@@ -119,6 +122,24 @@ export function OverviewPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Overview</h1>
+          <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
+        </div>
+        <div className="flex items-baseline gap-3 md:justify-end flex-wrap">
+          <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-none">{usd(weekTotal)}</div>
+          <span className="text-[13px] text-[#55555E]">This Week</span>
+          <span className={`text-[13px] font-medium ${weekDelta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
+            {weekDelta >= 0 ? "+" : ""}{weekDelta}% Vs Prior Week
+          </span>
+          <span className={`text-[13px] ${outstandingAmt > 0 ? "text-[#CC0000]" : "text-[#9A9AA3]"}`}>
+            {usd(outstandingAmt)} Outstanding
+          </span>
+        </div>
+      </div>
+
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <QuickAction
@@ -159,7 +180,7 @@ export function OverviewPanel() {
           icon={Wrench}
           eyebrow="Service"
           title="Service"
-          hint={`${maintOpen} Down · ${serviceDue} Due`}
+          hint={`${maintOpen} Down · ${serviceDue} Due${serviceNeedsOdo > 0 ? ` · ${serviceNeedsOdo} Need Reading` : ""}`}
           badge={maintOpen > 0 ? maintOpen : serviceDue > 0 ? serviceDue : undefined}
           href="/admin?tab=maintenance"
           tint={maintOpen > 0 ? "red" : serviceDue > 0 ? "amber" : undefined}
