@@ -182,19 +182,19 @@ export function OverviewPanel() {
             <SegmentedDonut
               total={total}
               segments={[
-                { key: "rented",      label: "Rented",      value: rented,        color: "#0F8A4B" },
-                { key: "reserved",    label: "Reserved",    value: reserved,      color: "#B77900" },
-                { key: "available",   label: "Available",   value: vehiclesAvail, color: "#B4B2A9" },
-                { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#CC0000" },
+                { key: "rented",      label: "Rented",      value: rented,        color: "#4CD964" },
+                { key: "reserved",    label: "Reserved",    value: reserved,      color: "#FFCC33" },
+                { key: "available",   label: "Available",   value: vehiclesAvail, color: "#F5C518" },
+                { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#FF3B30" },
               ]}
             />
             <div>
               <ul className="space-y-1.5">
                 {[
-                  { key: "rented",      label: "Rented",      value: rented,        color: "#0F8A4B" },
-                  { key: "reserved",    label: "Reserved",    value: reserved,      color: "#B77900" },
-                  { key: "available",   label: "Available",   value: vehiclesAvail, color: "#B4B2A9" },
-                  { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#CC0000" },
+                  { key: "rented",      label: "Rented",      value: rented,        color: "#4CD964" },
+                  { key: "reserved",    label: "Reserved",    value: reserved,      color: "#FFCC33" },
+                  { key: "available",   label: "Available",   value: vehiclesAvail, color: "#F5C518" },
+                  { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#FF3B30" },
                 ].map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
                     <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
@@ -210,7 +210,7 @@ export function OverviewPanel() {
                   <span className="text-[11px] text-[#9A9AA3] tabular-nums">{rented}/{rentable}</span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-[#EDEDF0] overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${utilPct}%`, background: "#0F8A4B" }} />
+                <div className="h-full rounded-full transition-all" style={{ width: `${utilPct}%`, background: "#4CD964" }} />
                 </div>
               </div>
             </div>
