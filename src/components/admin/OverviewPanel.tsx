@@ -184,7 +184,7 @@ export function OverviewPanel() {
               segments={[
                 { key: "rented",      label: "Rented",      value: rented,        color: "#4CD964" },
                 { key: "reserved",    label: "Reserved",    value: reserved,      color: "#FFCC33" },
-                { key: "available",   label: "Available",   value: vehiclesAvail, color: "#F5C518" },
+                { key: "available",   label: "Available",   value: vehiclesAvail, color: "#C7C7CC" },
                 { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#FF3B30" },
               ]}
             />
@@ -193,7 +193,7 @@ export function OverviewPanel() {
                 {[
                   { key: "rented",      label: "Rented",      value: rented,        color: "#4CD964" },
                   { key: "reserved",    label: "Reserved",    value: reserved,      color: "#FFCC33" },
-                  { key: "available",   label: "Available",   value: vehiclesAvail, color: "#F5C518" },
+                  { key: "available",   label: "Available",   value: vehiclesAvail, color: "#C7C7CC" },
                   { key: "maintenance", label: "Maintenance", value: maintOpen,     color: "#FF3B30" },
                 ].map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
