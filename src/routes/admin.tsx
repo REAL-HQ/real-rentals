@@ -325,10 +325,12 @@ function Admin() {
               </div>
             </header>
             <div className="p-6 md:p-8">
-            <div className="mb-6">
-              <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
-              <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
-            </div>
+            {tab !== "overview" && (
+              <div className="mb-6">
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
+                <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
+              </div>
+            )}
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && <DriversPanel externalSearch={globalSearch} />}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} />}
