@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Car, Users, CreditCard, Wrench, ArrowUpRight, Plus, Flame, CheckCircle2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import { ResponsiveContainer, ComposedChart, Bar, Line, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { SectionCard, MicroLabel, StatusPill } from "./ui";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { computeDueReasons, needsOdometer } from "./MaintenancePanel";
 
-type WeekPoint = { label: string; iso: string; amount: number };
+type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
@@ -25,6 +24,10 @@ function initials(name?: string | null) {
   const parts = (name || "?").trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 }
+function shortDate(iso?: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export function OverviewPanel() {
   const [vehiclesAvail, setVehiclesAvail] = useState(0);
@@ -38,7 +41,7 @@ export function OverviewPanel() {
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [weekTotal, setWeekTotal] = useState(0);
   const [prevWeekTotal, setPrevWeekTotal] = useState(0);
-  const [vehiclePreview, setVehiclePreview] = useState<any[]>([]);
+  const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<any[]>([]);
   const [hot, setHot] = useState<any[]>([]);
   const [serviceDue, setServiceDue] = useState(0);
@@ -54,8 +57,8 @@ export function OverviewPanel() {
       const [
         vTotalQ, vAvailQ, vRentedQ, vMaintQ, vReservedQ,
         newAppsQ, paymentsLateQ, paymentsOutQ,
-        payWeekQ, payPrevWeekQ, pay12wQ,
-        vehiclePreviewQ, recentAppsQ, hotAppsQ, allVehiclesQ,
+        payWeekQ, payPrevWeekQ, pay12wQ, billed12wQ,
+        nextReturnQ, recentAppsQ, hotAppsQ, allVehiclesQ,
       ] = await Promise.all([
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
         supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("status", "available"),
@@ -68,7 +71,8 @@ export function OverviewPanel() {
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d7),
         supabase.from("payments").select("amount").eq("status", "paid").gte("paid_date", d14).lt("paid_date", d7),
         supabase.from("payments").select("amount, paid_date").eq("status", "paid").gte("paid_date", d84),
-        supabase.from("vehicles").select("id, make, model, status, photos").order("updated_at", { ascending: false }).limit(6),
+        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        supabase.from("rentals").select("end_date").eq("status", "active").not("end_date", "is", null).gte("end_date", new Date().toISOString().slice(0,10)).order("end_date", { ascending: true }).limit(1),
         supabase.from("applications").select("id, full_name, status, current_step, ai_tier, ai_score, score, created_at").neq("status", "duplicate").order("score", { ascending: false, nullsFirst: false } as any).order("created_at", { ascending: false }).limit(5),
         supabase.from("applications").select("id, full_name, score").neq("status", "duplicate").gte("score", 80).order("score", { ascending: false }).limit(3),
         supabase.from("vehicles").select("id, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date"),
@@ -96,16 +100,22 @@ export function OverviewPanel() {
       const series: WeekPoint[] = [];
       for (let i = 0; i < 12; i++) {
         const d = new Date(start.getTime() + i * 7 * 864e5);
-        series.push({ label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), iso: d.toISOString(), amount: 0 });
+        series.push({ label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }), iso: d.toISOString(), collected: 0, billed: 0 });
       }
       for (const p of (pay12wQ.data ?? []) as any[]) {
         if (!p.paid_date) continue;
         const w = bucketStart(new Date(p.paid_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].amount += Number(p.amount ?? 0);
+        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.amount ?? 0);
+      }
+      for (const p of (billed12wQ.data ?? []) as any[]) {
+        if (!p.due_date) continue;
+        const w = bucketStart(new Date(p.due_date));
+        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
+        if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
       }
       setWeekly(series);
-      setVehiclePreview(vehiclePreviewQ.data ?? []);
+      setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
       setRecentApps(recentAppsQ.data ?? []);
       setHot(hotAppsQ.data ?? []);
     })();
@@ -122,21 +132,22 @@ export function OverviewPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+      {/* Header + Weekly Revenue summary */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Overview</h1>
           <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
         </div>
-        <div className="flex items-baseline gap-3 md:justify-end flex-wrap">
-          <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-none">{usd(weekTotal)}</div>
-          <span className="text-[13px] text-[#55555E]">This Week</span>
-          <span className={`text-[13px] font-medium ${weekDelta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
-            {weekDelta >= 0 ? "+" : ""}{weekDelta}% Vs Prior Week
-          </span>
-          <span className={`text-[13px] ${outstandingAmt > 0 ? "text-[#CC0000]" : "text-[#9A9AA3]"}`}>
-            {usd(outstandingAmt)} Outstanding
-          </span>
+        <div className="md:text-right">
+          <div className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">Weekly Revenue</div>
+          <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-tight mt-0.5">{usd(weekTotal)}</div>
+          <div className="text-[12px] text-[#55555E] mt-0.5">
+            <span className={`font-medium ${weekDelta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
+              {weekDelta >= 0 ? "+" : ""}{weekDelta}% vs prior week
+            </span>
+            <span className="mx-1.5 text-[#C7C7CC]">·</span>
+            <span className={outstandingAmt > 0 ? "text-[#CC0000]" : "text-[#9A9AA3]"}>{usd(outstandingAmt)} outstanding</span>
+          </div>
         </div>
       </div>
 
@@ -237,39 +248,10 @@ export function OverviewPanel() {
             </div>
           </div>
           <div className="mt-5 pt-5 border-t border-[#EDEDF0]">
-            <div className="flex items-center justify-between mb-3">
-              <MicroLabel>Recent Vehicles</MicroLabel>
-            </div>
             <div className="grid grid-cols-3 gap-2">
-              {vehiclePreview.slice(0, 6).map((v) => {
-                const img = resolvePhotoUrl(v.photos?.[0]);
-                const dot = v.status === "rented" ? "#0F8A4B"
-                  : v.status === "reserved" ? "#B77900"
-                  : v.status === "maintenance" ? "#CC0000"
-                  : "#B4B2A9";
-                return (
-                  <Link
-                    key={v.id}
-                    to="/admin"
-                    search={{ tab: "vehicles" } as any}
-                    className="flex items-center gap-2.5 rounded-xl border border-[#EDEDF0] bg-white p-2 hover:border-[#D03020] transition-colors min-w-0"
-                  >
-                    <div className="h-10 w-14 rounded-md bg-[#F4F4F6] overflow-hidden shrink-0 grid place-items-center">
-                      {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <Car className="w-4 h-4 text-[#9A9AA3]" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-medium text-[#111114] truncate">{v.make} {v.model}</div>
-                      <div className="flex items-center gap-1.5 text-[10px] text-[#55555E] mt-0.5 capitalize">
-                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
-                        {v.status || "—"}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-              {vehiclePreview.length === 0 && (
-                <div className="col-span-3 text-[12px] text-[#9A9AA3] py-4 text-center">No Vehicles Yet.</div>
-              )}
+              <OpStat label="Available Now" value={String(vehiclesAvail)} />
+              <OpStat label="In Service" value={String(maintOpen)} tone={maintOpen > 0 ? "red" : undefined} />
+              <OpStat label="Next Return" value={shortDate(nextReturn)} />
             </div>
           </div>
         </SectionCard>
@@ -319,40 +301,52 @@ export function OverviewPanel() {
         </SectionCard>
       </div>
 
-      {/* Weekly Rent Collected — full width */}
-      <SectionCard
-        title="Weekly Rent Collected"
-        subtitle="Last 12 Weeks"
-        right={
-          <div className="flex items-baseline gap-3">
-            <div className="text-[20px] font-semibold text-[#111114] tabular-nums leading-none">{usd(weekTotal)}</div>
-            <span className={`text-[11px] font-medium ${weekDelta >= 0 ? "text-[#50C060]" : "text-[#D03020]"}`}>
-              {weekDelta >= 0 ? "+" : ""}{weekDelta}% vs Prior Week
-            </span>
-            <span className="text-[11px] text-[#9A9AA3]">· {usd(outstandingAmt)} Outstanding</span>
-          </div>
+      {/* Billed vs Collected — full width */}
+      {(() => {
+        const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
+        const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
+        const collectionRate = totBilled > 0 ? Math.round((totCollected / totBilled) * 100) : null;
+        // Worst week = biggest shortfall (billed - collected) among weeks with billing.
+        let worst: WeekPoint | null = null;
+        let worstGap = 0;
+        for (const w of weekly) {
+          const gap = w.billed - w.collected;
+          if (w.billed > 0 && gap > worstGap) { worstGap = gap; worst = w; }
         }
-      >
-        <div className="h-[240px] -mx-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={weekly} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="rentGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#50C060" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="#50C060" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#EDEDF0" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#EDEDF0" }} />
-              <YAxis tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={false} width={48}
-                tickFormatter={(v) => v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }}
-                formatter={(v: any) => [usd(Number(v)), "Collected"]} />
-              <Area type="monotone" dataKey="amount" stroke="#50C060" strokeWidth={2.5} fill="url(#rentGrad)" isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </SectionCard>
+        return (
+          <SectionCard
+            title="Billed Vs Collected"
+            subtitle={
+              collectionRate == null
+                ? "Last 12 Weeks · No Invoices Yet"
+                : `Last 12 Weeks · ${collectionRate}% Collection Rate${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
+            }
+            right={
+              <div className="flex items-baseline gap-3">
+                <span className="text-[11px] text-[#55555E]">Billed <span className="tabular-nums font-medium text-[#111114]">{usd(totBilled)}</span></span>
+                <span className="text-[11px] text-[#55555E]">Collected <span className="tabular-nums font-medium text-[#0F8A4B]">{usd(totCollected)}</span></span>
+                <span className={`text-[11px] ${outstandingAmt > 0 ? "text-[#CC0000]" : "text-[#9A9AA3]"}`}>Outstanding <span className="tabular-nums font-medium">{usd(outstandingAmt)}</span></span>
+              </div>
+            }
+          >
+            <div className="h-[240px] -mx-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={weekly} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke="#EDEDF0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#EDEDF0" }} />
+                  <YAxis tick={{ fill: "#9A9AA3", fontSize: 10 }} tickLine={false} axisLine={false} width={48}
+                    tickFormatter={(v) => v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`} />
+                  <Tooltip contentStyle={{ background: "#fff", border: "1px solid #EDEDF0", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any, name: any) => [usd(Number(v)), name === "billed" ? "Billed" : "Collected"]} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#55555E" }} iconType="circle" />
+                  <Bar dataKey="billed" name="Billed" fill="#EDEDF0" radius={[4,4,0,0]} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="collected" name="Collected" stroke="#50C060" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+        );
+      })()}
 
       {hot.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]">
@@ -422,6 +416,15 @@ function ScorePill({ score }: { score: number | null | undefined }) {
   if (score == null) return null;
   const tone = score >= 80 ? "green" : score >= 50 ? "amber" : "neutral";
   return <StatusPill tone={tone as any}>{score}</StatusPill>;
+}
+
+function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {
+  return (
+    <div className="rounded-xl border border-[#EDEDF0] bg-white px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">{label}</div>
+      <div className={`mt-1 text-[18px] font-semibold tabular-nums leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}>{value}</div>
+    </div>
+  );
 }
 
 function SegmentedDonut({ total, segments }: {
