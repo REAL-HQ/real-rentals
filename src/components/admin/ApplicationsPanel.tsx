@@ -151,7 +151,7 @@ export function ApplicationsPanel() {
             <ApplicationActions app={a} onView={() => setOpen(a)} onDelete={() => remove(a.id)} />
           </div>
         ))}
-        {filtered.length === 0 && <div className="text-sm text-muted-foreground">No applications.</div>}
+        {filtered.length === 0 && <EmptyState title="No Applications" hint="New driver applications will show up here as soon as someone completes the quote form." />}
       </div>
 
       {open && (

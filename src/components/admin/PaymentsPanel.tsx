@@ -157,7 +157,7 @@ export function PaymentsPanel() {
                 </tr>
               );
             })}
-            {filtered.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-center text-muted-foreground text-sm">No payments.</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={10} className="p-4"><EmptyState title="No Payments Yet" hint="Payments appear here once a driver is charged or a rental invoice is created." /></td></tr>}
           </tbody>
         </table>
       </div>

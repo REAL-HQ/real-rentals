@@ -108,7 +108,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               className="mt-2 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
           </div>
         ))}
-        {filtered.length === 0 && <div className="text-sm text-muted-foreground">No partners.</div>}
+        {filtered.length === 0 && <EmptyState title="No Partners" hint="Add a fleet partner to start assigning vehicles and tracking payouts." />}
       </div>
 
       <div className="mt-10">
