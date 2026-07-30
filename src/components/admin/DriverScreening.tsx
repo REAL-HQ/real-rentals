@@ -599,15 +599,38 @@ export function InterviewTab({
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={completeInterview}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-md bg-real-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
-          Complete Interview
-        </button>
+        <div className="flex items-center gap-2">
+          {stepped && (
+            <button
+              type="button"
+              onClick={() => setStep((n) => Math.max(1, n - 1))}
+              disabled={step === 1}
+              className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-[#55555E] hover:bg-soft disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+            >
+              Back
+            </button>
+          )}
+          {stepped && !isLast ? (
+            <button
+              type="button"
+              onClick={() => setStep((n) => Math.min(total, n + 1))}
+              className="inline-flex items-center gap-2 rounded-md bg-[#111114] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#111114]/30"
+            >
+              Next: {INTERVIEW_STEPS[step]}
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={completeInterview}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-md bg-real-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+              Complete Interview
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
