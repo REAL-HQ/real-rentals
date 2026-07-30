@@ -18,6 +18,36 @@ const TONE: Record<Tone, { bg: string; fg: string; ring: string }> = {
 
 // Map any status string to a semantic tone.
 export function toneFor(status?: string | null): Tone {
+  return toneForImpl(status);
+}
+
+/** Shared empty state for admin tables, lists and cards. */
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+  className = "",
+}: {
+  icon?: ReactNode;
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#EDEDF0] bg-white px-6 py-10 text-center ${className}`}
+    >
+      {icon && <div className="mb-1 text-[#C7C7CC]">{icon}</div>}
+      <div className="text-[13px] font-semibold text-[#111114]">{title}</div>
+      {hint && <div className="text-[12px] text-[#9A9AA3] max-w-[320px]">{hint}</div>}
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
+function toneForImpl(status?: string | null): Tone {
   const s = (status ?? "").toLowerCase();
   if (["active","paid","complete","approved","passed","current","succeeded","completed","on"].some(k => s.includes(k))) return "green";
   if (["pending","review","reviewing","new","screening","partial","waiting","draft_review"].some(k => s.includes(k))) return "amber";
