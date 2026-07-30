@@ -32,11 +32,19 @@ export function InterviewDrawer({
             Interview · {driver.full_name ?? "Driver"}
           </SheetTitle>
           <p className="text-[12px] text-[#55555E] mt-1">
-            Step-by-step qualification workflow. Progress autosaves when you click Complete Interview.
+            Step-by-step qualification workflow. Answers save when you click Complete Interview on the last step.
           </p>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <InterviewTab driver={driver} screening={screening} onSaved={(next) => { onSaved(next); }} />
+          <InterviewTab
+            stepped
+            driver={driver}
+            screening={screening}
+            onSaved={(next) => {
+              onSaved(next);
+              onOpenChange(false);
+            }}
+          />
         </div>
       </SheetContent>
     </Sheet>
