@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatusPill } from "./ui";
+import { StatusPill, EmptyState } from "./ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useServerFn } from "@tanstack/react-start";
 import { linkPartnerLogin } from "@/lib/partner.functions";
+import { EmptyState } from "./ui";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
