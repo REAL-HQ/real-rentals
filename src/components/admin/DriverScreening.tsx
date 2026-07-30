@@ -338,6 +338,30 @@ export function InterviewTab({
 
   return (
     <div className="space-y-4">
+      {stepped && (
+        <div className="sticky top-0 z-10 -mx-6 mb-1 border-b border-[#EDEDF0] bg-white/95 px-6 py-3 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9A9AA3]">
+              Step {step} Of {total}
+            </div>
+            <div className="text-[13px] font-semibold text-[#111114]">{INTERVIEW_STEPS[step - 1]}</div>
+          </div>
+          <div className="mt-2 flex gap-1">
+            {INTERVIEW_STEPS.map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                title={label}
+                aria-label={`Go To Step ${i + 1}: ${label}`}
+                onClick={() => setStep(i + 1)}
+                className={`h-1.5 flex-1 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30 ${
+                  i + 1 <= step ? "bg-[#D03020]" : "bg-[#EDEDF0] hover:bg-[#DCDCE1]"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       {show(1) && (
         <ScriptCard title="1. Opening">
           <Script>
