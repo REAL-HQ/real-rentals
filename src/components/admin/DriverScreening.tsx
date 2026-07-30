@@ -246,14 +246,26 @@ export function ScreeningBadge({
 
 const GIG_APPS = ["uber", "lyft", "doordash", "instacart", "other"] as const;
 
+export const INTERVIEW_STEPS = [
+  "Opening",
+  "Gig Qualification",
+  "Vehicle Need",
+  "License",
+  "Insurance",
+  "Driving History",
+  "Notes",
+] as const;
+
 export function InterviewTab({
   driver,
   screening,
   onSaved,
+  stepped = false,
 }: {
   driver: Application;
   screening: DriverScreening | null;
   onSaved: (next: DriverScreening) => void;
+  stepped?: boolean;
 }) {
   const [s, setS] = useState<Partial<DriverScreening>>(
     () =>
@@ -264,6 +276,10 @@ export function InterviewTab({
       },
   );
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState(1);
+  const total = INTERVIEW_STEPS.length;
+  const show = (n: number) => !stepped || step === n;
+  const isLast = step === total;
 
   useEffect(() => {
     if (screening) setS(screening);
