@@ -322,15 +322,18 @@ export function InterviewTab({
 
   return (
     <div className="space-y-4">
-      <ScriptCard title="1. Opening">
-        <Script>
+      {show(1) && (
+        <ScriptCard title="1. Opening">
+          <Script>
           "Hey {driver.full_name?.split(/\s+/)[0] ?? "there"}, this is [You] with REAL RENTALS. You requested info about
           renting a car for rideshare. Got a couple minutes so I can get you set up?"
         </Script>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="2. Gig Qualification">
-        <Script>
+      {show(2) && (
+        <ScriptCard title="2. Gig Qualification">
+          <Script>
           "Which apps do you drive on, how long have you been on them, and what does your account look like right now?"
         </Script>
         <Field label="Gig Apps">
@@ -390,10 +393,12 @@ export function InterviewTab({
             onChange={(v) => up("drive_type" as any, v as any)}
           />
         </Field>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="3. Vehicle Need And Timing">
-        <Script>
+      {show(3) && (
+        <ScriptCard title="3. Vehicle Need And Timing">
+          <Script>
           "Do you have a car right now, or is this replacing one? When do you need to be behind the wheel? Just to
           confirm — the rate is $350 a week, weekly in advance, no deposit, on a card in your own name. That work?"
         </Script>
@@ -416,10 +421,12 @@ export function InterviewTab({
             <BoolToggle value={s.card_in_own_name} onChange={(v) => up("card_in_own_name" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="4. License Verification">
-        <Script>"What state issued your license, how old are you, and how long have you been licensed?"</Script>
+      {show(4) && (
+        <ScriptCard title="4. License Verification">
+          <Script>"What state issued your license, how old are you, and how long have you been licensed?"</Script>
         <Row cols={2}>
           <Field label="License State">
             <input
@@ -439,10 +446,12 @@ export function InterviewTab({
             <NumInput value={s.license_years} onChange={(v) => up("license_years" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="5. Insurance">
-        <Script>
+      {show(5) && (
+        <ScriptCard title="5. Insurance">
+          <Script>
           "Do you have your own personal auto insurance policy right now? I'll need the carrier, policy number, and
           their phone so we can verify."
         </Script>
@@ -495,10 +504,12 @@ export function InterviewTab({
             Driver Must Obtain A Policy Before Vehicle Release.
           </div>
         )}
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="6. Driving History">
-        <Script>
+      {show(6) && (
+        <ScriptCard title="6. Driving History">
+          <Script>
           "In the last three years, any accidents at fault? Any DUIs — ever? Any major violations like reckless or
           suspension? How many points on your license right now? And can we pull your MVR?"
         </Script>
@@ -519,10 +530,12 @@ export function InterviewTab({
             <BoolToggle value={s.mvr_authorized} onChange={(v) => up("mvr_authorized" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="7. Notes">
-        <Script>"Anything else I should know before I lock in your reservation?"</Script>
+      {show(7) && (
+        <ScriptCard title="7. Notes">
+          <Script>"Anything else I should know before I lock in your reservation?"</Script>
         <Field label="Interview Notes">
           <textarea
             rows={4}
@@ -531,7 +544,8 @@ export function InterviewTab({
             className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
           />
         </Field>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
       <div className="sticky bottom-0 flex items-center justify-between gap-3 rounded-xl border border-border bg-white p-4 shadow-lg">
         <div className="text-xs">
