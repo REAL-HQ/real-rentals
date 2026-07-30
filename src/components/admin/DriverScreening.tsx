@@ -246,14 +246,26 @@ export function ScreeningBadge({
 
 const GIG_APPS = ["uber", "lyft", "doordash", "instacart", "other"] as const;
 
+export const INTERVIEW_STEPS = [
+  "Opening",
+  "Gig Qualification",
+  "Vehicle Need",
+  "License",
+  "Insurance",
+  "Driving History",
+  "Notes",
+] as const;
+
 export function InterviewTab({
   driver,
   screening,
   onSaved,
+  stepped = false,
 }: {
   driver: Application;
   screening: DriverScreening | null;
   onSaved: (next: DriverScreening) => void;
+  stepped?: boolean;
 }) {
   const [s, setS] = useState<Partial<DriverScreening>>(
     () =>
@@ -264,6 +276,10 @@ export function InterviewTab({
       },
   );
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState(1);
+  const total = INTERVIEW_STEPS.length;
+  const show = (n: number) => !stepped || step === n;
+  const isLast = step === total;
 
   useEffect(() => {
     if (screening) setS(screening);
@@ -322,15 +338,42 @@ export function InterviewTab({
 
   return (
     <div className="space-y-4">
-      <ScriptCard title="1. Opening">
-        <Script>
+      {stepped && (
+        <div className="sticky top-0 z-10 -mx-6 mb-1 border-b border-[#EDEDF0] bg-white/95 px-6 py-3 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9A9AA3]">
+              Step {step} Of {total}
+            </div>
+            <div className="text-[13px] font-semibold text-[#111114]">{INTERVIEW_STEPS[step - 1]}</div>
+          </div>
+          <div className="mt-2 flex gap-1">
+            {INTERVIEW_STEPS.map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                title={label}
+                aria-label={`Go To Step ${i + 1}: ${label}`}
+                onClick={() => setStep(i + 1)}
+                className={`h-1.5 flex-1 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30 ${
+                  i + 1 <= step ? "bg-[#D03020]" : "bg-[#EDEDF0] hover:bg-[#DCDCE1]"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {show(1) && (
+        <ScriptCard title="1. Opening">
+          <Script>
           "Hey {driver.full_name?.split(/\s+/)[0] ?? "there"}, this is [You] with REAL RENTALS. You requested info about
           renting a car for rideshare. Got a couple minutes so I can get you set up?"
         </Script>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="2. Gig Qualification">
-        <Script>
+      {show(2) && (
+        <ScriptCard title="2. Gig Qualification">
+          <Script>
           "Which apps do you drive on, how long have you been on them, and what does your account look like right now?"
         </Script>
         <Field label="Gig Apps">
@@ -390,10 +433,12 @@ export function InterviewTab({
             onChange={(v) => up("drive_type" as any, v as any)}
           />
         </Field>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="3. Vehicle Need And Timing">
-        <Script>
+      {show(3) && (
+        <ScriptCard title="3. Vehicle Need And Timing">
+          <Script>
           "Do you have a car right now, or is this replacing one? When do you need to be behind the wheel? Just to
           confirm — the rate is $350 a week, weekly in advance, no deposit, on a card in your own name. That work?"
         </Script>
@@ -416,10 +461,12 @@ export function InterviewTab({
             <BoolToggle value={s.card_in_own_name} onChange={(v) => up("card_in_own_name" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="4. License Verification">
-        <Script>"What state issued your license, how old are you, and how long have you been licensed?"</Script>
+      {show(4) && (
+        <ScriptCard title="4. License Verification">
+          <Script>"What state issued your license, how old are you, and how long have you been licensed?"</Script>
         <Row cols={2}>
           <Field label="License State">
             <input
@@ -439,10 +486,12 @@ export function InterviewTab({
             <NumInput value={s.license_years} onChange={(v) => up("license_years" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="5. Insurance">
-        <Script>
+      {show(5) && (
+        <ScriptCard title="5. Insurance">
+          <Script>
           "Do you have your own personal auto insurance policy right now? I'll need the carrier, policy number, and
           their phone so we can verify."
         </Script>
@@ -495,10 +544,12 @@ export function InterviewTab({
             Driver Must Obtain A Policy Before Vehicle Release.
           </div>
         )}
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="6. Driving History">
-        <Script>
+      {show(6) && (
+        <ScriptCard title="6. Driving History">
+          <Script>
           "In the last three years, any accidents at fault? Any DUIs — ever? Any major violations like reckless or
           suspension? How many points on your license right now? And can we pull your MVR?"
         </Script>
@@ -519,10 +570,12 @@ export function InterviewTab({
             <BoolToggle value={s.mvr_authorized} onChange={(v) => up("mvr_authorized" as any, v as any)} />
           </Field>
         </Row>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
-      <ScriptCard title="7. Notes">
-        <Script>"Anything else I should know before I lock in your reservation?"</Script>
+      {show(7) && (
+        <ScriptCard title="7. Notes">
+          <Script>"Anything else I should know before I lock in your reservation?"</Script>
         <Field label="Interview Notes">
           <textarea
             rows={4}
@@ -531,7 +584,8 @@ export function InterviewTab({
             className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
           />
         </Field>
-      </ScriptCard>
+        </ScriptCard>
+      )}
 
       <div className="sticky bottom-0 flex items-center justify-between gap-3 rounded-xl border border-border bg-white p-4 shadow-lg">
         <div className="text-xs">
@@ -545,15 +599,38 @@ export function InterviewTab({
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={completeInterview}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-md bg-real-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
-          Complete Interview
-        </button>
+        <div className="flex items-center gap-2">
+          {stepped && (
+            <button
+              type="button"
+              onClick={() => setStep((n) => Math.max(1, n - 1))}
+              disabled={step === 1}
+              className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-[#55555E] hover:bg-soft disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+            >
+              Back
+            </button>
+          )}
+          {stepped && !isLast ? (
+            <button
+              type="button"
+              onClick={() => setStep((n) => Math.min(total, n + 1))}
+              className="inline-flex items-center gap-2 rounded-md bg-[#111114] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#111114]/30"
+            >
+              Next: {INTERVIEW_STEPS[step]}
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={completeInterview}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-md bg-real-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+              Complete Interview
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

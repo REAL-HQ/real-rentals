@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
-import { StatusPill, MicroLabel } from "./ui";
+import { StatusPill, MicroLabel, EmptyState } from "./ui";
 
 const STATUSES = ["partial", "complete", "new", "reviewing", "approved", "declined", "active"];
 const SOURCES = ["homepage", "city_lp"];
@@ -151,7 +151,7 @@ export function ApplicationsPanel() {
             <ApplicationActions app={a} onView={() => setOpen(a)} onDelete={() => remove(a.id)} />
           </div>
         ))}
-        {filtered.length === 0 && <div className="text-sm text-muted-foreground">No applications.</div>}
+        {filtered.length === 0 && <EmptyState title="No Applications" hint="New driver applications will show up here as soon as someone completes the quote form." />}
       </div>
 
       {open && (

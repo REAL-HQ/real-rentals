@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useServerFn } from "@tanstack/react-start";
 import { linkPartnerLogin } from "@/lib/partner.functions";
+import { EmptyState } from "./ui";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
@@ -108,7 +109,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               className="mt-2 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
           </div>
         ))}
-        {filtered.length === 0 && <div className="text-sm text-muted-foreground">No partners.</div>}
+        {filtered.length === 0 && <EmptyState title="No Partners" hint="Add a fleet partner to start assigning vehicles and tracking payouts." />}
       </div>
 
       <div className="mt-10">
