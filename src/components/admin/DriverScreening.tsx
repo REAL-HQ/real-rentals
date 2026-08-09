@@ -978,10 +978,14 @@ function ScriptCard({ title, children }: { title: string; children: React.ReactN
 }
 function Script({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-l-4 border-border border-l-real-red bg-soft/30 px-3 py-2 text-sm italic leading-relaxed text-foreground/80">
-      <PhoneCall className="mt-0.5 h-3.5 w-3.5 shrink-0 text-real-red" />
-      <p>{children}</p>
-    </div>
+    <details className="group/script rounded-md border border-l-4 border-border border-l-real-red bg-soft/30">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[12px] font-medium text-[#55555E]">
+        <PhoneCall className="h-3.5 w-3.5 shrink-0 text-real-red" />
+        View Suggested Script
+        <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform group-open/script:rotate-90" />
+      </summary>
+      <p className="px-3 pb-2.5 text-sm italic leading-relaxed text-foreground/80">{children}</p>
+    </details>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
