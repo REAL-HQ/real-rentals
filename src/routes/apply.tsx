@@ -48,7 +48,7 @@ function ApplyPage() {
           {id ? (
             <ApplicationWizard id={id} />
           ) : (
-            <ContactStep preCity={preCity} prePickup={prePickup} preReturn={preReturn} />
+            <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} preReturn={preReturn ?? ""} />
           )}
         </section>
       </main>
