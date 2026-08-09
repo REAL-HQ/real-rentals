@@ -1011,7 +1011,7 @@ function AIScoreCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: 
     <div className="rounded-xl border border-border bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)]">
       <div className="px-4 py-3 border-b border-border flex items-center gap-2">
         <span className="text-muted-foreground"><Sparkles className="w-4 h-4" /></span>
-        <div className="text-sm font-semibold">AI Prospect Score</div>
+        <div className="text-sm font-semibold">Driver Readiness</div>
         {driver.ai_tier && (
           <span className="ml-1"><TierBadge tier={driver.ai_tier} score={driver.ai_score ?? null} size="md" /></span>
         )}
@@ -1031,11 +1031,22 @@ function AIScoreCard({ driver, onUpdate }: { driver: Application; onUpdate: (p: 
         )}
         {flags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
-            {flags.map((f, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
-                <AlertTriangle className="w-3 h-3" /> {f}
-              </span>
-            ))}
+            {flags.map((f, i) => {
+              const missing = /missing|unreadable|no_|not_provided|incomplete/i.test(f);
+              return (
+                <span
+                  key={i}
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border ${
+                    missing
+                      ? "bg-[#F5F5F7] text-[#55555E] border-[#EDEDF0]"
+                      : "bg-amber-50 text-amber-800 border-amber-200"
+                  }`}
+                  title={missing ? "Missing information" : "Risk signal"}
+                >
+                  <AlertTriangle className="w-3 h-3" /> {f.replace(/_/g, " ")}
+                </span>
+              );
+            })}
           </div>
         )}
         {scoredAt && (
