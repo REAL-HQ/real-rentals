@@ -11,11 +11,20 @@ import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/apply")({
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): {
+    id?: string;
+    city?: string;
+    pickup?: string;
+    return?: string;
+    vehicle?: string;
+  } => ({
     id: (s.id as string) || "",
     city: (s.city as string) || "",
     pickup: (s.pickup as string) || "",
     return: (s.return as string) || "",
+    vehicle: (s.vehicle as string) || "",
   }),
   head: () => ({
     meta: [
