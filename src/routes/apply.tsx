@@ -19,13 +19,20 @@ export const Route = createFileRoute("/apply")({
     pickup?: string;
     return?: string;
     vehicle?: string;
-  } => ({
-    id: (s.id as string) || "",
-    city: (s.city as string) || "",
-    pickup: (s.pickup as string) || "",
-    return: (s.return as string) || "",
-    vehicle: (s.vehicle as string) || "",
-  }),
+  } => {
+    // Only keep params that actually have a value so the URL never ends up
+    // as /apply?id=&city=&pickup=&return=&vehicle=
+    const pick = (v: unknown) => {
+      const str = typeof v === "string" ? v.trim() : "";
+      return str ? str : undefined;
+    };
+    const out: Record<string, string> = {};
+    for (const key of ["id", "city", "pickup", "return", "vehicle"] as const) {
+      const value = pick(s[key]);
+      if (value) out[key] = value;
+    }
+    return out;
+  },
   head: () => ({
     meta: [
       { title: "Apply — REAL RENTALS" },

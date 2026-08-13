@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PartnersRouteImport } from './routes/partners'
@@ -44,6 +45,11 @@ const TermsRoute = TermsRouteImport.update({
 const SmsConsentRoute = SmsConsentRouteImport.update({
   id: '/sms-consent',
   path: '/sms-consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
@@ -177,6 +184,7 @@ export interface FileRoutesByTo {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
@@ -201,6 +209,7 @@ export interface FileRoutesById {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
@@ -272,6 +283,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
@@ -296,6 +308,7 @@ export interface RootRouteChildren {
   PartnersRoute: typeof PartnersRoute
   PortalRoute: typeof PortalRoute
   PrivacyRoute: typeof PrivacyRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
@@ -325,6 +338,13 @@ declare module '@tanstack/react-router' {
       path: '/sms-consent'
       fullPath: '/sms-consent'
       preLoaderRoute: typeof SmsConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -481,6 +501,7 @@ const rootRouteChildren: RootRouteChildren = {
   PartnersRoute: PartnersRoute,
   PortalRoute: PortalRoute,
   PrivacyRoute: PrivacyRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
