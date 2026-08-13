@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /portal
+Disallow: /thank-you
+Disallow: /card/
+
+Sitemap: https://drivereal.com/sitemap.xml

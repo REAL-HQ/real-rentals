@@ -50,7 +50,7 @@ function PrivacyPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Your Choices</h2>
-            <p className="mt-3">You can opt out of marketing emails at any time using the unsubscribe link. To request access, correction, or deletion of your data, email <a href="mailto:privacy@realrentals.com" className="text-real-red underline">privacy@realrentals.com</a>.</p>
+            <p className="mt-3">You can opt out of marketing emails at any time using the unsubscribe link. To request access, correction, or deletion of your data, email <a href="mailto:privacy@drivereal.com" className="text-real-red underline">privacy@drivereal.com</a>.</p>
           </div>
 
           <div>
