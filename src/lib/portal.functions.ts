@@ -290,3 +290,59 @@ export const createDriverReferral = createServerFn({ method: "POST" })
     if (error) return { error: error.message };
     return { ok: true };
   });
+
+export type DriverProfile = {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  status: string | null;
+  applied_at: string | null;
+  account_email: string | null;
+};
+
+export const getDriverProfile = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DriverProfile> => {
+    const { data } = await context.supabase
+      .from("applications")
+      .select("full_name,email,phone,city,status,created_at")
+      .eq("user_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return {
+      full_name: data?.full_name ?? null,
+      email: data?.email ?? null,
+      phone: data?.phone ?? null,
+      city: (data as any)?.city ?? null,
+      status: data?.status ?? null,
+      applied_at: data?.created_at ?? null,
+      account_email: (context.claims as any)?.email ?? null,
+    };
+  });
+
+export type DriverPicture = { url: string; label: string };
+
+export const getDriverPictures = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DriverPicture[]> => {
+    const { supabase, userId } = context;
+    const { data: rental } = await supabase
+      .from("rentals")
+      .select("vehicle_id")
+      .eq("driver_id", userId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!rental?.vehicle_id) return [];
+    const { data: v } = await supabase
+      .from("vehicles")
+      .select("year,make,model,photos")
+      .eq("id", rental.vehicle_id)
+      .maybeSingle();
+    const photos = ((v?.photos as string[] | null) ?? []).filter(Boolean);
+    const name = [v?.year, v?.make, v?.model].filter(Boolean).join(" ") || "Vehicle";
+    return photos.map((url, i) => ({ url, label: `${name} · Photo ${i + 1}` }));
+  });
