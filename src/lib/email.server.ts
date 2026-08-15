@@ -261,6 +261,61 @@ type CardExpiringArgs = {
   updateCardUrl?: string;
 };
 
+type PastDueArgs = {
+  to: string;
+  firstName: string | null;
+  amount: number;
+  dueDate: string | null;
+  daysLate: number;
+};
+
+export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const when = args.dueDate ? new Date(args.dueDate).toLocaleDateString("en-US") : "recently";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
+  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: "team@drivereal.com" });
+}
+
+type LicenseExpiryArgs = {
+  to: string;
+  firstName: string | null;
+  expiration: string;
+  daysLeft: number;
+};
+
+export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const when = new Date(args.expiration).toLocaleDateString("en-US");
+  const expired = args.daysLeft <= 0;
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
+  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: "team@drivereal.com" });
+}
+
+type ServiceDigestArgs = {
+  to: string | string[];
+  items: Array<{ vehicle: string; reason: string }>;
+};
+
+export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<void> {
+  const rows = args.items
+    .map(
+      (i) =>
+        `<tr><td style="padding:8px 0;font-size:14px;color:#111">${escapeHtml(i.vehicle)}</td><td style="padding:8px 0;font-size:13px;color:#666;text-align:right">${escapeHtml(i.reason)}</td></tr>`,
+    )
+    .join("");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Service Due — ${args.items.length} Vehicle${args.items.length === 1 ? "" : "s"}</h1>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px">${rows}</table>
+      <a href="https://drivereal.com/admin" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Service Board</a>`);
+  await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html });
+}
+
 export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
