@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { UserPlus, X, Users } from "lucide-react";
+import { EmptyState } from "./ui";
 
 type Row = {
   id: string;
@@ -72,10 +73,11 @@ export function TeamPanel() {
         </button>
       </div>
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visible.length === 0 ? (
-        <div className="rounded-xl border border-border p-10 text-center text-muted-foreground">
-          <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No role assignments.</p>
-        </div>
+        <EmptyState
+          icon={<Users className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Role Assignments"
+          hint="Grant a teammate admin or staff access to see them listed here."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
