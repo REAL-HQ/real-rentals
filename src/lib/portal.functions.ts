@@ -54,6 +54,14 @@ export type DriverDashboard = {
   }>;
 };
 
+export type DriverDocument = {
+  id: string;
+  kind: string;
+  notes: string | null;
+  created_at: string;
+  url: string | null;
+};
+
 export const getDriverDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<DriverDashboard> => {
