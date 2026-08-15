@@ -15,7 +15,10 @@ export const Route = createFileRoute("/fleet/")({
       { name: "description", content: "Browse rideshare-ready vehicles. Filter by make, body type, and price. From $350/week." },
       { property: "og:title", content: "The Fleet — REAL RENTALS" },
       { property: "og:description", content: "Every car ready for Uber, Lyft, DoorDash, Instacart, and Amazon Flex." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/fleet" }],
   }),
   component: FleetPage,
 });

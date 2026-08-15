@@ -13,7 +13,10 @@ export const Route = createFileRoute("/partners")({
       { name: "description", content: "You own the car, we run everything. Place your idle vehicle in the Real Rentals fleet and earn monthly payouts. Fully managed. You keep the title." },
       { property: "og:title", content: "You Own The Car. We Run Everything." },
       { property: "og:description", content: "Real Rentals's Partner Program — we screen drivers, GPS-track every car, and handle maintenance and recovery. You keep the title." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/partners" }],
   }),
   component: Partners,
 });

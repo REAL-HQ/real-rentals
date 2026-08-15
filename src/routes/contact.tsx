@@ -12,7 +12,10 @@ export const Route = createFileRoute("/contact")({
       { name: "description", content: "Get in touch about renting, applying, or partnering with REAL RENTALS." },
       { property: "og:title", content: "Contact — REAL RENTALS" },
       { property: "og:description", content: "We're here to help." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/contact" }],
   }),
   component: Contact,
 });

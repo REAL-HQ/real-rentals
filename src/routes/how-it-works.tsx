@@ -10,7 +10,10 @@ export const Route = createFileRoute("/how-it-works")({
       { name: "description", content: "Book, get approved, pick up your car, and start earning — usually within 48 hours." },
       { property: "og:title", content: "How It Works — REAL RENTALS" },
       { property: "og:description", content: "From application to first ride in 48 hours." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/how-it-works" }],
   }),
   component: HowItWorks,
 });

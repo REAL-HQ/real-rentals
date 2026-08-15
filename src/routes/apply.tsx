@@ -39,7 +39,10 @@ export const Route = createFileRoute("/apply")({
       { name: "description", content: "Complete your driver application — quick, no payment required." },
       { property: "og:title", content: "Apply — REAL RENTALS" },
       { property: "og:description", content: "Complete your driver application — quick, no payment required." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/apply" }],
   }),
   component: ApplyPage,
 });

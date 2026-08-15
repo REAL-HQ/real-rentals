@@ -9,7 +9,10 @@ export const Route = createFileRoute("/faq")({
       { name: "description", content: "Answers about mileage, no-deposit policy, tolls, maintenance, payments, insurance, and platform deactivation." },
       { property: "og:title", content: "FAQ — REAL RENTALS" },
       { property: "og:description", content: "Everything you need to know before applying." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/faq" }],
   }),
   component: FAQ,
 });

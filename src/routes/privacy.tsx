@@ -8,7 +8,10 @@ export const Route = createFileRoute("/privacy")({
       { name: "description", content: "How REAL RENTALS collects, uses, and protects the personal information you share with us." },
       { property: "og:title", content: "Privacy Policy | REAL RENTALS" },
       { property: "og:description", content: "How REAL RENTALS collects, uses, and protects the personal information you share with us." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/privacy" }],
   }),
   component: PrivacyPage,
 });
