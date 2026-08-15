@@ -316,16 +316,6 @@ export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<v
   await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html });
 }
 
-type CardExpiringArgsUnused = {
-  to: string;
-  firstName: string | null;
-  last4?: string | null;
-  brand?: string | null;
-  expMonth: number;
-  expYear: number;
-  updateCardUrl?: string;
-};
-
 export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
