@@ -10,6 +10,8 @@ import {
   createDriverIssue,
   getDriverReferrals,
   createDriverReferral,
+  getDriverProfile,
+  getDriverPictures,
   type DriverDashboard,
 } from "@/lib/portal.functions";
 import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
@@ -202,6 +204,8 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
 
   if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
   if (tab === "documents") return <DocumentsView />;
+  if (tab === "pictures") return <PicturesView />;
+  if (tab === "settings") return <SettingsView />;
   if (tab === "issue") return <IssuesView />;
   if (tab === "referrals") return <ReferralsView />;
   if (tab === "vehicle") return <VehicleView data={data} />;
