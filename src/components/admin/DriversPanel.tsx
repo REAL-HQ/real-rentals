@@ -31,7 +31,7 @@ import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeR
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
-import { Timeline, buildDriverTimeline, StatusPill, LifecycleRail, ReadinessSummary, SectionCard, MicroLabel, type LifecycleStage, type Readiness } from "./ui";
+import { Timeline, buildDriverTimeline, StatusPill, LifecycleRail, ReadinessSummary, SectionCard, MicroLabel, EmptyState, type LifecycleStage, type Readiness } from "./ui";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { ClipboardList } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
