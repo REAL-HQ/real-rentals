@@ -326,7 +326,7 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
             </div>
             <button
               type="button"
-              onClick={() => toast.info("Stripe checkout opens once payments are wired up.")}
+              onClick={() => onNavigate("payments")}
               className="mt-4 inline-flex items-center justify-center rounded-lg bg-real-red text-white px-5 py-3 text-sm font-semibold hover:bg-red-700 transition active:scale-95"
             >
               Pay Now <ArrowRight className="w-4 h-4 ml-2" />
@@ -374,10 +374,10 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
                   <div className="text-sm font-medium">{fmt(p.amount)}</div>
                   <button
                     type="button"
-                    onClick={() => toast.info("PDF receipts ship with the payments integration.")}
+                    onClick={() => onNavigate("payments")}
                     className="inline-flex items-center gap-1 text-xs text-real-red hover:underline"
                   >
-                    <Download className="w-3.5 h-3.5" /> PDF
+                    Details
                   </button>
                 </li>
               ))}
@@ -388,13 +388,12 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
         <div className="rounded-2xl border border-border bg-white p-5">
           <h3 className="font-semibold">Prepay & Save</h3>
           <p className="mt-2 text-sm text-muted-foreground">Pay 4 weeks up front and lock in a discount. Ask driver support for current prepay offers in your market.</p>
-          <button
-            type="button"
-            onClick={() => toast.info("Prepay offers will populate when payments are wired up.")}
-            className="mt-4 inline-flex items-center justify-center rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
+          <a
+            href="tel:+18136999118"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
           >
-            See Prepay Options
-          </button>
+            <Phone className="w-4 h-4" /> Ask About Prepay
+          </a>
         </div>
       </div>
 
