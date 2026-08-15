@@ -88,6 +88,7 @@ export const Route = createFileRoute("/fleet/$id")({
       scripts,
     };
   },
+  notFoundComponent: VehicleNotFound,
   component: VehicleDetail,
 });
 
