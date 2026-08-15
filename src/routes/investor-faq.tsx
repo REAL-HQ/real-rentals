@@ -9,7 +9,10 @@ export const Route = createFileRoute("/investor-faq")({
       { name: "description", content: "Answers for fleet partners and investors: profit splits, screening, maintenance, recovery, and payouts." },
       { property: "og:title", content: "Investor FAQ — REAL RENTALS" },
       { property: "og:description", content: "Everything you need to know before placing a vehicle into the fleet." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/investor-faq" }],
   }),
   component: InvestorFAQ,
 });

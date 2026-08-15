@@ -8,7 +8,10 @@ export const Route = createFileRoute("/sms-consent")({
       { name: "description", content: "How REAL RENTALS uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
       { property: "og:title", content: "SMS Consent Policy | REAL RENTALS" },
       { property: "og:description", content: "How REAL RENTALS uses text messaging, opt-in/opt-out, message frequency, and carrier disclosures." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/sms-consent" }],
   }),
   component: SmsConsentPage,
 });

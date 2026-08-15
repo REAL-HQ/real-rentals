@@ -8,7 +8,10 @@ export const Route = createFileRoute("/terms")({
       { name: "description", content: "The terms that govern your use of REAL RENTALS's website and rental application services." },
       { property: "og:title", content: "Terms Of Service | REAL RENTALS" },
       { property: "og:description", content: "The terms that govern your use of REAL RENTALS's website and rental application services." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/terms" }],
   }),
   component: TermsPage,
 });
