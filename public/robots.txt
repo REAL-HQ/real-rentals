@@ -2,6 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /portal
+Disallow: /partner$
 Disallow: /thank-you
 Disallow: /card/
 
