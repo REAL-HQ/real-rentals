@@ -278,6 +278,197 @@ function DocumentsView() {
   );
 }
 
+function IssuesView() {
+  const fetchIssues = useServerFn(getDriverIssues);
+  const submitIssue = useServerFn(createDriverIssue);
+  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-issues"], queryFn: () => fetchIssues() });
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [severity, setSeverity] = useState("normal");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await submitIssue({ data: { title, body, severity } });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Issue reported. Our team will follow up.");
+      setTitle(""); setBody(""); setSeverity("normal");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not submit issue");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
+      <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Report An Issue</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Mechanical problems, accidents, or anything else we should know about.</p>
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">What's Wrong?</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Check engine light is on"
+          className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+          required
+        />
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">Details</label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={4}
+          placeholder="When it started, any noises, whether the car is drivable…"
+          className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+        />
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">Urgency</label>
+        <div className="mt-1 flex gap-2">
+          {[
+            { id: "low", label: "Low" },
+            { id: "normal", label: "Normal" },
+            { id: "urgent", label: "Urgent" },
+          ].map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSeverity(s.id)}
+              className={`rounded-lg px-3 py-1.5 text-xs border transition ${
+                severity === s.id ? "border-real-red text-real-red bg-real-red/5" : "border-border text-muted-foreground hover:bg-soft"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <button type="submit" disabled={busy}
+          className="mt-5 inline-flex items-center justify-center rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+          {busy ? "Submitting…" : "Submit Issue"}
+        </button>
+        <p className="mt-3 text-xs text-muted-foreground">
+          If the vehicle is unsafe to drive, call us right away at{" "}
+          <a href="tel:+18136999118" className="text-real-red hover:underline">(813) 699-9118</a>.
+        </p>
+      </form>
+
+      <div className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Your Reports</h3>
+        {isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+        ) : (data ?? []).length === 0 ? (
+          <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
+            <AlertTriangle className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
+            <div className="mt-3 text-sm font-medium">No Reports Yet</div>
+            <p className="mt-1 text-xs text-muted-foreground">Anything you report shows up here with its status.</p>
+          </div>
+        ) : (
+          <ul className="mt-3 divide-y divide-border">
+            {(data ?? []).map((i) => (
+              <li key={i.id} className="py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium">{i.title}</div>
+                  <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    i.status === "resolved" ? "bg-emerald-100 text-emerald-800" :
+                    i.status === "open" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-700"
+                  }`}>{i.status}</span>
+                </div>
+                {i.body && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{i.body}</p>}
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {new Date(i.created_at).toLocaleDateString()} · {i.severity}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReferralsView() {
+  const fetchReferrals = useServerFn(getDriverReferrals);
+  const submitReferral = useServerFn(createDriverReferral);
+  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-referrals"], queryFn: () => fetchReferrals() });
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const earned = (data ?? []).filter((r) => r.status === "paid").reduce((s, r) => s + r.reward_amount, 0);
+  const pending = (data ?? []).filter((r) => r.status !== "paid").length;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await submitReferral({ data: { email } });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Referral sent to our team.");
+      setEmail("");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not submit referral");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <MetricTile label="Rewards Earned" value={fmt(earned)} sub="Paid out to date" />
+        <MetricTile label="Referrals Pending" value={`${pending}`} sub="Awaiting first rental" />
+        <MetricTile label="Total Referrals" value={`${(data ?? []).length}`} />
+      </div>
+
+      <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Refer A Driver</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Send us their email and we'll take it from there. You earn once they start renting.</p>
+        <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="driver@email.com"
+            required
+            className="flex-1 rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+          />
+          <button type="submit" disabled={busy}
+            className="rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+            {busy ? "Sending…" : "Send Referral"}
+          </button>
+        </div>
+      </form>
+
+      <div className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Your Referrals</h3>
+        {isLoading ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+        ) : (data ?? []).length === 0 ? (
+          <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
+            <Users className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
+            <div className="mt-3 text-sm font-medium">No Referrals Yet</div>
+            <p className="mt-1 text-xs text-muted-foreground">Refer a driver above to start earning.</p>
+          </div>
+        ) : (
+          <ul className="mt-3 divide-y divide-border">
+            {(data ?? []).map((r) => (
+              <li key={r.id} className="py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm truncate">{r.referred_email ?? "Referred driver"}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-sm font-medium">{fmt(r.reward_amount)}</span>
+                  <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    r.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-700"
+                  }`}>{r.status}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate: (t: Tab) => void }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
