@@ -41,7 +41,10 @@ export const Route = createFileRoute("/sitemap.xml")({
         }
 
         try {
-          const { data: vehicles } = await supabase.from("vehicles").select("id");
+          const { data: vehicles } = await supabase
+            .from("vehicles")
+            .select("id")
+            .neq("status", "retired");
           for (const v of vehicles ?? []) {
             entries.push({ path: `/fleet/${v.id}`, changefreq: "weekly", priority: "0.6" });
           }
