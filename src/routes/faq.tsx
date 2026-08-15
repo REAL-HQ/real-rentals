@@ -2,21 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 
-export const Route = createFileRoute("/faq")({
-  head: () => ({
-    meta: [
-      { title: "FAQ — REAL RENTALS" },
-      { name: "description", content: "Answers about mileage, no-deposit policy, tolls, maintenance, payments, insurance, and platform deactivation." },
-      { property: "og:title", content: "FAQ — REAL RENTALS" },
-      { property: "og:description", content: "Everything you need to know before applying." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-    links: [{ rel: "canonical", href: "https://drivereal.com/faq" }],
-  }),
-  component: FAQ,
-});
-
 const faqs = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, have a reasonably clean driving record, and a payment method for weekly rent. No credit check required." },
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do require a valid payment card on file to cover tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
@@ -32,6 +17,35 @@ const faqs = [
   { q: "How do I pay weekly rent?", a: "Debit, credit, or Cash App. Rent is paid in advance every week via auto-pay." },
   { q: "Can I take the car out of state?", a: "Limited out-of-state driving is allowed with prior approval. Unauthorized travel triggers a fee." },
 ];
+
+export const Route = createFileRoute("/faq")({
+  head: () => ({
+    meta: [
+      { title: "FAQ — REAL RENTALS" },
+      { name: "description", content: "Answers about mileage, no-deposit policy, tolls, maintenance, payments, insurance, and platform deactivation." },
+      { property: "og:title", content: "FAQ — REAL RENTALS" },
+      { property: "og:description", content: "Everything you need to know before applying." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+    links: [{ rel: "canonical", href: "https://drivereal.com/faq" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqs.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        }),
+      },
+    ],
+  }),
+  component: FAQ,
+});
 
 function FAQ() {
   return (
