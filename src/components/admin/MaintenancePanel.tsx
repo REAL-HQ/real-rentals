@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
-import { StatusPill } from "./ui";
+import { StatusPill, EmptyState } from "./ui";
 
 type Row = {
   id: string;
@@ -277,10 +277,11 @@ export function MaintenancePanel() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-border p-10 text-center text-muted-foreground">
-          <Wrench className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No maintenance records yet.</p>
-        </div>
+        <EmptyState
+          icon={<Wrench className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Service Records Yet"
+          hint="Log a service item or odometer reading to start tracking vehicle upkeep."
+        />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">

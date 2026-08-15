@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { EmptyState } from "./ui";
 
 type Lead = {
   id: string;
@@ -74,7 +75,14 @@ export function LeadsPanel({ table, label }: { table: "contact_leads" | "investo
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">No {label.toLowerCase()} yet.</td></tr>
+              <tr>
+                <td colSpan={7} className="p-4">
+                  <EmptyState
+                    title={`No ${label} Yet`}
+                    hint="New submissions from the site will appear here automatically."
+                  />
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

@@ -31,7 +31,7 @@ import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeR
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
-import { Timeline, buildDriverTimeline, StatusPill, LifecycleRail, ReadinessSummary, SectionCard, MicroLabel, type LifecycleStage, type Readiness } from "./ui";
+import { Timeline, buildDriverTimeline, StatusPill, LifecycleRail, ReadinessSummary, SectionCard, MicroLabel, EmptyState, type LifecycleStage, type Readiness } from "./ui";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { ClipboardList } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -445,7 +445,14 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
                 return rows;
               })}
               {grouped.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">No drivers.</td></tr>
+                <tr>
+                  <td colSpan={9} className="p-4">
+                    <EmptyState
+                      title="No Drivers Yet"
+                      hint="Drivers appear here as soon as someone completes the quote form or an application."
+                    />
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
