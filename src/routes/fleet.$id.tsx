@@ -20,16 +20,55 @@ export const Route = createFileRoute("/fleet/$id")({
 function VehicleDetail() {
   const { id } = useParams({ from: "/fleet/$id" });
   const [v, setV] = useState<Tables<"vehicles"> | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "missing">("loading");
   const [term, setTerm] = useState<"weekly" | "monthly">("weekly");
 
   useEffect(() => {
-    supabase.from("vehicles").select("*").eq("id", id).maybeSingle().then(({ data }) => setV(data));
+    let active = true;
+    setStatus("loading");
+    setV(null);
+    supabase
+      .from("vehicles")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || !data) {
+          setStatus("missing");
+          return;
+        }
+        setV(data);
+        setStatus("ready");
+      });
+    return () => {
+      active = false;
+    };
   }, [id]);
+
+  if (status === "loading") {
+    return (
+      <SiteLayout>
+        <div className="container-real py-32 text-center text-muted-foreground">Loading…</div>
+      </SiteLayout>
+    );
+  }
 
   if (!v) {
     return (
       <SiteLayout>
-        <div className="container-real py-32 text-center text-muted-foreground">Loading…</div>
+        <div className="container-real py-32 text-center">
+          <h1 className="text-2xl font-semibold">Vehicle Not Available</h1>
+          <p className="mt-3 text-muted-foreground">
+            This vehicle is no longer listed. Browse the current fleet to find another ride.
+          </p>
+          <Link
+            to="/fleet"
+            className="mt-6 inline-flex items-center justify-center rounded-lg bg-real-red px-5 py-2.5 text-sm font-medium text-white"
+          >
+            View Fleet
+          </Link>
+        </div>
       </SiteLayout>
     );
   }
