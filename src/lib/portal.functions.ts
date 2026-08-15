@@ -196,3 +196,97 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
       }),
     );
   });
+
+export type DriverIssue = {
+  id: string;
+  title: string;
+  body: string | null;
+  kind: string;
+  severity: string;
+  status: string;
+  created_at: string;
+};
+
+export const getDriverIssues = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DriverIssue[]> => {
+    const { data } = await context.supabase
+      .from("issues")
+      .select("id,title,body,kind,severity,status,created_at")
+      .eq("driver_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    return (data ?? []) as DriverIssue[];
+  });
+
+export const createDriverIssue = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { title: string; body?: string; kind?: string; severity?: string }) => {
+    const title = (d?.title ?? "").trim();
+    if (title.length < 3) throw new Error("Please describe the issue.");
+    return {
+      title: title.slice(0, 140),
+      body: (d?.body ?? "").trim().slice(0, 2000) || null,
+      kind: d?.kind || "vehicle",
+      severity: d?.severity || "normal",
+    };
+  })
+  .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    const { supabase, userId } = context;
+    const { data: rental } = await supabase
+      .from("rentals")
+      .select("id,vehicle_id")
+      .eq("driver_id", userId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { error } = await supabase.from("issues").insert({
+      driver_id: userId,
+      title: data.title,
+      body: data.body,
+      kind: data.kind,
+      severity: data.severity,
+      rental_id: rental?.id ?? null,
+      vehicle_id: rental?.vehicle_id ?? null,
+    });
+    if (error) return { error: error.message };
+    return { ok: true };
+  });
+
+export type DriverReferral = {
+  id: string;
+  referred_email: string | null;
+  reward_amount: number;
+  status: string;
+  created_at: string;
+};
+
+export const getDriverReferrals = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DriverReferral[]> => {
+    const { data } = await context.supabase
+      .from("referrals")
+      .select("id,referred_email,reward_amount,status,created_at")
+      .eq("referrer_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    return (data ?? []).map((r: any) => ({ ...r, reward_amount: Number(r.reward_amount ?? 0) }));
+  });
+
+export const createDriverReferral = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { email: string }) => {
+    const email = (d?.email ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email address.");
+    return { email };
+  })
+  .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    const { error } = await context.supabase.from("referrals").insert({
+      referrer_id: context.userId,
+      referred_email: data.email,
+    });
+    if (error) return { error: error.message };
+    return { ok: true };
+  });
