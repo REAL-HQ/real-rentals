@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Store, MapPin, Phone } from "lucide-react";
-import { StatusPill } from "./ui";
+import { StatusPill, EmptyState } from "./ui";
 
 type Shop = {
   id: string;
@@ -57,10 +57,11 @@ export function ShopsPanel() {
         </button>
       </div>
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : shops.length === 0 ? (
-        <div className="rounded-xl border border-border p-10 text-center text-muted-foreground">
-          <Store className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No shops yet.</p>
-        </div>
+        <EmptyState
+          icon={<Store className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Shops Yet"
+          hint="Add a service shop to route maintenance work and track repairs."
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {shops.map((s) => (
