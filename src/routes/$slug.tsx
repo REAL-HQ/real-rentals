@@ -90,7 +90,7 @@ export const Route = createFileRoute("/$slug")({
 
     return { site: site as Site, market: (marketResult.data as Market) ?? null, content };
   },
-  head: ({ loaderData }) => {
+  head: ({ params, loaderData }) => {
     const title = loaderData?.site.title ?? "City";
     const state = loaderData?.market?.state ? `, ${loaderData.market.state}` : "";
     const content = loaderData?.content ?? {};
@@ -98,13 +98,18 @@ export const Route = createFileRoute("/$slug")({
     const seoDescription =
       asString(content.seo_description) ??
       `Get a rideshare or delivery rental quote in ${title}${state}. Unlimited miles, maintenance handled, no deposit, and fast approvals.`;
+    const url = `https://drivereal.com/${params.slug}`;
     return {
       meta: [
         { title: seoTitle },
         { name: "description", content: seoDescription },
         { property: "og:title", content: seoTitle },
         { property: "og:description", content: seoDescription },
+        { property: "og:type", content: "website" },
+        { property: "og:url", content: url },
+        { name: "twitter:card", content: "summary_large_image" },
       ],
+      links: [{ rel: "canonical", href: url }],
     };
   },
   notFoundComponent: () => (
