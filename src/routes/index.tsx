@@ -56,6 +56,18 @@ const STRUCTURED_DATA = {
         acceptedAnswer: { "@type": "Answer", text: f.a },
       })),
     },
+    {
+      "@type": "HowTo",
+      name: "How To Rent A Gig-Ready Vehicle From REAL RENTALS",
+      description:
+        "Four steps from booking to earning with a rideshare and delivery ready rental vehicle.",
+      step: [
+        { "@type": "HowToStep", position: 1, name: "Book Your Car", text: "Complete a 5-minute booking online from your phone." },
+        { "@type": "HowToStep", position: 2, name: "Get Approved", text: "Most applications reviewed the same day. No credit check." },
+        { "@type": "HowToStep", position: 3, name: "Pick Up Vehicle", text: "Schedule pickup, complete onboarding, and grab your keys." },
+        { "@type": "HowToStep", position: 4, name: "Start Earning", text: "Drive Uber, Lyft, DoorDash or Instacart immediately." },
+      ],
+    },
   ],
 };
 
@@ -242,7 +254,7 @@ function Index() {
                   Become A Partner <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
                 <Link to="/investors" className="inline-flex items-center justify-center rounded-lg border border-white/30 text-white px-8 py-4 text-sm font-medium hover:bg-white/10 transition active:scale-95">
-                  Learn More
+                  Learn About The Partner Program
                 </Link>
               </div>
             </FadeUp>
