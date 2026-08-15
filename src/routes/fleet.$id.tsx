@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams, notFound } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -11,12 +11,22 @@ export const Route = createFileRoute("/fleet/$id")({
   loader: async ({ params }) => {
     const { data } = await supabase
       .from("vehicles")
-      .select("id, make, model, weekly_rate")
+      .select("id, make, model, weekly_rate, status")
       .eq("id", params.id)
       .maybeSingle();
-    return { vehicle: data ?? null };
+    if (!data || data.status === "retired") throw notFound();
+    return { vehicle: data };
   },
   head: ({ params, loaderData }) => {
+    if (!loaderData) {
+      return {
+        meta: [
+          { title: "Vehicle Not Available — REAL RENTALS" },
+          { name: "description", content: "This vehicle is no longer listed." },
+          { name: "robots", content: "noindex, nofollow" },
+        ],
+      };
+    }
     const v = loaderData?.vehicle;
     const name = v ? `${v.make ?? ""} ${v.model ?? ""}`.trim() : "";
     const title = name
@@ -78,8 +88,23 @@ export const Route = createFileRoute("/fleet/$id")({
       scripts,
     };
   },
+  notFoundComponent: VehicleNotFound,
   component: VehicleDetail,
 });
+
+function VehicleNotFound() {
+  return (
+    <SiteLayout>
+      <section className="container-real py-32 text-center">
+        <h1 className="text-3xl font-semibold">Vehicle Not Available</h1>
+        <p className="mt-3 text-muted-foreground">This vehicle is no longer listed.</p>
+        <Link to="/fleet" className="mt-8 inline-flex rounded-lg bg-real-red px-6 py-3 text-sm font-medium text-white">
+          Browse Fleet
+        </Link>
+      </section>
+    </SiteLayout>
+  );
+}
 
 function VehicleDetail() {
   const { id } = useParams({ from: "/fleet/$id" });
