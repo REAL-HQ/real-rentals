@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Globe } from "lucide-react";
-import { StatusPill } from "./ui";
+import { StatusPill, EmptyState } from "./ui";
 
 type Site = {
   id: string;
@@ -79,10 +79,11 @@ export function WebsitesPanel() {
       </div>
 
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : sites.length === 0 ? (
-        <div className="rounded-xl border border-border p-10 text-center text-muted-foreground">
-          <Globe className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No market sites yet.</p>
-        </div>
+        <EmptyState
+          icon={<Globe className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Market Sites Yet"
+          hint="Create a city page to publish a market-specific landing site."
+        />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
