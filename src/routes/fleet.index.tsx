@@ -8,7 +8,7 @@ import { VehicleCard } from "@/components/site/VehicleCard";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export const Route = createFileRoute("/fleet")({
+export const Route = createFileRoute("/fleet/")({
   head: () => ({
     meta: [
       { title: "The Fleet — REAL RENTALS" },
