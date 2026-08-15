@@ -123,9 +123,9 @@ const FleetIndexRoute = FleetIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const FleetIdRoute = FleetIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => FleetRoute,
+  id: '/fleet/$id',
+  path: '/fleet/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   id: '/card/$applicationId',
@@ -312,6 +312,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
+  FleetIdRoute: typeof FleetIdRoute
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
@@ -447,10 +448,10 @@ declare module '@tanstack/react-router' {
     }
     '/fleet/$id': {
       id: '/fleet/$id'
-      path: '/$id'
+      path: '/fleet/$id'
       fullPath: '/fleet/$id'
       preLoaderRoute: typeof FleetIdRouteImport
-      parentRoute: typeof FleetRoute
+      parentRoute: typeof rootRouteImport
     }
     '/card/$applicationId': {
       id: '/card/$applicationId'
@@ -495,6 +496,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
+  FleetIdRoute: FleetIdRoute,
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
