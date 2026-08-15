@@ -91,6 +91,16 @@ export const Route = createFileRoute("/$slug")({
     return { site: site as Site, market: (marketResult.data as Market) ?? null, content };
   },
   head: ({ params, loaderData }) => {
+    if (!loaderData) {
+      // The loader only throws notFound(), so this is an unknown city page.
+      return {
+        meta: [
+          { title: "City Not Found — REAL RENTALS" },
+          { name: "description", content: "We're not in this market yet." },
+          { name: "robots", content: "noindex, nofollow" },
+        ],
+      };
+    }
     const title = loaderData?.site.title ?? "City";
     const state = loaderData?.market?.state ? `, ${loaderData.market.state}` : "";
     const content = loaderData?.content ?? {};
