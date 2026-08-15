@@ -26,6 +26,44 @@ export const Route = createFileRoute("/fleet/$id")({
       ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Unlimited miles, maintenance included, no deposit.`
       : "View specs, pricing, and what's included with this rideshare-ready vehicle.";
     const url = `https://drivereal.com/fleet/${params.id}`;
+    const scripts = [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: "https://drivereal.com/" },
+            { "@type": "ListItem", position: 2, name: "Fleet", item: "https://drivereal.com/fleet" },
+            { "@type": "ListItem", position: 3, name: name || "Vehicle", item: url },
+          ],
+        }),
+      },
+    ];
+    if (name) {
+      scripts.unshift({
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name,
+          description,
+          brand: { "@type": "Brand", name: v?.make ?? "REAL RENTALS" },
+          url,
+          ...(v?.weekly_rate
+            ? {
+                offers: {
+                  "@type": "Offer",
+                  price: String(v.weekly_rate),
+                  priceCurrency: "USD",
+                  availability: "https://schema.org/InStock",
+                  url,
+                },
+              }
+            : {}),
+        }),
+      });
+    }
     return {
       meta: [
         { title },
@@ -37,6 +75,7 @@ export const Route = createFileRoute("/fleet/$id")({
         { name: "twitter:card", content: "summary_large_image" },
       ],
       links: [{ rel: "canonical", href: url }],
+      scripts,
     };
   },
   component: VehicleDetail,
