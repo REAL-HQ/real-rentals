@@ -10,6 +10,8 @@ import {
   createDriverIssue,
   getDriverReferrals,
   createDriverReferral,
+  getDriverProfile,
+  getDriverPictures,
   type DriverDashboard,
 } from "@/lib/portal.functions";
 import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
@@ -202,6 +204,8 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
 
   if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
   if (tab === "documents") return <DocumentsView />;
+  if (tab === "pictures") return <PicturesView />;
+  if (tab === "settings") return <SettingsView />;
   if (tab === "issue") return <IssuesView />;
   if (tab === "referrals") return <ReferralsView />;
   if (tab === "vehicle") return <VehicleView data={data} />;
@@ -279,6 +283,126 @@ function DocumentsView() {
 }
 
 function IssuesView() {
+  return <IssuesViewInner />;
+}
+
+function PicturesView() {
+  const fetchPics = useServerFn(getDriverPictures);
+  const { data, isLoading, error } = useQuery({ queryKey: ["driver-pictures"], queryFn: () => fetchPics() });
+
+  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
+  if (error) return <div className="text-sm text-real-red">Could not load your pictures.</div>;
+
+  const pics = data ?? [];
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      <h3 className="font-semibold">Vehicle Pictures</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Photos of the vehicle on your active rental.</p>
+      {pics.length === 0 ? (
+        <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
+          <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
+          <div className="mt-3 text-sm font-medium">No Pictures Yet</div>
+          <p className="mt-1 text-xs text-muted-foreground">Photos appear here once a vehicle is assigned to you.</p>
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+          {pics.map((p) => (
+            <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-xl border border-border">
+              <img src={p.url} alt={p.label} loading="lazy" className="h-40 w-full object-cover transition-transform group-hover:scale-[1.03]" />
+              <div className="px-3 py-2 text-xs text-muted-foreground truncate">{p.label}</div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsView() {
+  const fetchProfile = useServerFn(getDriverProfile);
+  const submitIssue = useServerFn(createDriverIssue);
+  const { data, isLoading } = useQuery({ queryKey: ["driver-profile"], queryFn: () => fetchProfile() });
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function requestChange(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await submitIssue({ data: { title: "Account detail update request", body: note, kind: "account", severity: "low" } });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Request sent. Our team will update your details.");
+      setNote("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send request");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const rows: Array<[string, string]> = [
+    ["Name", data?.full_name || "—"],
+    ["Email", data?.email || data?.account_email || "—"],
+    ["Phone", data?.phone || "—"],
+    ["Market", data?.city || "—"],
+    ["Application Status", data?.status ? data.status.replace(/_/g, " ") : "—"],
+    ["Applied", data?.applied_at ? new Date(data.applied_at).toLocaleDateString() : "—"],
+  ];
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Your Details</h3>
+        {isLoading ? (
+          <div className="mt-3 text-sm text-muted-foreground">Loading…</div>
+        ) : (
+          <dl className="mt-4 divide-y divide-border">
+            {rows.map(([k, v]) => (
+              <div key={k} className="py-2.5 flex items-center justify-between gap-4">
+                <dt className="text-sm text-muted-foreground">{k}</dt>
+                <dd className="text-sm font-medium capitalize text-right">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      <form onSubmit={requestChange} className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Request A Change</h3>
+        <p className="mt-1 text-sm text-muted-foreground">Tell us what to update and our team will take care of it.</p>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={4}
+          placeholder="e.g. New phone number is (813) 555-0143"
+          className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={busy || note.trim().length < 3}
+          className="mt-3 inline-flex items-center rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send Request"}
+        </button>
+      </form>
+
+      <div className="rounded-2xl border border-border bg-white p-5 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="font-semibold">Session</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Sign out of the driver portal on this device.</p>
+        </div>
+        <button
+          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/auth"; }}
+          className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft"
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function IssuesViewInner() {
   const fetchIssues = useServerFn(getDriverIssues);
   const submitIssue = useServerFn(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-issues"], queryFn: () => fetchIssues() });
