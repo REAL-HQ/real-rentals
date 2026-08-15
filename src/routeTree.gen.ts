@@ -20,13 +20,13 @@ import { Route as PartnerRouteImport } from './routes/partner'
 import { Route as InvestorsRouteImport } from './routes/investors'
 import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
-import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
@@ -87,11 +87,6 @@ const HowItWorksRoute = HowItWorksRouteImport.update({
   path: '/how-it-works',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FleetRoute = FleetRouteImport.update({
-  id: '/fleet',
-  path: '/fleet',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const FaqRoute = FaqRouteImport.update({
   id: '/faq',
   path: '/faq',
@@ -122,10 +117,15 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FleetIndexRoute = FleetIndexRouteImport.update({
+  id: '/fleet/',
+  path: '/fleet/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FleetIdRoute = FleetIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => FleetRoute,
+  id: '/fleet/$id',
+  path: '/fleet/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   id: '/card/$applicationId',
@@ -152,7 +152,6 @@ export interface FileRoutesByFullPath {
   '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
-  '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
@@ -166,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -176,7 +176,6 @@ export interface FileRoutesByTo {
   '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
-  '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
@@ -190,6 +189,7 @@ export interface FileRoutesByTo {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/fleet': typeof FleetIndexRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -201,7 +201,6 @@ export interface FileRoutesById {
   '/apply': typeof ApplyRoute
   '/contact': typeof ContactRoute
   '/faq': typeof FaqRoute
-  '/fleet': typeof FleetRouteWithChildren
   '/how-it-works': typeof HowItWorksRoute
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
@@ -215,6 +214,7 @@ export interface FileRoutesById {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -227,7 +227,6 @@ export interface FileRouteTypes {
     | '/apply'
     | '/contact'
     | '/faq'
-    | '/fleet'
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
@@ -241,6 +240,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/fleet/'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -251,7 +251,6 @@ export interface FileRouteTypes {
     | '/apply'
     | '/contact'
     | '/faq'
-    | '/fleet'
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
@@ -265,6 +264,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/fleet'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
   id:
@@ -275,7 +275,6 @@ export interface FileRouteTypes {
     | '/apply'
     | '/contact'
     | '/faq'
-    | '/fleet'
     | '/how-it-works'
     | '/investor-faq'
     | '/investors'
@@ -289,6 +288,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/fleet/'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
@@ -300,7 +300,6 @@ export interface RootRouteChildren {
   ApplyRoute: typeof ApplyRoute
   ContactRoute: typeof ContactRoute
   FaqRoute: typeof FaqRoute
-  FleetRoute: typeof FleetRouteWithChildren
   HowItWorksRoute: typeof HowItWorksRoute
   InvestorFaqRoute: typeof InvestorFaqRoute
   InvestorsRoute: typeof InvestorsRoute
@@ -313,6 +312,8 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
+  FleetIdRoute: typeof FleetIdRoute
+  FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
@@ -396,13 +397,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HowItWorksRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/fleet': {
-      id: '/fleet'
-      path: '/fleet'
-      fullPath: '/fleet'
-      preLoaderRoute: typeof FleetRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/faq': {
       id: '/faq'
       path: '/faq'
@@ -445,12 +439,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/fleet/': {
+      id: '/fleet/'
+      path: '/fleet'
+      fullPath: '/fleet/'
+      preLoaderRoute: typeof FleetIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fleet/$id': {
       id: '/fleet/$id'
-      path: '/$id'
+      path: '/fleet/$id'
       fullPath: '/fleet/$id'
       preLoaderRoute: typeof FleetIdRouteImport
-      parentRoute: typeof FleetRoute
+      parentRoute: typeof rootRouteImport
     }
     '/card/$applicationId': {
       id: '/card/$applicationId'
@@ -476,16 +477,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface FleetRouteChildren {
-  FleetIdRoute: typeof FleetIdRoute
-}
-
-const FleetRouteChildren: FleetRouteChildren = {
-  FleetIdRoute: FleetIdRoute,
-}
-
-const FleetRouteWithChildren = FleetRoute._addFileChildren(FleetRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SlugRoute: SlugRoute,
@@ -493,7 +484,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApplyRoute: ApplyRoute,
   ContactRoute: ContactRoute,
   FaqRoute: FaqRoute,
-  FleetRoute: FleetRouteWithChildren,
   HowItWorksRoute: HowItWorksRoute,
   InvestorFaqRoute: InvestorFaqRoute,
   InvestorsRoute: InvestorsRoute,
@@ -506,6 +496,8 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
+  FleetIdRoute: FleetIdRoute,
+  FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
