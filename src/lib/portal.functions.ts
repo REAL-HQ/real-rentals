@@ -171,3 +171,28 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       shops: (shops ?? []) as any,
     };
   });
+export const getDriverDocuments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<DriverDocument[]> => {
+    const { supabase, userId } = context;
+
+    const { data } = await supabase
+      .from("documents")
+      .select("id,kind,notes,created_at,storage_bucket,storage_path,visibility")
+      .eq("driver_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    const rows = (data ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
+
+    return Promise.all(
+      rows.map(async (d: any) => {
+        let url: string | null = null;
+        const { data: signed } = await supabase.storage
+          .from(d.storage_bucket)
+          .createSignedUrl(d.storage_path, 60 * 10);
+        url = signed?.signedUrl ?? null;
+        return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
+      }),
+    );
+  });
