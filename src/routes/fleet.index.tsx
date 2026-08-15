@@ -37,6 +37,7 @@ function FleetPage() {
     supabase
       .from("vehicles")
       .select("*")
+      .neq("status", "retired")
       .order("weekly_rate", { ascending: true })
       .then(({ data }) => setVehicles(data || []));
   }, []);
