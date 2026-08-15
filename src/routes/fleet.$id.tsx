@@ -8,12 +8,37 @@ import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
 export const Route = createFileRoute("/fleet/$id")({
-  head: () => ({
-    meta: [
-      { title: "Vehicle Details — REAL RENTALS" },
-      { name: "description", content: "View specs, pricing, and what's included with this rideshare-ready vehicle." },
-    ],
-  }),
+  loader: async ({ params }) => {
+    const { data } = await supabase
+      .from("vehicles")
+      .select("id, make, model, weekly_rate")
+      .eq("id", params.id)
+      .maybeSingle();
+    return { vehicle: data ?? null };
+  },
+  head: ({ params, loaderData }) => {
+    const v = loaderData?.vehicle;
+    const name = v ? `${v.make ?? ""} ${v.model ?? ""}`.trim() : "";
+    const title = name
+      ? `Rent A ${name} For Uber, Lyft & Delivery | REAL RENTALS`
+      : "Vehicle Details — REAL RENTALS";
+    const description = name
+      ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Unlimited miles, maintenance included, no deposit.`
+      : "View specs, pricing, and what's included with this rideshare-ready vehicle.";
+    const url = `https://drivereal.com/fleet/${params.id}`;
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:type", content: "product" },
+        { property: "og:url", content: url },
+        { name: "twitter:card", content: "summary_large_image" },
+      ],
+      links: [{ rel: "canonical", href: url }],
+    };
+  },
   component: VehicleDetail,
 });
 
