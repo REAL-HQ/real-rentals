@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { FleetOwner } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "./ui";
+import { Building2 } from "lucide-react";
 
 const STATUSES = ["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"];
 
@@ -63,7 +65,13 @@ export function FleetOwnersPanel() {
             className="mt-3 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
         </div>
       ))}
-      {rows.length === 0 && <div className="text-sm text-muted-foreground">No fleet owner submissions yet.</div>}
+      {rows.length === 0 && (
+        <EmptyState
+          icon={<Building2 className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Fleet Owner Submissions"
+          hint="Owners who apply to add their vehicles to the fleet will show up here."
+        />
+      )}
     </div>
   );
 }

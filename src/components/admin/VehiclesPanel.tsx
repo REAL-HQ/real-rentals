@@ -4,7 +4,8 @@ import type { Vehicle } from "./types";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { VehicleEditor } from "./VehicleEditor";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Car } from "lucide-react";
+import { EmptyState } from "./ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function PartnerAssignSelect({ value, partners, onChange }: { value: string | null; partners: Array<{ id: string; name: string }>; onChange: (pid: string | null) => void }) {
@@ -165,8 +166,22 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
           );
         })}
       </div>
-      {rows.length === 0 && <div className="text-sm text-muted-foreground mt-6">No vehicles yet. Click "Add Vehicle" to create one.</div>}
-      {rows.length > 0 && filtered.length === 0 && <div className="text-sm text-muted-foreground mt-6">No vehicles match the current filters.</div>}
+      {rows.length === 0 && (
+        <EmptyState
+          className="mt-6"
+          icon={<Car className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Vehicles Yet"
+          hint={'Click "Add Vehicle" to put your first car into the fleet.'}
+        />
+      )}
+      {rows.length > 0 && filtered.length === 0 && (
+        <EmptyState
+          className="mt-6"
+          icon={<Car className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Matching Vehicles"
+          hint="Try clearing a filter or searching for a different make or model."
+        />
+      )}
 
       {editing && (
         <VehicleEditor
