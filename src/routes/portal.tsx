@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { getDriverDashboard, type DriverDashboard } from "@/lib/portal.functions";
+import { getDriverDashboard, getDriverDocuments, type DriverDashboard } from "@/lib/portal.functions";
 import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
@@ -172,7 +172,7 @@ function Portal() {
               <h1 className="text-2xl font-semibold">{current.label}</h1>
             </header>
             <div className="p-8">
-              <PortalBody tab={tab} />
+              <PortalBody tab={tab} onNavigate={setTab} />
             </div>
           </main>
         </div>
@@ -181,7 +181,7 @@ function Portal() {
   );
 }
 
-function PortalBody({ tab }: { tab: Tab }) {
+function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => void }) {
   const fetchDashboard = useServerFn(getDriverDashboard);
   const { data, isLoading, error } = useQuery({
     queryKey: ["driver-dashboard"],
@@ -192,7 +192,8 @@ function PortalBody({ tab }: { tab: Tab }) {
   if (error) return <div className="text-sm text-real-red">Could not load your portal. {(error as Error).message}</div>;
   if (!data) return null;
 
-  if (tab === "dashboard") return <DashboardView data={data} />;
+  if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
+  if (tab === "documents") return <DocumentsView />;
   if (tab === "vehicle") return <VehicleView data={data} />;
   if (tab === "payments") return <PaymentsView data={data} />;
   if (tab === "deposit") return <DepositView data={data} />;
@@ -204,7 +205,17 @@ function Stub({ label }: { label: string }) {
   return (
     <div className="rounded-2xl border border-border p-10 text-center">
       <h2 className="text-lg font-semibold">{label}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">Coming soon. Reach out to driver support if you need help with this section in the meantime.</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        This section isn't available yet. Driver support can help you in the meantime.
+      </p>
+      <div className="mt-5 flex items-center justify-center gap-2">
+        <a href="tel:+18136999118" className="inline-flex items-center gap-1.5 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
+          <Phone className="w-4 h-4" /> Call Support
+        </a>
+        <a href="mailto:team@drivereal.com" className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft">
+          Email Support
+        </a>
+      </div>
     </div>
   );
 }
@@ -213,7 +224,51 @@ function fmt(amount: number) {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-function DashboardView({ data }: { data: DriverDashboard }) {
+function DocumentsView() {
+  const fetchDocs = useServerFn(getDriverDocuments);
+  const { data, isLoading, error } = useQuery({ queryKey: ["driver-documents"], queryFn: () => fetchDocs() });
+
+  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
+  if (error) return <div className="text-sm text-real-red">Could not load your documents.</div>;
+
+  const docs = data ?? [];
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5 max-w-3xl">
+      <h3 className="font-semibold">Your Documents</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Rental agreements, receipts, and anything else shared with you by our team.</p>
+      {docs.length === 0 ? (
+        <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
+          <FileText className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
+          <div className="mt-3 text-sm font-medium">No Documents Yet</div>
+          <p className="mt-1 text-xs text-muted-foreground">Documents shared by our team will appear here.</p>
+        </div>
+      ) : (
+        <ul className="mt-4 divide-y divide-border">
+          {docs.map((d) => (
+            <li key={d.id} className="py-3 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
+                <div className="text-xs text-muted-foreground">
+                  Added {new Date(d.created_at).toLocaleDateString()}{d.notes ? ` · ${d.notes}` : ""}
+                </div>
+              </div>
+              {d.url ? (
+                <a href={d.url} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-real-red hover:underline shrink-0">
+                  <Download className="w-3.5 h-3.5" /> Open
+                </a>
+              ) : (
+                <span className="text-xs text-muted-foreground shrink-0">Unavailable</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate: (t: Tab) => void }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
@@ -271,7 +326,7 @@ function DashboardView({ data }: { data: DriverDashboard }) {
             </div>
             <button
               type="button"
-              onClick={() => toast.info("Stripe checkout opens once payments are wired up.")}
+              onClick={() => onNavigate("payments")}
               className="mt-4 inline-flex items-center justify-center rounded-lg bg-real-red text-white px-5 py-3 text-sm font-semibold hover:bg-red-700 transition active:scale-95"
             >
               Pay Now <ArrowRight className="w-4 h-4 ml-2" />
@@ -319,10 +374,10 @@ function DashboardView({ data }: { data: DriverDashboard }) {
                   <div className="text-sm font-medium">{fmt(p.amount)}</div>
                   <button
                     type="button"
-                    onClick={() => toast.info("PDF receipts ship with the payments integration.")}
+                    onClick={() => onNavigate("payments")}
                     className="inline-flex items-center gap-1 text-xs text-real-red hover:underline"
                   >
-                    <Download className="w-3.5 h-3.5" /> PDF
+                    Details
                   </button>
                 </li>
               ))}
@@ -333,13 +388,12 @@ function DashboardView({ data }: { data: DriverDashboard }) {
         <div className="rounded-2xl border border-border bg-white p-5">
           <h3 className="font-semibold">Prepay & Save</h3>
           <p className="mt-2 text-sm text-muted-foreground">Pay 4 weeks up front and lock in a discount. Ask driver support for current prepay offers in your market.</p>
-          <button
-            type="button"
-            onClick={() => toast.info("Prepay offers will populate when payments are wired up.")}
-            className="mt-4 inline-flex items-center justify-center rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
+          <a
+            href="tel:+18136999118"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
           >
-            See Prepay Options
-          </button>
+            <Phone className="w-4 h-4" /> Ask About Prepay
+          </a>
         </div>
       </div>
 
