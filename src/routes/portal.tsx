@@ -392,7 +392,7 @@ function SettingsView() {
           <p className="mt-1 text-sm text-muted-foreground">Sign out of the driver portal on this device.</p>
         </div>
         <button
-          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/auth"; }}
+          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/portal"; }}
           className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft"
         >
           Sign Out
