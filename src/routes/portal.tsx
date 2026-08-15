@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { getDriverDashboard, type DriverDashboard } from "@/lib/portal.functions";
+import { getDriverDashboard, getDriverDocuments, type DriverDashboard } from "@/lib/portal.functions";
 import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
@@ -193,6 +193,7 @@ function PortalBody({ tab }: { tab: Tab }) {
   if (!data) return null;
 
   if (tab === "dashboard") return <DashboardView data={data} />;
+  if (tab === "documents") return <DocumentsView />;
   if (tab === "vehicle") return <VehicleView data={data} />;
   if (tab === "payments") return <PaymentsView data={data} />;
   if (tab === "deposit") return <DepositView data={data} />;
