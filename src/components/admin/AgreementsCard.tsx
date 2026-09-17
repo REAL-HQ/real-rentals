@@ -77,6 +77,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
 
   return (
     <SectionCard
+      padded={false}
       title="Rental agreement"
       right={
         <button
