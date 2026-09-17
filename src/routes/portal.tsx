@@ -15,6 +15,8 @@ import {
   type DriverDashboard,
 } from "@/lib/portal.functions";
 import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
+import { getMyAgreements, signMyAgreement } from "@/lib/agreements.functions";
+import { DocumentVault } from "@/components/admin/DocumentVault";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
