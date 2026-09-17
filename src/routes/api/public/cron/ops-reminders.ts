@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  sendEmail,
   sendPastDueReminderEmail,
   sendLicenseExpiringEmail,
   sendServiceDigestEmail,
@@ -190,13 +191,13 @@ async function handle(request: Request): Promise<Response> {
   }
 
   // ---- 5. Expiring driver documents (ops digest) ---------------------------
-  const in30 = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  const docHorizon = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
   const { data: expiringDocs } = await supabaseAdmin
     .from("documents")
     .select("id,category,label,expires_at,driver_id")
     .eq("is_current", true)
     .not("expires_at", "is", null)
-    .lte("expires_at", in30)
+    .lte("expires_at", docHorizon)
     .limit(100);
 
   const docItems: Array<{ vehicle: string; reason: string }> = [];
