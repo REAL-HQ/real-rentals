@@ -27,6 +27,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
+import { AgreementsCard } from "./AgreementsCard";
+import { DocumentVault } from "./DocumentVault";
 import { chargeCardOnRental, startRentalAutopay, stopRentalAutopay, type ChargeReason } from "@/lib/rental-payments.functions";
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
@@ -790,6 +792,12 @@ function DriverDetail({ driver, vehicles, onBack, onUpdate, onDelete, onScreenin
               </TabsContent>
 
               <TabsContent value="documents" className="mt-4 space-y-4">
+                <AgreementsCard applicationId={driver.id} />
+                <SectionCard title="Document vault" subtitle="Shared with the driver unless marked team only" padded={false}>
+                  <div className="p-5">
+                    <DocumentVault mode="admin" applicationId={driver.id} />
+                  </div>
+                </SectionCard>
                 <DocumentsCard
                   leadId={driver.id}
                   docs={docs}

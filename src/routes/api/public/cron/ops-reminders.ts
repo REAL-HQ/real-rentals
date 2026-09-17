@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  sendEmail,
   sendPastDueReminderEmail,
   sendLicenseExpiringEmail,
   sendServiceDigestEmail,
@@ -143,11 +144,89 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
+  // ---- 4. Unsigned rental agreements ---------------------------------------
+  let agreementNudges = 0;
+  const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
+  const { data: openAgreements } = await supabaseAdmin
+    .from("agreements")
+    .select("id,title,application_id,signer_email,sent_at,status")
+    .in("status", ["sent", "viewed"])
+    .lt("sent_at", threeDaysAgo)
+    .gt("token_expires_at", today.toISOString())
+    .limit(100);
+
+  for (const a of openAgreements ?? []) {
+    try {
+      const { data: app } = await supabaseAdmin
+        .from("applications")
+        .select("id,full_name,email,user_id")
+        .eq("id", a.application_id as string)
+        .maybeSingle();
+      const to = (a.signer_email as string | null) || app?.email;
+      if (!to) continue;
+      if (await recentlyNotified(supabaseAdmin, app?.user_id ?? null, "agreement_reminder", since)) continue;
+
+      await sendEmail({
+        to,
+        subject: "Reminder: Sign Your REAL RENTALS Rental Agreement",
+        html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px">
+          <h1 style="font-size:20px;color:#111">Your rental agreement is still waiting</h1>
+          <p style="color:#444;font-size:15px;line-height:1.55">Hi ${(app?.full_name || "there").split(" ")[0]}, we still need your signature before we can hand over the keys. Sign in to your driver portal to review and sign.</p>
+          <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Review &amp; Sign</a>
+          <p style="color:#888;font-size:12px;margin-top:20px">Need a fresh link? Reply to this email and our team will send one.</p>
+        </div>`,
+        replyTo: "team@drivereal.com",
+      });
+      await logNotification(
+        supabaseAdmin,
+        app?.user_id ?? null,
+        "agreement_reminder",
+        "Rental agreement awaiting signature",
+        "We sent you a reminder to sign your rental agreement.",
+      );
+      agreementNudges++;
+    } catch (err) {
+      console.error("[ops-reminders] agreement reminder failed", err);
+    }
+  }
+
+  // ---- 5. Expiring driver documents (ops digest) ---------------------------
+  const docHorizon = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  const { data: expiringDocs } = await supabaseAdmin
+    .from("documents")
+    .select("id,category,label,expires_at,driver_id")
+    .eq("is_current", true)
+    .not("expires_at", "is", null)
+    .lte("expires_at", docHorizon)
+    .limit(100);
+
+  const docItems: Array<{ vehicle: string; reason: string }> = [];
+  for (const d of expiringDocs ?? []) {
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select("full_name")
+      .eq("id", d.driver_id as string)
+      .maybeSingle();
+    docItems.push({
+      vehicle: (app?.full_name as string) || "Driver",
+      reason: `${String(d.label || d.category).replace(/_/g, " ")} expires ${d.expires_at}`,
+    });
+  }
+  if (docItems.length) {
+    try {
+      await sendServiceDigestEmail({ to: "team@drivereal.com", items: docItems });
+    } catch (err) {
+      console.error("[ops-reminders] document expiry digest failed", err);
+    }
+  }
+
   return Response.json({
     ok: true,
     past_due_sent: pastDue,
     license_sent: licenses,
     service_due: serviceItems.length,
+    agreement_reminders: agreementNudges,
+    expiring_documents: docItems.length,
   });
 }
 
