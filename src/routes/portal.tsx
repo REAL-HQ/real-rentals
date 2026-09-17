@@ -240,44 +240,125 @@ function fmt(amount: number) {
 
 function DocumentsView() {
   const fetchDocs = useServerFn(getDriverDocuments);
-  const { data, isLoading, error } = useQuery({ queryKey: ["driver-documents"], queryFn: () => fetchDocs() });
+  const { data, isLoading } = useQuery({ queryKey: ["driver-documents"], queryFn: () => fetchDocs() });
+  const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
-  if (error) return <div className="text-sm text-real-red">Could not load your documents.</div>;
-
-  const docs = data ?? [];
   return (
-    <div className="rounded-2xl border border-border bg-white p-5 max-w-3xl">
-      <h3 className="font-semibold">Your Documents</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Rental agreements, receipts, and anything else shared with you by our team.</p>
-      {docs.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
-          <FileText className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
-          <div className="mt-3 text-sm font-medium">No Documents Yet</div>
-          <p className="mt-1 text-xs text-muted-foreground">Documents shared by our team will appear here.</p>
+    <div className="space-y-5 max-w-3xl">
+      <AgreementsView />
+
+      <div className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">Your Documents</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Keep your license and insurance current. Uploading a new file replaces the old one — we keep the history.
+        </p>
+        <div className="mt-4">
+          <DocumentVault mode="driver" />
         </div>
-      ) : (
-        <ul className="mt-4 divide-y divide-border">
-          {docs.map((d) => (
-            <li key={d.id} className="py-3 flex items-center justify-between gap-4">
+      </div>
+
+      {!isLoading && shared.length > 0 ? (
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <h3 className="font-semibold">Shared By Our Team</h3>
+          <ul className="mt-3 divide-y divide-border">
+            {shared.map((d) => (
+              <li key={d.id} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Added {new Date(d.created_at).toLocaleDateString()}{d.notes ? ` · ${d.notes}` : ""}
+                  </div>
+                </div>
+                {d.url ? (
+                  <a href={d.url} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-real-red hover:underline shrink-0">
+                    <Download className="w-3.5 h-3.5" /> Open
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AgreementsView() {
+  const fetchAgreements = useServerFn(getMyAgreements);
+  const sign = useServerFn(signMyAgreement);
+  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-agreements"], queryFn: () => fetchAgreements() });
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (isLoading) return null;
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      <h3 className="font-semibold">Rental Agreements</h3>
+      <ul className="mt-3 divide-y divide-border">
+        {rows.map((a) => (
+          <li key={a.id} className="py-3">
+            <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
+                <div className="text-sm font-medium truncate">{a.title}</div>
                 <div className="text-xs text-muted-foreground">
-                  Added {new Date(d.created_at).toLocaleDateString()}{d.notes ? ` · ${d.notes}` : ""}
+                  {a.signed_at ? `Signed ${new Date(a.signed_at).toLocaleDateString()}` : "Awaiting your signature"}
                 </div>
               </div>
-              {d.url ? (
-                <a href={d.url} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-real-red hover:underline shrink-0">
-                  <Download className="w-3.5 h-3.5" /> Open
-                </a>
-              ) : (
-                <span className="text-xs text-muted-foreground shrink-0">Unavailable</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+              <button
+                onClick={() => { setOpenId(openId === a.id ? null : a.id); setName(""); setAgree(false); }}
+                className="text-xs font-semibold text-real-red shrink-0"
+              >
+                {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
+              </button>
+            </div>
+
+            {openId === a.id ? (
+              <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
+                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">{a.body}</pre>
+                {a.status !== "signed" ? (
+                  <div className="mt-4 space-y-3">
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Type your full legal name"
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white"
+                    />
+                    <label className="flex items-start gap-2 text-xs">
+                      <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />
+                      <span>I agree to this rental agreement and accept that typing my name is my legal electronic signature.</span>
+                    </label>
+                    <button
+                      disabled={busy || !agree || name.trim().length < 2}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await sign({ data: { agreementId: a.id, signerName: name.trim(), agree: true } });
+                          toast.success("Agreement signed");
+                          setOpenId(null);
+                          await refetch();
+                        } catch (e: any) {
+                          toast.error(e?.message || "Could not record your signature");
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className="rounded-lg bg-real-red text-white text-sm font-semibold px-5 py-2.5 disabled:opacity-40"
+                    >
+                      {busy ? "Signing…" : "Sign agreement"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
