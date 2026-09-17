@@ -393,3 +393,40 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
   await sendEmail({ to: args.to, subject, html, replyTo: "hello@drivereal.com" });
 }
+// -----------------------------------------------------------------------------
+// Rental agreements (e-signature)
+// -----------------------------------------------------------------------------
+
+type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
+
+export async function sendAgreementEmail(args: AgreementSendArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const vehicleLine = args.vehicle
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Vehicle: <strong>${escapeHtml(args.vehicle)}</strong></p>`
+    : "";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Rental Agreement Is Ready To Sign</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Hi ${escapeHtml(name)}, your REAL RENTALS rental agreement is prepared and pre-filled. Please review it and sign electronically — it takes about a minute.</p>
+      ${vehicleLine}
+      <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
+  await sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: "team@drivereal.com" });
+}
+
+export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null }): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Agreement Signed — You're All Set</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is fully executed and saved to your account.</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`);
+  await sendEmail({ to: args.to, subject: "Your REAL RENTALS Agreement Is Signed", html, replyTo: "team@drivereal.com" });
+}
+
+export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null }): Promise<void> {
+  const url = `https://drivereal.com/admin?driver=${encodeURIComponent(args.applicationId)}`;
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Rental Agreement Signed</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their rental agreement${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
+      <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
+  await sendEmail({ to: "go@drivereal.com", subject: `Signed Agreement — ${args.driverName}`, html });
+}
