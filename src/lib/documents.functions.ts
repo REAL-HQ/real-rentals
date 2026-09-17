@@ -220,11 +220,11 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const patch: Record<string, unknown> = {};
+    const patch: Record<string, any> = {};
     if (data.expiresAt !== undefined) patch.expires_at = data.expiresAt || null;
     if (data.label !== undefined) patch.label = data.label;
     if (data.internal !== undefined) patch.visibility = data.internal ? ["admin"] : ["driver", "admin"];
-    const { error } = await supabaseAdmin.from("documents").update(patch).eq("id", data.id);
+    const { error } = await supabaseAdmin.from("documents").update(patch as any).eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
