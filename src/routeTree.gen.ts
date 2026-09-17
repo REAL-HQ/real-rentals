@@ -27,6 +27,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
+import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
@@ -123,6 +124,11 @@ const FleetIndexRoute = FleetIndexRouteImport.update({
   path: '/fleet/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignTokenRoute = SignTokenRouteImport.update({
+  id: '/sign/$token',
+  path: '/sign/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FleetIdRoute = FleetIdRouteImport.update({
   id: '/fleet/$id',
   path: '/fleet/$id',
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -197,6 +204,7 @@ export interface FileRoutesByTo {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/sign/$token': typeof SignTokenRoute
   '/fleet': typeof FleetIndexRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -223,6 +231,7 @@ export interface FileRoutesById {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -250,6 +259,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/sign/$token'
     | '/fleet'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -300,6 +311,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -326,6 +338,7 @@ export interface RootRouteChildren {
   ThankYouRoute: typeof ThankYouRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
+  SignTokenRoute: typeof SignTokenRoute
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
@@ -460,6 +473,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sign/$token': {
+      id: '/sign/$token'
+      path: '/sign/$token'
+      fullPath: '/sign/$token'
+      preLoaderRoute: typeof SignTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fleet/$id': {
       id: '/fleet/$id'
       path: '/fleet/$id'
@@ -518,6 +538,7 @@ const rootRouteChildren: RootRouteChildren = {
   ThankYouRoute: ThankYouRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
+  SignTokenRoute: SignTokenRoute,
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
