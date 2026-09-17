@@ -14,6 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
+      agreement_templates: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      agreements: {
+        Row: {
+          application_id: string
+          body: string
+          company_signer_name: string
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          id: string
+          merge_data: Json
+          rental_id: string | null
+          sent_at: string | null
+          signed_at: string | null
+          signer_email: string | null
+          signer_ip: string | null
+          signer_name: string | null
+          signer_user_agent: string | null
+          status: string
+          template_id: string | null
+          title: string
+          token_expires_at: string | null
+          token_hash: string | null
+          updated_at: string
+          vehicle_id: string | null
+          viewed_at: string | null
+          voided_at: string | null
+        }
+        Insert: {
+          application_id: string
+          body: string
+          company_signer_name?: string
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          id?: string
+          merge_data?: Json
+          rental_id?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          signer_email?: string | null
+          signer_ip?: string | null
+          signer_name?: string | null
+          signer_user_agent?: string | null
+          status?: string
+          template_id?: string | null
+          title?: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          viewed_at?: string | null
+          voided_at?: string | null
+        }
+        Update: {
+          application_id?: string
+          body?: string
+          company_signer_name?: string
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          id?: string
+          merge_data?: Json
+          rental_id?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          signer_email?: string | null
+          signer_ip?: string | null
+          signer_name?: string | null
+          signer_user_agent?: string | null
+          status?: string
+          template_id?: string | null
+          title?: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          viewed_at?: string | null
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agreements_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreements_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreements_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreements_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreements_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           key: string
@@ -374,41 +521,71 @@ export type Database = {
       }
       documents: {
         Row: {
+          category: string
           created_at: string
           driver_id: string | null
+          expires_at: string | null
+          file_name: string | null
           id: string
+          is_current: boolean
           kind: string
+          label: string | null
+          mime_type: string | null
           notes: string | null
           partner_id: string | null
+          size_bytes: number | null
           storage_bucket: string
           storage_path: string
+          superseded_by: string | null
           updated_at: string
+          uploaded_by: string | null
+          uploaded_by_role: string | null
           vehicle_id: string | null
           visibility: string[]
         }
         Insert: {
+          category?: string
           created_at?: string
           driver_id?: string | null
+          expires_at?: string | null
+          file_name?: string | null
           id?: string
+          is_current?: boolean
           kind: string
+          label?: string | null
+          mime_type?: string | null
           notes?: string | null
           partner_id?: string | null
+          size_bytes?: number | null
           storage_bucket: string
           storage_path: string
+          superseded_by?: string | null
           updated_at?: string
+          uploaded_by?: string | null
+          uploaded_by_role?: string | null
           vehicle_id?: string | null
           visibility?: string[]
         }
         Update: {
+          category?: string
           created_at?: string
           driver_id?: string | null
+          expires_at?: string | null
+          file_name?: string | null
           id?: string
+          is_current?: boolean
           kind?: string
+          label?: string | null
+          mime_type?: string | null
           notes?: string | null
           partner_id?: string | null
+          size_bytes?: number | null
           storage_bucket?: string
           storage_path?: string
+          superseded_by?: string | null
           updated_at?: string
+          uploaded_by?: string | null
+          uploaded_by_role?: string | null
           vehicle_id?: string | null
           visibility?: string[]
         }
@@ -425,6 +602,13 @@ export type Database = {
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
           {
