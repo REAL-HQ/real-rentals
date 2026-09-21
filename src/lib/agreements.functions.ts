@@ -55,7 +55,10 @@ function money(v: unknown): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-async function buildMergeData(admin: any, applicationId: string): Promise<{ data: MergeData; app: any; vehicle: any }> {
+async function buildMergeData(
+  admin: any,
+  applicationId: string,
+): Promise<{ data: MergeData; app: any; vehicle: any }> {
   const { data: app, error } = await admin
     .from("applications")
     .select(
@@ -78,7 +81,11 @@ async function buildMergeData(admin: any, applicationId: string): Promise<{ data
 
   let marketName: string | null = null;
   if (app.market_id) {
-    const { data: m } = await admin.from("markets").select("name,state").eq("id", app.market_id).maybeSingle();
+    const { data: m } = await admin
+      .from("markets")
+      .select("name,state")
+      .eq("id", app.market_id)
+      .maybeSingle();
     marketName = m ? [m.name, m.state].filter(Boolean).join(", ") : null;
   }
 
@@ -91,7 +98,9 @@ async function buildMergeData(admin: any, applicationId: string): Promise<{ data
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: app.license_expiration ?? "",
-    vehicle: vehicle ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ") : "",
+    vehicle: vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ")
+      : "",
     vehicle_color: vehicle?.color ?? "",
     vehicle_vin: vehicle?.id ? String(vehicle.id).slice(0, 8).toUpperCase() : "",
     weekly_rate: money(app.weekly_rent ?? vehicle?.weekly_rate),
@@ -99,7 +108,11 @@ async function buildMergeData(admin: any, applicationId: string): Promise<{ data
     start_date: app.pickup_date ?? "",
     return_date: app.return_date ?? "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    today: new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }),
   };
   return { data, app, vehicle };
 }
@@ -132,7 +145,10 @@ export const saveAgreementTemplate = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("agreement_templates").update({ is_active: false }).eq("is_active", true);
+    await supabaseAdmin
+      .from("agreement_templates")
+      .update({ is_active: false })
+      .eq("is_active", true);
     const { data: row, error } = await supabaseAdmin
       .from("agreement_templates")
       .insert({ name: "Rental Agreement", body: data.body, is_active: true })
@@ -180,6 +196,94 @@ export const previewAgreement = createServerFn({ method: "POST" })
 
 // ---------------------------------------------------------------- admin writes
 
+/**
+ * Build, store and email a rental agreement.
+ *
+ * Extracted from the sendAgreement server function so approval can send the
+ * agreement automatically without going back through the HTTP layer. Not a
+ * server function itself — callers are already authenticated and have done
+ * their own staff check.
+ */
+export async function issueAgreement(
+  admin: any,
+  applicationId: string,
+  opts: { body?: string; createdBy?: string | null } = {},
+): Promise<{ id: string; url: string }> {
+  const { data: merge, app } = await buildMergeData(admin, applicationId);
+  if (!app.email) throw new Error("This driver has no email on file");
+  const tpl = await activeTemplateBody(admin);
+  const body = opts.body ?? renderTemplate(tpl.body, merge);
+
+  const token = randomToken();
+  const tokenHash = await hashToken(token);
+  const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+  const { data: row, error } = await admin
+    .from("agreements")
+    .insert({
+      application_id: applicationId,
+      vehicle_id: app.vehicle_id ?? null,
+      template_id: tpl.id,
+      body,
+      merge_data: merge,
+      status: "sent",
+      token_hash: tokenHash,
+      token_expires_at: expires,
+      sent_at: new Date().toISOString(),
+      signer_email: app.email,
+      created_by: opts.createdBy ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  const url = `${SITE_URL()}/sign/${token}`;
+  try {
+    const { sendAgreementEmail } = await import("@/lib/email.server");
+    await sendAgreementEmail({
+      to: app.email as string,
+      firstName: (app.full_name as string | null) ?? null,
+      url,
+      vehicle: merge.vehicle || null,
+    });
+  } catch (e) {
+    console.error("[agreement] email failed", e);
+  }
+
+  // Text the link too when they opted in — signature turnaround is the
+  // slowest step between approval and handing over keys.
+  try {
+    const { sendSms } = await import("@/lib/sms.server");
+    await sendSms({
+      to: (app.phone as string) ?? "",
+      body: `REAL RENTALS: Your rental agreement is ready to sign: ${url} Reply STOP to opt out.`,
+      kind: "agreement_sent",
+      applicationId,
+    });
+  } catch (e) {
+    console.error("[agreement] sms failed", e);
+  }
+
+  return { id: row.id as string, url };
+}
+
+/**
+ * Is there already an agreement this applicant can act on?
+ * Used to keep approval from sending a second copy on every status change.
+ */
+export async function hasOpenOrSignedAgreement(
+  admin: any,
+  applicationId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from("agreements")
+    .select("id")
+    .eq("application_id", applicationId)
+    .in("status", ["sent", "viewed", "signed"])
+    .limit(1);
+  return !!(data && data.length);
+}
+
 export const sendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
@@ -193,47 +297,10 @@ export const sendAgreement = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: merge, app } = await buildMergeData(supabaseAdmin, data.applicationId);
-    if (!app.email) throw new Error("This driver has no email on file");
-    const tpl = await activeTemplateBody(supabaseAdmin);
-    const body = data.body ?? renderTemplate(tpl.body, merge);
-
-    const token = randomToken();
-    const tokenHash = await hashToken(token);
-    const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-
-    const { data: row, error } = await supabaseAdmin
-      .from("agreements")
-      .insert({
-        application_id: data.applicationId,
-        vehicle_id: app.vehicle_id ?? null,
-        template_id: tpl.id,
-        body,
-        merge_data: merge,
-        status: "sent",
-        token_hash: tokenHash,
-        token_expires_at: expires,
-        sent_at: new Date().toISOString(),
-        signer_email: app.email,
-        created_by: context.userId,
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-
-    const url = `${SITE_URL()}/sign/${token}`;
-    try {
-      const { sendAgreementEmail } = await import("@/lib/email.server");
-      await sendAgreementEmail({
-        to: app.email as string,
-        firstName: (app.full_name as string | null) ?? null,
-        url,
-        vehicle: merge.vehicle || null,
-      });
-    } catch (e) {
-      console.error("[agreement] email failed", e);
-    }
-    return { id: row.id as string, url };
+    return issueAgreement(supabaseAdmin, data.applicationId, {
+      body: data.body,
+      createdBy: context.userId,
+    });
   });
 
 export const resendAgreement = createServerFn({ method: "POST" })
@@ -248,7 +315,8 @@ export const resendAgreement = createServerFn({ method: "POST" })
       .eq("id", data.agreementId)
       .maybeSingle();
     if (!ag) throw new Error("Agreement not found");
-    if (ag.status === "signed" || ag.status === "voided") throw new Error("This agreement can no longer be sent");
+    if (ag.status === "signed" || ag.status === "voided")
+      throw new Error("This agreement can no longer be sent");
 
     const token = randomToken();
     const tokenHash = await hashToken(token);
@@ -315,11 +383,17 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     const hash = await hashToken(data.token);
     const { data: ag } = await supabaseAdmin
       .from("agreements")
-      .select("id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at")
+      .select(
+        "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at",
+      )
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) return null;
-    if (ag.token_expires_at && new Date(ag.token_expires_at as string).getTime() < Date.now() && ag.status !== "signed") {
+    if (
+      ag.token_expires_at &&
+      new Date(ag.token_expires_at as string).getTime() < Date.now() &&
+      ag.status !== "signed"
+    ) {
       return null;
     }
     if (ag.status === "sent" && !ag.viewed_at) {
@@ -385,7 +459,9 @@ export const signAgreement = createServerFn({ method: "POST" })
     const hash = await hashToken(data.token);
     const { data: ag } = await supabaseAdmin
       .from("agreements")
-      .select("id,application_id,title,body,status,company_signer_name,signer_email,merge_data,token_expires_at")
+      .select(
+        "id,application_id,title,body,status,company_signer_name,signer_email,merge_data,token_expires_at",
+      )
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) throw new Error("This signing link is no longer valid");
@@ -418,7 +494,10 @@ export const signAgreement = createServerFn({ method: "POST" })
     let documentId: string | null = null;
     const up = await supabaseAdmin.storage
       .from("rental-agreements")
-      .upload(path, new Blob([html], { type: "text/html" }), { contentType: "text/html", upsert: true });
+      .upload(path, new Blob([html], { type: "text/html" }), {
+        contentType: "text/html",
+        upsert: true,
+      });
     if (up.error) {
       console.error("[agreement] archive upload failed", up.error);
     } else {
@@ -457,7 +536,8 @@ export const signAgreement = createServerFn({ method: "POST" })
 
     const merge = (ag.merge_data ?? {}) as MergeData;
     try {
-      const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
+      const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } =
+        await import("@/lib/email.server");
       if (ag.signer_email) {
         await sendAgreementSignedEmail({
           to: ag.signer_email as string,
@@ -487,7 +567,15 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       .select("id")
       .eq("user_id", context.userId);
     const ids = (apps ?? []).map((a: any) => a.id);
-    if (!ids.length) return [] as Array<{ id: string; title: string; status: string; signed_at: string | null; sent_at: string | null; body: string }>;
+    if (!ids.length)
+      return [] as Array<{
+        id: string;
+        title: string;
+        status: string;
+        signed_at: string | null;
+        sent_at: string | null;
+        body: string;
+      }>;
     const { data } = await context.supabase
       .from("agreements")
       .select("id,title,status,signed_at,sent_at,body")
@@ -506,7 +594,13 @@ export const getMyAgreements = createServerFn({ method: "GET" })
 export const signMyAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({ agreementId: z.string().uuid(), signerName: z.string().trim().min(2).max(120), agree: z.literal(true) }).parse(d),
+    z
+      .object({
+        agreementId: z.string().uuid(),
+        signerName: z.string().trim().min(2).max(120),
+        agree: z.literal(true),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     // Confirm ownership through RLS before using the privileged path.
@@ -523,7 +617,10 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     const hash = await hashToken(token);
     await supabaseAdmin
       .from("agreements")
-      .update({ token_hash: hash, token_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() })
+      .update({
+        token_hash: hash,
+        token_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      })
       .eq("id", data.agreementId);
     return signAgreement({ data: { token, signerName: data.signerName, agree: true } });
   });

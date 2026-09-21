@@ -30,9 +30,12 @@ import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
+import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
+import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
+import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 
 const ThankYouRoute = ThankYouRouteImport.update({
   id: '/thank-you',
@@ -139,6 +142,11 @@ const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   path: '/card/$applicationId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
+  id: '/api/public/sms/inbound',
+  path: '/api/public/sms/inbound',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -155,6 +163,17 @@ const ApiPublicCronOpsRemindersRoute =
   ApiPublicCronOpsRemindersRouteImport.update({
     id: '/api/public/cron/ops-reminders',
     path: '/api/public/cron/ops-reminders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicCronLateFeesRoute = ApiPublicCronLateFeesRouteImport.update({
+  id: '/api/public/cron/late-fees',
+  path: '/api/public/cron/late-fees',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicCronAutomationsRoute =
+  ApiPublicCronAutomationsRouteImport.update({
+    id: '/api/public/cron/automations',
+    path: '/api/public/cron/automations',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -180,9 +199,12 @@ export interface FileRoutesByFullPath {
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
+  '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -206,9 +228,12 @@ export interface FileRoutesByTo {
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet': typeof FleetIndexRoute
+  '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -233,9 +258,12 @@ export interface FileRoutesById {
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
+  '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -261,9 +289,12 @@ export interface FileRouteTypes {
     | '/fleet/$id'
     | '/sign/$token'
     | '/fleet/'
+    | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/sms/inbound'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -287,9 +318,12 @@ export interface FileRouteTypes {
     | '/fleet/$id'
     | '/sign/$token'
     | '/fleet'
+    | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/sms/inbound'
   id:
     | '__root__'
     | '/'
@@ -313,9 +347,12 @@ export interface FileRouteTypes {
     | '/fleet/$id'
     | '/sign/$token'
     | '/fleet/'
+    | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/sms/inbound'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -340,9 +377,12 @@ export interface RootRouteChildren {
   FleetIdRoute: typeof FleetIdRoute
   SignTokenRoute: typeof SignTokenRoute
   FleetIndexRoute: typeof FleetIndexRoute
+  ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
+  ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
+  ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -494,6 +534,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CardApplicationIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/sms/inbound': {
+      id: '/api/public/sms/inbound'
+      path: '/api/public/sms/inbound'
+      fullPath: '/api/public/sms/inbound'
+      preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -513,6 +560,20 @@ declare module '@tanstack/react-router' {
       path: '/api/public/cron/ops-reminders'
       fullPath: '/api/public/cron/ops-reminders'
       preLoaderRoute: typeof ApiPublicCronOpsRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/late-fees': {
+      id: '/api/public/cron/late-fees'
+      path: '/api/public/cron/late-fees'
+      fullPath: '/api/public/cron/late-fees'
+      preLoaderRoute: typeof ApiPublicCronLateFeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/automations': {
+      id: '/api/public/cron/automations'
+      path: '/api/public/cron/automations'
+      fullPath: '/api/public/cron/automations'
+      preLoaderRoute: typeof ApiPublicCronAutomationsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -540,9 +601,12 @@ const rootRouteChildren: RootRouteChildren = {
   FleetIdRoute: FleetIdRoute,
   SignTokenRoute: SignTokenRoute,
   FleetIndexRoute: FleetIndexRoute,
+  ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
+  ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
+  ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, ArrowRight, Check, Loader2, Mail, Upload, Car, CalendarCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Mail,
+  Upload,
+  Car,
+  CalendarCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
@@ -59,6 +68,10 @@ type WizardState = {
   license_photo_url: string | null;
   full_coverage_insurance: boolean | null;
   insurance_doc_url: string | null;
+  insurance_carrier: string | null;
+  insurance_policy_number: string | null;
+  insurance_expires_on: string | null;
+  insurance_rideshare_endorsement: boolean | null;
   address: string | null;
   state: string | null;
   zip: string | null;
@@ -69,7 +82,16 @@ type WizardState = {
 const GIG_OPTS = ["Yes, already driving", "Not yet, ready to start", "No"];
 const START_OPTS = ["Today", "This week", "Within 2 weeks", "Just checking options"];
 const VEHICLE_OPTS = ["Sedan", "SUV", "XL"];
-const PLATFORM_OPTS = ["Uber", "Lyft", "DoorDash", "Uber Eats", "Instacart", "GrubHub", "Amazon Flex", "Other"];
+const PLATFORM_OPTS = [
+  "Uber",
+  "Lyft",
+  "DoorDash",
+  "Uber Eats",
+  "Instacart",
+  "GrubHub",
+  "Amazon Flex",
+  "Other",
+];
 const HOW_HEARD_OPTS = ["Facebook", "Instagram", "Referral", "Google", "Other"];
 
 export function ApplicationWizard({ id }: { id: string }) {
@@ -104,6 +126,10 @@ export function ApplicationWizard({ id }: { id: string }) {
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
           insurance_doc_url: (row as any).insurance_doc_url ?? null,
+          insurance_carrier: (row as any).insurance_carrier ?? null,
+          insurance_policy_number: (row as any).insurance_policy_number ?? null,
+          insurance_expires_on: (row as any).insurance_expires_on ?? null,
+          insurance_rideshare_endorsement: (row as any).insurance_rideshare_endorsement ?? null,
           address: null,
           state: row.state,
           zip: null,
@@ -157,39 +183,80 @@ export function ApplicationWizard({ id }: { id: string }) {
       <FadeUp delay={50}>
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
           {step === "eligibility" && (
-            <EligibilityStep source={state.source} state={state} update={update} onNext={() => goNext("rental", {
-              license_valid: state.license_valid,
-              gig_status: state.gig_status,
-              start_timing: state.start_timing,
-            })} saving={saving} />
+            <EligibilityStep
+              source={state.source}
+              state={state}
+              update={update}
+              onNext={() =>
+                goNext("rental", {
+                  license_valid: state.license_valid,
+                  gig_status: state.gig_status,
+                  start_timing: state.start_timing,
+                })
+              }
+              saving={saving}
+            />
           )}
           {step === "rental" && (
-            <RentalStep source={state.source} state={state} update={update} onBack={goBack} onNext={() => goNext("gig", {
-              vehicle_size: state.vehicle_size,
-              pickup_date: state.pickup_date,
-              return_date: state.return_date,
-            })} saving={saving} />
+            <RentalStep
+              source={state.source}
+              state={state}
+              update={update}
+              onBack={goBack}
+              onNext={() =>
+                goNext("gig", {
+                  vehicle_size: state.vehicle_size,
+                  pickup_date: state.pickup_date,
+                  return_date: state.return_date,
+                })
+              }
+              saving={saving}
+            />
           )}
           {step === "gig" && (
-            <GigStep source={state.source} id={id} state={state} update={update} onBack={goBack} onNext={() => goNext("driver", {
-              platforms: state.platforms,
-              profile_screenshot_url: state.profile_screenshot_url,
-              trips_completed: state.trips_completed,
-              rating: state.rating,
-              trip_screenshots: state.trip_screenshots,
-            })} saving={saving} />
+            <GigStep
+              source={state.source}
+              id={id}
+              state={state}
+              update={update}
+              onBack={goBack}
+              onNext={() =>
+                goNext("driver", {
+                  platforms: state.platforms,
+                  profile_screenshot_url: state.profile_screenshot_url,
+                  trips_completed: state.trips_completed,
+                  rating: state.rating,
+                  trip_screenshots: state.trip_screenshots,
+                })
+              }
+              saving={saving}
+            />
           )}
           {step === "driver" && (
-            <DriverStep source={state.source} id={id} state={state} update={update} onBack={goBack} onSubmit={() => goNext("complete", {
-              license_photo_url: state.license_photo_url,
-              full_coverage_insurance: state.full_coverage_insurance,
-              insurance_doc_url: state.insurance_doc_url,
-              address: state.address,
-              city: state.city,
-              state: state.state,
-              zip: state.zip,
-              how_heard: state.how_heard,
-            })} saving={saving} />
+            <DriverStep
+              source={state.source}
+              id={id}
+              state={state}
+              update={update}
+              onBack={goBack}
+              onSubmit={() =>
+                goNext("complete", {
+                  license_photo_url: state.license_photo_url,
+                  full_coverage_insurance: state.full_coverage_insurance,
+                  insurance_doc_url: state.insurance_doc_url,
+                  insurance_carrier: state.insurance_carrier,
+                  insurance_policy_number: state.insurance_policy_number,
+                  insurance_expires_on: state.insurance_expires_on,
+                  insurance_rideshare_endorsement: state.insurance_rideshare_endorsement,
+                  address: state.address,
+                  city: state.city,
+                  state: state.state,
+                  zip: state.zip,
+                  how_heard: state.how_heard,
+                })
+              }
+              saving={saving}
+            />
           )}
           {step === "complete" ? (
             <ConfirmationStep id={id} state={state} />
@@ -220,8 +287,12 @@ export function ProgressBar({
         const active = i === currentIdx;
         return (
           <div key={s.key} className="flex-1">
-            <div className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`} />
-            <div className={`mt-1.5 text-[10px] uppercase tracking-wider text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}>
+            <div
+              className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`}
+            />
+            <div
+              className={`mt-1.5 text-[10px] uppercase tracking-wider text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
+            >
               {s.label}
             </div>
           </div>
@@ -240,7 +311,9 @@ function stepEyebrow(source: string | null | undefined, step: WizardStep) {
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
     <div className="mb-6">
-      <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">{eyebrow}</div>
+      <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">
+        {eyebrow}
+      </div>
       <h2 className="mt-2 text-2xl md:text-3xl font-semibold">{title}</h2>
       {sub && <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{sub}</p>}
     </div>
@@ -260,7 +333,9 @@ function RadioGroup<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </div>
       <div className="mt-2 flex flex-wrap gap-2">
         {options.map((o) => {
           const active = value === o;
@@ -280,15 +355,38 @@ function RadioGroup<T extends string>({
   );
 }
 
-function NavRow({ onBack, onNext, saving, nextLabel = "Next", canNext = true }: { onBack?: () => void; onNext: () => void; saving: boolean; nextLabel?: string; canNext?: boolean }) {
+function NavRow({
+  onBack,
+  onNext,
+  saving,
+  nextLabel = "Next",
+  canNext = true,
+}: {
+  onBack?: () => void;
+  onNext: () => void;
+  saving: boolean;
+  nextLabel?: string;
+  canNext?: boolean;
+}) {
   return (
     <div className="mt-8 flex items-center justify-between gap-3">
       {onBack ? (
-        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:border-foreground/40">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:border-foreground/40"
+        >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
-      ) : <div />}
-      <button type="button" onClick={onNext} disabled={saving || !canNext} className="inline-flex items-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+      ) : (
+        <div />
+      )}
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={saving || !canNext}
+        className="inline-flex items-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+      >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {nextLabel} <ArrowRight className="h-4 w-4" />
       </button>
@@ -303,51 +401,109 @@ type StepProps = {
   source: string | null | undefined;
 };
 
-function EligibilityStep({ state, update, onNext, saving, source }: StepProps & { onNext: () => void }) {
+function EligibilityStep({
+  state,
+  update,
+  onNext,
+  saving,
+  source,
+}: StepProps & { onNext: () => void }) {
   const canNext = state.license_valid !== null && !!state.start_timing;
   return (
     <div>
-      <StepHeader eyebrow={stepEyebrow(source, "eligibility")} title="Quick Eligibility" sub="A few quick questions so we can match you with the right vehicle." />
+      <StepHeader
+        eyebrow={stepEyebrow(source, "eligibility")}
+        title="Quick Eligibility"
+        sub="A few quick questions so we can match you with the right vehicle."
+      />
       <div className="space-y-6">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Do You Currently Hold A Valid Driver's License?</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Do You Currently Hold A Valid Driver's License?
+          </div>
           <div className="mt-2 flex gap-2">
             {[true, false].map((v) => {
               const active = state.license_valid === v;
               return (
-                <button key={String(v)} type="button" onClick={() => update("license_valid", v)} className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}>
+                <button
+                  key={String(v)}
+                  type="button"
+                  onClick={() => update("license_valid", v)}
+                  className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                >
                   {v ? "Yes" : "No"}
                 </button>
               );
             })}
           </div>
         </div>
-        <RadioGroup label="How Soon Do You Want To Start?" value={state.start_timing as any} options={START_OPTS} onChange={(v) => update("start_timing", v)} />
+        <RadioGroup
+          label="How Soon Do You Want To Start?"
+          value={state.start_timing as any}
+          options={START_OPTS}
+          onChange={(v) => update("start_timing", v)}
+        />
       </div>
       <NavRow onNext={onNext} saving={saving} canNext={canNext} />
     </div>
   );
 }
 
-function RentalStep({ state, update, onBack, onNext, saving, source }: StepProps & { onBack: () => void; onNext: () => void }) {
-  const canNext = !!state.vehicle_size && !!state.pickup_date && !!state.return_date && state.return_date > state.pickup_date;
+function RentalStep({
+  state,
+  update,
+  onBack,
+  onNext,
+  saving,
+  source,
+}: StepProps & { onBack: () => void; onNext: () => void }) {
+  const canNext =
+    !!state.vehicle_size &&
+    !!state.pickup_date &&
+    !!state.return_date &&
+    state.return_date > state.pickup_date;
   const today = new Date().toISOString().slice(0, 10);
   const days =
     state.pickup_date && state.return_date && state.return_date > state.pickup_date
-      ? Math.round((new Date(state.return_date).getTime() - new Date(state.pickup_date).getTime()) / 86400000)
+      ? Math.round(
+          (new Date(state.return_date).getTime() - new Date(state.pickup_date).getTime()) /
+            86400000,
+        )
       : null;
   return (
     <div>
-      <StepHeader eyebrow={stepEyebrow(source, "rental")} title="Rental Details" sub="Confirm what you need and when." />
+      <StepHeader
+        eyebrow={stepEyebrow(source, "rental")}
+        title="Rental Details"
+        sub="Confirm what you need and when."
+      />
       <div className="space-y-6">
-        <RadioGroup label="Which Vehicle Size Are You Interested In?" value={state.vehicle_size as any} options={VEHICLE_OPTS} onChange={(v) => update("vehicle_size", v)} />
+        <RadioGroup
+          label="Which Vehicle Size Are You Interested In?"
+          value={state.vehicle_size as any}
+          options={VEHICLE_OPTS}
+          onChange={(v) => update("vehicle_size", v)}
+        />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <DateField label="Pick Up Date" min={today} value={state.pickup_date ?? ""} onChange={(v) => update("pickup_date", v)} />
-          <DateField label="Return Date" min={state.pickup_date ?? today} value={state.return_date ?? ""} onChange={(v) => update("return_date", v)} />
+          <DateField
+            label="Pick Up Date"
+            min={today}
+            value={state.pickup_date ?? ""}
+            onChange={(v) => update("pickup_date", v)}
+          />
+          <DateField
+            label="Return Date"
+            min={state.pickup_date ?? today}
+            value={state.return_date ?? ""}
+            onChange={(v) => update("return_date", v)}
+          />
         </div>
         {days !== null && (
           <div className="text-xs text-muted-foreground">
-            Rental Length: <span className="font-semibold text-foreground">{days} {days === 1 ? "day" : "days"}</span>
+            Rental Length:{" "}
+            <span className="font-semibold text-foreground">
+              {days} {days === 1 ? "day" : "days"}
+            </span>
           </div>
         )}
       </div>
@@ -356,15 +512,22 @@ function RentalStep({ state, update, onBack, onNext, saving, source }: StepProps
   );
 }
 
-function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProps & { id: string; onBack: () => void; onNext: () => void }) {
+function GigStep({
+  id,
+  state,
+  update,
+  onBack,
+  onNext,
+  saving,
+  source,
+}: StepProps & { id: string; onBack: () => void; onNext: () => void }) {
   const trips = Number(state.trips_completed);
   const tripsOk = !Number.isNaN(trips) && trips >= 200;
-  const canNext =
-    state.platforms.length > 0 &&
-    tripsOk &&
-    state.trip_screenshots.length > 0;
+  const canNext = state.platforms.length > 0 && tripsOk && state.trip_screenshots.length > 0;
   const toggle = (p: string) => {
-    const next = state.platforms.includes(p) ? state.platforms.filter((x) => x !== p) : [...state.platforms, p];
+    const next = state.platforms.includes(p)
+      ? state.platforms.filter((x) => x !== p)
+      : [...state.platforms, p];
     update("platforms", next);
   };
   return (
@@ -376,12 +539,19 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
       />
       <div className="space-y-6">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">What Platforms Are You Currently Using?</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            What Platforms Are You Currently Using?
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {PLATFORM_OPTS.map((p) => {
               const active = state.platforms.includes(p);
               return (
-                <button key={p} type="button" onClick={() => toggle(p)} className={`rounded-lg border px-4 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}>
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => toggle(p)}
+                  className={`rounded-lg border px-4 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                >
                   {p}
                 </button>
               );
@@ -402,12 +572,16 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
               onChange={(e) => update("trips_completed", e.target.value || null)}
               className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
             />
-            <span className={`mt-1 block text-[11px] ${tripsOk ? "text-emerald-600" : "text-muted-foreground"}`}>
+            <span
+              className={`mt-1 block text-[11px] ${tripsOk ? "text-emerald-600" : "text-muted-foreground"}`}
+            >
               200+ required · combined across all apps
             </span>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Driver Rating</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Driver Rating
+            </span>
             <input
               type="number"
               step="0.01"
@@ -415,7 +589,9 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
               max={5}
               placeholder="e.g. 4.92"
               value={state.rating ?? ""}
-              onChange={(e) => update("rating", e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) =>
+                update("rating", e.target.value === "" ? null : Number(e.target.value))
+              }
               className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
             />
           </label>
@@ -439,11 +615,28 @@ function GigStep({ id, state, update, onBack, onNext, saving, source }: StepProp
   );
 }
 
-function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: StepProps & { id: string; onBack: () => void; onSubmit: () => void }) {
-  const canSubmit = !!state.address && !!state.state && !!state.zip && state.full_coverage_insurance !== null && !!state.how_heard;
+function DriverStep({
+  id,
+  state,
+  update,
+  onBack,
+  onSubmit,
+  saving,
+  source,
+}: StepProps & { id: string; onBack: () => void; onSubmit: () => void }) {
+  const canSubmit =
+    !!state.address &&
+    !!state.state &&
+    !!state.zip &&
+    state.full_coverage_insurance !== null &&
+    !!state.how_heard;
   return (
     <div>
-      <StepHeader eyebrow={stepEyebrow(source, "driver")} title="Driver & Insurance" sub="Last step. We need this for delivery + your rental records." />
+      <StepHeader
+        eyebrow={stepEyebrow(source, "driver")}
+        title="Driver & Insurance"
+        sub="Last step. We need this for delivery + your rental records."
+      />
       <div className="space-y-6">
         <FileUploadField
           label="Upload A Picture Of Your Driver's License — Optional, Helps Speed Approval"
@@ -454,12 +647,19 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: Ste
           onChange={(v) => update("license_photo_url", v)}
         />
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Do You Have Full Coverage Insurance?</div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Do You Have Full Coverage Insurance?
+          </div>
           <div className="mt-2 flex gap-2">
             {[true, false].map((v) => {
               const active = state.full_coverage_insurance === v;
               return (
-                <button key={String(v)} type="button" onClick={() => update("full_coverage_insurance", v)} className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}>
+                <button
+                  key={String(v)}
+                  type="button"
+                  onClick={() => update("full_coverage_insurance", v)}
+                  className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                >
                   {v ? "Yes" : "No"}
                 </button>
               );
@@ -467,24 +667,90 @@ function DriverStep({ id, state, update, onBack, onSubmit, saving, source }: Ste
           </div>
         </div>
         {state.full_coverage_insurance === true && (
-          <FileUploadField
-            label="Upload Your Insurance Card Or Declaration Page — Optional, Helps Speed Approval"
-            accept="image/*,application/pdf"
-            bucket="license-uploads"
-            applicationId={id}
-            value={state.insurance_doc_url}
-            onChange={(v) => update("insurance_doc_url", v)}
-          />
+          <div className="space-y-4 rounded-xl border border-border bg-white p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <TextField
+                label="Insurance Carrier"
+                value={state.insurance_carrier ?? ""}
+                onChange={(v) => update("insurance_carrier", v)}
+              />
+              <TextField
+                label="Policy Number"
+                value={state.insurance_policy_number ?? ""}
+                onChange={(v) => update("insurance_policy_number", v)}
+              />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Policy Expiration Date
+              </div>
+              <input
+                type="date"
+                value={state.insurance_expires_on ?? ""}
+                onChange={(e) => update("insurance_expires_on", e.target.value || null)}
+                className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Does Your Policy Include A Rideshare Endorsement?
+              </div>
+              <div className="mt-2 flex gap-2">
+                {[true, false].map((v) => {
+                  const active = state.insurance_rideshare_endorsement === v;
+                  return (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => update("insurance_rideshare_endorsement", v)}
+                      className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                    >
+                      {v ? "Yes" : "Not sure"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <FileUploadField
+              label="Upload Your Insurance Card Or Declaration Page — Optional, Helps Speed Approval"
+              accept="image/*,application/pdf"
+              bucket="license-uploads"
+              applicationId={id}
+              value={state.insurance_doc_url}
+              onChange={(v) => update("insurance_doc_url", v)}
+            />
+          </div>
         )}
-        <TextField label="Street Address" value={state.address ?? ""} onChange={(v) => update("address", v)} />
+        {state.full_coverage_insurance === false && (
+          <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
+            No problem — coverage is not required to apply. Our team will walk you through the
+            options that work for your situation when we call.
+          </div>
+        )}
+        <TextField
+          label="Street Address"
+          value={state.address ?? ""}
+          onChange={(v) => update("address", v)}
+        />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <TextField label="City" value={state.city ?? ""} onChange={(v) => update("city", v)} />
           <TextField label="State" value={state.state ?? ""} onChange={(v) => update("state", v)} />
           <TextField label="ZIP" value={state.zip ?? ""} onChange={(v) => update("zip", v)} />
         </div>
-        <RadioGroup label="How Did You Hear About Us?" value={state.how_heard as any} options={HOW_HEARD_OPTS} onChange={(v) => update("how_heard", v)} />
+        <RadioGroup
+          label="How Did You Hear About Us?"
+          value={state.how_heard as any}
+          options={HOW_HEARD_OPTS}
+          onChange={(v) => update("how_heard", v)}
+        />
       </div>
-      <NavRow onBack={onBack} onNext={onSubmit} saving={saving} canNext={canSubmit} nextLabel="Submit Application" />
+      <NavRow
+        onBack={onBack}
+        onNext={onSubmit}
+        saving={saving}
+        canNext={canSubmit}
+        nextLabel="Submit Application"
+      />
     </div>
   );
 }
@@ -499,14 +765,25 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
       : null;
   const chips = [
     state.city ? { icon: <CalendarCheck className="h-3.5 w-3.5" />, label: state.city } : null,
-    state.vehicle_size ? { icon: <Car className="h-3.5 w-3.5" />, label: state.vehicle_size } : null,
+    state.vehicle_size
+      ? { icon: <Car className="h-3.5 w-3.5" />, label: state.vehicle_size }
+      : null,
     dateRange ? { icon: <CalendarCheck className="h-3.5 w-3.5" />, label: dateRange } : null,
   ].filter(Boolean) as { icon: React.ReactNode; label: string }[];
 
   const steps = [
-    { title: "We'll Review & Call You", desc: "A team member will review your request and reach out shortly to confirm details." },
-    { title: "Confirm Your Vehicle", desc: "We'll walk through availability and match you to the right vehicle for your needs." },
-    { title: "Pick Up Or Delivery", desc: "Choose to pick up at our lot or have your vehicle delivered to you." },
+    {
+      title: "We'll Review & Call You",
+      desc: "A team member will review your request and reach out shortly to confirm details.",
+    },
+    {
+      title: "Confirm Your Vehicle",
+      desc: "We'll walk through availability and match you to the right vehicle for your needs.",
+    },
+    {
+      title: "Pick Up Or Delivery",
+      desc: "Choose to pick up at our lot or have your vehicle delivered to you.",
+    },
   ];
 
   return (
@@ -515,12 +792,17 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
         <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-[#FCEBEB] text-real-red">
           <Check className="h-8 w-8" strokeWidth={2.5} />
         </div>
-        <h2 className="mt-6 text-2xl md:text-3xl font-semibold tracking-tight">Request Received — We'll Be In Touch</h2>
+        <h2 className="mt-6 text-2xl md:text-3xl font-semibold tracking-tight">
+          Request Received — We'll Be In Touch
+        </h2>
         <p className="mt-3 text-sm md:text-base text-muted-foreground max-w-xl leading-snug">
-          Thanks, {firstName}. A member of our team will review your request and call you shortly to confirm availability and your vehicle.
+          Thanks, {firstName}. A member of our team will review your request and call you shortly to
+          confirm availability and your vehicle.
         </p>
         <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-1.5 text-xs">
-          <span className="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold">Reference</span>
+          <span className="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold">
+            Reference
+          </span>
           <span className="font-mono font-semibold text-foreground">#{reference}</span>
         </div>
       </div>
@@ -528,7 +810,10 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
       {chips.length > 0 && (
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           {chips.map((c, i) => (
-            <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-white border border-border px-3 py-1.5 text-xs text-foreground">
+            <span
+              key={i}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white border border-border px-3 py-1.5 text-xs text-foreground"
+            >
               {c.icon}
               {c.label}
             </span>
@@ -537,10 +822,15 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
       )}
 
       <div className="mt-8">
-        <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-muted-foreground mb-4 text-center">What Happens Next</div>
+        <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-muted-foreground mb-4 text-center">
+          What Happens Next
+        </div>
         <ol className="space-y-4">
           {steps.map((s, i) => (
-            <li key={i} className="flex items-start gap-4 rounded-xl bg-white border border-border p-4">
+            <li
+              key={i}
+              className="flex items-start gap-4 rounded-xl bg-white border border-border p-4"
+            >
               <div className="flex-shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full bg-real-red text-white text-sm font-semibold">
                 {i + 1}
               </div>
@@ -554,17 +844,28 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
       </div>
 
       <div className="mt-6 rounded-xl bg-white border border-border p-4">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">Questions Now?</div>
-        <a href={`mailto:${email}`} className="inline-flex items-center gap-2 text-sm font-semibold text-foreground hover:text-real-red break-all">
+        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+          Questions Now?
+        </div>
+        <a
+          href={`mailto:${email}`}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-foreground hover:text-real-red break-all"
+        >
           <Mail className="h-4 w-4 text-real-red" /> {email}
         </a>
       </div>
 
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <a href={`mailto:${email}`} className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90">
+        <a
+          href={`mailto:${email}`}
+          className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+        >
           <Mail className="h-4 w-4" /> Email Us
         </a>
-        <Link to="/fleet" className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40">
+        <Link
+          to="/fleet"
+          className="flex-1 inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
+        >
           Browse Vehicles
         </Link>
       </div>
@@ -582,10 +883,20 @@ function fmtDate(s: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </span>
       <input
         type="text"
         value={value}
@@ -596,10 +907,22 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
   );
 }
 
-function DateField({ label, value, onChange, min }: { label: string; value: string; onChange: (v: string) => void; min?: string }) {
+function DateField({
+  label,
+  value,
+  onChange,
+  min,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+}) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </span>
       <input
         type="date"
         min={min}
@@ -613,14 +936,20 @@ function DateField({ label, value, onChange, min }: { label: string; value: stri
 
 function extFromMime(mime: string): string {
   switch ((mime || "").toLowerCase()) {
-    case "image/png": return "png";
+    case "image/png":
+      return "png";
     case "image/jpeg":
-    case "image/jpg": return "jpg";
-    case "image/webp": return "webp";
+    case "image/jpg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
     case "image/heic":
-    case "image/heif": return "heic";
-    case "application/pdf": return "pdf";
-    default: return "jpg";
+    case "image/heif":
+      return "heic";
+    case "application/pdf":
+      return "pdf";
+    default:
+      return "jpg";
   }
 }
 
@@ -651,13 +980,17 @@ function FileUploadField({
     try {
       const ext = extFromMime(file.type);
       const path = `${applicationId}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type || undefined });
+      const { error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { upsert: true, contentType: file.type || undefined });
       if (error) throw error;
       onChange(path);
       toast.success("Uploaded");
     } catch (e: any) {
       console.error("[upload] failed", e);
-      toast.error("We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.");
+      toast.error(
+        "We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.",
+      );
     } finally {
       setUploading(false);
     }
@@ -665,7 +998,9 @@ function FileUploadField({
 
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </div>
       <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-4 cursor-pointer hover:border-real-red/60">
         <input
           type="file"
@@ -676,9 +1011,21 @@ function FileUploadField({
             if (f) handleFile(f);
           }}
         />
-        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : <Upload className="h-5 w-5 text-muted-foreground" />}
+        {uploading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : (
+          <Upload className="h-5 w-5 text-muted-foreground" />
+        )}
         <div className="text-sm">
-          {value ? <span className="text-foreground">Uploaded: <span className="text-muted-foreground">{filename}</span></span> : <span className="text-muted-foreground">Click to upload (PDF, DOC, or image, up to 10MB)</span>}
+          {value ? (
+            <span className="text-foreground">
+              Uploaded: <span className="text-muted-foreground">{filename}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              Click to upload (PDF, DOC, or image, up to 10MB)
+            </span>
+          )}
         </div>
       </label>
     </div>
@@ -715,10 +1062,14 @@ function MultiFileUploadField({
         }
         const ext = extFromMime(file.type);
         const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true, contentType: file.type || undefined });
+        const { error } = await supabase.storage
+          .from(bucket)
+          .upload(path, file, { upsert: true, contentType: file.type || undefined });
         if (error) {
           console.error("[upload] failed", error);
-          toast.error("We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.");
+          toast.error(
+            "We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.",
+          );
           continue;
         }
         uploaded.push(path);
@@ -753,7 +1104,11 @@ function MultiFileUploadField({
             e.target.value = "";
           }}
         />
-        {uploading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : <Upload className="h-5 w-5 text-muted-foreground" />}
+        {uploading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : (
+          <Upload className="h-5 w-5 text-muted-foreground" />
+        )}
         <div className="text-sm text-muted-foreground">
           Click to upload one or more files (PDF or image, up to 10MB each)
         </div>
@@ -761,7 +1116,10 @@ function MultiFileUploadField({
       {values.length > 0 && (
         <ul className="mt-3 space-y-2">
           {values.map((path) => (
-            <li key={path} className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm">
+            <li
+              key={path}
+              className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm"
+            >
               <span className="truncate text-muted-foreground">{path.split("/").pop()}</span>
               <button
                 type="button"

@@ -18,8 +18,16 @@ const submitApplicationSchema = z.object({
   state: nullableString,
   sms_consent: z.boolean().nullable().optional(),
   source: z.string().trim().max(40).nullable().optional(),
-  pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  pickup_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  return_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   utm_source: nullableString,
   utm_medium: nullableString,
   utm_campaign: nullableString,
@@ -51,7 +59,9 @@ export const submitApplication = createServerFn({ method: "POST" })
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: dupes } = await supabaseAdmin
       .from("applications")
-      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at, phone, email, status")
+      .select(
+        "id, primary_application_id, resubmission_count, resubmission_history, created_at, phone, email, status",
+      )
       .or(`phone.ilike.%${phoneDigits.slice(-10)}%,email.ilike.${emailNorm}`)
       .neq("status", "duplicate")
       .gte("created_at", cutoff)
@@ -167,8 +177,16 @@ const stepUpdateSchema = z.object({
   // Rental
   vehicle_size: z.string().trim().max(40).nullable().optional(),
   rental_duration: z.string().trim().max(40).nullable().optional(),
-  pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  pickup_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  return_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   // Gig
   platforms: z.array(z.string().trim().min(1).max(60)).max(12).nullable().optional(),
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
@@ -179,6 +197,14 @@ const stepUpdateSchema = z.object({
   license_photo_url: z.string().trim().max(500).nullable().optional(),
   full_coverage_insurance: z.boolean().nullable().optional(),
   insurance_doc_url: z.string().trim().max(500).nullable().optional(),
+  insurance_carrier: z.string().trim().max(120).nullable().optional(),
+  insurance_policy_number: z.string().trim().max(80).nullable().optional(),
+  insurance_expires_on: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  insurance_rideshare_endorsement: z.boolean().nullable().optional(),
   address: z.string().trim().max(200).nullable().optional(),
   city: z.string().trim().max(80).nullable().optional(),
   state: z.string().trim().max(60).nullable().optional(),
@@ -215,26 +241,36 @@ function computeScore(row: any): number {
 
 export const savePartialApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
-    z.object({
-      full_name: z.string().trim().min(2).max(120),
-      phone: z.string().trim().min(7).max(30),
-      email: z.string().trim().email().max(160),
-      sms_consent: z.boolean(),
-      market_id: nullableUuid,
-      city: nullableString,
-      state: nullableString,
-      pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-      source: z.enum(["homepage", "city_lp"]),
-      utm_source: nullableString,
-      utm_medium: nullableString,
-      utm_campaign: nullableString,
-      utm_term: nullableString,
-      utm_content: nullableString,
-      gclid: nullableString,
-      landing_page: nullableString,
-      referrer: nullableString,
-    }).parse(data),
+    z
+      .object({
+        full_name: z.string().trim().min(2).max(120),
+        phone: z.string().trim().min(7).max(30),
+        email: z.string().trim().email().max(160),
+        sms_consent: z.boolean(),
+        market_id: nullableUuid,
+        city: nullableString,
+        state: nullableString,
+        pickup_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        return_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        source: z.enum(["homepage", "city_lp"]),
+        utm_source: nullableString,
+        utm_medium: nullableString,
+        utm_campaign: nullableString,
+        utm_term: nullableString,
+        utm_content: nullableString,
+        gclid: nullableString,
+        landing_page: nullableString,
+        referrer: nullableString,
+      })
+      .parse(data),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -330,6 +366,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     patch.current_step = step;
     if (isComplete) patch.status = "new";
 
+    // Derive a single qualify/disqualify signal from whatever insurance detail
+    // we have, so the team can triage a new lead without opening the record.
+    // Verification is a human step, so this never promotes to "verified".
+    if (
+      fields.full_coverage_insurance !== undefined ||
+      fields.insurance_expires_on !== undefined ||
+      fields.insurance_carrier !== undefined
+    ) {
+      const hasCoverage = fields.full_coverage_insurance;
+      const expires = fields.insurance_expires_on ?? null;
+      const expired = expires ? new Date(expires) < new Date(new Date().toDateString()) : false;
+      patch.insurance_status =
+        hasCoverage === false
+          ? "none"
+          : expired
+            ? "expired"
+            : hasCoverage === true
+              ? "declared"
+              : "unknown";
+    }
+
     // Derive rental duration from dates whenever both are known on this update.
     // Fetch current row to fill in any missing date.
     const { data: existing } = await supabaseAdmin
@@ -340,12 +397,16 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     const pickup = (patch.pickup_date as string | undefined) ?? existing?.pickup_date ?? null;
     const ret = (patch.return_date as string | undefined) ?? existing?.return_date ?? null;
     if (pickup && ret && ret > pickup) {
-      const days = Math.round(
-        (new Date(ret).getTime() - new Date(pickup).getTime()) / 86400000,
-      );
+      const days = Math.round((new Date(ret).getTime() - new Date(pickup).getTime()) / 86400000);
       patch.rental_duration_days = days;
       patch.rental_duration =
-        days <= 14 ? "1-2 weeks" : days <= 28 ? "2-4 weeks" : days <= 60 ? "1-2 months" : "3+ months";
+        days <= 14
+          ? "1-2 weeks"
+          : days <= 28
+            ? "2-4 weeks"
+            : days <= 60
+              ? "1-2 months"
+              : "3+ months";
     }
 
     const { data: row, error } = await supabaseAdmin
@@ -355,6 +416,18 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+
+    // Mirror any files the applicant uploaded into the document vault so they
+    // show up in the portal (where the renter can replace them) and in the
+    // admin vault, instead of living only as a URL column on this row.
+    try {
+      const { syncApplicationUploads } = await import("@/lib/documents.functions");
+      void syncApplicationUploads(supabaseAdmin, row).catch((e) =>
+        console.error("[documents] application sync failed", e),
+      );
+    } catch (e) {
+      console.error("[documents] application sync setup failed", e);
+    }
 
     // Recompute score on every step update
     const newScore = computeScore(row);
@@ -401,6 +474,17 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       } catch (e) {
         console.error("[ai-scoring] complete setup failed", e);
       }
+      // Start any active post-application follow-up sequence. Enrollment is
+      // idempotent, so a re-submitted wizard never double-texts the applicant.
+      try {
+        const { enrollInWorkflows } = await import("@/lib/automations.server");
+        void enrollInWorkflows({
+          trigger: "application_submitted",
+          applicationId: row.id,
+        }).catch((e) => console.error("[automations] enroll on submit failed", e));
+      } catch (e) {
+        console.error("[automations] enroll setup failed", e);
+      }
     }
     return { ok: true, score: newScore };
   });
@@ -417,7 +501,9 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // score, user_id). Return only what the wizard needs to resume:
       // progress state, the driver's first name for greeting, and the
       // non-sensitive form values the driver themselves entered.
-      .select("id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, how_heard")
+      .select(
+        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, how_heard",
+      )
       .eq("id", data.id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -497,3 +583,87 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
     }
     return { merged: mergedCount };
   });
+
+/**
+ * Approve an applicant and put the rental agreement in front of them.
+ *
+ * Approval and "send the contract" were previously two separate manual steps,
+ * so an approved driver could sit waiting on a contract nobody remembered to
+ * send. This does both, and is safe to call repeatedly: if an agreement is
+ * already out for signature or already signed, it is not re-sent.
+ */
+export const approveApplication = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        sendAgreement: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{
+      ok: boolean;
+      agreementSent: boolean;
+      agreementSkippedReason?: string;
+      error?: string;
+    }> => {
+      const { data: roles } = await context.supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", context.userId)
+        .in("role", ["admin", "team"])
+        .limit(1);
+      if (!roles || roles.length === 0) throw new Error("Forbidden");
+
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      const { data: app } = await supabaseAdmin
+        .from("applications")
+        .select("id,status,email,contacted_at")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (!app) return { ok: false, agreementSent: false, error: "Application not found" };
+
+      const patch: Record<string, unknown> = { status: "approved" };
+      if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
+      const { error: updErr } = await supabaseAdmin
+        .from("applications")
+        .update(patch as any)
+        .eq("id", data.id);
+      if (updErr) return { ok: false, agreementSent: false, error: updErr.message };
+
+      if (data.sendAgreement === false) {
+        return { ok: true, agreementSent: false, agreementSkippedReason: "not requested" };
+      }
+      if (!app.email) {
+        return { ok: true, agreementSent: false, agreementSkippedReason: "no email on file" };
+      }
+
+      const { hasOpenOrSignedAgreement, issueAgreement } =
+        await import("@/lib/agreements.functions");
+      if (await hasOpenOrSignedAgreement(supabaseAdmin, data.id)) {
+        return {
+          ok: true,
+          agreementSent: false,
+          agreementSkippedReason: "an agreement is already out",
+        };
+      }
+
+      try {
+        await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
+        return { ok: true, agreementSent: true };
+      } catch (e) {
+        // Approval already succeeded; report the send failure without undoing it.
+        return {
+          ok: true,
+          agreementSent: false,
+          agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
+        };
+      }
+    },
+  );
