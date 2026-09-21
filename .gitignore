@@ -33,3 +33,6 @@ dist-ssr
 
 # Supabase CLI scratch
 supabase/.temp/
+
+# This project uses bun (bun.lock); npm lockfiles would conflict
+package-lock.json
