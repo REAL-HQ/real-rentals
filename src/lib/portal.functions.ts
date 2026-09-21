@@ -176,10 +176,19 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<DriverDocument[]> => {
     const { supabase, userId } = context;
 
+    // documents.driver_id references applications.id (not auth.users.id), so
+    // resolve this user's application(s) before querying the vault.
+    const { data: apps } = await supabase
+      .from("applications")
+      .select("id")
+      .eq("user_id", userId);
+    const appIds = (apps ?? []).map((a: any) => a.id as string);
+    if (appIds.length === 0) return [];
+
     const { data } = await supabase
       .from("documents")
       .select("id,kind,notes,created_at,storage_bucket,storage_path,visibility")
-      .eq("driver_id", userId)
+      .in("driver_id", appIds)
       .order("created_at", { ascending: false })
       .limit(50);
 
