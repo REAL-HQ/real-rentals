@@ -583,3 +583,87 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
     }
     return { merged: mergedCount };
   });
+
+/**
+ * Approve an applicant and put the rental agreement in front of them.
+ *
+ * Approval and "send the contract" were previously two separate manual steps,
+ * so an approved driver could sit waiting on a contract nobody remembered to
+ * send. This does both, and is safe to call repeatedly: if an agreement is
+ * already out for signature or already signed, it is not re-sent.
+ */
+export const approveApplication = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        sendAgreement: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{
+      ok: boolean;
+      agreementSent: boolean;
+      agreementSkippedReason?: string;
+      error?: string;
+    }> => {
+      const { data: roles } = await context.supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", context.userId)
+        .in("role", ["admin", "team"])
+        .limit(1);
+      if (!roles || roles.length === 0) throw new Error("Forbidden");
+
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      const { data: app } = await supabaseAdmin
+        .from("applications")
+        .select("id,status,email,contacted_at")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (!app) return { ok: false, agreementSent: false, error: "Application not found" };
+
+      const patch: Record<string, unknown> = { status: "approved" };
+      if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
+      const { error: updErr } = await supabaseAdmin
+        .from("applications")
+        .update(patch as any)
+        .eq("id", data.id);
+      if (updErr) return { ok: false, agreementSent: false, error: updErr.message };
+
+      if (data.sendAgreement === false) {
+        return { ok: true, agreementSent: false, agreementSkippedReason: "not requested" };
+      }
+      if (!app.email) {
+        return { ok: true, agreementSent: false, agreementSkippedReason: "no email on file" };
+      }
+
+      const { hasOpenOrSignedAgreement, issueAgreement } =
+        await import("@/lib/agreements.functions");
+      if (await hasOpenOrSignedAgreement(supabaseAdmin, data.id)) {
+        return {
+          ok: true,
+          agreementSent: false,
+          agreementSkippedReason: "an agreement is already out",
+        };
+      }
+
+      try {
+        await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
+        return { ok: true, agreementSent: true };
+      } catch (e) {
+        // Approval already succeeded; report the send failure without undoing it.
+        return {
+          ok: true,
+          agreementSent: false,
+          agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
+        };
+      }
+    },
+  );
