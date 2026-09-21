@@ -102,7 +102,7 @@ export async function enrollInWorkflows(args: EnrollArgs): Promise<{ enrolled: n
     // First step decides when this enrollment first comes due.
     const { data: firstStep } = await supabaseAdmin
       .from("automation_steps")
-      .select("delay_minutes")
+      .select("delay_minutes,channel")
       .eq("workflow_id", w.id)
       .eq("is_active", true)
       .order("step_order", { ascending: true })
@@ -112,7 +112,12 @@ export async function enrollInWorkflows(args: EnrollArgs): Promise<{ enrolled: n
 
     const now = new Date();
     const due = new Date(now.getTime() + Number(firstStep.delay_minutes ?? 0) * 60_000);
-    const sendable = nextSendableTime(due, w.quiet_hours_start, w.quiet_hours_end);
+    // Only defer an SMS out of quiet hours. Deferring email too would park a
+    // "within 5 minutes" acknowledgement until the morning.
+    const sendable =
+      firstStep.channel === "sms"
+        ? nextSendableTime(due, w.quiet_hours_start, w.quiet_hours_end)
+        : due;
 
     const { error } = await supabaseAdmin.from("automation_enrollments").insert({
       workflow_id: w.id,
@@ -224,8 +229,14 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         continue;
       }
 
-      // Respect quiet hours: reschedule rather than text someone at 3am.
-      if (isQuietHour(now, workflow.quiet_hours_start, workflow.quiet_hours_end)) {
+      // Quiet hours are a courtesy about being woken up, so they gate SMS and
+      // not email. Holding email too would mean someone who applies at 10pm
+      // gets the "within 5 minutes" acknowledgement at 8am the next morning,
+      // which is the opposite of what the step is for.
+      if (
+        step.channel === "sms" &&
+        isQuietHour(now, workflow.quiet_hours_start, workflow.quiet_hours_end)
+      ) {
         const retry = nextSendableTime(now, workflow.quiet_hours_start, workflow.quiet_hours_end);
         await supabaseAdmin
           .from("automation_enrollments")
@@ -298,7 +309,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
       // Queue the following step, or finish the sequence.
       const { data: nextStep } = await supabaseAdmin
         .from("automation_steps")
-        .select("delay_minutes")
+        .select("delay_minutes,channel")
         .eq("workflow_id", workflow.id)
         .eq("is_active", true)
         .gt("step_order", step.step_order)
@@ -323,11 +334,10 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         // A step whose delay has already elapsed should fire on the next sweep,
         // not be treated as overdue-forever.
         const notBefore = nextDue.getTime() < now.getTime() ? now : nextDue;
-        const sendable = nextSendableTime(
-          notBefore,
-          workflow.quiet_hours_start,
-          workflow.quiet_hours_end,
-        );
+        const sendable =
+          nextStep.channel === "sms"
+            ? nextSendableTime(notBefore, workflow.quiet_hours_start, workflow.quiet_hours_end)
+            : notBefore;
         await supabaseAdmin
           .from("automation_enrollments")
           .update({ current_step: step.step_order, next_run_at: sendable.toISOString() })
