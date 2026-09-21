@@ -34,6 +34,7 @@ import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
+import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 
 const ThankYouRoute = ThankYouRouteImport.update({
@@ -164,6 +165,11 @@ const ApiPublicCronOpsRemindersRoute =
     path: '/api/public/cron/ops-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronLateFeesRoute = ApiPublicCronLateFeesRouteImport.update({
+  id: '/api/public/cron/late-fees',
+  path: '/api/public/cron/late-fees',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronAutomationsRoute =
   ApiPublicCronAutomationsRouteImport.update({
     id: '/api/public/cron/automations',
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -222,6 +229,7 @@ export interface FileRoutesByTo {
   '/sign/$token': typeof SignTokenRoute
   '/fleet': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
+  '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -281,6 +290,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -309,6 +319,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/fleet'
     | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -337,6 +348,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/automations'
+    | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
@@ -366,6 +378,7 @@ export interface RootRouteChildren {
   SignTokenRoute: typeof SignTokenRoute
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
+  ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
@@ -549,6 +562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronOpsRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/late-fees': {
+      id: '/api/public/cron/late-fees'
+      path: '/api/public/cron/late-fees'
+      fullPath: '/api/public/cron/late-fees'
+      preLoaderRoute: typeof ApiPublicCronLateFeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/automations': {
       id: '/api/public/cron/automations'
       path: '/api/public/cron/automations'
@@ -582,6 +602,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignTokenRoute: SignTokenRoute,
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
+  ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
