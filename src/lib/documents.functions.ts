@@ -30,7 +30,14 @@ export type VaultDocument = {
   url: string | null;
 };
 
-const CategoryEnum = z.enum(["license_front", "license_back", "insurance", "gig_profile", "agreement", "other"]);
+const CategoryEnum = z.enum([
+  "license_front",
+  "license_back",
+  "insurance",
+  "gig_profile",
+  "agreement",
+  "other",
+]);
 
 async function isAdmin(supabase: any, userId: string): Promise<boolean> {
   const { data } = await supabase
@@ -84,6 +91,147 @@ async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
 const SELECT =
   "id,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path";
 
+/**
+ * Register an already-uploaded file as the current document in its category
+ * and supersede whatever it replaces.
+ *
+ * Shared by the driver/admin vault upload and by the application wizard, whose
+ * files land in the `license-uploads` bucket. Before this existed, anything a
+ * renter uploaded while applying lived only as a URL column on the application
+ * row — invisible to the portal vault, with no version history and no expiry
+ * tracking. Registering it here means one record of a document regardless of
+ * which door it came through.
+ *
+ * Idempotent: re-registering the same storage path is a no-op, so replaying a
+ * wizard step cannot create duplicate vault entries.
+ */
+export async function registerDocument(
+  admin: any,
+  args: {
+    applicationId: string;
+    category: string;
+    bucket: string;
+    path: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    sizeBytes?: number | null;
+    expiresAt?: string | null;
+    label?: string | null;
+    uploadedBy?: string | null;
+    uploadedByRole?: string;
+    visibility?: string[];
+  },
+): Promise<{ id: string } | null> {
+  const { data: seen } = await admin
+    .from("documents")
+    .select("id")
+    .eq("storage_path", args.path)
+    .maybeSingle();
+  if (seen) return { id: seen.id as string };
+
+  const { data: row, error } = await admin
+    .from("documents")
+    .insert({
+      driver_id: args.applicationId,
+      kind: args.category,
+      category: args.category,
+      label: args.label ?? null,
+      storage_bucket: args.bucket,
+      storage_path: args.path,
+      visibility: args.visibility ?? ["driver", "admin"],
+      file_name: args.fileName ?? null,
+      mime_type: args.mimeType ?? null,
+      size_bytes: args.sizeBytes ?? null,
+      expires_at: args.expiresAt || null,
+      is_current: true,
+      uploaded_by: args.uploadedBy ?? null,
+      uploaded_by_role: args.uploadedByRole ?? "driver",
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[documents] register failed", error.message);
+    return null;
+  }
+
+  await admin
+    .from("documents")
+    .update({ is_current: false, superseded_by: row.id })
+    .eq("driver_id", args.applicationId)
+    .eq("category", args.category)
+    .eq("is_current", true)
+    .neq("id", row.id);
+
+  return { id: row.id as string };
+}
+
+/** Application columns that hold an uploaded file, mapped to a vault category. */
+export const APPLICATION_UPLOAD_FIELDS: Array<{ column: string; category: string; label: string }> =
+  [
+    {
+      column: "license_photo_url",
+      category: "license_front",
+      label: "Driver's license (from application)",
+    },
+    { column: "insurance_doc_url", category: "insurance", label: "Insurance (from application)" },
+    {
+      column: "profile_screenshot_url",
+      category: "gig_profile",
+      label: "Gig profile (from application)",
+    },
+  ];
+
+/**
+ * Copy any files captured during the application into the document vault.
+ * Safe to call on every wizard step — already-registered paths are skipped.
+ */
+export async function syncApplicationUploads(
+  admin: any,
+  application: Record<string, any>,
+): Promise<number> {
+  if (!application?.id) return 0;
+  let registered = 0;
+
+  for (const field of APPLICATION_UPLOAD_FIELDS) {
+    const path = application[field.column];
+    // Legacy rows stored a full URL rather than a storage path; those are not
+    // objects we own, so leave them alone.
+    if (!path || typeof path !== "string" || path.startsWith("http")) continue;
+    const res = await registerDocument(admin, {
+      applicationId: application.id as string,
+      category: field.category,
+      bucket: "license-uploads",
+      path,
+      fileName: path.split("/").pop() ?? null,
+      label: field.label,
+      expiresAt:
+        field.category === "license_front" ? (application.license_expiration ?? null) : null,
+      uploadedBy: (application.user_id as string) ?? null,
+      uploadedByRole: "driver",
+    });
+    if (res) registered++;
+  }
+
+  // Gig trip screenshots arrive as an array of paths.
+  const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
+  for (const path of shots) {
+    if (!path || typeof path !== "string" || path.startsWith("http")) continue;
+    const res = await registerDocument(admin, {
+      applicationId: application.id as string,
+      category: "gig_profile",
+      bucket: "license-uploads",
+      path,
+      fileName: path.split("/").pop() ?? null,
+      label: "Trip screenshot (from application)",
+      uploadedBy: (application.user_id as string) ?? null,
+      uploadedByRole: "driver",
+    });
+    if (res) registered++;
+  }
+
+  return registered;
+}
+
 // ------------------------------------------------------------------- admin
 
 export const adminListDriverDocuments = createServerFn({ method: "POST" })
@@ -92,6 +240,19 @@ export const adminListDriverDocuments = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<VaultDocument[]> => {
     if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Backfill on read: applications submitted before uploads were mirrored
+    // into the vault get their files registered the first time anyone opens
+    // it. Idempotent, so this settles to a no-op after the first view.
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select(
+        "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
+      )
+      .eq("id", data.applicationId)
+      .maybeSingle();
+    if (app) await syncApplicationUploads(supabaseAdmin, app);
+
     const { data: rows } = await supabaseAdmin
       .from("documents")
       .select(SELECT)
@@ -223,8 +384,12 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
     const patch: Record<string, any> = {};
     if (data.expiresAt !== undefined) patch.expires_at = data.expiresAt || null;
     if (data.label !== undefined) patch.label = data.label;
-    if (data.internal !== undefined) patch.visibility = data.internal ? ["admin"] : ["driver", "admin"];
-    const { error } = await supabaseAdmin.from("documents").update(patch as any).eq("id", data.id);
+    if (data.internal !== undefined)
+      patch.visibility = data.internal ? ["admin"] : ["driver", "admin"];
+    const { error } = await supabaseAdmin
+      .from("documents")
+      .update(patch as any)
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -241,7 +406,9 @@ export const deleteDocument = createServerFn({ method: "POST" })
       .eq("id", data.id)
       .maybeSingle();
     if (doc) {
-      await supabaseAdmin.storage.from(doc.storage_bucket as string).remove([doc.storage_path as string]);
+      await supabaseAdmin.storage
+        .from(doc.storage_bucket as string)
+        .remove([doc.storage_path as string]);
       await supabaseAdmin.from("documents").delete().eq("id", data.id);
     }
     return { ok: true };
@@ -251,23 +418,31 @@ export const deleteDocument = createServerFn({ method: "POST" })
 
 export const getMyVault = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
-    const { data: app } = await context.supabase
-      .from("applications")
-      .select("id")
-      .eq("user_id", context.userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!app) return { applicationId: null, documents: [] };
+  .handler(
+    async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
+      const { data: app } = await context.supabase
+        .from("applications")
+        .select(
+          "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
+        )
+        .eq("user_id", context.userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!app) return { applicationId: null, documents: [] };
 
-    const { data: rows } = await context.supabase
-      .from("documents")
-      .select(SELECT)
-      .eq("driver_id", app.id)
-      .order("created_at", { ascending: false });
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      // Same backfill as the admin vault, so a renter sees the licence and
+      // insurance they uploaded while applying — and can replace them.
+      await syncApplicationUploads(supabaseAdmin, app);
 
-    const visible = (rows ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    return { applicationId: app.id as string, documents: await withUrls(supabaseAdmin, visible) };
-  });
+      const { data: rows } = await context.supabase
+        .from("documents")
+        .select(SELECT)
+        .eq("driver_id", app.id)
+        .order("created_at", { ascending: false });
+
+      const visible = (rows ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
+      return { applicationId: app.id as string, documents: await withUrls(supabaseAdmin, visible) };
+    },
+  );

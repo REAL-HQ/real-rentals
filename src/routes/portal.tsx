@@ -11,12 +11,19 @@ import {
   getDriverReferrals,
   createDriverReferral,
   getDriverProfile,
+  updateDriverProfile,
   getDriverPictures,
   type DriverDashboard,
 } from "@/lib/portal.functions";
-import { getRentalBilling, payRentalBalance, type RentalBilling } from "@/lib/rental-payments.functions";
+import {
+  getRentalBilling,
+  payRentalBalance,
+  type RentalBilling,
+} from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement } from "@/lib/agreements.functions";
 import { DocumentVault } from "@/components/admin/DocumentVault";
+import { ConditionUploader } from "@/components/admin/InspectionsPanel";
+import { listConditionMedia } from "@/lib/inspections.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
@@ -41,19 +48,11 @@ import {
   XCircle,
   RefreshCw,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
-    meta: [
-      { title: "Driver Portal — REAL RENTALS" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Driver Portal — REAL RENTALS" }, { name: "robots", content: "noindex" }],
   }),
   component: Portal,
 });
@@ -70,7 +69,7 @@ const TABS = [
   { id: "referrals", label: "Referrals", icon: Users },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
-type Tab = typeof TABS[number]["id"];
+type Tab = (typeof TABS)[number]["id"];
 
 function Portal() {
   const [session, setSession] = useState<any>(null);
@@ -115,8 +114,15 @@ function Portal() {
         <Nav />
         <div className="container-real py-32 text-center max-w-lg">
           <h1 className="text-2xl font-semibold">Driver Portal</h1>
-          <p className="mt-3 text-muted-foreground text-sm">Please sign in to access your driver portal.</p>
-          <Link to="/admin" className="mt-6 inline-flex rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium">Sign In</Link>
+          <p className="mt-3 text-muted-foreground text-sm">
+            Please sign in to access your driver portal.
+          </p>
+          <Link
+            to="/admin"
+            className="mt-6 inline-flex rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
+          >
+            Sign In
+          </Link>
         </div>
       </div>
     );
@@ -127,8 +133,14 @@ function Portal() {
         <Nav />
         <div className="container-real py-32 text-center max-w-lg">
           <h1 className="text-2xl font-semibold">No Driver Access</h1>
-          <p className="mt-3 text-muted-foreground text-sm">This account isn't linked to an active rental yet.</p>
-          <p className="mt-2 text-muted-foreground text-sm">Your account ID:<br /><code className="text-xs">{session.user.id}</code></p>
+          <p className="mt-3 text-muted-foreground text-sm">
+            This account isn't linked to an active rental yet.
+          </p>
+          <p className="mt-2 text-muted-foreground text-sm">
+            Your account ID:
+            <br />
+            <code className="text-xs">{session.user.id}</code>
+          </p>
         </div>
       </div>
     );
@@ -152,7 +164,9 @@ function Portal() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-                    active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
+                    active
+                      ? "bg-real-red text-white"
+                      : "text-white/70 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -201,7 +215,12 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
   });
 
   if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
-  if (error) return <div className="text-sm text-real-red">Could not load your portal. {(error as Error).message}</div>;
+  if (error)
+    return (
+      <div className="text-sm text-real-red">
+        Could not load your portal. {(error as Error).message}
+      </div>
+    );
   if (!data) return null;
 
   if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
@@ -225,10 +244,16 @@ function Stub({ label }: { label: string }) {
         This section isn't available yet. Driver support can help you in the meantime.
       </p>
       <div className="mt-5 flex items-center justify-center gap-2">
-        <a href="tel:+18136999118" className="inline-flex items-center gap-1.5 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
+        <a
+          href="tel:+18136999118"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium"
+        >
           <Phone className="w-4 h-4" /> Call Support
         </a>
-        <a href="mailto:team@drivereal.com" className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft">
+        <a
+          href="mailto:team@drivereal.com"
+          className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft"
+        >
           Email Support
         </a>
       </div>
@@ -242,7 +267,10 @@ function fmt(amount: number) {
 
 function DocumentsView() {
   const fetchDocs = useServerFn(getDriverDocuments);
-  const { data, isLoading } = useQuery({ queryKey: ["driver-documents"], queryFn: () => fetchDocs() });
+  const { data, isLoading } = useQuery({
+    queryKey: ["driver-documents"],
+    queryFn: () => fetchDocs(),
+  });
   const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
 
   return (
@@ -252,7 +280,8 @@ function DocumentsView() {
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Your Documents</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Keep your license and insurance current. Uploading a new file replaces the old one — we keep the history.
+          Keep your license and insurance current. Uploading a new file replaces the old one — we
+          keep the history.
         </p>
         <div className="mt-4">
           <DocumentVault mode="driver" />
@@ -268,12 +297,17 @@ function DocumentsView() {
                 <div className="min-w-0">
                   <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
                   <div className="text-xs text-muted-foreground">
-                    Added {new Date(d.created_at).toLocaleDateString()}{d.notes ? ` · ${d.notes}` : ""}
+                    Added {new Date(d.created_at).toLocaleDateString()}
+                    {d.notes ? ` · ${d.notes}` : ""}
                   </div>
                 </div>
                 {d.url ? (
-                  <a href={d.url} target="_blank" rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-real-red hover:underline shrink-0">
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-real-red hover:underline shrink-0"
+                  >
                     <Download className="w-3.5 h-3.5" /> Open
                   </a>
                 ) : null}
@@ -289,7 +323,10 @@ function DocumentsView() {
 function AgreementsView() {
   const fetchAgreements = useServerFn(getMyAgreements);
   const sign = useServerFn(signMyAgreement);
-  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-agreements"], queryFn: () => fetchAgreements() });
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["driver-agreements"],
+    queryFn: () => fetchAgreements(),
+  });
   const [openId, setOpenId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
@@ -309,11 +346,17 @@ function AgreementsView() {
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{a.title}</div>
                 <div className="text-xs text-muted-foreground">
-                  {a.signed_at ? `Signed ${new Date(a.signed_at).toLocaleDateString()}` : "Awaiting your signature"}
+                  {a.signed_at
+                    ? `Signed ${new Date(a.signed_at).toLocaleDateString()}`
+                    : "Awaiting your signature"}
                 </div>
               </div>
               <button
-                onClick={() => { setOpenId(openId === a.id ? null : a.id); setName(""); setAgree(false); }}
+                onClick={() => {
+                  setOpenId(openId === a.id ? null : a.id);
+                  setName("");
+                  setAgree(false);
+                }}
                 className="text-xs font-semibold text-real-red shrink-0"
               >
                 {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
@@ -322,7 +365,9 @@ function AgreementsView() {
 
             {openId === a.id ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
-                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">{a.body}</pre>
+                <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
+                  {a.body}
+                </pre>
                 {a.status !== "signed" ? (
                   <div className="mt-4 space-y-3">
                     <input
@@ -332,15 +377,25 @@ function AgreementsView() {
                       className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white"
                     />
                     <label className="flex items-start gap-2 text-xs">
-                      <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />
-                      <span>I agree to this rental agreement and accept that typing my name is my legal electronic signature.</span>
+                      <input
+                        type="checkbox"
+                        checked={agree}
+                        onChange={(e) => setAgree(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        I agree to this rental agreement and accept that typing my name is my legal
+                        electronic signature.
+                      </span>
                     </label>
                     <button
                       disabled={busy || !agree || name.trim().length < 2}
                       onClick={async () => {
                         setBusy(true);
                         try {
-                          await sign({ data: { agreementId: a.id, signerName: name.trim(), agree: true } });
+                          await sign({
+                            data: { agreementId: a.id, signerName: name.trim(), agree: true },
+                          });
                           toast.success("Agreement signed");
                           setOpenId(null);
                           await refetch();
@@ -369,34 +424,187 @@ function IssuesView() {
   return <IssuesViewInner />;
 }
 
+function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }) {
+  const save = useServerFn(updateDriverProfile);
+  const [f, setF] = useState({
+    full_name: profile?.full_name ?? "",
+    email: profile?.email ?? "",
+    phone: profile?.phone ?? "",
+    address: profile?.address ?? "",
+    city: profile?.city ?? "",
+    state: profile?.state ?? "",
+    zip: profile?.zip ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+
+  const phoneChanged =
+    String(f.phone).replace(/\D/g, "").slice(-10) !==
+    String(profile?.phone ?? "")
+      .replace(/\D/g, "")
+      .slice(-10);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await save({ data: f });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Details updated");
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save your details");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = (key: keyof typeof f, label: string, type = "text") => (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </div>
+      <input
+        type={type}
+        value={f[key]}
+        onChange={(e) => setF((p) => ({ ...p, [key]: e.target.value }))}
+        className="mt-1.5 w-full rounded-lg border border-border px-3 py-2 text-sm"
+      />
+    </div>
+  );
+
+  return (
+    <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
+      <h3 className="font-semibold">Your Details</h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Keep these current — we use them to reach you about your rental.
+      </p>
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {field("full_name", "Full name")}
+        {field("phone", "Phone", "tel")}
+        <div className="sm:col-span-2">{field("email", "Email", "email")}</div>
+        <div className="sm:col-span-2">{field("address", "Street address")}</div>
+        {field("city", "City")}
+        <div className="grid grid-cols-2 gap-3">
+          {field("state", "State")}
+          {field("zip", "ZIP")}
+        </div>
+      </div>
+      {phoneChanged ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Changing your number turns text updates off until you opt in again from the new phone.
+        </p>
+      ) : null}
+      <button
+        type="submit"
+        disabled={busy}
+        className="mt-4 inline-flex items-center rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+      >
+        {busy ? "Saving…" : "Save Changes"}
+      </button>
+    </form>
+  );
+}
+
 function PicturesView() {
   const fetchPics = useServerFn(getDriverPictures);
-  const { data, isLoading, error } = useQuery({ queryKey: ["driver-pictures"], queryFn: () => fetchPics() });
+  const fetchCondition = useServerFn(listConditionMedia);
+  const fetchDashboard = useServerFn(getDriverDashboard);
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
-  if (error) return <div className="text-sm text-real-red">Could not load your pictures.</div>;
+  const { data: dash } = useQuery({
+    queryKey: ["driver-dashboard"],
+    queryFn: () => fetchDashboard(),
+  });
+  const { data: pics, isLoading } = useQuery({
+    queryKey: ["driver-pictures"],
+    queryFn: () => fetchPics(),
+  });
+  const {
+    data: condition,
+    isLoading: loadingCondition,
+    refetch: refetchCondition,
+  } = useQuery({ queryKey: ["driver-condition"], queryFn: () => fetchCondition({ data: {} }) });
 
-  const pics = data ?? [];
+  const vehicleId = dash?.vehicle?.id ?? null;
+  const rentalId = dash?.rental?.id ?? null;
+  const media = condition ?? [];
+  const before = media.filter((m) => m.phase === "checkout");
+  const after = media.filter((m) => m.phase !== "checkout");
+
   return (
-    <div className="rounded-2xl border border-border bg-white p-5">
-      <h3 className="font-semibold">Vehicle Pictures</h3>
-      <p className="mt-1 text-sm text-muted-foreground">Photos of the vehicle on your active rental.</p>
-      {pics.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
-          <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
-          <div className="mt-3 text-sm font-medium">No Pictures Yet</div>
-          <p className="mt-1 text-xs text-muted-foreground">Photos appear here once a vehicle is assigned to you.</p>
-        </div>
+    <div className="space-y-5 max-w-3xl">
+      {vehicleId ? (
+        <>
+          <div className="rounded-2xl border border-border bg-white p-5">
+            <h3 className="font-semibold">Proof Of Condition</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Photograph the car when you pick it up and again when you bring it back. These
+              timestamped photos protect you if there is ever a question about damage — and you can
+              see the ones our team took too.
+            </p>
+          </div>
+
+          <ConditionUploader
+            title="Before — At Pickup"
+            vehicleId={vehicleId}
+            rentalId={rentalId}
+            phase="checkout"
+            media={before}
+            onChanged={() => refetchCondition()}
+          />
+
+          <ConditionUploader
+            title="After — At Return"
+            vehicleId={vehicleId}
+            rentalId={rentalId}
+            phase="checkin"
+            media={after}
+            onChanged={() => refetchCondition()}
+          />
+        </>
       ) : (
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
-          {pics.map((p) => (
-            <a key={p.url} href={p.url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-xl border border-border">
-              <img src={p.url} alt={p.label} loading="lazy" className="h-40 w-full object-cover transition-transform group-hover:scale-[1.03]" />
-              <div className="px-3 py-2 text-xs text-muted-foreground truncate">{p.label}</div>
-            </a>
-          ))}
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <h3 className="font-semibold">Proof Of Condition</h3>
+          <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
+            <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
+            <div className="mt-3 text-sm font-medium">No Vehicle Assigned Yet</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Once a vehicle is assigned you can upload pickup and return photos here.
+            </p>
+          </div>
         </div>
       )}
+
+      {!isLoading && (pics ?? []).length > 0 ? (
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <h3 className="font-semibold">Listing Photos</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Photos of the vehicle on your active rental.
+          </p>
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+            {(pics ?? []).map((p) => (
+              <a
+                key={p.url}
+                href={p.url}
+                target="_blank"
+                rel="noreferrer"
+                className="group block overflow-hidden rounded-xl border border-border"
+              >
+                <img
+                  src={p.url}
+                  alt={p.label}
+                  loading="lazy"
+                  className="h-40 w-full object-cover transition-transform group-hover:scale-[1.03]"
+                />
+                <div className="px-3 py-2 text-xs text-muted-foreground truncate">{p.label}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {loadingCondition ? (
+        <div className="text-sm text-muted-foreground">Loading photos…</div>
+      ) : null}
     </div>
   );
 }
@@ -404,7 +612,10 @@ function PicturesView() {
 function SettingsView() {
   const fetchProfile = useServerFn(getDriverProfile);
   const submitIssue = useServerFn(createDriverIssue);
-  const { data, isLoading } = useQuery({ queryKey: ["driver-profile"], queryFn: () => fetchProfile() });
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["driver-profile"],
+    queryFn: () => fetchProfile(),
+  });
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -412,7 +623,14 @@ function SettingsView() {
     e.preventDefault();
     setBusy(true);
     try {
-      const res = await submitIssue({ data: { title: "Account detail update request", body: note, kind: "account", severity: "low" } });
+      const res = await submitIssue({
+        data: {
+          title: "Account detail update request",
+          body: note,
+          kind: "account",
+          severity: "low",
+        },
+      });
       if ("error" in res) throw new Error(res.error);
       toast.success("Request sent. Our team will update your details.");
       setNote("");
@@ -423,36 +641,43 @@ function SettingsView() {
     }
   }
 
-  const rows: Array<[string, string]> = [
-    ["Name", data?.full_name || "—"],
-    ["Email", data?.email || data?.account_email || "—"],
-    ["Phone", data?.phone || "—"],
-    ["Market", data?.city || "—"],
-    ["Application Status", data?.status ? data.status.replace(/_/g, " ") : "—"],
-    ["Applied", data?.applied_at ? new Date(data.applied_at).toLocaleDateString() : "—"],
-  ];
-
   return (
     <div className="space-y-6 max-w-2xl">
+      {isLoading ? (
+        <div className="rounded-2xl border border-border bg-white p-5 text-sm text-muted-foreground">
+          Loading…
+        </div>
+      ) : (
+        <ProfileForm profile={data ?? null} onSaved={() => refetch()} />
+      )}
+
       <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Your Details</h3>
-        {isLoading ? (
-          <div className="mt-3 text-sm text-muted-foreground">Loading…</div>
-        ) : (
-          <dl className="mt-4 divide-y divide-border">
-            {rows.map(([k, v]) => (
-              <div key={k} className="py-2.5 flex items-center justify-between gap-4">
-                <dt className="text-sm text-muted-foreground">{k}</dt>
-                <dd className="text-sm font-medium capitalize text-right">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        <h3 className="font-semibold">Application</h3>
+        <dl className="mt-4 divide-y divide-border">
+          <div className="py-2.5 flex items-center justify-between gap-4">
+            <dt className="text-sm text-muted-foreground">Status</dt>
+            <dd className="text-sm font-medium capitalize text-right">
+              {data?.status ? data.status.replace(/_/g, " ") : "—"}
+            </dd>
+          </div>
+          <div className="py-2.5 flex items-center justify-between gap-4">
+            <dt className="text-sm text-muted-foreground">Applied</dt>
+            <dd className="text-sm font-medium text-right">
+              {data?.applied_at ? new Date(data.applied_at).toLocaleDateString() : "—"}
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Your rental status, rates and approval are managed by our team. Use the form below to ask
+          about those.
+        </p>
       </div>
 
       <form onSubmit={requestChange} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Request A Change</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Tell us what to update and our team will take care of it.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Anything else you need updated — our team will take care of it.
+        </p>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -472,10 +697,15 @@ function SettingsView() {
       <div className="rounded-2xl border border-border bg-white p-5 flex items-center justify-between gap-4">
         <div>
           <h3 className="font-semibold">Session</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Sign out of the driver portal on this device.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign out of the driver portal on this device.
+          </p>
         </div>
         <button
-          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/portal"; }}
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.href = "/portal";
+          }}
           className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-soft"
         >
           Sign Out
@@ -488,7 +718,10 @@ function SettingsView() {
 function IssuesViewInner() {
   const fetchIssues = useServerFn(getDriverIssues);
   const submitIssue = useServerFn(createDriverIssue);
-  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-issues"], queryFn: () => fetchIssues() });
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["driver-issues"],
+    queryFn: () => fetchIssues(),
+  });
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [severity, setSeverity] = useState("normal");
@@ -501,19 +734,27 @@ function IssuesViewInner() {
       const res = await submitIssue({ data: { title, body, severity } });
       if ("error" in res) throw new Error(res.error);
       toast.success("Issue reported. Our team will follow up.");
-      setTitle(""); setBody(""); setSeverity("normal");
+      setTitle("");
+      setBody("");
+      setSeverity("normal");
       refetch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not submit issue");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Report An Issue</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Mechanical problems, accidents, or anything else we should know about.</p>
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">What's Wrong?</label>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Mechanical problems, accidents, or anything else we should know about.
+        </p>
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+          What's Wrong?
+        </label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -521,7 +762,9 @@ function IssuesViewInner() {
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
           required
         />
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">Details</label>
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+          Details
+        </label>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -529,7 +772,9 @@ function IssuesViewInner() {
           placeholder="When it started, any noises, whether the car is drivable…"
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
         />
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">Urgency</label>
+        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+          Urgency
+        </label>
         <div className="mt-1 flex gap-2">
           {[
             { id: "low", label: "Low" },
@@ -541,20 +786,28 @@ function IssuesViewInner() {
               type="button"
               onClick={() => setSeverity(s.id)}
               className={`rounded-lg px-3 py-1.5 text-xs border transition ${
-                severity === s.id ? "border-real-red text-real-red bg-real-red/5" : "border-border text-muted-foreground hover:bg-soft"
+                severity === s.id
+                  ? "border-real-red text-real-red bg-real-red/5"
+                  : "border-border text-muted-foreground hover:bg-soft"
               }`}
             >
               {s.label}
             </button>
           ))}
         </div>
-        <button type="submit" disabled={busy}
-          className="mt-5 inline-flex items-center justify-center rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+        <button
+          type="submit"
+          disabled={busy}
+          className="mt-5 inline-flex items-center justify-center rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+        >
           {busy ? "Submitting…" : "Submit Issue"}
         </button>
         <p className="mt-3 text-xs text-muted-foreground">
           If the vehicle is unsafe to drive, call us right away at{" "}
-          <a href="tel:+18136999118" className="text-real-red hover:underline">(813) 699-9118</a>.
+          <a href="tel:+18136999118" className="text-real-red hover:underline">
+            (813) 699-9118
+          </a>
+          .
         </p>
       </form>
 
@@ -566,7 +819,9 @@ function IssuesViewInner() {
           <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
             <AlertTriangle className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
             <div className="mt-3 text-sm font-medium">No Reports Yet</div>
-            <p className="mt-1 text-xs text-muted-foreground">Anything you report shows up here with its status.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Anything you report shows up here with its status.
+            </p>
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-border">
@@ -574,12 +829,21 @@ function IssuesViewInner() {
               <li key={i.id} className="py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">{i.title}</div>
-                  <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    i.status === "resolved" ? "bg-emerald-100 text-emerald-800" :
-                    i.status === "open" ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-700"
-                  }`}>{i.status}</span>
+                  <span
+                    className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      i.status === "resolved"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : i.status === "open"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {i.status}
+                  </span>
                 </div>
-                {i.body && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{i.body}</p>}
+                {i.body && (
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{i.body}</p>
+                )}
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   {new Date(i.created_at).toLocaleDateString()} · {i.severity}
                 </div>
@@ -595,11 +859,16 @@ function IssuesViewInner() {
 function ReferralsView() {
   const fetchReferrals = useServerFn(getDriverReferrals);
   const submitReferral = useServerFn(createDriverReferral);
-  const { data, isLoading, refetch } = useQuery({ queryKey: ["driver-referrals"], queryFn: () => fetchReferrals() });
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["driver-referrals"],
+    queryFn: () => fetchReferrals(),
+  });
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const earned = (data ?? []).filter((r) => r.status === "paid").reduce((s, r) => s + r.reward_amount, 0);
+  const earned = (data ?? [])
+    .filter((r) => r.status === "paid")
+    .reduce((s, r) => s + r.reward_amount, 0);
   const pending = (data ?? []).filter((r) => r.status !== "paid").length;
 
   async function submit(e: React.FormEvent) {
@@ -613,7 +882,9 @@ function ReferralsView() {
       refetch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not submit referral");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -626,7 +897,9 @@ function ReferralsView() {
 
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Refer A Driver</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Send us their email and we'll take it from there. You earn once they start renting.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Send us their email and we'll take it from there. You earn once they start renting.
+        </p>
         <div className="mt-4 flex flex-col sm:flex-row gap-2">
           <input
             type="email"
@@ -636,8 +909,11 @@ function ReferralsView() {
             required
             className="flex-1 rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
           />
-          <button type="submit" disabled={busy}
-            className="rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          >
             {busy ? "Sending…" : "Send Referral"}
           </button>
         </div>
@@ -651,7 +927,9 @@ function ReferralsView() {
           <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
             <Users className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
             <div className="mt-3 text-sm font-medium">No Referrals Yet</div>
-            <p className="mt-1 text-xs text-muted-foreground">Refer a driver above to start earning.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Refer a driver above to start earning.
+            </p>
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-border">
@@ -659,13 +937,21 @@ function ReferralsView() {
               <li key={r.id} className="py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm truncate">{r.referred_email ?? "Referred driver"}</div>
-                  <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-sm font-medium">{fmt(r.reward_amount)}</span>
-                  <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    r.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-700"
-                  }`}>{r.status}</span>
+                  <span
+                    className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      r.status === "paid"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {r.status}
+                  </span>
                 </div>
               </li>
             ))}
@@ -676,7 +962,13 @@ function ReferralsView() {
   );
 }
 
-function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate: (t: Tab) => void }) {
+function DashboardView({
+  data,
+  onNavigate,
+}: {
+  data: DriverDashboard;
+  onNavigate: (t: Tab) => void;
+}) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
@@ -689,7 +981,13 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
           <div>
             <div className="font-semibold">Upcoming Maintenance</div>
             <div className="mt-1">
-              {activeMaint.slice(0, 2).map((m) => `${m.item}${m.due_date ? ` (due ${new Date(m.due_date).toLocaleDateString()})` : ""}`).join(" • ")}
+              {activeMaint
+                .slice(0, 2)
+                .map(
+                  (m) =>
+                    `${m.item}${m.due_date ? ` (due ${new Date(m.due_date).toLocaleDateString()})` : ""}`,
+                )
+                .join(" • ")}
             </div>
           </div>
         </div>
@@ -698,14 +996,21 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
       {!rental ? (
         <div className="rounded-2xl border border-border p-10 text-center">
           <h2 className="text-lg font-semibold">No Active Rental</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Once your application is approved and a vehicle is assigned, your rental details show here.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Once your application is approved and a vehicle is assigned, your rental details show
+            here.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
             <div className="aspect-[16/9] bg-soft relative">
               {vehicle?.photo ? (
-                <img src={vehicle.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img
+                  src={vehicle.photo}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                   <Car className="w-12 h-12" />
@@ -714,11 +1019,20 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
             </div>
             <div className="p-5 flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">Your Rental</div>
-                <div className="mt-1 text-xl font-semibold">
-                  {vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() : "Vehicle"}
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Your Rental
                 </div>
-                {vehicle?.trim && <div className="text-sm text-muted-foreground">{vehicle.trim}{vehicle.color ? ` • ${vehicle.color}` : ""}</div>}
+                <div className="mt-1 text-xl font-semibold">
+                  {vehicle
+                    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+                    : "Vehicle"}
+                </div>
+                {vehicle?.trim && (
+                  <div className="text-sm text-muted-foreground">
+                    {vehicle.trim}
+                    {vehicle.color ? ` • ${vehicle.color}` : ""}
+                  </div>
+                )}
               </div>
               <span className="inline-flex items-center rounded-full bg-real-red/10 text-real-red px-3 py-1 text-xs font-medium">
                 {rental.status === "active" ? "Active" : rental.status}
@@ -727,10 +1041,14 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
           </div>
 
           <div className="rounded-2xl border border-border p-5 bg-white flex flex-col">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Next Payment Due</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Next Payment Due
+            </div>
             <div className="mt-2 text-3xl font-semibold">{fmt(rental.weekly_rate)}</div>
             <div className="mt-1 text-sm text-muted-foreground">
-              {rental.next_payment_due ? `Due ${new Date(rental.next_payment_due).toLocaleDateString()}` : "Scheduled by your rental agreement"}
+              {rental.next_payment_due
+                ? `Due ${new Date(rental.next_payment_due).toLocaleDateString()}`
+                : "Scheduled by your rental agreement"}
             </div>
             <button
               type="button"
@@ -751,7 +1069,9 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
           <MetricTile
             label="Next Payment Due"
             value={fmt(rental.weekly_rate)}
-            sub={rental.next_payment_due ? new Date(rental.next_payment_due).toLocaleDateString() : "—"}
+            sub={
+              rental.next_payment_due ? new Date(rental.next_payment_due).toLocaleDateString() : "—"
+            }
           />
           <MetricTile
             label="Deposit Held"
@@ -759,7 +1079,13 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
             sub={rental.deposit_held ? "On file" : "Not yet collected"}
             tooltip="Your refundable deposit is held for the duration of your rental and refunded 14 to 30 days after your rental ends, less any unpaid balance."
           />
-          <MetricTile label="Weeks Rented" value={`${rental.weeks_rented}`} sub={rental.start_date ? `Since ${new Date(rental.start_date).toLocaleDateString()}` : "—"} />
+          <MetricTile
+            label="Weeks Rented"
+            value={`${rental.weeks_rented}`}
+            sub={
+              rental.start_date ? `Since ${new Date(rental.start_date).toLocaleDateString()}` : "—"
+            }
+          />
         </div>
       )}
 
@@ -767,7 +1093,12 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
         <div className="rounded-2xl border border-border bg-white p-5">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Recent Invoices & Receipts</h3>
-            {lastPayment && <span className="text-xs text-muted-foreground">Last paid {lastPayment.paid_date ? new Date(lastPayment.paid_date).toLocaleDateString() : ""}</span>}
+            {lastPayment && (
+              <span className="text-xs text-muted-foreground">
+                Last paid{" "}
+                {lastPayment.paid_date ? new Date(lastPayment.paid_date).toLocaleDateString() : ""}
+              </span>
+            )}
           </div>
           {payments.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">No payments yet.</p>
@@ -776,8 +1107,12 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
               {payments.slice(0, 6).map((p) => (
                 <li key={p.id} className="py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm">{p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "Pending"}</div>
-                    <div className="text-xs text-muted-foreground capitalize">{p.type} · {p.status}</div>
+                    <div className="text-sm">
+                      {p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "Pending"}
+                    </div>
+                    <div className="text-xs text-muted-foreground capitalize">
+                      {p.type} · {p.status}
+                    </div>
                   </div>
                   <div className="text-sm font-medium">{fmt(p.amount)}</div>
                   <button
@@ -795,7 +1130,10 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
 
         <div className="rounded-2xl border border-border bg-white p-5">
           <h3 className="font-semibold">Prepay & Save</h3>
-          <p className="mt-2 text-sm text-muted-foreground">Pay 4 weeks up front and lock in a discount. Ask driver support for current prepay offers in your market.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Pay 4 weeks up front and lock in a discount. Ask driver support for current prepay
+            offers in your market.
+          </p>
           <a
             href="tel:+18136999118"
             className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
@@ -822,7 +1160,17 @@ function DashboardView({ data, onNavigate }: { data: DriverDashboard; onNavigate
   );
 }
 
-function MetricTile({ label, value, sub, tooltip }: { label: string; value: string; sub?: string; tooltip?: string }) {
+function MetricTile({
+  label,
+  value,
+  sub,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tooltip?: string;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-white p-5">
       <div className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -831,7 +1179,11 @@ function MetricTile({ label, value, sub, tooltip }: { label: string; value: stri
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button type="button" aria-label={`About ${label}`} className="text-muted-foreground hover:text-foreground">
+                <button
+                  type="button"
+                  aria-label={`About ${label}`}
+                  className="text-muted-foreground hover:text-foreground"
+                >
                   <Info className="w-3.5 h-3.5" />
                 </button>
               </TooltipTrigger>
@@ -852,7 +1204,9 @@ function VehicleView({ data }: { data: DriverDashboard }) {
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">
       <div className="aspect-[16/9] bg-soft relative">
-        {v.photo ? <img src={v.photo} alt="" className="absolute inset-0 w-full h-full object-cover" /> : null}
+        {v.photo ? (
+          <img src={v.photo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        ) : null}
       </div>
       <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <Field label="Year" value={v.year} />
@@ -879,21 +1233,32 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { getRentalBilling().then(setBilling).catch(() => setBilling(null)); }, []);
+  useEffect(() => {
+    getRentalBilling()
+      .then(setBilling)
+      .catch(() => setBilling(null));
+  }, []);
 
   async function payNow() {
     if (!billing?.rentalId || billing.outstandingCents < 50) return;
     setBusy(true);
     try {
       const res = await payRentalBalance({
-        data: { rentalId: billing.rentalId, amountCents: billing.outstandingCents, environment: getStripeEnvironment() },
+        data: {
+          rentalId: billing.rentalId,
+          amountCents: billing.outstandingCents,
+          environment: getStripeEnvironment(),
+        },
       });
       if ("error" in res) throw new Error(res.error);
       toast.success("Payment submitted");
-      const b = await getRentalBilling(); setBilling(b);
+      const b = await getRentalBilling();
+      setBilling(b);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Payment failed");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -914,16 +1279,26 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           </div>
           <div className="grid sm:grid-cols-3 gap-4 text-sm">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Weekly Rate</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Weekly Rate
+              </div>
               <div className="mt-1 font-medium">{fmt(billing.weeklyRate)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Next Charge</div>
-              <div className="mt-1 font-medium">{billing.nextChargeDate ? new Date(billing.nextChargeDate).toLocaleDateString() : "—"}</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Next Charge
+              </div>
+              <div className="mt-1 font-medium">
+                {billing.nextChargeDate
+                  ? new Date(billing.nextChargeDate).toLocaleDateString()
+                  : "—"}
+              </div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Card</div>
-              <div className="mt-1 font-medium capitalize">{billing.card ? `${billing.card.brand} ····${billing.card.last4}` : "None"}</div>
+              <div className="mt-1 font-medium capitalize">
+                {billing.card ? `${billing.card.brand} ····${billing.card.last4}` : "None"}
+              </div>
             </div>
           </div>
           {billing.paymentStatus === "past_due" && (
@@ -933,8 +1308,11 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           )}
           <div className="mt-4 flex flex-wrap gap-2">
             {billing.outstandingCents >= 50 && (
-              <button onClick={payNow} disabled={busy}
-                className="rounded-lg bg-real-red text-white text-sm px-4 py-2 disabled:opacity-50">
+              <button
+                onClick={payNow}
+                disabled={busy}
+                className="rounded-lg bg-real-red text-white text-sm px-4 py-2 disabled:opacity-50"
+              >
                 {busy ? "Charging…" : `Pay Now — ${fmt(billing.outstandingCents / 100)}`}
               </button>
             )}
@@ -943,35 +1321,49 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
         </div>
       )}
 
-    <div className="rounded-2xl border border-border bg-white p-5">
-      <h3 className="font-semibold">All Payments</h3>
-      {data.payments.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">No payments on file yet.</p>
-      ) : (
-        <table className="mt-4 w-full text-sm">
-          <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
-              <tr><th className="py-2">Date</th><th>Type</th><th>Status</th><th className="text-right">Amount</th></tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {data.payments.map((p) => (
-              <tr key={p.id}>
-                <td className="py-2">{p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "—"}</td>
-                <td className="capitalize">{p.type}</td>
-                  <td className="capitalize">
-                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
-                      p.status === "paid" ? "bg-emerald-100 text-emerald-800" :
-                      p.status === "failed" ? "bg-red-100 text-red-800" :
-                      p.status === "pending" ? "bg-amber-100 text-amber-800" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>{p.status}</span>
-                  </td>
-                <td className="text-right">{fmt(p.amount)}</td>
+      <div className="rounded-2xl border border-border bg-white p-5">
+        <h3 className="font-semibold">All Payments</h3>
+        {data.payments.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">No payments on file yet.</p>
+        ) : (
+          <table className="mt-4 w-full text-sm">
+            <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
+              <tr>
+                <th className="py-2">Date</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th className="text-right">Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.payments.map((p) => (
+                <tr key={p.id}>
+                  <td className="py-2">
+                    {p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="capitalize">{p.type}</td>
+                  <td className="capitalize">
+                    <span
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                        p.status === "paid"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : p.status === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : p.status === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="text-right">{fmt(p.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -993,9 +1385,12 @@ function DepositView({ data }: { data: DriverDashboard }) {
     <div className="rounded-2xl border border-border bg-white p-6 max-w-2xl">
       <h3 className="font-semibold">Refundable Deposit</h3>
       <div className="mt-4 text-3xl font-semibold">{fmt(r?.deposit_amount ?? 0)}</div>
-      <div className="mt-1 text-sm text-muted-foreground">{r?.deposit_held ? "Currently held on your rental." : "Not yet collected."}</div>
+      <div className="mt-1 text-sm text-muted-foreground">
+        {r?.deposit_held ? "Currently held on your rental." : "Not yet collected."}
+      </div>
       <div className="mt-5 rounded-lg bg-soft p-4 text-sm text-muted-foreground">
-        Your deposit is refunded 14 to 30 days after your rental ends, less any unpaid balance, tolls, or vehicle-condition charges spelled out in your rental agreement.
+        Your deposit is refunded 14 to 30 days after your rental ends, less any unpaid balance,
+        tolls, or vehicle-condition charges spelled out in your rental agreement.
       </div>
     </div>
   );
@@ -1007,16 +1402,22 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Upcoming For Your Vehicle</h3>
         {data.maintenance.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">Nothing scheduled. We'll notify you when routine service is due.</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Nothing scheduled. We'll notify you when routine service is due.
+          </p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
             {data.maintenance.map((m) => (
               <li key={m.id} className="py-3 flex items-center justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium">{m.item}</div>
-                  <div className="text-xs text-muted-foreground capitalize">{m.category} · {m.status}</div>
+                  <div className="text-xs text-muted-foreground capitalize">
+                    {m.category} · {m.status}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">{m.due_date ? new Date(m.due_date).toLocaleDateString() : "TBD"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {m.due_date ? new Date(m.due_date).toLocaleDateString() : "TBD"}
+                </div>
               </li>
             ))}
           </ul>
@@ -1037,14 +1438,22 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
                   </div>
                 )}
                 {s.phone && (
-                  <a href={`tel:${s.phone}`} className="mt-1 text-xs text-real-red flex items-center gap-1.5 hover:underline">
+                  <a
+                    href={`tel:${s.phone}`}
+                    className="mt-1 text-xs text-real-red flex items-center gap-1.5 hover:underline"
+                  >
                     <Phone className="w-3 h-3" /> {s.phone}
                   </a>
                 )}
                 {s.services && s.services.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {s.services.map((srv) => (
-                      <span key={srv} className="inline-flex items-center rounded-full bg-soft px-2 py-0.5 text-[10px] text-muted-foreground">{srv}</span>
+                      <span
+                        key={srv}
+                        className="inline-flex items-center rounded-full bg-soft px-2 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        {srv}
+                      </span>
                     ))}
                   </div>
                 )}

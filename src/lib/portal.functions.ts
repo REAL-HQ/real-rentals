@@ -69,7 +69,9 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
 
     const { data: rental } = await supabase
       .from("rentals")
-      .select("id,weekly_rate,deposit_amount,deposit_held,next_payment_due,start_date,status,vehicle_id")
+      .select(
+        "id,weekly_rate,deposit_amount,deposit_held,next_payment_due,start_date,status,vehicle_id",
+      )
       .eq("driver_id", userId)
       .eq("status", "active")
       .order("created_at", { ascending: false })
@@ -80,7 +82,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     if (rental?.vehicle_id) {
       const { data: v } = await supabase
         .from("vehicles")
-        .select("id,year,make,model,trim,color,status,photos")
+        .select("id,year,make,model,trim,color,status,photos,license_plate")
         .eq("id", rental.vehicle_id)
         .maybeSingle();
       if (v) {
@@ -93,17 +95,14 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
           trim: v.trim ?? null,
           color: v.color ?? null,
           photo: (photos && photos[0]) || null,
-          plate: null,
+          plate: (v as any).license_plate ?? null,
           status: v.status ?? null,
         };
       }
     }
 
     // payments.driver_id references applications.id; resolve via application(s) linked to this user
-    const { data: apps } = await supabase
-      .from("applications")
-      .select("id")
-      .eq("user_id", userId);
+    const { data: apps } = await supabase.from("applications").select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id);
 
     const [paymentsRes, maintRes, notifRes] = await Promise.all([
@@ -178,10 +177,7 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     // documents.driver_id references applications.id (not auth.users.id), so
     // resolve this user's application(s) before querying the vault.
-    const { data: apps } = await supabase
-      .from("applications")
-      .select("id")
-      .eq("user_id", userId);
+    const { data: apps } = await supabase.from("applications").select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id as string);
     if (appIds.length === 0) return [];
 
@@ -305,6 +301,10 @@ export type DriverProfile = {
   email: string | null;
   phone: string | null;
   city: string | null;
+  address: string | null;
+  state: string | null;
+  zip: string | null;
+  sms_consent: boolean | null;
   status: string | null;
   applied_at: string | null;
   account_email: string | null;
@@ -315,7 +315,7 @@ export const getDriverProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<DriverProfile> => {
     const { data } = await context.supabase
       .from("applications")
-      .select("full_name,email,phone,city,status,created_at")
+      .select("full_name,email,phone,city,status,created_at,address,state,zip,sms_consent")
       .eq("user_id", context.userId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -325,10 +325,92 @@ export const getDriverProfile = createServerFn({ method: "GET" })
       email: data?.email ?? null,
       phone: data?.phone ?? null,
       city: (data as any)?.city ?? null,
+      address: (data as any)?.address ?? null,
+      state: (data as any)?.state ?? null,
+      zip: (data as any)?.zip ?? null,
+      sms_consent: (data as any)?.sms_consent ?? null,
       status: data?.status ?? null,
       applied_at: data?.created_at ?? null,
       account_email: (context.claims as any)?.email ?? null,
     };
+  });
+
+/**
+ * Let a renter correct their own contact details.
+ *
+ * Name, email and phone are theirs to change. Anything that affects
+ * eligibility or billing — status, rates, licence validity — is deliberately
+ * not editable here and still goes through the team.
+ *
+ * Changing the phone number resets SMS consent: consent was given for the old
+ * number and does not carry over to a new one.
+ */
+export const updateDriverProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (d: {
+      full_name?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    }) => {
+      const out: Record<string, string> = {};
+      const name = (d?.full_name ?? "").trim();
+      if (name) {
+        if (name.length < 2 || name.length > 120) throw new Error("Enter your full name.");
+        out.full_name = name;
+      }
+      const phone = (d?.phone ?? "").trim();
+      if (phone) {
+        if (phone.replace(/\D/g, "").length < 10) throw new Error("Enter a valid phone number.");
+        out.phone = phone.slice(0, 40);
+      }
+      const email = (d?.email ?? "").trim().toLowerCase();
+      if (email) {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+          throw new Error("Enter a valid email address.");
+        out.email = email;
+      }
+      for (const k of ["address", "city", "state", "zip"] as const) {
+        const v = (d?.[k] ?? "").trim();
+        if (v) out[k] = v.slice(0, 200);
+      }
+      if (Object.keys(out).length === 0) throw new Error("Nothing to update.");
+      return out;
+    },
+  )
+  .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    const { supabase, userId } = context;
+    const { data: app } = await supabase
+      .from("applications")
+      .select("id,phone")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!app) return { error: "No application on file." };
+
+    const patch: Record<string, unknown> = { ...data };
+    const oldDigits = String(app.phone ?? "")
+      .replace(/\D/g, "")
+      .slice(-10);
+    const newDigits = String(data.phone ?? "")
+      .replace(/\D/g, "")
+      .slice(-10);
+    if (newDigits && newDigits !== oldDigits) {
+      patch.sms_consent = false;
+      patch.sms_opt_out_at = null;
+    }
+
+    const { error } = await supabase
+      .from("applications")
+      .update(patch as any)
+      .eq("id", app.id);
+    if (error) return { error: error.message };
+    return { ok: true };
   });
 
 export type DriverPicture = { url: string; label: string };
