@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
@@ -82,6 +83,9 @@ export type InspectionDetail = {
   inspector_name: string | null;
   started_at: string;
   completed_at: string | null;
+  driver_signature_name: string | null;
+  driver_signed_at: string | null;
+  driver_notes: string | null;
   items: InspectionItem[];
   media: ConditionMedia[];
 };
@@ -403,6 +407,9 @@ export const getInspection = createServerFn({ method: "POST" })
       inspector_name: inspection.inspector_name ?? null,
       started_at: inspection.started_at,
       completed_at: inspection.completed_at ?? null,
+      driver_signature_name: inspection.driver_signature_name ?? null,
+      driver_signed_at: inspection.driver_signed_at ?? null,
+      driver_notes: inspection.driver_notes ?? null,
       items: (items ?? []) as InspectionItem[],
       media: await signMedia(supabaseAdmin, media ?? []),
     };
@@ -525,4 +532,152 @@ export const completeInspection = createServerFn({ method: "POST" })
     }
 
     return { ok: true, status, blockedBy, incomplete: [] };
+  });
+
+// ------------------------------------------------ renter sign-off at handover
+
+export type InspectionToSign = {
+  id: string;
+  vehicleLabel: string;
+  inspectionType: string;
+  odometer: number | null;
+  fuelLevel: string | null;
+  completedAt: string | null;
+  inspectorName: string | null;
+  signedAt: string | null;
+  signatureName: string | null;
+  driverNotes: string | null;
+  items: Array<{ section: string; label: string; result: string; notes: string | null }>;
+  media: ConditionMedia[];
+};
+
+/**
+ * The checkout inspection this renter is being asked to agree to.
+ *
+ * Condition photos and a completed checklist record what the car looked like
+ * at handover, but only from our side. Until the renter signs that record, a
+ * damage dispute is still our word against theirs.
+ *
+ * Returns the most recent passed pre-delivery inspection on the car they are
+ * renting — signed or not, so the portal can show the countersigned copy
+ * afterwards rather than having it disappear.
+ */
+export const getMyCheckoutInspection = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<InspectionToSign | null> => {
+    const rental = await activeRentalFor(context.supabase, context.userId);
+    if (!rental?.vehicle_id) return null;
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: inspection } = await supabaseAdmin
+      .from("inspections")
+      .select("*")
+      .eq("vehicle_id", rental.vehicle_id)
+      .eq("inspection_type", "pre_delivery")
+      .eq("status", "passed")
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!inspection) return null;
+
+    const [{ data: items }, { data: media }, { data: vehicle }] = await Promise.all([
+      supabaseAdmin
+        .from("inspection_items")
+        .select("section,label,result,notes")
+        .eq("inspection_id", inspection.id)
+        .order("sort_order"),
+      supabaseAdmin
+        .from("condition_media")
+        .select("*")
+        .eq("vehicle_id", rental.vehicle_id)
+        .eq("phase", "checkout")
+        .order("created_at"),
+      supabaseAdmin
+        .from("vehicles")
+        .select("year,make,model,license_plate")
+        .eq("id", rental.vehicle_id)
+        .maybeSingle(),
+    ]);
+
+    return {
+      id: inspection.id as string,
+      vehicleLabel:
+        [
+          [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" "),
+          vehicle?.license_plate,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Your vehicle",
+      inspectionType: inspection.inspection_type as string,
+      odometer: (inspection.odometer as number | null) ?? null,
+      fuelLevel: (inspection.fuel_level as string | null) ?? null,
+      completedAt: (inspection.completed_at as string | null) ?? null,
+      inspectorName: (inspection.inspector_name as string | null) ?? null,
+      signedAt: (inspection.driver_signed_at as string | null) ?? null,
+      signatureName: (inspection.driver_signature_name as string | null) ?? null,
+      driverNotes: (inspection.driver_notes as string | null) ?? null,
+      items: (items ?? []) as InspectionToSign["items"],
+      media: await signMedia(supabaseAdmin, media ?? []),
+    };
+  });
+
+export const signCheckoutInspection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        inspectionId: z.string().uuid(),
+        signerName: z.string().trim().min(2).max(140),
+        agree: z.literal(true),
+        notes: z.string().max(2000).nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
+    const rental = await activeRentalFor(context.supabase, context.userId);
+    if (!rental?.vehicle_id) return { error: "No active rental on file." };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: inspection } = await supabaseAdmin
+      .from("inspections")
+      .select("id,vehicle_id,status,inspection_type,driver_signed_at")
+      .eq("id", data.inspectionId)
+      .maybeSingle();
+    if (!inspection) return { error: "Inspection not found." };
+
+    // The renter may only sign the checkout inspection for the car they
+    // actually rent, and only one that has passed.
+    if (inspection.vehicle_id !== rental.vehicle_id) return { error: "Forbidden" };
+    if (inspection.inspection_type !== "pre_delivery" || inspection.status !== "passed") {
+      return { error: "That inspection is not ready for signature." };
+    }
+    // A signature is a record of a moment; re-signing would overwrite it.
+    if (inspection.driver_signed_at) return { error: "You have already signed this." };
+
+    const req = getRequest();
+    const ip =
+      req?.headers.get("cf-connecting-ip") ||
+      req?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      null;
+    const agent = req?.headers.get("user-agent") ?? null;
+
+    const { error } = await supabaseAdmin
+      .from("inspections")
+      .update({
+        driver_user_id: context.userId,
+        driver_signature_name: data.signerName.trim(),
+        driver_signed_at: new Date().toISOString(),
+        driver_signature_ip: ip,
+        driver_signature_user_agent: agent,
+        driver_notes: data.notes?.trim() || null,
+      })
+      .eq("id", data.inspectionId)
+      // Re-check under the write so two concurrent submissions cannot both
+      // land; the second updates zero rows.
+      .is("driver_signed_at", null);
+    if (error) return { error: error.message };
+
+    return { ok: true };
   });

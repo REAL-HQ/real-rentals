@@ -23,7 +23,11 @@ import {
 import { getMyAgreements, signMyAgreement } from "@/lib/agreements.functions";
 import { DocumentVault } from "@/components/admin/DocumentVault";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
-import { listConditionMedia } from "@/lib/inspections.functions";
+import {
+  listConditionMedia,
+  getMyCheckoutInspection,
+  signCheckoutInspection,
+} from "@/lib/inspections.functions";
 import { getMyCharges } from "@/lib/charges.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
@@ -506,6 +510,234 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
   );
 }
 
+/**
+ * The renter's sign-off on the car's condition at handover.
+ *
+ * Our checklist and photos only record our side of it. Until the renter
+ * agrees to that record, a damage dispute at return is our word against
+ * theirs — so this puts the full inspection and every checkout photo in front
+ * of them, with room to note anything they disagree with, before they sign.
+ */
+function CheckoutSignOffCard() {
+  const fetchInspection = useServerFn(getMyCheckoutInspection);
+  const sign = useServerFn(signCheckoutInspection);
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["checkout-inspection"],
+    queryFn: () => fetchInspection(),
+  });
+
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (isLoading || !data) return null;
+
+  const signed = !!data.signedAt;
+  const failed = data.items.filter((i) => i.result === "fail");
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const res = await sign({
+        data: {
+          inspectionId: data!.id,
+          signerName: name.trim(),
+          agree: true,
+          notes: notes.trim() || null,
+        },
+      });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Thanks — your sign-off is on file");
+      setOpen(false);
+      await refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not record your signature");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-5 ${signed ? "border-border" : "border-real-red/40"}`}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-semibold">Vehicle Condition At Pickup</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {signed
+              ? `You signed this on ${new Date(data.signedAt as string).toLocaleDateString()}.`
+              : "Please review how the car was handed over and confirm you agree. This protects you if there is ever a question about damage."}
+          </p>
+        </div>
+        {signed ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 px-2.5 py-1 text-xs font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Signed
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-real-red/10 text-real-red px-2.5 py-1 text-xs font-medium">
+            <AlertTriangle className="w-3.5 h-3.5" /> Needs your signature
+          </span>
+        )}
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <Fact label="Vehicle" value={data.vehicleLabel} />
+        <Fact
+          label="Odometer"
+          value={data.odometer ? `${data.odometer.toLocaleString()} mi` : "—"}
+        />
+        <Fact label="Fuel" value={data.fuelLevel ? data.fuelLevel.replace(/_/g, " ") : "—"} />
+        <Fact
+          label="Inspected"
+          value={data.completedAt ? new Date(data.completedAt).toLocaleDateString() : "—"}
+        />
+      </dl>
+
+      {failed.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="text-sm font-semibold text-amber-900">Noted before you took the car</div>
+          <ul className="mt-1 space-y-0.5 text-sm text-amber-900/90">
+            {failed.map((i) => (
+              <li key={i.label}>
+                • {i.label}
+                {i.notes ? ` — ${i.notes}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {data.media.length > 0 ? (
+        <div className="mt-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Photos taken at handover
+          </div>
+          <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {data.media.map((m) => (
+              <a
+                key={m.id}
+                href={m.url ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="block overflow-hidden rounded-lg border border-border"
+              >
+                {m.media_type === "video" ? (
+                  <div className="h-20 w-full bg-soft flex items-center justify-center text-[11px] text-muted-foreground">
+                    Video
+                  </div>
+                ) : (
+                  <img
+                    src={m.url ?? ""}
+                    alt={m.angle ?? "condition"}
+                    loading="lazy"
+                    className="h-20 w-full object-cover"
+                  />
+                )}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {data.driverNotes ? (
+        <div className="mt-4 rounded-xl border border-border bg-soft p-3 text-sm">
+          <span className="font-medium">Your note:</span> {data.driverNotes}
+        </div>
+      ) : null}
+
+      {!signed ? (
+        <div className="mt-4">
+          {!open ? (
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold"
+            >
+              Review &amp; Sign
+            </button>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-border bg-soft p-4">
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">
+                  See the full {data.items.length}-point checklist
+                </summary>
+                <ul className="mt-2 space-y-1">
+                  {data.items.map((i) => (
+                    <li key={`${i.section}-${i.label}`} className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">{i.label}</span>
+                      <span className="capitalize shrink-0">{i.result}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Anything you disagree with or want noted?
+                </div>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. scratch on the rear bumper was already there"
+                  className="mt-1.5 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white"
+                />
+              </div>
+
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Type your full legal name"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white"
+              />
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={agree}
+                  onChange={(e) => setAgree(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I have reviewed the photos and checklist above and agree this is the condition of
+                  the vehicle as I received it. Typing my name is my legal electronic signature.
+                </span>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  disabled={busy || !agree || name.trim().length < 2}
+                  onClick={submit}
+                  className="rounded-lg bg-real-red text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-40"
+                >
+                  {busy ? "Signing…" : "Sign"}
+                </button>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        {label}
+      </dt>
+      <dd className="mt-0.5 capitalize">{value}</dd>
+    </div>
+  );
+}
+
 function PicturesView() {
   const fetchPics = useServerFn(getDriverPictures);
   const fetchCondition = useServerFn(listConditionMedia);
@@ -533,6 +765,8 @@ function PicturesView() {
 
   return (
     <div className="space-y-5 max-w-3xl">
+      <CheckoutSignOffCard />
+
       {vehicleId ? (
         <>
           <div className="rounded-2xl border border-border bg-white p-5">

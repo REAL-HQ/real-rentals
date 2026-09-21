@@ -539,6 +539,37 @@ function InspectionRunner({
         </div>
       ))}
 
+      {data.inspection_type === "pre_delivery" && readOnly ? (
+        <div
+          className={`rounded-2xl border bg-white shadow-sm p-4 ${
+            data.driver_signed_at ? "border-[#CDE7D6]" : "border-[#F0DCBB]"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-sm">Renter sign-off</h3>
+            <StatusPill status={data.driver_signed_at ? "active" : "pending"}>
+              {data.driver_signed_at ? "signed" : "awaiting signature"}
+            </StatusPill>
+          </div>
+          {data.driver_signed_at ? (
+            <p className="mt-1 text-sm text-[#55555E]">
+              Signed by <strong>{data.driver_signature_name}</strong> on{" "}
+              {new Date(data.driver_signed_at).toLocaleString()}.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              The renter has not yet agreed to this condition record. It appears in their portal
+              under Pictures.
+            </p>
+          )}
+          {data.driver_notes ? (
+            <div className="mt-2 rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-3 text-sm">
+              <span className="font-medium">Renter noted:</span> {data.driver_notes}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <ConditionUploader
         vehicleId={data.vehicle_id}
         inspectionId={data.id}
