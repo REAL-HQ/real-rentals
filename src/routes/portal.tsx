@@ -24,6 +24,7 @@ import { getMyAgreements, signMyAgreement } from "@/lib/agreements.functions";
 import { DocumentVault } from "@/components/admin/DocumentVault";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { listConditionMedia } from "@/lib/inspections.functions";
+import { getMyCharges } from "@/lib/charges.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
@@ -1229,6 +1230,70 @@ function Field({ label, value }: { label: string; value: any }) {
   );
 }
 
+/**
+ * Tolls and citations billed to this renter. Only charges that have actually
+ * been billed are shown — a charge still being worked out is not something to
+ * put in front of them.
+ */
+function MyChargesCard() {
+  const fetchCharges = useServerFn(getMyCharges);
+  const { data, isLoading } = useQuery({
+    queryKey: ["driver-charges"],
+    queryFn: () => fetchCharges(),
+  });
+
+  if (isLoading) return null;
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+
+  const outstanding = rows
+    .filter((c) => c.status === "rebilled")
+    .reduce((s, c) => s + c.amount + c.admin_fee, 0);
+
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h3 className="font-semibold">Tolls &amp; Citations</h3>
+        {outstanding > 0 ? (
+          <span className="text-sm font-semibold text-real-red">
+            {fmt(outstanding)} outstanding
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Charges incurred on your vehicle while it was rented to you.
+      </p>
+      <ul className="mt-3 divide-y divide-border">
+        {rows.map((c) => (
+          <li key={c.id} className="py-2.5 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm font-medium capitalize">
+                {c.charge_type.replace(/_/g, " ")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(c.occurred_at).toLocaleDateString()}
+                {c.location ? ` · ${c.location}` : ""}
+                {c.agency ? ` · ${c.agency}` : ""}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-sm font-semibold tabular-nums">
+                {fmt(c.amount + c.admin_fee)}
+              </div>
+              <div className="text-[11px] text-muted-foreground capitalize">
+                {c.status === "rebilled" ? "due" : c.status}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Think one of these is not yours? Report it below and we will look into it.
+      </p>
+    </div>
+  );
+}
+
 function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1263,6 +1328,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
 
   return (
     <div className="space-y-6">
+      <MyChargesCard />
+
       {billing && billing.rentalId && (
         <div className="rounded-2xl border border-border bg-white p-5">
           <div className="flex items-center justify-between mb-4">

@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mergeDuplicateApplications, approveApplication } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { DepositDialog } from "./DepositDialog";
+import { endRental } from "@/lib/rentals.functions";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
   DocumentsCard,
@@ -804,8 +806,44 @@ function DriverDetail({
 
   // ---- Primary action -------------------------------------------------
   const approve = useServerFn(approveApplication);
+  const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
+  const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
+
+  // The rental is what deposit disposition and ending hang off, so look it up
+  // once the driver is active.
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("rentals")
+      .select("id,status")
+      .eq("application_id", driver.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setActiveRentalId((data?.id as string) ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, driver.status]);
+
+  async function doEndRental() {
+    if (!activeRentalId) return;
+    if (!confirm("End this rental? The vehicle is released and any running automations stop."))
+      return;
+    try {
+      await closeRental({ data: { rentalId: activeRentalId, vehicleStatus: "available" } });
+      toast.success("Rental ended — settle the deposit next");
+      setDepositRentalId(activeRentalId);
+      onUpdate({ status: "closed" });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not end the rental");
+    }
+  }
 
   // Approving and sending the contract used to be two separate manual steps,
   // so an approved driver could sit waiting on a contract nobody sent.
@@ -1092,6 +1130,18 @@ function DriverDetail({
                     (document.getElementById("tab-notes") as HTMLElement | null)?.click()
                   }
                 />
+                {activeRentalId ? (
+                  <>
+                    <QuickAction
+                      icon={Wallet}
+                      label="Deposit disposition"
+                      onClick={() => setDepositRentalId(activeRentalId)}
+                    />
+                    {driver.status === "active" ? (
+                      <QuickAction icon={Car} label="End rental" onClick={doEndRental} />
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             </SectionCard>
           </aside>
@@ -1422,6 +1472,10 @@ function DriverDetail({
           onScreeningChange?.(next);
         }}
       />
+
+      {depositRentalId ? (
+        <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />
+      ) : null}
 
       {activateOpen ? (
         <ActivateRentalDialog
