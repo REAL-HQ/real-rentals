@@ -401,6 +401,17 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       } catch (e) {
         console.error("[ai-scoring] complete setup failed", e);
       }
+      // Start any active post-application follow-up sequence. Enrollment is
+      // idempotent, so a re-submitted wizard never double-texts the applicant.
+      try {
+        const { enrollInWorkflows } = await import("@/lib/automations.server");
+        void enrollInWorkflows({
+          trigger: "application_submitted",
+          applicationId: row.id,
+        }).catch((e) => console.error("[automations] enroll on submit failed", e));
+      } catch (e) {
+        console.error("[automations] enroll setup failed", e);
+      }
     }
     return { ok: true, score: newScore };
   });

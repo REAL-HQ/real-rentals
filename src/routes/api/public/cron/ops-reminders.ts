@@ -61,7 +61,7 @@ async function handle(request: Request): Promise<Response> {
         .eq("id", appId)
         .maybeSingle();
       if (!app?.email) continue;
-      if (await recentlyNotified(supabaseAdmin, app.user_id, "past_due", since)) continue;
+      if (await recentlyNotified(supabaseAdmin, app.id, "past_due", since)) continue;
 
       const daysLate = info.dueDate
         ? Math.max(1, Math.round((today.getTime() - new Date(info.dueDate).getTime()) / 86400000))
@@ -73,7 +73,10 @@ async function handle(request: Request): Promise<Response> {
         dueDate: info.dueDate,
         daysLate,
       });
-      await logNotification(supabaseAdmin, app.user_id, "past_due", "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`);
+      await logNotification(
+        supabaseAdmin, app.id, app.user_id, app.email,
+        "past_due", "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
+      );
       pastDue++;
     } catch (err) {
       console.error("[ops-reminders] past-due send failed", appId, err);
@@ -93,7 +96,7 @@ async function handle(request: Request): Promise<Response> {
   for (const app of expiring ?? []) {
     try {
       if (!app.email) continue;
-      if (await recentlyNotified(supabaseAdmin, app.user_id, "license_expiring", since)) continue;
+      if (await recentlyNotified(supabaseAdmin, app.id, "license_expiring", since)) continue;
       const daysLeft = Math.round(
         (new Date(app.license_expiration as string).getTime() - today.getTime()) / 86400000,
       );
@@ -103,7 +106,10 @@ async function handle(request: Request): Promise<Response> {
         expiration: app.license_expiration as string,
         daysLeft,
       });
-      await logNotification(supabaseAdmin, app.user_id, "license_expiring", "License Expiring", `Expires ${app.license_expiration}.`);
+      await logNotification(
+        supabaseAdmin, app.id, app.user_id, app.email,
+        "license_expiring", "License Expiring", `Expires ${app.license_expiration}.`,
+      );
       licenses++;
     } catch (err) {
       console.error("[ops-reminders] license send failed", app.id, err);
@@ -164,7 +170,7 @@ async function handle(request: Request): Promise<Response> {
         .maybeSingle();
       const to = (a.signer_email as string | null) || app?.email;
       if (!to) continue;
-      if (await recentlyNotified(supabaseAdmin, app?.user_id ?? null, "agreement_reminder", since)) continue;
+      if (await recentlyNotified(supabaseAdmin, app?.id ?? null, "agreement_reminder", since)) continue;
 
       await sendEmail({
         to,
@@ -179,7 +185,9 @@ async function handle(request: Request): Promise<Response> {
       });
       await logNotification(
         supabaseAdmin,
+        app?.id ?? null,
         app?.user_id ?? null,
+        to,
         "agreement_reminder",
         "Rental agreement awaiting signature",
         "We sent you a reminder to sign your rental agreement.",
@@ -234,19 +242,51 @@ function monthsSince(date: string): number {
   return (Date.now() - new Date(date).getTime()) / (30.44 * 86400000);
 }
 
-async function recentlyNotified(db: any, userId: string | null, kind: string, since: string): Promise<boolean> {
-  if (!userId) return false;
+// Dedupe against the outbound message log rather than in-app notifications.
+// notifications.driver_id is an auth user id, so an applicant who has not yet
+// created a portal login had no dedupe record at all and was re-emailed on
+// every single cron run. outbound_messages is keyed by application, which
+// every reminder recipient has.
+async function recentlyNotified(
+  db: any,
+  applicationId: string | null,
+  kind: string,
+  since: string,
+): Promise<boolean> {
+  if (!applicationId) return false;
   const { data } = await db
-    .from("notifications")
+    .from("outbound_messages")
     .select("id")
-    .eq("driver_id", userId)
+    .eq("application_id", applicationId)
     .eq("kind", kind)
     .gte("created_at", since)
     .limit(1);
   return !!(data && data.length);
 }
 
-async function logNotification(db: any, userId: string | null, kind: string, title: string, body: string) {
-  if (!userId) return;
-  await db.from("notifications").insert({ driver_id: userId, kind, title, body, channels: ["email"] });
+async function logNotification(
+  db: any,
+  applicationId: string | null,
+  userId: string | null,
+  toAddress: string,
+  kind: string,
+  title: string,
+  body: string,
+) {
+  // The message log is what dedupes the next run, so it is always written.
+  await db.from("outbound_messages").insert({
+    channel: "email",
+    to_address: toAddress,
+    subject: title,
+    body,
+    status: "sent",
+    provider: "resend",
+    kind,
+    application_id: applicationId,
+    sent_at: new Date().toISOString(),
+  });
+  // The in-app alert only applies to drivers who actually have a login.
+  if (userId) {
+    await db.from("notifications").insert({ driver_id: userId, kind, title, body, channels: ["email"] });
+  }
 }

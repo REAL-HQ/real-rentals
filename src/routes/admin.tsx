@@ -10,13 +10,16 @@ import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
-import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, LayoutDashboard, Search, Bell } from "lucide-react";
+import { Eye, EyeOff, Users, Car, Handshake, CreditCard, Settings as SettingsIcon, LogOut, Wrench, Store, MessageSquare, Globe, UserCog, PanelLeftClose, PanelLeftOpen, LayoutDashboard, Search, Bell, Zap, ClipboardCheck, Truck } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
+import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
+import { VendorsPanel } from "@/components/admin/VendorsPanel";
+import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,9 +39,12 @@ const TABS = [
   { id: "drivers",     label: "Drivers",     icon: Users,           group: "OPERATIONS", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
   { id: "payments",    label: "Payments",    icon: CreditCard,      group: "OPERATIONS", description: "Rent, Deposits And Balances" },
   { id: "messages",    label: "Messages",    icon: MessageSquare,   group: "OPERATIONS", description: "Inbound Driver & Partner Conversations" },
+  { id: "automations", label: "Automations", icon: Zap,             group: "OPERATIONS", description: "Automatic SMS And Email Follow-Up Sequences" },
   { id: "vehicles",    label: "Vehicles",    icon: Car,             group: "FLEET",      description: "Fleet Inventory & Vehicle Status" },
   { id: "maintenance", label: "Service",     icon: Wrench,          group: "FLEET",      description: "Vehicles Down, Due, Scheduled And In Shop" },
+  { id: "inspections", label: "Inspections", icon: ClipboardCheck,  group: "FLEET",      description: "Pre-Delivery And Return Checklists With Photo Proof" },
   { id: "shops",       label: "Shops",       icon: Store,           group: "FLEET",      description: "Preferred Maintenance Providers By Market" },
+  { id: "vendors",     label: "Vendors",     icon: Truck,           group: "FLEET",      description: "Every Vendor We Work With — Service, Towing, GPS, Insurance" },
   { id: "partners",    label: "Partners",    icon: Handshake,       group: "GROWTH",     description: "Vehicle Owners, Capital Partners And Lenders" },
   { id: "websites",    label: "Websites",    icon: Globe,           group: "GROWTH",     description: "Market-Specific Marketing Sites" },
   { id: "team",        label: "Team",        icon: UserCog,         group: "SYSTEM",     description: "Internal Roles & Access Control" },
@@ -338,6 +344,9 @@ function Admin() {
             {tab === "payments" && <PaymentsPanel />}
             {tab === "maintenance" && <MaintenancePanel />}
             {tab === "shops" && <ShopsPanel />}
+            {tab === "vendors" && <VendorsPanel />}
+            {tab === "inspections" && <InspectionsPanel />}
+            {tab === "automations" && <AutomationsPanel />}
             {tab === "messages" && <MessagesPanel />}
             {tab === "websites" && <WebsitesPanel />}
             {tab === "team" && <TeamPanel />}

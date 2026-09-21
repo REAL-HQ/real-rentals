@@ -215,7 +215,12 @@ export type Database = {
           how_heard: string | null
           id: string
           incident_count: number
+          insurance_carrier: string | null
           insurance_doc_url: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          insurance_rideshare_endorsement: boolean | null
+          insurance_status: string
           landing_page: string | null
           license_expiration: string | null
           license_number: string | null
@@ -253,6 +258,7 @@ export type Database = {
           score: number
           scored_at: string | null
           sms_consent: boolean | null
+          sms_opt_out_at: string | null
           source: string | null
           start_date: string | null
           start_timing: string | null
@@ -311,7 +317,12 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          insurance_carrier?: string | null
           insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string
           landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
@@ -349,6 +360,7 @@ export type Database = {
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
+          sms_opt_out_at?: string | null
           source?: string | null
           start_date?: string | null
           start_timing?: string | null
@@ -407,7 +419,12 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          insurance_carrier?: string | null
           insurance_doc_url?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          insurance_rideshare_endorsement?: boolean | null
+          insurance_status?: string
           landing_page?: string | null
           license_expiration?: string | null
           license_number?: string | null
@@ -445,6 +462,7 @@ export type Database = {
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
+          sms_opt_out_at?: string | null
           source?: string | null
           start_date?: string | null
           start_timing?: string | null
@@ -485,6 +503,251 @@ export type Database = {
           },
           {
             foreignKeyName: "applications_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_enrollments: {
+        Row: {
+          application_id: string | null
+          cancelled_reason: string | null
+          completed_at: string | null
+          created_at: string
+          current_step: number
+          enrolled_at: string
+          id: string
+          next_run_at: string | null
+          rental_id: string | null
+          status: string
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          enrolled_at?: string
+          id?: string
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          enrolled_at?: string
+          id?: string
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_enrollments_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_enrollments_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_enrollments_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_steps: {
+        Row: {
+          body: string
+          channel: string
+          created_at: string
+          delay_minutes: number
+          id: string
+          is_active: boolean
+          step_order: number
+          subject: string | null
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          body: string
+          channel?: string
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          step_order?: number
+          subject?: string | null
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          body?: string
+          channel?: string
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          step_order?: number
+          subject?: string | null
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_steps_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_workflows: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          quiet_hours_end: number
+          quiet_hours_start: number
+          stop_on_reply: boolean
+          stop_on_statuses: string[]
+          trigger_event: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          quiet_hours_end?: number
+          quiet_hours_start?: number
+          stop_on_reply?: boolean
+          stop_on_statuses?: string[]
+          trigger_event: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          quiet_hours_end?: number
+          quiet_hours_start?: number
+          stop_on_reply?: boolean
+          stop_on_statuses?: string[]
+          trigger_event?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      condition_media: {
+        Row: {
+          angle: string | null
+          application_id: string | null
+          caption: string | null
+          captured_by: string | null
+          captured_by_role: string
+          created_at: string
+          file_name: string | null
+          id: string
+          inspection_id: string | null
+          media_type: string
+          mime_type: string | null
+          phase: string
+          rental_id: string | null
+          size_bytes: number | null
+          storage_bucket: string
+          storage_path: string
+          vehicle_id: string
+        }
+        Insert: {
+          angle?: string | null
+          application_id?: string | null
+          caption?: string | null
+          captured_by?: string | null
+          captured_by_role?: string
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          inspection_id?: string | null
+          media_type?: string
+          mime_type?: string | null
+          phase?: string
+          rental_id?: string | null
+          size_bytes?: number | null
+          storage_bucket?: string
+          storage_path: string
+          vehicle_id: string
+        }
+        Update: {
+          angle?: string | null
+          application_id?: string | null
+          caption?: string | null
+          captured_by?: string | null
+          captured_by_role?: string
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          inspection_id?: string | null
+          media_type?: string
+          mime_type?: string | null
+          phase?: string
+          rental_id?: string | null
+          size_bytes?: number | null
+          storage_bucket?: string
+          storage_path?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "condition_media_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "condition_media_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "condition_media_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "condition_media_vehicle_id_fkey"
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
@@ -829,6 +1092,234 @@ export type Database = {
         }
         Relationships: []
       }
+      inspection_items: {
+        Row: {
+          created_at: string
+          id: string
+          inspection_id: string
+          is_critical: boolean
+          label: string
+          notes: string | null
+          requires_photo: boolean
+          result: string
+          section: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inspection_id: string
+          is_critical?: boolean
+          label: string
+          notes?: string | null
+          requires_photo?: boolean
+          result?: string
+          section?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inspection_id?: string
+          is_critical?: boolean
+          label?: string
+          notes?: string | null
+          requires_photo?: boolean
+          result?: string
+          section?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_items_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_template_items: {
+        Row: {
+          created_at: string
+          help_text: string | null
+          id: string
+          is_critical: boolean
+          label: string
+          requires_photo: boolean
+          section: string
+          sort_order: number
+          template_id: string
+        }
+        Insert: {
+          created_at?: string
+          help_text?: string | null
+          id?: string
+          is_critical?: boolean
+          label: string
+          requires_photo?: boolean
+          section?: string
+          sort_order?: number
+          template_id: string
+        }
+        Update: {
+          created_at?: string
+          help_text?: string | null
+          id?: string
+          is_critical?: boolean
+          label?: string
+          requires_photo?: boolean
+          section?: string
+          sort_order?: number
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          inspection_type: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          inspection_type?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          inspection_type?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      inspections: {
+        Row: {
+          application_id: string | null
+          completed_at: string | null
+          created_at: string
+          driver_signature_name: string | null
+          driver_signed_at: string | null
+          driver_user_id: string | null
+          exterior_notes: string | null
+          fuel_level: string | null
+          id: string
+          inspection_type: string
+          inspector_id: string | null
+          inspector_name: string | null
+          interior_notes: string | null
+          notes: string | null
+          odometer: number | null
+          rental_id: string | null
+          started_at: string
+          status: string
+          template_id: string | null
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          application_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          driver_signature_name?: string | null
+          driver_signed_at?: string | null
+          driver_user_id?: string | null
+          exterior_notes?: string | null
+          fuel_level?: string | null
+          id?: string
+          inspection_type?: string
+          inspector_id?: string | null
+          inspector_name?: string | null
+          interior_notes?: string | null
+          notes?: string | null
+          odometer?: number | null
+          rental_id?: string | null
+          started_at?: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          application_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          driver_signature_name?: string | null
+          driver_signed_at?: string | null
+          driver_user_id?: string | null
+          exterior_notes?: string | null
+          fuel_level?: string | null
+          id?: string
+          inspection_type?: string
+          inspector_id?: string | null
+          inspector_name?: string | null
+          interior_notes?: string | null
+          notes?: string | null
+          odometer?: number | null
+          rental_id?: string | null
+          started_at?: string
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspections_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       investor_leads: {
         Row: {
           capital_range: string | null
@@ -962,16 +1453,21 @@ export type Database = {
           due_date: string | null
           due_mileage: number | null
           id: string
+          invoice_number: string | null
           item: string
           notes: string | null
+          odometer: number | null
           partner_id: string | null
           partner_share: number
+          performed_on: string | null
           rental_id: string | null
+          schedule_id: string | null
           shop_id: string | null
           status: string
           total_cost: number
           updated_at: string
           vehicle_id: string
+          vendor_id: string | null
         }
         Insert: {
           category?: string
@@ -983,16 +1479,21 @@ export type Database = {
           due_date?: string | null
           due_mileage?: number | null
           id?: string
+          invoice_number?: string | null
           item: string
           notes?: string | null
+          odometer?: number | null
           partner_id?: string | null
           partner_share?: number
+          performed_on?: string | null
           rental_id?: string | null
+          schedule_id?: string | null
           shop_id?: string | null
           status?: string
           total_cost?: number
           updated_at?: string
           vehicle_id: string
+          vendor_id?: string | null
         }
         Update: {
           category?: string
@@ -1004,16 +1505,21 @@ export type Database = {
           due_date?: string | null
           due_mileage?: number | null
           id?: string
+          invoice_number?: string | null
           item?: string
           notes?: string | null
+          odometer?: number | null
           partner_id?: string | null
           partner_share?: number
+          performed_on?: string | null
           rental_id?: string | null
+          schedule_id?: string | null
           shop_id?: string | null
           status?: string
           total_cost?: number
           updated_at?: string
           vehicle_id?: string
+          vendor_id?: string | null
         }
         Relationships: [
           {
@@ -1039,6 +1545,65 @@ export type Database = {
           },
           {
             foreignKeyName: "maintenance_records_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_schedules: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          interval_days: number | null
+          interval_miles: number | null
+          is_active: boolean
+          item: string
+          last_done_miles: number | null
+          last_done_on: string | null
+          next_due_miles: number | null
+          next_due_on: string | null
+          notes: string | null
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean
+          item: string
+          last_done_miles?: number | null
+          last_done_on?: string | null
+          next_due_miles?: number | null
+          next_due_on?: string | null
+          notes?: string | null
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean
+          item?: string
+          last_done_miles?: number | null
+          last_done_on?: string | null
+          next_due_miles?: number | null
+          next_due_on?: string | null
+          notes?: string | null
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_schedules_vehicle_id_fkey"
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
@@ -1166,6 +1731,115 @@ export type Database = {
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outbound_messages: {
+        Row: {
+          application_id: string | null
+          body: string
+          channel: string
+          created_at: string
+          enrollment_id: string | null
+          error: string | null
+          from_address: string | null
+          id: string
+          kind: string | null
+          provider: string | null
+          provider_message_id: string | null
+          rental_id: string | null
+          sent_at: string | null
+          status: string
+          step_id: string | null
+          subject: string | null
+          to_address: string
+          vehicle_id: string | null
+          workflow_id: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          body: string
+          channel: string
+          created_at?: string
+          enrollment_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          kind?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          rental_id?: string | null
+          sent_at?: string | null
+          status?: string
+          step_id?: string | null
+          subject?: string | null
+          to_address: string
+          vehicle_id?: string | null
+          workflow_id?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          body?: string
+          channel?: string
+          created_at?: string
+          enrollment_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          kind?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          rental_id?: string | null
+          sent_at?: string | null
+          status?: string
+          step_id?: string | null
+          subject?: string | null
+          to_address?: string
+          vehicle_id?: string | null
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_messages_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "automation_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "automation_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
             referencedColumns: ["id"]
           },
         ]
@@ -1626,6 +2300,24 @@ export type Database = {
           },
         ]
       }
+      sms_opt_outs: {
+        Row: {
+          created_at: string
+          phone: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          phone: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          phone?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1658,10 +2350,20 @@ export type Database = {
           description: string | null
           doors: number | null
           fuel_type: string
+          gps_device_id: string | null
+          gps_installed_on: string | null
+          gps_provider: string | null
           id: string
+          insurance_carrier: string | null
+          insurance_expires_on: string | null
+          insurance_policy_number: string | null
+          internal_notes: string | null
+          key_count: number | null
           last_brake_inspection_date: string | null
           last_oil_change_miles: number | null
           last_tire_date: string | null
+          license_plate: string | null
+          lienholder: string | null
           maintenance_status: string | null
           make: string
           market_id: string | null
@@ -1669,13 +2371,25 @@ export type Database = {
           model: string
           monthly_rate: number | null
           mpg: number | null
+          odometer_updated_at: string | null
           oil_interval_miles: number
           partner_id: string | null
           photos: string[] | null
+          plate_expires_on: string | null
+          plate_state: string | null
+          purchase_date: string | null
+          purchase_price: number | null
+          registration_expires_on: string | null
+          registration_state: string | null
           seats: number | null
           status: string
+          title_number: string | null
+          title_status: string | null
+          toll_account: string | null
+          toll_transponder_id: string | null
           trim: string | null
           uber_eligibility: string[] | null
+          vin: string | null
           weekly_rate: number
           year: number
         }
@@ -1689,10 +2403,20 @@ export type Database = {
           description?: string | null
           doors?: number | null
           fuel_type?: string
+          gps_device_id?: string | null
+          gps_installed_on?: string | null
+          gps_provider?: string | null
           id?: string
+          insurance_carrier?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
           last_brake_inspection_date?: string | null
           last_oil_change_miles?: number | null
           last_tire_date?: string | null
+          license_plate?: string | null
+          lienholder?: string | null
           maintenance_status?: string | null
           make: string
           market_id?: string | null
@@ -1700,13 +2424,25 @@ export type Database = {
           model: string
           monthly_rate?: number | null
           mpg?: number | null
+          odometer_updated_at?: string | null
           oil_interval_miles?: number
           partner_id?: string | null
           photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          purchase_date?: string | null
+          purchase_price?: number | null
+          registration_expires_on?: string | null
+          registration_state?: string | null
           seats?: number | null
           status?: string
+          title_number?: string | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
           trim?: string | null
           uber_eligibility?: string[] | null
+          vin?: string | null
           weekly_rate: number
           year: number
         }
@@ -1720,10 +2456,20 @@ export type Database = {
           description?: string | null
           doors?: number | null
           fuel_type?: string
+          gps_device_id?: string | null
+          gps_installed_on?: string | null
+          gps_provider?: string | null
           id?: string
+          insurance_carrier?: string | null
+          insurance_expires_on?: string | null
+          insurance_policy_number?: string | null
+          internal_notes?: string | null
+          key_count?: number | null
           last_brake_inspection_date?: string | null
           last_oil_change_miles?: number | null
           last_tire_date?: string | null
+          license_plate?: string | null
+          lienholder?: string | null
           maintenance_status?: string | null
           make?: string
           market_id?: string | null
@@ -1731,13 +2477,25 @@ export type Database = {
           model?: string
           monthly_rate?: number | null
           mpg?: number | null
+          odometer_updated_at?: string | null
           oil_interval_miles?: number
           partner_id?: string | null
           photos?: string[] | null
+          plate_expires_on?: string | null
+          plate_state?: string | null
+          purchase_date?: string | null
+          purchase_price?: number | null
+          registration_expires_on?: string | null
+          registration_state?: string | null
           seats?: number | null
           status?: string
+          title_number?: string | null
+          title_status?: string | null
+          toll_account?: string | null
+          toll_transponder_id?: string | null
           trim?: string | null
           uber_eligibility?: string[] | null
+          vin?: string | null
           weekly_rate?: number
           year?: number
         }
@@ -1754,6 +2512,89 @@ export type Database = {
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          account_number: string | null
+          address: string | null
+          city: string | null
+          contact_name: string | null
+          created_at: string
+          email: string | null
+          hours: string | null
+          id: string
+          is_active: boolean
+          market_id: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          preferred: boolean
+          rate_notes: string | null
+          rating: number | null
+          services: string[]
+          state: string | null
+          updated_at: string
+          vendor_type: string
+          website: string | null
+          zip: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          address?: string | null
+          city?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          hours?: string | null
+          id?: string
+          is_active?: boolean
+          market_id?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          preferred?: boolean
+          rate_notes?: string | null
+          rating?: number | null
+          services?: string[]
+          state?: string | null
+          updated_at?: string
+          vendor_type?: string
+          website?: string | null
+          zip?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          address?: string | null
+          city?: string | null
+          contact_name?: string | null
+          created_at?: string
+          email?: string | null
+          hours?: string | null
+          id?: string
+          is_active?: boolean
+          market_id?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          preferred?: boolean
+          rate_notes?: string | null
+          rating?: number | null
+          services?: string[]
+          state?: string | null
+          updated_at?: string
+          vendor_type?: string
+          website?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendors_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
             referencedColumns: ["id"]
           },
         ]
