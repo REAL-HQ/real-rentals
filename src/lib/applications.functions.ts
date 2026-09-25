@@ -612,19 +612,18 @@ export const approveApplication = createServerFn({ method: "POST" })
       agreementSkippedReason?: string;
       error?: string;
     }> => {
-      const { data: roles } = await context.supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", context.userId)
-        .in("role", ["admin", "team"])
-        .limit(1);
-      if (!roles || roles.length === 0) throw new Error("Forbidden");
+      // Manager, not staff. A Coordinator may read and work an application —
+      // that is the vetting job — but approving it commits the business and
+      // fires off the rental agreement, so it stays with someone trusted with
+      // money.
+      const { requireManager } = await import("@/lib/roles.server");
+      const actor = await requireManager(context.userId);
 
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
       const { data: app } = await supabaseAdmin
         .from("applications")
-        .select("id,status,email,contacted_at")
+        .select("id,status,email,full_name,contacted_at")
         .eq("id", data.id)
         .maybeSingle();
       if (!app) return { ok: false, agreementSent: false, error: "Application not found" };
@@ -636,6 +635,15 @@ export const approveApplication = createServerFn({ method: "POST" })
         .update(patch as any)
         .eq("id", data.id);
       if (updErr) return { ok: false, agreementSent: false, error: updErr.message };
+
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor, {
+        action: "application.approved",
+        summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
+        entityType: "application",
+        entityId: data.id,
+        metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
+      });
 
       if (data.sendAgreement === false) {
         return { ok: true, agreementSent: false, agreementSkippedReason: "not requested" };

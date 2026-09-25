@@ -17,14 +17,14 @@ import { z } from "zod";
 
 const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
 
-async function assertStaff(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "team"])
-    .limit(1);
-  if (!data || data.length === 0) throw new Error("Forbidden");
+// Delegates to the shared tier check rather than repeating the role list.
+// Everything in this file is money, so the bar is Manager — a Coordinator is
+// staff but is refused here, exactly as the RLS policies refuse them the
+// underlying tables. Returns the actor so callers can attribute an audit entry
+// without a second lookup.
+async function assertStaff(_supabase: any, userId: string) {
+  const { requireManager } = await import("@/lib/roles.server");
+  return requireManager(userId);
 }
 
 export type ActivationBlocker = {
@@ -193,7 +193,7 @@ export const getActivationReadiness = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<ActivationReadiness> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     return evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId ?? undefined);
   });
@@ -263,7 +263,7 @@ export const activateRental = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<ActivateResult> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const readiness = await evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId);
@@ -437,6 +437,20 @@ export const activateRental = createServerFn({ method: "POST" })
       channels: ["in_app", "email"],
     });
 
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "rental.activated",
+      summary: `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`,
+      entityType: "rental",
+      entityId: rental.id as string,
+      metadata: {
+        vehicle_id: data.vehicleId,
+        application_id: data.applicationId,
+        account_created: created,
+        overrides: (data as any).acknowledge ?? null,
+      },
+    });
+
     return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl };
   });
 
@@ -457,7 +471,7 @@ export const endRental = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rental } = await supabaseAdmin
@@ -496,6 +510,15 @@ export const endRental = createServerFn({ method: "POST" })
         .eq("application_id", rental.application_id)
         .eq("status", "active");
     }
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "rental.ended",
+      summary: `Ended rental ${rental.id}`,
+      entityType: "rental",
+      entityId: String(rental.id),
+      metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
+    });
 
     return { ok: true, alreadyClosed: false };
   });

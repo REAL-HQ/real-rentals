@@ -5,6 +5,7 @@ import { generateVehicleImage } from "@/lib/admin-ai.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import type { Vehicle } from "./types";
 import { toast } from "sonner";
+import { VehicleDocuments } from "./VehicleDocuments";
 import { Sparkles, Upload, X, Loader2 } from "lucide-react";
 import {
   Select,
@@ -503,6 +504,10 @@ export function VehicleEditor({
               </button>
             )}
           </div>
+
+          {/* Registration, insurance card, title and finance paperwork. Only
+              once the vehicle exists — the documents attach to its id. */}
+          {vehicle && <VehicleDocuments vehicleId={vehicle.id} />}
 
           <div>
             <div className="flex items-center justify-between mb-2">

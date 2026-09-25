@@ -10,14 +10,14 @@ import { z } from "zod";
 // incident they came from, so the renter can be shown the evidence rather
 // than a figure.
 
-async function assertStaff(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "team"])
-    .limit(1);
-  if (!data || data.length === 0) throw new Error("Forbidden");
+// Delegates to the shared tier check rather than repeating the role list.
+// Everything in this file is money, so the bar is Manager — a Coordinator is
+// staff but is refused here, exactly as the RLS policies refuse them the
+// underlying tables. Returns the actor so callers can attribute an audit entry
+// without a second lookup.
+async function assertStaff(_supabase: any, userId: string) {
+  const { requireManager } = await import("@/lib/roles.server");
+  return requireManager(userId);
 }
 
 export const INCIDENT_TYPES = [
@@ -68,7 +68,7 @@ export const listIncidents = createServerFn({ method: "POST" })
       .parse(d ?? {}),
   )
   .handler(async ({ data, context }): Promise<Incident[]> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let q = supabaseAdmin
@@ -148,7 +148,7 @@ export const saveIncident = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Attribute to whoever had the car, unless the caller said otherwise.
@@ -227,7 +227,7 @@ export const deleteIncident = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.from("incidents").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -268,7 +268,7 @@ export const getDepositSummary = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ rentalId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<DepositSummary> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rental } = await supabaseAdmin
@@ -360,7 +360,7 @@ export const addDepositDeduction = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rental } = await supabaseAdmin
@@ -396,7 +396,7 @@ export const removeDepositDeduction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.from("deposit_deductions").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -419,7 +419,7 @@ export const settleDeposit = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rental } = await supabaseAdmin
@@ -456,6 +456,23 @@ export const settleDeposit = createServerFn({ method: "POST" })
       })
       .eq("id", data.rentalId);
     if (error) throw new Error(error.message);
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "deposit.settled",
+      summary: `Settled a $${depositAmount.toFixed(2)} deposit as ${status.replace("_", " ")} — refunding $${refund.toFixed(2)}`,
+      entityType: "rental",
+      entityId: data.rentalId,
+      metadata: {
+        deposit_amount: depositAmount,
+        withheld: total,
+        refund,
+        status,
+        // The itemisation, because deductions can be edited afterwards and
+        // this is the record of what the decision was actually based on.
+        deductions: deductions ?? [],
+      },
+    });
 
     if (data.notifyDriver !== false && rental.application_id) {
       try {
