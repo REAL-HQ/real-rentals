@@ -510,6 +510,162 @@ export type Database = {
           },
         ]
       }
+      automation_enrollments: {
+        Row: {
+          application_id: string | null
+          cancelled_reason: string | null
+          completed_at: string | null
+          created_at: string
+          current_step: number
+          enrolled_at: string
+          id: string
+          next_run_at: string | null
+          rental_id: string | null
+          status: string
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          enrolled_at?: string
+          id?: string
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          application_id?: string | null
+          cancelled_reason?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          enrolled_at?: string
+          id?: string
+          next_run_at?: string | null
+          rental_id?: string | null
+          status?: string
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_enrollments_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_enrollments_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_enrollments_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_steps: {
+        Row: {
+          body: string
+          channel: string
+          created_at: string
+          delay_minutes: number
+          id: string
+          is_active: boolean
+          step_order: number
+          subject: string | null
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          body: string
+          channel?: string
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          step_order?: number
+          subject?: string | null
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          body?: string
+          channel?: string
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          step_order?: number
+          subject?: string | null
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_steps_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_workflows: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          quiet_hours_end: number
+          quiet_hours_start: number
+          stop_on_reply: boolean
+          stop_on_statuses: string[]
+          trigger_event: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          quiet_hours_end?: number
+          quiet_hours_start?: number
+          stop_on_reply?: boolean
+          stop_on_statuses?: string[]
+          trigger_event: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          quiet_hours_end?: number
+          quiet_hours_start?: number
+          stop_on_reply?: boolean
+          stop_on_statuses?: string[]
+          trigger_event?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       condition_media: {
         Row: {
           angle: string | null
@@ -1593,6 +1749,115 @@ export type Database = {
           },
         ]
       }
+      outbound_messages: {
+        Row: {
+          application_id: string | null
+          body: string
+          channel: string
+          created_at: string
+          enrollment_id: string | null
+          error: string | null
+          from_address: string | null
+          id: string
+          kind: string | null
+          provider: string | null
+          provider_message_id: string | null
+          rental_id: string | null
+          sent_at: string | null
+          status: string
+          step_id: string | null
+          subject: string | null
+          to_address: string
+          vehicle_id: string | null
+          workflow_id: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          body: string
+          channel: string
+          created_at?: string
+          enrollment_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          kind?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          rental_id?: string | null
+          sent_at?: string | null
+          status?: string
+          step_id?: string | null
+          subject?: string | null
+          to_address: string
+          vehicle_id?: string | null
+          workflow_id?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          body?: string
+          channel?: string
+          created_at?: string
+          enrollment_id?: string | null
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          kind?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          rental_id?: string | null
+          sent_at?: string | null
+          status?: string
+          step_id?: string | null
+          subject?: string | null
+          to_address?: string
+          vehicle_id?: string | null
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_messages_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "automation_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "automation_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outbound_messages_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "automation_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partners: {
         Row: {
           capital_committed: number | null
@@ -2048,6 +2313,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sms_opt_outs: {
+        Row: {
+          created_at: string
+          phone: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          phone: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          phone?: string
+          reason?: string | null
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
