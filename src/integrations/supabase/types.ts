@@ -1420,7 +1420,10 @@ export type Database = {
           application_id: string | null
           completed_at: string | null
           created_at: string
+          driver_notes: string | null
+          driver_signature_ip: string | null
           driver_signature_name: string | null
+          driver_signature_user_agent: string | null
           driver_signed_at: string | null
           driver_user_id: string | null
           exterior_notes: string | null
@@ -1433,6 +1436,7 @@ export type Database = {
           notes: string | null
           odometer: number | null
           rental_id: string | null
+          signature_requested_at: string | null
           started_at: string
           status: string
           template_id: string | null
@@ -1443,7 +1447,10 @@ export type Database = {
           application_id?: string | null
           completed_at?: string | null
           created_at?: string
+          driver_notes?: string | null
+          driver_signature_ip?: string | null
           driver_signature_name?: string | null
+          driver_signature_user_agent?: string | null
           driver_signed_at?: string | null
           driver_user_id?: string | null
           exterior_notes?: string | null
@@ -1456,6 +1463,7 @@ export type Database = {
           notes?: string | null
           odometer?: number | null
           rental_id?: string | null
+          signature_requested_at?: string | null
           started_at?: string
           status?: string
           template_id?: string | null
@@ -1466,7 +1474,10 @@ export type Database = {
           application_id?: string | null
           completed_at?: string | null
           created_at?: string
+          driver_notes?: string | null
+          driver_signature_ip?: string | null
           driver_signature_name?: string | null
+          driver_signature_user_agent?: string | null
           driver_signed_at?: string | null
           driver_user_id?: string | null
           exterior_notes?: string | null
@@ -1479,6 +1490,7 @@ export type Database = {
           notes?: string | null
           odometer?: number | null
           rental_id?: string | null
+          signature_requested_at?: string | null
           started_at?: string
           status?: string
           template_id?: string | null
