@@ -481,7 +481,7 @@ function EligibilityStep({
         title="Quick Eligibility"
         sub="A few quick questions so we can match you with the right vehicle."
       />
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             Do You Currently Hold A Valid Driver's License?
@@ -542,7 +542,7 @@ function RentalStep({
         title="Rental Details"
         sub="Confirm what you need and when."
       />
-      <div className="space-y-6">
+      <div className="space-y-5">
         <RadioGroup
           label="Which Vehicle Size Are You Interested In?"
           value={state.vehicle_size as any}
@@ -602,7 +602,7 @@ function GigStep({
         title="Your Gig Profile"
         sub="We work with active drivers who've completed 200+ trips or deliveries on any app. Please share your totals and upload a screenshot showing your lifetime trip/delivery count."
       />
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             What Platforms Are You Currently Using?
@@ -702,7 +702,7 @@ function DriverStep({
         title="Driver & Insurance"
         sub="Last step. We need this for delivery + your rental records."
       />
-      <div className="space-y-6">
+      <div className="space-y-5">
         <FileUploadField
           label="Upload A Picture Of Your Driver's License — Optional, Helps Speed Approval"
           accept="image/*,application/pdf"
@@ -1066,7 +1066,7 @@ function FileUploadField({
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
         {label}
       </div>
-      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-4 cursor-pointer hover:border-real-red/60">
+      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-3 cursor-pointer hover:border-real-red/60">
         <input
           type="file"
           accept={accept}
@@ -1158,7 +1158,7 @@ function MultiFileUploadField({
         {label} <span className="text-real-red">*</span>
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
-      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-4 cursor-pointer hover:border-real-red/60">
+      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-3 cursor-pointer hover:border-real-red/60">
         <input
           type="file"
           accept={accept}
