@@ -39,8 +39,6 @@ const SECTIONS: { key: string; title: string; fields: { key: string; label: stri
 
 export function SettingsPanel() {
   const [settings, setSettings] = useState<SettingsMap>({});
-  const [admins, setAdmins] = useState<{ user_id: string }[]>([]);
-  const [newAdminId, setNewAdminId] = useState("");
 
   useEffect(() => {
     supabase.from("app_settings").select("*").then(({ data }) => {
@@ -48,7 +46,6 @@ export function SettingsPanel() {
       (data || []).forEach((r: any) => { map[r.key] = r.value; });
       setSettings(map);
     });
-    supabase.from("user_roles").select("user_id").eq("role", "admin").then(({ data }) => setAdmins(data || []));
   }, []);
 
   async function save(key: string, value: any) {
@@ -58,20 +55,6 @@ export function SettingsPanel() {
     toast.success("Saved");
   }
 
-  async function addAdmin() {
-    if (!newAdminId.trim()) return;
-    const { error } = await supabase.from("user_roles").insert({ user_id: newAdminId.trim(), role: "admin" });
-    if (error) return toast.error(error.message);
-    setAdmins(a => [...a, { user_id: newAdminId.trim() }]);
-    setNewAdminId("");
-    toast.success("Admin added");
-  }
-  async function removeAdmin(uid: string) {
-    if (!confirm("Revoke admin access?")) return;
-    const { error } = await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", "admin");
-    if (error) return toast.error(error.message);
-    setAdmins(a => a.filter(x => x.user_id !== uid));
-  }
 
   return (
     <div className="space-y-8 max-w-3xl">
@@ -100,22 +83,25 @@ export function SettingsPanel() {
         );
       })}
 
+      {/* Staff access used to be managed here as well, by pasting a raw user
+          UUID and writing to user_roles straight from the browser. That path
+          never worked — user_roles has no write policy, so RLS refused every
+          insert and delete, silently — and it carried none of the guarantees
+          the Team panel enforces: no last-Owner protection, no tier model, no
+          audit entry, and no check that the caller is an Owner.
+
+          Rather than build a second implementation of the same thing, this
+          points at the one that is correct. Team management lives in one
+          place, goes through the trusted server path, and is the only way
+          roles change. */}
       <div className="rounded-xl bg-soft p-5">
-        <h3 className="font-semibold mb-3">Admin Users</h3>
-        <div className="space-y-2">
-          {admins.map(a => (
-            <div key={a.user_id} className="flex items-center gap-2 bg-white border border-border rounded-md px-3 py-2 text-sm">
-              <code className="flex-1 text-xs truncate">{a.user_id}</code>
-              <button onClick={() => removeAdmin(a.user_id)} className="text-xs text-muted-foreground hover:text-real-red">Revoke</button>
-            </div>
-          ))}
-          {admins.length === 0 && <div className="text-sm text-muted-foreground">No admins yet.</div>}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <input placeholder="User ID (UUID)" value={newAdminId} onChange={(e) => setNewAdminId(e.target.value)}
-            className="flex-1 bg-white border border-border rounded-md px-3 py-2 text-sm" />
-          <button onClick={addAdmin} className="rounded-md bg-real-red text-white px-4 py-2 text-sm">Add admin</button>
-        </div>
+        <h3 className="font-semibold mb-1">Staff Access</h3>
+        <p className="text-sm text-muted-foreground">
+          Invite teammates, set their tier and remove access from the{" "}
+          <strong>Team</strong> tab. Roles are never changed from this screen —
+          every grant goes through a server-side check that only an Owner may
+          pass, records an audit entry, and refuses to remove the last Owner.
+        </p>
       </div>
     </div>
   );
