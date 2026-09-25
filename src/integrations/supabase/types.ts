@@ -676,6 +676,7 @@ export type Database = {
           created_at: string
           file_name: string | null
           id: string
+          incident_id: string | null
           inspection_id: string | null
           media_type: string
           mime_type: string | null
@@ -695,6 +696,7 @@ export type Database = {
           created_at?: string
           file_name?: string | null
           id?: string
+          incident_id?: string | null
           inspection_id?: string | null
           media_type?: string
           mime_type?: string | null
@@ -714,6 +716,7 @@ export type Database = {
           created_at?: string
           file_name?: string | null
           id?: string
+          incident_id?: string | null
           inspection_id?: string | null
           media_type?: string
           mime_type?: string | null
@@ -730,6 +733,13 @@ export type Database = {
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "condition_media_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
             referencedColumns: ["id"]
           },
           {
@@ -781,6 +791,64 @@ export type Database = {
           phone?: string | null
         }
         Relationships: []
+      }
+      deposit_deductions: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          incident_id: string | null
+          notes: string | null
+          reason: string
+          rental_id: string
+          toll_charge_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          incident_id?: string | null
+          notes?: string | null
+          reason: string
+          rental_id: string
+          toll_charge_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          incident_id?: string | null
+          notes?: string | null
+          reason?: string
+          rental_id?: string
+          toll_charge_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposit_deductions_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_deductions_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposit_deductions_toll_charge_id_fkey"
+            columns: ["toll_charge_id"]
+            isOneToOne: false
+            referencedRelation: "toll_charges"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       documents: {
         Row: {
@@ -1091,6 +1159,134 @@ export type Database = {
           year?: number
         }
         Relationships: []
+      }
+      incidents: {
+        Row: {
+          actual_cost: number
+          application_id: string | null
+          at_fault: string
+          claim_closed_on: string | null
+          claim_number: string | null
+          claim_opened_on: string | null
+          created_at: string
+          created_by: string | null
+          deductible: number
+          description: string | null
+          drivable: boolean | null
+          driver_responsible_amount: number
+          estimated_cost: number
+          id: string
+          incident_type: string
+          injuries: boolean
+          insurance_carrier: string | null
+          insurance_payout: number
+          location: string | null
+          notes: string | null
+          occurred_at: string
+          other_party: string | null
+          police_report_number: string | null
+          rental_id: string | null
+          reported_at: string
+          severity: string
+          status: string
+          updated_at: string
+          vehicle_id: string
+          vendor_id: string | null
+        }
+        Insert: {
+          actual_cost?: number
+          application_id?: string | null
+          at_fault?: string
+          claim_closed_on?: string | null
+          claim_number?: string | null
+          claim_opened_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          deductible?: number
+          description?: string | null
+          drivable?: boolean | null
+          driver_responsible_amount?: number
+          estimated_cost?: number
+          id?: string
+          incident_type?: string
+          injuries?: boolean
+          insurance_carrier?: string | null
+          insurance_payout?: number
+          location?: string | null
+          notes?: string | null
+          occurred_at?: string
+          other_party?: string | null
+          police_report_number?: string | null
+          rental_id?: string | null
+          reported_at?: string
+          severity?: string
+          status?: string
+          updated_at?: string
+          vehicle_id: string
+          vendor_id?: string | null
+        }
+        Update: {
+          actual_cost?: number
+          application_id?: string | null
+          at_fault?: string
+          claim_closed_on?: string | null
+          claim_number?: string | null
+          claim_opened_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          deductible?: number
+          description?: string | null
+          drivable?: boolean | null
+          driver_responsible_amount?: number
+          estimated_cost?: number
+          id?: string
+          incident_type?: string
+          injuries?: boolean
+          insurance_carrier?: string | null
+          insurance_payout?: number
+          location?: string | null
+          notes?: string | null
+          occurred_at?: string
+          other_party?: string | null
+          police_report_number?: string | null
+          rental_id?: string | null
+          reported_at?: string
+          severity?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidents_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inspection_items: {
         Row: {
@@ -1920,6 +2116,7 @@ export type Database = {
           driver_id: string | null
           due_date: string | null
           id: string
+          late_fee_applied_through: string | null
           late_fees: number
           notes: string | null
           paid_date: string | null
@@ -1941,6 +2138,7 @@ export type Database = {
           driver_id?: string | null
           due_date?: string | null
           id?: string
+          late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
           paid_date?: string | null
@@ -1962,6 +2160,7 @@ export type Database = {
           driver_id?: string | null
           due_date?: string | null
           id?: string
+          late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
           paid_date?: string | null
@@ -2101,6 +2300,10 @@ export type Database = {
           created_at: string
           deposit_amount: number
           deposit_held: boolean
+          deposit_notes: string | null
+          deposit_refund_amount: number | null
+          deposit_settled_at: string | null
+          deposit_status: string
           driver_id: string
           end_date: string | null
           id: string
@@ -2126,6 +2329,10 @@ export type Database = {
           created_at?: string
           deposit_amount?: number
           deposit_held?: boolean
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string
           driver_id: string
           end_date?: string | null
           id?: string
@@ -2151,6 +2358,10 @@ export type Database = {
           created_at?: string
           deposit_amount?: number
           deposit_held?: boolean
+          deposit_notes?: string | null
+          deposit_refund_amount?: number | null
+          deposit_settled_at?: string | null
+          deposit_status?: string
           driver_id?: string
           end_date?: string | null
           id?: string
@@ -2331,6 +2542,98 @@ export type Database = {
           reason?: string | null
         }
         Relationships: []
+      }
+      toll_charges: {
+        Row: {
+          admin_fee: number
+          agency: string | null
+          amount: number
+          application_id: string | null
+          charge_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          location: string | null
+          notes: string | null
+          occurred_at: string
+          payment_id: string | null
+          reference_number: string | null
+          rental_id: string | null
+          source: string
+          status: string
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          admin_fee?: number
+          agency?: string | null
+          amount?: number
+          application_id?: string | null
+          charge_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          occurred_at: string
+          payment_id?: string | null
+          reference_number?: string | null
+          rental_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          admin_fee?: number
+          agency?: string | null
+          amount?: number
+          application_id?: string | null
+          charge_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          occurred_at?: string
+          payment_id?: string | null
+          reference_number?: string | null
+          rental_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "toll_charges_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "toll_charges_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "toll_charges_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "toll_charges_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -2678,6 +2981,10 @@ export type Database = {
     }
     Functions: {
       get_cron_token: { Args: { _name: string }; Returns: string }
+      rental_at_time: {
+        Args: { _at: string; _vehicle_id: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "partner" | "driver" | "team"
