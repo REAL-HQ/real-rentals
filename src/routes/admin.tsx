@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
@@ -33,6 +33,7 @@ import {
   ClipboardCheck,
   Truck,
   Receipt,
+  History,
   ShieldAlert,
 } from "lucide-react";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
@@ -46,6 +47,9 @@ import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
+import { ActivityPanel } from "@/components/admin/ActivityPanel";
+import { tierAllows, tierFromRoles, TIER_LABELS, TIER_SUMMARY, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +69,7 @@ export const Route = createFileRoute("/admin")({
 const TABS = [
   {
     id: "overview",
+    minTier: "coordinator" as StaffTier,
     label: "Overview",
     icon: LayoutDashboard,
     group: "OPERATIONS",
@@ -72,6 +77,7 @@ const TABS = [
   },
   {
     id: "drivers",
+    minTier: "coordinator" as StaffTier,
     label: "Drivers",
     icon: Users,
     group: "OPERATIONS",
@@ -79,6 +85,7 @@ const TABS = [
   },
   {
     id: "payments",
+    minTier: "manager" as StaffTier,
     label: "Payments",
     icon: CreditCard,
     group: "OPERATIONS",
@@ -86,6 +93,7 @@ const TABS = [
   },
   {
     id: "messages",
+    minTier: "coordinator" as StaffTier,
     label: "Messages",
     icon: MessageSquare,
     group: "OPERATIONS",
@@ -93,6 +101,7 @@ const TABS = [
   },
   {
     id: "automations",
+    minTier: "manager" as StaffTier,
     label: "Automations",
     icon: Zap,
     group: "OPERATIONS",
@@ -100,6 +109,7 @@ const TABS = [
   },
   {
     id: "charges",
+    minTier: "manager" as StaffTier,
     label: "Charges",
     icon: Receipt,
     group: "OPERATIONS",
@@ -107,6 +117,7 @@ const TABS = [
   },
   {
     id: "vehicles",
+    minTier: "coordinator" as StaffTier,
     label: "Vehicles",
     icon: Car,
     group: "FLEET",
@@ -114,6 +125,7 @@ const TABS = [
   },
   {
     id: "maintenance",
+    minTier: "manager" as StaffTier,
     label: "Service",
     icon: Wrench,
     group: "FLEET",
@@ -121,6 +133,7 @@ const TABS = [
   },
   {
     id: "inspections",
+    minTier: "coordinator" as StaffTier,
     label: "Inspections",
     icon: ClipboardCheck,
     group: "FLEET",
@@ -128,6 +141,7 @@ const TABS = [
   },
   {
     id: "shops",
+    minTier: "manager" as StaffTier,
     label: "Shops",
     icon: Store,
     group: "FLEET",
@@ -135,6 +149,7 @@ const TABS = [
   },
   {
     id: "vendors",
+    minTier: "coordinator" as StaffTier,
     label: "Vendors",
     icon: Truck,
     group: "FLEET",
@@ -142,6 +157,7 @@ const TABS = [
   },
   {
     id: "incidents",
+    minTier: "manager" as StaffTier,
     label: "Incidents",
     icon: ShieldAlert,
     group: "FLEET",
@@ -149,6 +165,7 @@ const TABS = [
   },
   {
     id: "partners",
+    minTier: "manager" as StaffTier,
     label: "Partners",
     icon: Handshake,
     group: "GROWTH",
@@ -156,13 +173,31 @@ const TABS = [
   },
   {
     id: "websites",
+    minTier: "manager" as StaffTier,
     label: "Websites",
     icon: Globe,
     group: "GROWTH",
     description: "Market-Specific Marketing Sites",
   },
   {
+    id: "expenses",
+    minTier: "manager" as StaffTier,
+    label: "Expenses",
+    icon: Receipt,
+    group: "FLEET",
+    description: "Every Cost Against Every Car, And What Each One Earns",
+  },
+  {
+    id: "activity",
+    minTier: "manager" as StaffTier,
+    label: "Activity",
+    icon: History,
+    group: "SYSTEM",
+    description: "Who Did What, And What Is About To Expire",
+  },
+  {
     id: "team",
+    minTier: "coordinator" as StaffTier,
     label: "Team",
     icon: UserCog,
     group: "SYSTEM",
@@ -170,6 +205,7 @@ const TABS = [
   },
   {
     id: "settings",
+    minTier: "owner" as StaffTier,
     label: "Settings",
     icon: SettingsIcon,
     group: "SYSTEM",
@@ -177,6 +213,13 @@ const TABS = [
   },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+type TabDef = (typeof TABS)[number];
+
+/** Tabs this tier may open. The database refuses the rest anyway; this
+ *  keeps a Coordinator from being shown doors that open onto an error. */
+function visibleTabs(tier: StaffTier | null): TabDef[] {
+  return TABS.filter((t) => tierAllows(tier, t.minTier));
+}
 const GROUP_ORDER = ["OPERATIONS", "FLEET", "GROWTH", "SYSTEM"] as const;
 
 function Admin() {
@@ -187,6 +230,8 @@ function Admin() {
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
   const initialTab: Tab =
     urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
+  // A deep link to a tab this tier cannot open falls back to the overview
+  // rather than rendering a panel whose every query will be refused.
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<
@@ -199,6 +244,8 @@ function Admin() {
       status: string | null;
     }>
   >([]);
+  const [tier, setTier] = useState<StaffTier | null>(null);
+  const navTabs = useMemo(() => visibleTabs(tier), [tier]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;
@@ -225,15 +272,21 @@ function Admin() {
   useEffect(() => {
     if (!session) {
       setIsAdmin(false);
+      setTier(null);
       return;
     }
+    // Read every grant this account holds and take the strongest. The old
+    // check asked only for a literal 'admin' row, which is why granting
+    // somebody 'team' let them in nowhere at all.
     supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", session.user.id)
-      .eq("role", "admin")
-      .maybeSingle()
-      .then(({ data }) => setIsAdmin(!!data));
+      .then(({ data }) => {
+        const t = tierFromRoles(((data ?? []) as any[]).map((r) => String(r.role)));
+        setTier(t);
+        setIsAdmin(!!t);
+      });
   }, [session]);
 
   useEffect(() => {
@@ -287,7 +340,7 @@ function Admin() {
   if (!session) return <SignIn />;
   if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
-  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const current = navTabs.find((t) => t.id === tab) ?? navTabs[0] ?? TABS[0];
   const emailName = session?.user?.email ?? "";
   const rawName = (
     session?.user?.user_metadata?.full_name ||
@@ -322,7 +375,7 @@ function Admin() {
           </div>
           <nav className="flex-1 px-3 pt-4 pb-4 overflow-y-auto">
             {GROUP_ORDER.map((group) => {
-              const items = TABS.filter((t) => t.group === group);
+              const items = navTabs.filter((t) => t.group === group);
               return (
                 <div key={group} className="mb-5 last:mb-0">
                   {!collapsed && (
@@ -368,7 +421,7 @@ function Admin() {
               <Logo offset={false} />
             </div>
             <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#EDEDF0]">
-              {TABS.map((t) => (
+              {navTabs.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
@@ -564,6 +617,8 @@ function Admin() {
               {tab === "incidents" && <IncidentsPanel />}
               {tab === "messages" && <MessagesPanel />}
               {tab === "websites" && <WebsitesPanel />}
+              {tab === "expenses" && <ExpensesPanel />}
+              {tab === "activity" && <ActivityPanel />}
               {tab === "team" && <TeamPanel />}
               {tab === "settings" && <SettingsPanel />}
             </div>

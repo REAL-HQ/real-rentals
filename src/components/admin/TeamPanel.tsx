@@ -1,135 +1,341 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { UserPlus, X, Users } from "lucide-react";
-import { EmptyState } from "./ui";
+import { UserPlus, X, Users, Mail, Clock, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { EmptyState, MicroLabel, StatusPill } from "./ui";
+import {
+  listTeam,
+  inviteTeammate,
+  revokeInvite,
+  removeTeammate,
+  ASSIGNABLE_ROLES,
+  type TeamMember,
+  type PendingInvite,
+} from "@/lib/team.functions";
 
-type Row = {
-  id: string;
-  user_id: string;
-  role: string;
-  created_at: string;
+// Team management.
+//
+// The previous version of this panel listed eight invented teammates from a
+// hardcoded DEMO_ROWS array so the table would "render populated", and its
+// Grant button wrote to user_roles straight from the browser — which RLS
+// refused, silently, every time. Nothing here is fabricated, and every write
+// goes through a server function that checks the caller is an Owner.
+
+const ROLE_TONE: Record<string, string> = {
+  admin: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  team: "bg-[rgba(37,99,235,0.08)] text-[#2563EB]",
+  coordinator: "bg-[rgba(22,163,74,0.08)] text-[#16A34A]",
 };
 
-const ROLES = ["admin", "partner", "driver", "team"] as const;
-
-// Demo rows shown alongside real assignments so the panel renders populated.
-const DEMO_ROWS: Row[] = [
-  { id: "demo-1", user_id: "a1f3c8e2-7d94-4b1a-9e8c-2d4f6b5a1e90", role: "admin", created_at: new Date(Date.now() - 86400000 * 90).toISOString() },
-  { id: "demo-2", user_id: "b2e4d9f1-6c83-4a2b-8d7e-1c3f5a4b2d81", role: "team", created_at: new Date(Date.now() - 86400000 * 45).toISOString() },
-  { id: "demo-3", user_id: "c3d5e8f0-5b72-4938-7c6d-0b2e4a3c1f72", role: "team", created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
-  { id: "demo-4", user_id: "d4c6f7e9-4a61-4827-6b5c-9a1d3b2c0e63", role: "partner", created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
-  { id: "demo-5", user_id: "e5b7a6d8-3950-4716-5a4b-8b0c2a1d9f54", role: "partner", created_at: new Date(Date.now() - 86400000 * 15).toISOString() },
-  { id: "demo-6", user_id: "f6a8b5c7-2840-4605-4938-7c9b1a0e8e45", role: "driver", created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
-  { id: "demo-7", user_id: "07b9c4d6-1738-45f4-3827-6a8b0c9d7d36", role: "driver", created_at: new Date(Date.now() - 86400000 * 7).toISOString() },
-  { id: "demo-8", user_id: "18c0d3e5-0627-4ee3-2716-5a7c0b8d6c27", role: "driver", created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
-];
-
 export function TeamPanel() {
-  const [rows, setRows] = useState<Row[]>([]);
+  const load = useServerFn(listTeam);
+  const invite = useServerFn(inviteTeammate);
+  const revoke = useServerFn(revokeInvite);
+  const remove = useServerFn(removeTeammate);
+
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
+  const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
 
-  async function load() {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("user_roles").select("*").order("created_at", { ascending: false });
-    if (error) toast.error(error.message);
-    const real = ((data as any) ?? []) as Row[];
-    // Merge demo rows with real ones (real first), de-duped by user_id+role.
-    const seen = new Set(real.map((r) => `${r.user_id}:${r.role}`));
-    const merged = [...real, ...DEMO_ROWS.filter((d) => !seen.has(`${d.user_id}:${d.role}`))];
-    setRows(merged);
-    setLoading(false);
-  }
-  useEffect(() => { load(); }, []);
-
-  async function remove(id: string) {
-    if (id.startsWith("demo-")) {
-      toast.info("This is sample data — connect a real user to remove.");
-      return;
+    try {
+      const res = await load({ data: undefined });
+      setMembers(res.members);
+      setInvites(res.invites);
+      setCanManage(res.canManage);
+    } catch (e: any) {
+      toast.error(e?.message === "Forbidden" ? "You don't have access to the team list." : "Could not load the team.");
+    } finally {
+      setLoading(false);
     }
-    if (!confirm("Remove this role assignment?")) return;
-    const { error } = await supabase.from("user_roles").delete().eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success("Removed");
-    load();
+  }, [load]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function onRemove(m: TeamMember) {
+    const who = m.email ?? m.user_id;
+    if (!confirm(`Remove ${m.role_label} access from ${who}?\n\nThey keep their account but lose the back office.`)) return;
+    const res = await remove({ data: { roleRowId: m.id } });
+    if (!res.ok) return toast.error(res.error);
+    toast.success(`Removed ${who}`);
+    void refresh();
   }
 
-  const visible = filter === "all" ? rows : rows.filter((r) => r.role === filter);
+  async function onRevoke(i: PendingInvite) {
+    if (!confirm(`Revoke the invitation for ${i.email}? Their link will stop working.`)) return;
+    await revoke({ data: { inviteId: i.id } });
+    toast.success("Invitation revoked");
+    void refresh();
+  }
+
+  const owners = members.filter((m) => m.role === "admin").length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-border bg-white px-3 py-2 text-sm">
-            <option value="all">All Roles</option>
-            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <span className="text-sm text-muted-foreground">{visible.length} assignment(s)</span>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold">Team</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Who can get into the back office, and what they can reach.
+          </p>
         </div>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium">
-          <UserPlus className="w-4 h-4" /> Grant Role
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium"
+          >
+            <UserPlus className="w-4 h-4" /> Invite Teammate
+          </button>
+        )}
       </div>
-      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : visible.length === 0 ? (
-        <EmptyState
-          icon={<Users className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Role Assignments"
-          hint="Grant a teammate admin or staff access to see them listed here."
-        />
+
+      {/* What each tier means, stated where the decision gets made rather than
+          buried in documentation nobody opens. */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {ASSIGNABLE_ROLES.map((r) => (
+          <div key={r.value} className="rounded-xl border border-border p-4">
+            <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ROLE_TONE[r.value]}`}>
+              {r.label}
+            </span>
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{r.blurb}</p>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-soft text-xs uppercase tracking-wider text-muted-foreground text-left">
-              <tr><th className="px-4 py-2">User ID</th><th>Role</th><th>Granted</th><th></th></tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visible.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-2"><code className="text-xs">{r.user_id}</code></td>
-                  <td><span className="text-xs rounded-full bg-soft px-2 py-0.5 capitalize">{r.role}</span></td>
-                  <td className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-2 text-right">
-                    <button onClick={() => remove(r.id)} className="text-xs text-real-red hover:underline">Remove</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <section>
+            <MicroLabel>People with access ({members.length})</MicroLabel>
+            {members.length === 0 ? (
+              <EmptyState
+                icon={<Users className="w-6 h-6" strokeWidth={1.75} />}
+                title="Nobody has access yet"
+                hint="Invite a teammate by email to get them into the back office."
+              />
+            ) : (
+              <div className="mt-2 overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#FAFAFB] text-left">
+                    <tr>
+                      <th className="px-4 py-2.5 font-medium">Person</th>
+                      <th className="px-4 py-2.5 font-medium">Role</th>
+                      <th className="px-4 py-2.5 font-medium">Since</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => (
+                      <tr key={m.id} className="border-t border-border">
+                        <td className="px-4 py-3">
+                          <span className="font-medium">{m.email ?? "Unknown account"}</span>
+                          {m.is_you && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                          {!m.email && (
+                            <span className="block text-xs text-muted-foreground font-mono mt-0.5">{m.user_id}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ROLE_TONE[m.role] ?? ""}`}>
+                            {m.role_label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {new Date(m.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {canManage && (
+                            <button
+                              onClick={() => onRemove(m)}
+                              title={
+                                m.role === "admin" && owners <= 1
+                                  ? "This is the only Owner — promote somebody else first"
+                                  : "Remove access"
+                              }
+                              className="text-muted-foreground hover:text-[#D03020] disabled:opacity-30"
+                              disabled={m.role === "admin" && owners <= 1}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {canManage && invites.length > 0 && (
+            <section>
+              <MicroLabel>Invitations awaiting acceptance ({invites.length})</MicroLabel>
+              <div className="mt-2 space-y-2">
+                {invites.map((i) => (
+                  <div
+                    key={i.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 flex-wrap"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{i.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {i.role_label}
+                          {i.invited_by_email ? ` · invited by ${i.invited_by_email}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {i.is_expired ? (
+                        <StatusPill status="expired" tone="red">
+                          Expired
+                        </StatusPill>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="w-3.5 h-3.5" />
+                          expires {new Date(i.expires_at).toLocaleDateString()}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => onRevoke(i)}
+                        className="text-xs text-muted-foreground hover:text-[#D03020]"
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!canManage && (
+            <p className="inline-flex items-start gap-2 text-xs text-muted-foreground">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-px" />
+              Only an Owner can invite or remove teammates.
+            </p>
+          )}
+        </>
       )}
-      {showForm && <GrantForm onClose={() => setShowForm(false)} onCreated={() => { setShowForm(false); load(); }} />}
+
+      {showForm && (
+        <InviteForm
+          onClose={() => setShowForm(false)}
+          onSent={() => {
+            setShowForm(false);
+            void refresh();
+          }}
+          send={invite}
+        />
+      )}
     </div>
   );
 }
 
-function GrantForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [userId, setUserId] = useState("");
-  const [role, setRole] = useState<string>("driver");
+function InviteForm({
+  onClose,
+  onSent,
+  send,
+}: {
+  onClose: () => void;
+  onSent: () => void;
+  send: ReturnType<typeof useServerFn<typeof inviteTeammate>>;
+}) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<string>("coordinator");
   const [saving, setSaving] = useState(false);
+
+  const chosen = ASSIGNABLE_ROLES.find((r) => r.value === role);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!userId) return toast.error("User ID required");
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return toast.error("Enter an email address");
     setSaving(true);
-    const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: role as any });
-    setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Granted");
-    onCreated();
+    try {
+      const res = await send({ data: { email: trimmed, role: role as any } });
+      if (!res.ok) return toast.error(res.error);
+      toast.success(`Invitation sent to ${trimmed}`);
+      onSent();
+    } catch (e: any) {
+      toast.error(e?.message === "Forbidden" ? "Only an Owner can invite teammates." : "Could not send the invitation.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-3">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Grant Role</h3><button type="button" onClick={onClose}><X className="w-4 h-4" /></button></div>
-        <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="User UUID" className="w-full rounded border border-border px-3 py-2 text-sm font-mono" />
-        <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
-          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <p className="text-xs text-muted-foreground">User must already have an account. Copy their UUID from the authenticated session.</p>
-        <button disabled={saving} className="w-full rounded-lg bg-real-red text-white py-2 text-sm font-medium">{saving ? "Saving…" : "Grant"}</button>
+      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Invite a teammate</h3>
+          <button type="button" onClick={onClose} aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Email address</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@example.com"
+            autoFocus
+            className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Role</label>
+          <div className="space-y-2">
+            {ASSIGNABLE_ROLES.map((r) => (
+              <label
+                key={r.value}
+                className={`flex gap-3 rounded-lg border p-3 cursor-pointer ${
+                  role === r.value ? "border-[#D03020] bg-[rgba(208,48,32,0.03)]" : "border-border"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="role"
+                  value={r.value}
+                  checked={role === r.value}
+                  onChange={() => setRole(r.value)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm font-medium">{r.label}</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5 leading-relaxed">{r.blurb}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {chosen?.value === "admin" && (
+          <p className="flex items-start gap-2 text-xs text-[#B45309] bg-[rgba(245,158,11,0.08)] rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+            An Owner can invite and remove anybody, including you.
+          </p>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          They will get an email with a link that works for 7 days, and only from this address.
+        </p>
+
+        <button
+          disabled={saving}
+          className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
+        >
+          {saving ? "Sending…" : "Send invitation"}
+        </button>
       </form>
     </div>
   );

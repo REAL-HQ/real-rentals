@@ -11,14 +11,14 @@ import { parseTollStatement, normalizePlate } from "@/lib/toll-import";
 // definition of that, and anything it cannot attribute stays unassigned for
 // review rather than being billed to a guess.
 
-async function assertStaff(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "team"])
-    .limit(1);
-  if (!data || data.length === 0) throw new Error("Forbidden");
+// Delegates to the shared tier check rather than repeating the role list.
+// Everything in this file is money, so the bar is Manager — a Coordinator is
+// staff but is refused here, exactly as the RLS policies refuse them the
+// underlying tables. Returns the actor so callers can attribute an audit entry
+// without a second lookup.
+async function assertStaff(_supabase: any, userId: string) {
+  const { requireManager } = await import("@/lib/roles.server");
+  return requireManager(userId);
 }
 
 export const CHARGE_TYPES = [
@@ -92,7 +92,7 @@ export const listTollCharges = createServerFn({ method: "POST" })
       .parse(d ?? {}),
   )
   .handler(async ({ data, context }): Promise<TollCharge[]> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let q = supabaseAdmin
@@ -154,7 +154,7 @@ export const createTollCharge = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { rentalId, applicationId } = await attribute(
@@ -221,7 +221,7 @@ export const importTollStatement = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<ImportOutcome> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const parsed = parseTollStatement(data.text);
@@ -315,7 +315,7 @@ export const reattributeCharge = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: charge } = await supabaseAdmin
@@ -384,7 +384,7 @@ export const rebillCharges = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<RebillResult> => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: charges } = await supabaseAdmin
@@ -459,6 +459,15 @@ export const rebillCharges = createServerFn({ method: "POST" })
       result.billed += list.length;
       result.totalAmount += total;
 
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor, {
+        action: "charge.rebilled",
+        summary: `Rebilled $${total.toFixed(2)} across ${list.length} charge${list.length === 1 ? "" : "s"}`,
+        entityType: "payment",
+        entityId: String(payment.id),
+        metadata: { application_id: applicationId, charge_ids: list.map((c) => c.id), amount: total },
+      });
+
       // Tell the renter what they are being charged for, and why.
       try {
         const { data: app } = await supabaseAdmin
@@ -510,7 +519,7 @@ export const updateChargeStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const patch: Record<string, unknown> = { status: data.status };
     if (data.notes !== undefined) patch.notes = data.notes;
@@ -526,7 +535,7 @@ export const deleteCharge = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertStaff(context.supabase, context.userId);
+    const actor = await assertStaff(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: charge } = await supabaseAdmin
       .from("toll_charges")

@@ -36,3 +36,6 @@ supabase/.temp/
 
 # This project uses bun (bun.lock); npm lockfiles would conflict
 package-lock.json
+
+# One-off database exports (row data, not source — keep out of git)
+demo-data-backup-*.json
