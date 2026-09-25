@@ -310,9 +310,12 @@ export const getVehiclePL = createServerFn({ method: "POST" })
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    // Omit rather than pass null: the generated Args type declares these
+    // optional, and the SQL parameters already default to NULL, so leaving
+    // them out is what "no bound" means on both sides.
     const { data: rows, error } = await supabaseAdmin.rpc("vehicle_pl", {
-      _from: data.from ?? null,
-      _to: data.to ?? null,
+      _from: data.from ?? undefined,
+      _to: data.to ?? undefined,
     });
     if (error) {
       console.error("[expenses] vehicle_pl failed", error.message);

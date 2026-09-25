@@ -510,6 +510,51 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_role: string | null
+          actor_user_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip: string | null
+          metadata: Json
+          summary: string
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip?: string | null
+          metadata?: Json
+          summary: string
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip?: string | null
+          metadata?: Json
+          summary?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       automation_enrollments: {
         Row: {
           application_id: string | null
@@ -2555,6 +2600,48 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          invited_by_email: string | null
+          revoked_at: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          invited_by_email?: string | null
+          revoked_at?: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          invited_by_email?: string | null
+          revoked_at?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          token_hash?: string
+        }
+        Relationships: []
+      }
       toll_charges: {
         Row: {
           admin_fee: number
@@ -2667,6 +2754,91 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      vehicle_expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          incurred_on: string
+          is_recurring: boolean
+          notes: string | null
+          payment_method: string | null
+          receipt_mime: string | null
+          receipt_name: string | null
+          receipt_path: string | null
+          reference: string | null
+          rental_id: string | null
+          updated_at: string
+          vehicle_id: string
+          vendor_id: string | null
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          id?: string
+          incurred_on?: string
+          is_recurring?: boolean
+          notes?: string | null
+          payment_method?: string | null
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          updated_at?: string
+          vehicle_id: string
+          vendor_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          incurred_on?: string
+          is_recurring?: boolean
+          notes?: string | null
+          payment_method?: string | null
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          updated_at?: string
+          vehicle_id?: string
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_expenses_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_expenses_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_expenses_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vehicles: {
         Row: {
@@ -2987,178 +3159,6 @@ export type Database = {
           },
         ]
       }
-      audit_log: {
-        Row: {
-          action: string
-          actor_email: string | null
-          actor_role: string | null
-          actor_user_id: string | null
-          created_at: string
-          entity_id: string | null
-          entity_type: string | null
-          id: string
-          ip: string | null
-          metadata: Json
-          summary: string
-          user_agent: string | null
-        }
-        Insert: {
-          action: string
-          actor_email?: string | null
-          actor_role?: string | null
-          actor_user_id?: string | null
-          created_at?: string
-          entity_id?: string | null
-          entity_type?: string | null
-          id?: string
-          ip?: string | null
-          metadata?: Json
-          summary: string
-          user_agent?: string | null
-        }
-        Update: {
-          action?: string
-          actor_email?: string | null
-          actor_role?: string | null
-          actor_user_id?: string | null
-          created_at?: string
-          entity_id?: string | null
-          entity_type?: string | null
-          id?: string
-          ip?: string | null
-          metadata?: Json
-          summary?: string
-          user_agent?: string | null
-        }
-        Relationships: []
-      }
-      staff_invites: {
-        Row: {
-          accepted_at: string | null
-          accepted_user_id: string | null
-          created_at: string
-          email: string
-          expires_at: string
-          id: string
-          invited_by: string | null
-          invited_by_email: string | null
-          revoked_at: string | null
-          role: Database["public"]["Enums"]["app_role"]
-          token_hash: string
-        }
-        Insert: {
-          accepted_at?: string | null
-          accepted_user_id?: string | null
-          created_at?: string
-          email: string
-          expires_at?: string
-          id?: string
-          invited_by?: string | null
-          invited_by_email?: string | null
-          revoked_at?: string | null
-          role: Database["public"]["Enums"]["app_role"]
-          token_hash: string
-        }
-        Update: {
-          accepted_at?: string | null
-          accepted_user_id?: string | null
-          created_at?: string
-          email?: string
-          expires_at?: string
-          id?: string
-          invited_by?: string | null
-          invited_by_email?: string | null
-          revoked_at?: string | null
-          role?: Database["public"]["Enums"]["app_role"]
-          token_hash?: string
-        }
-        Relationships: []
-      }
-      vehicle_expenses: {
-        Row: {
-          amount: number
-          category: string
-          created_at: string
-          created_by: string | null
-          description: string
-          id: string
-          incurred_on: string
-          is_recurring: boolean
-          notes: string | null
-          payment_method: string | null
-          receipt_mime: string | null
-          receipt_name: string | null
-          receipt_path: string | null
-          reference: string | null
-          rental_id: string | null
-          updated_at: string
-          vehicle_id: string
-          vendor_id: string | null
-        }
-        Insert: {
-          amount: number
-          category: string
-          created_at?: string
-          created_by?: string | null
-          description: string
-          id?: string
-          incurred_on?: string
-          is_recurring?: boolean
-          notes?: string | null
-          payment_method?: string | null
-          receipt_mime?: string | null
-          receipt_name?: string | null
-          receipt_path?: string | null
-          reference?: string | null
-          rental_id?: string | null
-          updated_at?: string
-          vehicle_id: string
-          vendor_id?: string | null
-        }
-        Update: {
-          amount?: number
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          id?: string
-          incurred_on?: string
-          is_recurring?: boolean
-          notes?: string | null
-          payment_method?: string | null
-          receipt_mime?: string | null
-          receipt_name?: string | null
-          receipt_path?: string | null
-          reference?: string | null
-          rental_id?: string | null
-          updated_at?: string
-          vehicle_id?: string
-          vendor_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "vehicle_expenses_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vehicle_expenses_rental_id_fkey"
-            columns: ["rental_id"]
-            isOneToOne: false
-            referencedRelation: "rentals"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vehicle_expenses_vendor_id_fkey"
-            columns: ["vendor_id"]
-            isOneToOne: false
-            referencedRelation: "vendors"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -3178,19 +3178,19 @@ export type Database = {
         Returns: boolean
       }
       vehicle_pl: {
-        Args: { _from?: string | null; _to?: string | null }
+        Args: { _from?: string; _to?: string }
         Returns: {
           days_on_rent: number
           expenses: number
-          license_plate: string | null
+          license_plate: string
           maintenance: number
-          make: string | null
-          model: string | null
+          make: string
+          model: string
           net: number
           revenue: number
-          status: string | null
+          status: string
           vehicle_id: string
-          year: number | null
+          year: number
         }[]
       }
     }
