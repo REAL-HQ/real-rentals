@@ -29,7 +29,7 @@ function ThankYouPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Nav />
       <main className="flex-1">
-        <section className="pt-6 md:pt-10 pb-16 mx-auto px-4 sm:px-6 w-full max-w-5xl">
+        <section className="pt-6 md:pt-10 pb-8 mx-auto px-4 sm:px-6 w-full max-w-5xl">
           <ApplicationWizard id={id} />
         </section>
       </main>
