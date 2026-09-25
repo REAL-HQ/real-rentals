@@ -11,11 +11,23 @@ type SendArgs = {
   replyTo?: string;
 };
 
-export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs): Promise<void> {
+export type SendResult = { ok: boolean; error?: string };
+
+/**
+ * Send one email. Returns a result rather than throwing, so a failed send can
+ * never take down the operation that triggered it.
+ *
+ * The return value is new; every existing caller ignores it and keeps the
+ * fire-and-forget behaviour it had. It exists so the settings screen can run a
+ * test send and say what actually happened — before this, a missing API key
+ * and a delivered email were indistinguishable from the outside, which is
+ * exactly how alerts can look configured while silently going nowhere.
+ */
+export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
-    return;
+    return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -35,9 +47,12 @@ export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs):
     if (!res.ok) {
       const body = await res.text();
       console.error(`[email] Resend send failed [${res.status}]`, body, { subject });
+      return { ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` };
     }
+    return { ok: true };
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
+    return { ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." };
   }
 }
 

@@ -3,7 +3,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Nav } from "@/components/site/Nav";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
@@ -51,17 +50,18 @@ function ApplyPage() {
   const { id, city: preCity, pickup: prePickup, return: preReturn } = Route.useSearch();
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Nav />
-      <main className="flex-1">
-        <section id="quote-form" className="pt-12 md:pt-20 pb-24 mx-auto px-6 w-full max-w-[1600px]">
-          {id ? (
-            <ApplicationWizard id={id} />
-          ) : (
-            <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} preReturn={preReturn ?? ""} />
-          )}
-        </section>
-      </main>
+    // No site header here. The wizard's dark panel already carries the
+    // REAL RENTALS mark, and stacking the nav on top of it put two logos on
+    // screen at once. A signup flow also converts better without the rest of
+    // the site one click away.
+    <div className="min-h-screen bg-background">
+      {id ? (
+        <ApplicationWizard id={id} />
+      ) : (
+        <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
+          <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} preReturn={preReturn ?? ""} />
+        </main>
+      )}
     </div>
   );
 }

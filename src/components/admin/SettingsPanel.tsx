@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { getEmailDiagnostics, sendTestAlert, type EmailDiagnostics } from "@/lib/notifications.functions";
+import { CheckCircle2, AlertTriangle, Send, Loader2 } from "lucide-react";
 
 type SettingsMap = Record<string, any>;
 
@@ -74,6 +77,7 @@ export function SettingsPanel() {
           <div key={sec.key} className="rounded-xl bg-soft p-5">
             <h3 className="font-semibold mb-1">{sec.title}</h3>
             {sec.hint && <p className="text-xs text-muted-foreground mb-3">{sec.hint}</p>}
+            {sec.key === "notifications" && <EmailDeliveryStatus />}
             <div className="grid grid-cols-2 gap-3">
               {sec.fields.map(f => (
                 <div key={f.key} className={f.type === "textarea" || f.type === "boolean" ? "col-span-2" : ""}>
@@ -130,6 +134,90 @@ export function SettingsPanel() {
           pass, records an audit entry, and refuses to remove the last Owner.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Whether applicant alerts can actually be delivered, and a way to prove it.
+ *
+ * The alert path is deliberately fire-and-forget, so nothing downstream ever
+ * reports a failure. Without this panel the only way to know an address works
+ * is to submit a real application and wait — and if nothing arrives, there is
+ * no way to tell a missing API key from a spam folder.
+ */
+function EmailDeliveryStatus() {
+  const load = useServerFn(getEmailDiagnostics);
+  const test = useServerFn(sendTestAlert);
+  const [diag, setDiag] = useState<EmailDiagnostics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    load({ data: undefined })
+      .then(setDiag)
+      .catch(() => setDiag(null))
+      .finally(() => setLoading(false));
+  }, [load]);
+
+  async function runTest() {
+    setSending(true);
+    try {
+      const res = await test({ data: undefined });
+      if (res.ok) toast.success(`Test email sent to ${res.sentTo.join(", ")}`);
+      else toast.error(res.error ?? "The test email could not be sent.");
+    } catch {
+      toast.error("Could not run the test. Only an Owner can send one.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (loading) return <p className="text-xs text-muted-foreground mb-3">Checking delivery…</p>;
+  if (!diag) return null;
+
+  const sourceLabel =
+    diag.source === "settings"
+      ? "from the field below"
+      : diag.source === "environment"
+        ? "from the LEAD_ALERT_TO environment variable"
+        : "the built-in fallback — nothing is configured";
+
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-white p-3 space-y-2">
+      <div className="flex items-start gap-2">
+        {diag.providerConfigured ? (
+          <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0 mt-0.5" />
+        ) : (
+          <AlertTriangle className="w-4 h-4 text-[#D03020] shrink-0 mt-0.5" />
+        )}
+        <div className="text-xs">
+          {diag.providerConfigured ? (
+            <p className="font-medium">Email sending is configured.</p>
+          ) : (
+            <>
+              <p className="font-medium text-[#D03020]">Email sending is not configured.</p>
+              <p className="text-muted-foreground mt-0.5">
+                RESEND_API_KEY is missing from the deployed environment, so every email is skipped
+                silently — alerts, agreements and driver notifications alike. Add it in your hosting
+                provider's environment variables and republish.
+              </p>
+            </>
+          )}
+          <p className="text-muted-foreground mt-1">
+            Alerts go to <strong>{diag.recipients.join(", ")}</strong> ({sourceLabel}).
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={runTest}
+        disabled={sending}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-soft disabled:opacity-60"
+      >
+        {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+        Send test email
+      </button>
     </div>
   );
 }

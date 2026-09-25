@@ -178,12 +178,27 @@ export function ApplicationWizard({ id }: { id: string }) {
   };
 
   return (
-    <div className="max-w-5xl mx-auto w-full">
-      <div className="grid lg:grid-cols-[320px_1fr] rounded-2xl overflow-hidden border border-border bg-soft shadow-sm">
+    // Full-height two-panel layout rather than a card floating in a padded
+    // page. With the site nav gone there is nothing above it, so the dark rail
+    // runs the height of the screen and reads as the frame of the flow instead
+    // of a widget sitting inside one.
+    <div className="min-h-screen w-full">
+      <div className="grid lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft">
       <SideRail current={step} source={state.source} />
       <FadeUp delay={50}>
         <div className="p-5 md:p-8">
+          {/* The side rail is desktop-only, so on mobile it would otherwise
+              carry no branding at all once the site nav was removed. One mark,
+              either way — never both on screen at once. */}
           <div className="lg:hidden mb-6">
+            <div className="inline-flex items-center gap-2 mb-5">
+              <span className="inline-flex items-center justify-center h-7 px-2.5 rounded bg-real-red text-white text-[10px] font-black tracking-[0.18em]">
+                REAL
+              </span>
+              <span className="text-[10px] tracking-[0.3em] font-semibold text-muted-foreground">
+                RENTALS
+              </span>
+            </div>
             <ProgressBar current={step} source={state.source} />
           </div>
           {step === "eligibility" && (

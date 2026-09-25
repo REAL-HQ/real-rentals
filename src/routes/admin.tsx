@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch as useRouterSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
@@ -226,11 +226,24 @@ function Admin() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const urlTab =
-    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+  // Read the tab from the router rather than from window.location once at
+  // mount. The Overview cards and the "View All" links navigate to
+  // /admin?tab=..., which changes the URL without remounting this component —
+  // so a one-shot useState left the page sitting on Overview and made every
+  // one of those links look broken.
+  const search = useRouterSearch({ strict: false }) as Record<string, unknown>;
+  const urlTab = typeof search?.tab === "string" ? search.tab : null;
   const initialTab: Tab =
     urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Follow later URL changes too, not just the first one.
+  useEffect(() => {
+    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tab) setTab(urlTab as Tab);
+    // `tab` is deliberately not a dependency: including it would fight the
+    // clamp below and the sidebar buttons, which set state without the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlTab]);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<
     Array<{
