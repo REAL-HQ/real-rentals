@@ -2992,10 +2992,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      application_accepts_uploads: {
+        Args: { _application_id: string }
+        Returns: boolean
+      }
       get_cron_token: { Args: { _name: string }; Returns: string }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      submission_accepts_uploads: {
+        Args: { _submission_id: string }
+        Returns: boolean
       }
     }
     Enums: {
