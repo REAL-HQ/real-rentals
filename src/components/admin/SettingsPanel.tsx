@@ -4,7 +4,12 @@ import { toast } from "sonner";
 
 type SettingsMap = Record<string, any>;
 
-const SECTIONS: { key: string; title: string; fields: { key: string; label: string; type: "text" | "number" | "textarea" }[] }[] = [
+const SECTIONS: {
+  key: string;
+  title: string;
+  hint?: string;
+  fields: { key: string; label: string; type: "text" | "number" | "textarea" | "boolean"; hint?: string }[];
+}[] = [
   { key: "rental_terms", title: "Rental Terms", fields: [
     { key: "min_term_weeks", label: "Minimum term (weeks)", type: "number" },
     { key: "notice_days", label: "Notice to return (days)", type: "number" },
@@ -19,8 +24,13 @@ const SECTIONS: { key: string; title: string; fields: { key: string; label: stri
     { key: "grace_days", label: "Grace period (days)", type: "number" },
     { key: "default_method", label: "Default payment method", type: "text" },
   ]},
-  { key: "notifications", title: "Notifications", fields: [
-    { key: "admin_email", label: "Admin notification email", type: "text" },
+  { key: "notifications", title: "Notifications",
+    hint: "Where applicant alerts are sent. Leave the email blank to fall back to the address configured in the environment.",
+    fields: [
+    { key: "admin_email", label: "Applicant alert email", type: "text",
+      hint: "Separate several addresses with commas." },
+    { key: "alert_on_new", label: "Email me when someone starts or returns to an application", type: "boolean" },
+    { key: "alert_on_complete", label: "Email me when someone completes an application", type: "boolean" },
     { key: "sms_number", label: "Admin SMS number", type: "text" },
   ]},
   { key: "application_settings", title: "Application Settings", fields: [
@@ -62,10 +72,24 @@ export function SettingsPanel() {
         const current = settings[sec.key] || {};
         return (
           <div key={sec.key} className="rounded-xl bg-soft p-5">
-            <h3 className="font-semibold mb-3">{sec.title}</h3>
+            <h3 className="font-semibold mb-1">{sec.title}</h3>
+            {sec.hint && <p className="text-xs text-muted-foreground mb-3">{sec.hint}</p>}
             <div className="grid grid-cols-2 gap-3">
               {sec.fields.map(f => (
-                <div key={f.key} className={f.type === "textarea" ? "col-span-2" : ""}>
+                <div key={f.key} className={f.type === "textarea" || f.type === "boolean" ? "col-span-2" : ""}>
+                  {f.type === "boolean" ? (
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        // Absent means on, matching how the server reads it —
+                        // a setting nobody has touched keeps today's behaviour.
+                        checked={current[f.key] !== false}
+                        onChange={(e) => save(sec.key, { ...current, [f.key]: e.target.checked })}
+                      />
+                      {f.label}
+                    </label>
+                  ) : (
+                  <>
                   <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{f.label}</label>
                   {f.type === "textarea" ? (
                     <textarea defaultValue={current[f.key] || ""} rows={3}
@@ -75,6 +99,9 @@ export function SettingsPanel() {
                     <input type={f.type} defaultValue={current[f.key] ?? ""}
                       onBlur={(e) => save(sec.key, { ...current, [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value })}
                       className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
+                  )}
+                  {f.hint && <p className="mt-1 text-[11px] text-muted-foreground">{f.hint}</p>}
+                  </>
                   )}
                 </div>
               ))}

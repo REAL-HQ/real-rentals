@@ -67,6 +67,72 @@ type LeadEmailArgs = {
   adminBaseUrl?: string;
 };
 
+// -----------------------------------------------------------------------------
+// Where applicant alerts go
+// -----------------------------------------------------------------------------
+//
+// Settings already had a "Notifications → Admin notification email" field, and
+// nothing had ever read it: the alerts went to LEAD_ALERT_TO or a hardcoded
+// fallback, so changing the address in the UI did nothing at all. This makes
+// that field the source of truth.
+//
+// Resolution order, most specific first:
+//   1. app_settings.notifications.admin_email  — editable in the back office
+//   2. LEAD_ALERT_TO                           — the existing env var
+//   3. team@drivereal.com                      — last resort, never silent
+//
+// Never throws. A settings lookup that fails must not cost us the alert, so
+// any error falls through to the environment and the default.
+
+export type LeadAlertPrefs = {
+  recipients: string[];
+  onNew: boolean;
+  onComplete: boolean;
+};
+
+const DEFAULT_OPS_INBOX = "team@drivereal.com";
+
+/** Split "a@x.com, b@y.com" into addresses, ignoring blanks and duplicates. */
+function parseRecipients(raw: unknown): string[] {
+  if (typeof raw !== "string") return [];
+  const seen = new Set<string>();
+  for (const part of raw.split(/[,;\s]+/)) {
+    const addr = part.trim().toLowerCase();
+    // Loose on purpose: a typo should still be attempted and bounce visibly,
+    // rather than being dropped here and looking like the alert never fired.
+    if (addr.includes("@") && addr.length > 3) seen.add(addr);
+  }
+  return [...seen];
+}
+
+export async function getLeadAlertPrefs(): Promise<LeadAlertPrefs> {
+  const envInbox = parseRecipients(process.env.LEAD_ALERT_TO);
+  const fallback = envInbox.length ? envInbox : [DEFAULT_OPS_INBOX];
+
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("app_settings")
+      .select("value")
+      .eq("key", "notifications")
+      .maybeSingle();
+
+    const v = (data?.value ?? {}) as Record<string, unknown>;
+    const configured = parseRecipients(v.admin_email);
+
+    return {
+      recipients: configured.length ? configured : fallback,
+      // Absent means on. Someone who never opens Settings keeps the behaviour
+      // they have today rather than silently losing their alerts.
+      onNew: v.alert_on_new !== false,
+      onComplete: v.alert_on_complete !== false,
+    };
+  } catch (err) {
+    console.error("[email] could not read alert settings; using fallback", err);
+    return { recipients: fallback, onNew: true, onComplete: true };
+  }
+}
+
 export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   const {
     event,
@@ -138,8 +204,14 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   </div>
 </body></html>`;
 
-  const opsInbox = process.env.LEAD_ALERT_TO || "team@drivereal.com";
-  await sendEmail({ to: opsInbox, subject, html });
+  const prefs = await getLeadAlertPrefs();
+  const wanted = event === "complete" ? prefs.onComplete : prefs.onNew;
+  if (!wanted) return;
+  if (!prefs.recipients.length) {
+    console.error("[email] lead alert has no recipient; check Settings -> Notifications");
+    return;
+  }
+  await sendEmail({ to: prefs.recipients, subject, html });
 }
 
 type RecoveryArgs = {
