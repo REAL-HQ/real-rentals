@@ -736,6 +736,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "condition_media_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "condition_media_inspection_id_fkey"
             columns: ["inspection_id"]
             isOneToOne: false
@@ -1738,6 +1745,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "maintenance_records_schedule_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_schedules"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "maintenance_records_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
@@ -1749,6 +1763,13 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_records_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -2972,7 +2993,10 @@ export type Database = {
     }
     Functions: {
       get_cron_token: { Args: { _name: string }; Returns: string }
-      rental_at_time: { Args: { _vehicle_id: string; _at: string }; Returns: string }
+      rental_at_time: {
+        Args: { _at: string; _vehicle_id: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "user" | "partner" | "driver" | "team"
