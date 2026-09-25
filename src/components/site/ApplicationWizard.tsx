@@ -1044,7 +1044,10 @@ function FileUploadField({
     setUploading(true);
     try {
       const ext = extFromMime(file.type);
-      const path = `${applicationId}/${Date.now()}.${ext}`;
+      // Random suffix as well as the timestamp: two uploads landing in the
+      // same millisecond would otherwise collide on the key, and overwriting
+      // an existing object is not something an applicant is allowed to do.
+      const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error } = await supabase.storage
         .from(bucket)
         .upload(path, file, { upsert: true, contentType: file.type || undefined });
