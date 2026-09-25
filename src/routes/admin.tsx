@@ -197,7 +197,7 @@ const TABS = [
   },
   {
     id: "team",
-    minTier: "coordinator" as StaffTier,
+    minTier: "owner" as StaffTier,
     label: "Team",
     icon: UserCog,
     group: "SYSTEM",
@@ -230,8 +230,6 @@ function Admin() {
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
   const initialTab: Tab =
     urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
-  // A deep link to a tab this tier cannot open falls back to the overview
-  // rather than rendering a panel whose every query will be refused.
   const [tab, setTab] = useState<Tab>(initialTab);
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<
@@ -246,6 +244,17 @@ function Admin() {
   >([]);
   const [tier, setTier] = useState<StaffTier | null>(null);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
+
+  // A deep link to a tab this tier may not open falls back to the overview.
+  // The URL is validated against every TAB above, because the tier is not
+  // known until the role lookup returns; this re-checks once it is, so
+  // ?tab=team cannot render the panel for a Manager or Coordinator. The
+  // server function behind the panel refuses them regardless — this is the
+  // presentation half of the same rule, not the enforcement.
+  useEffect(() => {
+    if (!tier) return;
+    if (!navTabs.some((t) => t.id === tab)) setTab("overview");
+  }, [tier, navTabs, tab]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;

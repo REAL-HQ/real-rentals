@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import type { Json } from "@/integrations/supabase/types";
-import { requireOwner, requireStaff, getActor, TIER_LABELS, type StaffTier } from "@/lib/roles.server";
+import { requireOwner, getActor, TIER_LABELS, type StaffTier } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit.server";
 
 // Team management: invite by email, accept, revoke, remove.
@@ -101,9 +101,13 @@ export type PendingInvite = {
 export const listTeam = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ members: TeamMember[]; invites: PendingInvite[]; canManage: boolean }> => {
-    // Any staff member may see who else is on the team — knowing who to ask is
-    // not privileged. Only an owner can change it.
-    const actor = await requireStaff(context.userId);
+    // Owner only. This used to admit any staff member on the reasoning that
+    // knowing who to ask for help is not privileged, but the roster carries
+    // colleagues' email addresses and tiers, and team composition is an
+    // ownership concern. Gating here rather than in the navigation is what
+    // makes it real: hiding the tab alone would still leave the data one
+    // direct call away.
+    const actor = await requireOwner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: roleRows } = await supabaseAdmin
