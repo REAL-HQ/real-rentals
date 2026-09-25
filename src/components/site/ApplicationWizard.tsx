@@ -178,10 +178,14 @@ export function ApplicationWizard({ id }: { id: string }) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
-      <ProgressBar current={step} source={state.source} />
+    <div className="max-w-5xl mx-auto w-full">
+      <div className="grid lg:grid-cols-[320px_1fr] rounded-2xl overflow-hidden border border-border bg-soft shadow-sm">
+      <SideRail current={step} source={state.source} />
       <FadeUp delay={50}>
-        <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
+        <div className="p-5 md:p-8">
+          <div className="lg:hidden mb-6">
+            <ProgressBar current={step} source={state.source} />
+          </div>
           {step === "eligibility" && (
             <EligibilityStep
               source={state.source}
@@ -261,12 +265,13 @@ export function ApplicationWizard({ id }: { id: string }) {
           {step === "complete" ? (
             <ConfirmationStep id={id} state={state} />
           ) : (
-            <p className="mt-6 text-center text-[11px] text-muted-foreground">
+            <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
               Takes about a minute — no payment required to submit.
             </p>
           )}
         </div>
       </FadeUp>
+      </div>
     </div>
   );
 }
@@ -302,6 +307,66 @@ export function ProgressBar({
   );
 }
 
+function SideRail({
+  current,
+  source,
+}: {
+  current: WizardStep;
+  source: string | null | undefined;
+}) {
+  const segments = getBarSegments(source);
+  const currentIdx = segments.findIndex((s) => s.key === current);
+  return (
+    <aside className="hidden lg:flex flex-col bg-[#141416] text-white p-8">
+      <div>
+        <div className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center justify-center h-8 px-2.5 rounded bg-real-red text-[11px] font-black tracking-[0.18em]">
+            REAL
+          </span>
+          <span className="text-[11px] tracking-[0.3em] font-semibold text-white/70">RENTALS</span>
+        </div>
+        <h2 className="mt-8 text-2xl font-semibold leading-snug">Your Quote Request Is In</h2>
+        <p className="mt-3 text-sm text-white/60 leading-relaxed">
+          We've saved your contact info — a few quick questions and we'll match you with the right
+          vehicle.
+        </p>
+        <ol className="mt-10 space-y-1">
+          {segments.map((s, i) => {
+            const done = i < currentIdx;
+            const active = i === currentIdx;
+            return (
+              <li
+                key={s.key}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${active ? "bg-white/10" : ""}`}
+              >
+                <span
+                  className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                    done
+                      ? "bg-real-red text-white"
+                      : active
+                        ? "border border-real-red text-real-red"
+                        : "border border-white/20 text-white/40"
+                  }`}
+                >
+                  {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                </span>
+                <span
+                  className={`text-sm ${active ? "font-semibold text-white" : done ? "text-white/80" : "text-white/40"}`}
+                >
+                  {s.label}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      <p className="mt-auto pt-10 text-[11px] text-white/40">
+        Takes about a minute · No payment required to submit.
+      </p>
+    </aside>
+  );
+}
+
 function stepEyebrow(source: string | null | undefined, step: WizardStep) {
   // Post-lead profile phase: always 4 wizard steps regardless of entry path.
   const idx = WIZARD_STEPS.indexOf(step);
@@ -310,12 +375,12 @@ function stepEyebrow(source: string | null | undefined, step: WizardStep) {
 
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
-    <div className="mb-6">
+    <div className="mb-5">
       <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">
         {eyebrow}
       </div>
-      <h2 className="mt-2 text-2xl md:text-3xl font-semibold">{title}</h2>
-      {sub && <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{sub}</p>}
+      <h2 className="mt-1.5 text-xl md:text-2xl font-semibold">{title}</h2>
+      {sub && <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{sub}</p>}
     </div>
   );
 }
@@ -369,7 +434,7 @@ function NavRow({
   canNext?: boolean;
 }) {
   return (
-    <div className="mt-8 flex items-center justify-between gap-3">
+    <div className="mt-6 flex items-center justify-between gap-3">
       {onBack ? (
         <button
           type="button"
