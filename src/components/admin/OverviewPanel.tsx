@@ -425,7 +425,7 @@ export function OverviewPanel() {
             <span className="text-[11px] text-[#9A9AA3]">Worth following up first</span>
             <Link
               to="/admin"
-              search={{ tab: "drivers" } as any}
+              search={{ tab: "drivers" }}
               className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
             >
               {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
@@ -436,7 +436,7 @@ export function OverviewPanel() {
               <li key={app.id} className="min-w-0">
                 <Link
                   to="/admin"
-                  search={{ tab: "drivers", id: app.id } as any}
+                  search={{ tab: "drivers", id: app.id }}
                   className="group inline-flex flex-col gap-1 min-w-0"
                 >
                   <span className="flex items-center gap-2 min-w-0">
@@ -534,7 +534,7 @@ export function OverviewPanel() {
           right={
             <Link
               to="/admin"
-              search={{ tab: "vehicles" } as any}
+              search={{ tab: "vehicles" }}
               className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
             >
               Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
@@ -637,7 +637,7 @@ export function OverviewPanel() {
               </select>
               <Link
                 to="/admin"
-                search={{ tab: "drivers" } as any}
+                search={{ tab: "drivers" }}
                 className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
               >
                 View All <ArrowUpRight className="w-3.5 h-3.5" />
@@ -661,7 +661,7 @@ export function OverviewPanel() {
                   <li key={a.id}>
                     <Link
                       to="/admin"
-                      search={{ tab: "drivers", id: a.id } as any}
+                      search={{ tab: "drivers", id: a.id }}
                       className="flex items-center gap-3 px-5 py-3 border-b border-[#F4F4F6] last:border-0 hover:bg-[#FAFAFB] transition-colors"
                     >
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E] shrink-0">
@@ -843,7 +843,7 @@ function ActionCard({
   title: string;
   hint?: string;
   href: string;
-  search: Record<string, string>;
+  search: { tab?: string; id?: string; filter?: string; add?: "1" };
   control: "add" | "view";
   badge?: number;
   tint?: "red" | "amber";
@@ -859,7 +859,7 @@ function ActionCard({
   return (
     <Link
       to={href}
-      search={search as any}
+      search={search}
       className={`group relative rounded-2xl border bg-white text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">

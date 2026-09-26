@@ -59,7 +59,36 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/** Deep-link parameters the Overview cards and applicant rows send. */
+type AdminSearch = {
+  tab?: string;
+  id?: string;
+  filter?: string;
+  add?: "1";
+};
+
 export const Route = createFileRoute("/admin")({
+  /**
+   * Declare the deep-link parameters this page actually uses.
+   *
+   * Every other route that reads search params validates them; this one did
+   * not, which left the Overview's links passing `search` through `as any`
+   * casts into an untyped bag. Declaring the shape gives the router a schema
+   * to round-trip, keeps unrelated junk out of the URL, and means a typo in a
+   * Link is a type error rather than a control that quietly does nothing.
+   *
+   * Unknown values are dropped rather than rejected — a stale or hand-edited
+   * URL should land on the dashboard, not an error page.
+   */
+  validateSearch: (raw: Record<string, unknown>): AdminSearch => {
+    const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+    const out: AdminSearch = {};
+    if (str(raw.tab)) out.tab = str(raw.tab);
+    if (str(raw.id)) out.id = str(raw.id);
+    if (str(raw.filter)) out.filter = str(raw.filter);
+    if (raw.add === "1" || raw.add === true) out.add = "1";
+    return out;
+  },
   head: () => ({
     meta: [{ title: "Admin — REAL RENTALS" }, { name: "robots", content: "noindex" }],
   }),

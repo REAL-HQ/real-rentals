@@ -830,7 +830,7 @@ function DriverStep({
       <StepHeader
         eyebrow={stepEyebrow(source, "driver")}
         title="Driver & Insurance"
-        sub="Last step. We need this for delivery + your rental records."
+        sub="Last step. We need this for your rental records."
       />
       <div className="space-y-5">
         <DocumentCapture
@@ -984,8 +984,11 @@ function ConfirmationStep({ id, state }: { id: string; state: WizardState }) {
       desc: "We'll walk through availability and match you to the right vehicle for your needs.",
     },
     {
-      title: "Pick Up Or Delivery",
-      desc: "Choose to pick up at our lot or have your vehicle delivered to you.",
+      // REAL RENTALS does not deliver vehicles. This promised a service that
+      // does not exist; "delivery" elsewhere in the flow means gig work and is
+      // left alone.
+      title: "Coordinate Pickup",
+      desc: "We'll arrange a pickup time and location that works for you.",
     },
   ];
 
