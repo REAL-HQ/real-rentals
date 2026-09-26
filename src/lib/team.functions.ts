@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import type { Json } from "@/integrations/supabase/types";
 import { requireOwner, getActor, TIER_LABELS, type StaffTier } from "@/lib/roles.server";
-import { logAudit } from "@/lib/audit.server";
+import { logAudit } from "@/lib/audit";
 
 // Team management: invite by email, accept, revoke, remove.
 //

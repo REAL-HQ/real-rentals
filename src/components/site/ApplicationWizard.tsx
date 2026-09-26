@@ -463,9 +463,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
           </ol>
         )}
       </div>
-      <p className="mt-auto pt-10 text-[11px] text-white/40">
-        No payment required to apply.
-      </p>
+      <p className="mt-auto pt-10 text-[11px] text-white/40">No payment required to apply.</p>
     </aside>
   );
 }
@@ -664,6 +662,10 @@ type StepProps = {
 
 function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () => void }) {
   const [editingPlace, setEditingPlace] = useState(false);
+  // Whatever the date box held when this step first mounted came from the lead
+  // form, not from this screen. Captured once so the note does not linger after
+  // they have picked a new date themselves.
+  const [carriedDate] = useState(() => Boolean(state.pickup_date));
   const canNext = !!state.vehicle_size && !!state.pickup_date && !!state.expected_duration;
   const today = new Date().toISOString().slice(0, 10);
   const place = [state.city, state.state].filter(Boolean).join(", ");
@@ -723,7 +725,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
 
         <label className="block max-w-xs">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            When Do You Want To Start?
+            When Do You Need The Vehicle?
           </span>
           <input
             type="date"
@@ -732,6 +734,14 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             onChange={(e) => update("pickup_date", e.target.value || null)}
             className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
           />
+          {/* Prefilled, and said out loud. A date box that silently arrives
+              filled in reads as a default; saying where it came from makes it
+              theirs, and makes changing it feel invited rather than risky. */}
+          {carriedDate && (
+            <span className="mt-1.5 block text-[11px] text-muted-foreground">
+              We carried over the date you selected earlier. Update it if anything changed.
+            </span>
+          )}
         </label>
 
         <Choice
@@ -1075,10 +1085,7 @@ function DriverProfile({
         {sections.map((s) => {
           const isOpen = open === s.key;
           return (
-            <div
-              key={s.key}
-              className="rounded-2xl border border-border bg-white overflow-hidden"
-            >
+            <div key={s.key} className="rounded-2xl border border-border bg-white overflow-hidden">
               <button
                 type="button"
                 onClick={() => setOpen(isOpen ? null : s.key)}

@@ -88,3 +88,36 @@ COMMENT ON COLUMN public.applications.how_heard IS
 -- change.
 DROP POLICY IF EXISTS "Scoped upload license photos" ON storage.objects;
 DROP POLICY IF EXISTS "Scoped upload profile screenshots" ON storage.objects;
+
+-- -------------------------------------------- application intent vs contract
+--
+-- The rental agreement was built from applications.pickup_date and
+-- applications.return_date. Both of those are things an applicant typed into a
+-- date picker on a marketing page before being quoted a rate or shown a car —
+-- an estimate, and the return one was frequently a placeholder. They were then
+-- merged into a signed contract as the rental's start and return dates.
+--
+-- These two columns are the contractual dates, set by a staff member who has
+-- actually agreed them with the driver. Nothing applicant-facing writes them,
+-- expected_duration is never converted into one, and an agreement will not
+-- generate without them.
+ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS contract_start_date date;
+ALTER TABLE public.applications ADD COLUMN IF NOT EXISTS contract_end_date date;
+
+COMMENT ON COLUMN public.applications.contract_start_date IS
+  'CONTRACTUAL. The start date a staff member agreed with the driver. Never
+   written by the applicant. pickup_date is the applicant''s intent and must
+   not be substituted for this.';
+COMMENT ON COLUMN public.applications.contract_end_date IS
+  'CONTRACTUAL. The scheduled end date a staff member agreed with the driver.
+   Never written by the applicant, and never derived from expected_duration.';
+COMMENT ON COLUMN public.applications.pickup_date IS
+  'APPLICATION INTENT. When the applicant said they would like to start. Not a
+   contractual date.';
+COMMENT ON COLUMN public.applications.return_date IS
+  'LEGACY APPLICATION INTENT. No longer collected; historical values preserved.
+   Never reinterpret as expected_duration and never use as a contractual
+   return date.';
+COMMENT ON COLUMN public.applications.start_date IS
+  'DEAD. Never written by any code path and empty in every row. Use
+   contract_start_date.';

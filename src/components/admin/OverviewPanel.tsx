@@ -431,23 +431,27 @@ export function OverviewPanel() {
               {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-          <ul className="mt-2.5 flex flex-wrap gap-x-6 gap-y-2.5">
+          {/* One card per person, and the whole card is the link. The previous
+              version was a wrapped row of text links, so the click target was
+              the name itself — a few pixels tall, on the busiest strip on the
+              page. */}
+          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
             {hot.map(({ app, readiness }) => (
               <li key={app.id} className="min-w-0">
                 <Link
                   to="/admin"
                   search={{ tab: "drivers", id: app.id }}
-                  className="group inline-flex flex-col gap-1 min-w-0"
+                  className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
                 >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span className="text-[13px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
+                  <span className="flex items-start justify-between gap-2 min-w-0">
+                    <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
                       {app.full_name || "Unnamed"}
                     </span>
                     <ReadinessStatePill state={readiness.state} short />
                   </span>
-                  <ReadinessMetrics result={readiness} compact />
+                  <ReadinessMetrics result={readiness} />
                   {readiness.positives.length > 0 && (
-                    <span className="text-[11px] text-[#9A9AA3] truncate">
+                    <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
                       {readiness.positives
                         .slice(0, 2)
                         .map((f) => f.detail)

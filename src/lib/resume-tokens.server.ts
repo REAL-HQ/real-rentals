@@ -20,17 +20,38 @@
 //
 // There is deliberately no UUID fallback. An old ?id= link does not work.
 
-import { createHash, randomBytes } from "node:crypto";
+/*
+ * Web Crypto, not node:crypto.
+ *
+ * A static `import "node:crypto"` here pulled the whole module into the client
+ * bundle through the server functions that use it, and the browser build
+ * replaced it with a stub that exports nothing. The same globals are available
+ * on both runtimes, and agreements.functions.ts already hashes its signing
+ * tokens exactly this way.
+ */
+
+/** The service-role client, typed from the module that creates it. */
+type AdminClient = (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"];
 
 /** Matches the storage upload window in application_accepts_uploads(). */
 export const RESUME_TOKEN_DAYS = 14;
 
-export function hashResumeToken(raw: string): string {
-  return createHash("sha256").update(raw, "utf8").digest("hex");
+const hex = (bytes: Uint8Array) =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+export async function hashResumeToken(raw: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return hex(new Uint8Array(digest));
 }
 
 function newRawToken(): string {
-  return randomBytes(32).toString("base64url");
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  // base64url: URL-safe, and shorter than hex for the same 256 bits.
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 /** How many unexpired links one application may have out at once. */
@@ -51,13 +72,13 @@ const MAX_LIVE_TOKENS = 5;
  *
  * Returns the raw token. This is the only moment it exists in plaintext.
  */
-export async function issueResumeToken(admin: any, applicationId: string): Promise<string> {
+export async function issueResumeToken(admin: AdminClient, applicationId: string): Promise<string> {
   const raw = newRawToken();
   const expires = new Date(Date.now() + RESUME_TOKEN_DAYS * 86400_000).toISOString();
 
   const { error } = await admin.from("application_resume_tokens").insert({
     application_id: applicationId,
-    token_hash: hashResumeToken(raw),
+    token_hash: await hashResumeToken(raw),
     expires_at: expires,
   });
   if (error) throw new Error(error.message);
@@ -81,7 +102,10 @@ export async function issueResumeToken(admin: any, applicationId: string): Promi
 }
 
 /** Kill every live link for an application. Returns how many were revoked. */
-export async function revokeResumeTokens(admin: any, applicationId: string): Promise<number> {
+export async function revokeResumeTokens(
+  admin: AdminClient,
+  applicationId: string,
+): Promise<number> {
   const { data, error } = await admin
     .from("application_resume_tokens")
     .update({ revoked_at: new Date().toISOString() })
@@ -99,7 +123,7 @@ export function resumeUrl(rawToken: string, path: "/apply" | "/thank-you" = "/th
 
 /** Mint a token and return the link in one step, for the email senders. */
 export async function issueResumeUrl(
-  admin: any,
+  admin: AdminClient,
   applicationId: string,
   path: "/apply" | "/thank-you" = "/thank-you",
 ): Promise<string> {
@@ -112,14 +136,14 @@ export async function issueResumeUrl(
  * Throws the same message for every failure — unknown, expired, revoked — so
  * the error cannot be used to probe which tokens exist.
  */
-export async function resolveResumeToken(admin: any, raw: string): Promise<string> {
+export async function resolveResumeToken(admin: AdminClient, raw: string): Promise<string> {
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
   if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
 
   const { data: row } = await admin
     .from("application_resume_tokens")
     .select("id,application_id,expires_at,revoked_at")
-    .eq("token_hash", hashResumeToken(raw))
+    .eq("token_hash", await hashResumeToken(raw))
     .maybeSingle();
 
   if (!row) throw new Error(generic);

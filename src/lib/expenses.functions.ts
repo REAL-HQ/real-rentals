@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager } from "@/lib/roles.server";
-import { logAudit, diffFields } from "@/lib/audit.server";
+import { logAudit, diffFields } from "@/lib/audit";
 
 // Vehicle expenses, receipts and per-vehicle P&L.
 //

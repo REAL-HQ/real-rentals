@@ -57,6 +57,7 @@ import {
   Sparkles,
   AlertTriangle,
   Wallet,
+  CalendarDays,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
@@ -712,7 +713,9 @@ function DriverDetail({
     .join("")
     .toUpperCase();
   const trips = Number(driver.trips_completed);
-  const tripsOk = !Number.isNaN(trips) && trips >= 200;
+  // The 200-trip threshold that used to sit beside this is gone with the
+  // submission gate. Trip volume is still a readiness factor and still shown
+  // to staff; it is no longer a pass/fail badge on the record.
   const { screening, setScreening } = useDriverScreening(driver.id);
 
   async function advanceStatus(next: import("./types").ScreeningStatus) {
@@ -1092,7 +1095,21 @@ function DriverDetail({
                 />
                 <Row2
                   label="Drive type"
-                  value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"}
+                  value={
+                    // Staff answer first, then the applicant's own, so the row
+                    // is not blank just because nobody has run an interview.
+                    ((screening as any)?.drive_type as string | undefined)?.replace("_", " ") ??
+                    (((driver as any).drive_type as string | null)?.replace("_", " ") ?? "—")
+                  }
+                />
+                <Row2
+                  label="Expected duration"
+                  value={
+                    (driver as any).expected_duration
+                      ? (DURATION_LABEL[(driver as any).expected_duration as string] ??
+                        ((driver as any).expected_duration as string))
+                      : "—"
+                  }
                 />
                 <Row2
                   label="Current vehicle"
@@ -1458,6 +1475,38 @@ function DriverDetail({
                       onSave={(v) => onUpdate({ weekly_rent: v as any })}
                     />
                   </div>
+                </Card>
+                <Card title="Contract dates" icon={<CalendarDays className="w-4 h-4" />}>
+                  {/* These are the agreement's dates, and only these. What the
+                      applicant told us — their desired start and how long they
+                      expect to need the car — is shown alongside as context,
+                      never copied in. An estimate typed on a marketing page is
+                      not a term somebody should be asked to sign. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <DateField
+                      label="Contract start"
+                      value={(driver as any).contract_start_date ?? null}
+                      onSave={(v) => onUpdate({ contract_start_date: v } as any)}
+                    />
+                    <DateField
+                      label="Scheduled end"
+                      value={(driver as any).contract_end_date ?? null}
+                      onSave={(v) => onUpdate({ contract_end_date: v } as any)}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#9A9AA3] mt-2">
+                    They asked to start{" "}
+                    <span className="font-medium text-[#55555E]">
+                      {driver.pickup_date
+                        ? new Date(driver.pickup_date).toLocaleDateString()
+                        : "— no date given"}
+                    </span>
+                    {(driver as any).expected_duration
+                      ? ` and expect to need the vehicle for ${DURATION_LABEL[(driver as any).expected_duration as string] ?? (driver as any).expected_duration}`
+                      : ""}
+                    . Agree the real dates with them before sending an agreement — it will not
+                    send without both.
+                  </p>
                 </Card>
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>
@@ -1829,6 +1878,37 @@ function NumField({
     </div>
   );
 }
+function DateField({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (v: string | null) => void;
+}) {
+  return (
+    <div className="bg-soft rounded-md px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <input
+        type="date"
+        defaultValue={value ?? ""}
+        onBlur={(e) => onSave(e.target.value || null)}
+        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
+      />
+    </div>
+  );
+}
+
+/** How the applicant's duration band reads to a person. */
+const DURATION_LABEL: Record<string, string> = {
+  "1-2_weeks": "1–2 weeks",
+  "3-4_weeks": "3–4 weeks",
+  "1-2_months": "1–2 months",
+  "2plus_months": "2+ months",
+  ongoing: "an open-ended period",
+};
+
 function VehiclePicker({
   vehicles,
   value,

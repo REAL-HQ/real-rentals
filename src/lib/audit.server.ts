@@ -64,23 +64,6 @@ export async function logAudit(actor: Actor | null, entry: AuditEntry): Promise<
   }
 }
 
-/**
- * Describe a change as a compact before/after, for the metadata column.
- * Only keys that actually changed are kept, so the entry says what moved
- * rather than restating the whole row.
- */
-export function diffFields(
-  before: Record<string, unknown> | null | undefined,
-  after: Record<string, unknown> | null | undefined,
-  keys: string[],
-): Record<string, { from: unknown; to: unknown }> {
-  const out: Record<string, { from: unknown; to: unknown }> = {};
-  for (const k of keys) {
-    const from = before?.[k] ?? null;
-    const to = after?.[k] ?? null;
-    // Loose compare: a numeric column arriving as "350" from a form should not
-    // read as a change from 350.
-    if (String(from ?? "") !== String(to ?? "")) out[k] = { from, to };
-  }
-  return out;
-}
+// diffFields lives in ./audit so a client-reachable module can use it without
+// dragging this file — and its server-only imports — into the client graph.
+export { diffFields } from "@/lib/audit";
