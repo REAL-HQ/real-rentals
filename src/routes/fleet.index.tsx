@@ -24,7 +24,7 @@ export const Route = createFileRoute("/fleet/")({
 });
 
 function FleetPage() {
-  const [vehicles, setVehicles] = useState<Tables<"vehicles">[]>([]);
+  const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
   const [make, setMake] = useState("all");
   const [categories, setCategories] = useState<Record<string, boolean>>({
     sedan: true,
@@ -35,7 +35,7 @@ function FleetPage() {
 
   useEffect(() => {
     supabase
-      .from("vehicles")
+      .from("vehicles_public")
       .select("*")
       .neq("status", "retired")
       .order("weekly_rate", { ascending: true })
@@ -43,7 +43,7 @@ function FleetPage() {
   }, []);
 
   const makes = useMemo(
-    () => Array.from(new Set(vehicles.map((v) => v.make))).sort(),
+    () => Array.from(new Set(vehicles.map((v) => v.make).filter((m): m is string => !!m))).sort(),
     [vehicles]
   );
 

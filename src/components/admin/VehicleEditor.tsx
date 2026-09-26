@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { generateVehicleImage } from "@/lib/admin-ai.functions";
+import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
+import { OWNERSHIP_TYPES } from "@/lib/vehicles.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import type { Vehicle } from "./types";
 import { toast } from "sonner";
 import { VehicleDocuments } from "./VehicleDocuments";
-import { Sparkles, Upload, X, Loader2 } from "lucide-react";
+import { Sparkles, Upload, X, Loader2, Lock } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -51,7 +53,6 @@ type FormState = {
   registration_expires_on: string;
   title_status: string;
   title_number: string;
-  lienholder: string;
   gps_provider: string;
   gps_device_id: string;
   gps_installed_on: string;
@@ -60,10 +61,42 @@ type FormState = {
   insurance_carrier: string;
   insurance_policy_number: string;
   insurance_expires_on: string;
-  purchase_date: string;
   internal_notes: string;
-  purchase_price: number | null;
   key_count: number | null;
+};
+
+/**
+ * Acquisition and financing, kept apart from FormState on purpose.
+ *
+ * These are not columns on vehicles any more — they live in vehicle_finance,
+ * which only a Manager or Owner can read or write. The browser never touches
+ * that table directly; the two server functions below are the only path, and
+ * they check the tier themselves.
+ */
+type FinanceState = {
+  ownership_type: string;
+  legal_owner: string;
+  seller_dealer: string;
+  lienholder: string;
+  purchase_date: string;
+  purchase_price: number | null;
+  loan_reference: string;
+  payoff_amount: number | null;
+  monthly_payment: number | null;
+  loan_maturity_date: string;
+};
+
+const EMPTY_FINANCE: FinanceState = {
+  ownership_type: "",
+  legal_owner: "",
+  seller_dealer: "",
+  lienholder: "",
+  purchase_date: "",
+  purchase_price: null,
+  loan_reference: "",
+  payoff_amount: null,
+  monthly_payment: null,
+  loan_maturity_date: "",
 };
 
 function init(v: Vehicle | null): FormState {
@@ -99,7 +132,6 @@ function init(v: Vehicle | null): FormState {
     registration_expires_on: (v as any)?.registration_expires_on ?? "",
     title_status: (v as any)?.title_status ?? "",
     title_number: (v as any)?.title_number ?? "",
-    lienholder: (v as any)?.lienholder ?? "",
     gps_provider: (v as any)?.gps_provider ?? "",
     gps_device_id: (v as any)?.gps_device_id ?? "",
     gps_installed_on: (v as any)?.gps_installed_on ?? "",
@@ -108,9 +140,7 @@ function init(v: Vehicle | null): FormState {
     insurance_carrier: (v as any)?.insurance_carrier ?? "",
     insurance_policy_number: (v as any)?.insurance_policy_number ?? "",
     insurance_expires_on: (v as any)?.insurance_expires_on ?? "",
-    purchase_date: (v as any)?.purchase_date ?? "",
     internal_notes: (v as any)?.internal_notes ?? "",
-    purchase_price: (v as any)?.purchase_price != null ? Number((v as any).purchase_price) : null,
     key_count: (v as any)?.key_count ?? null,
   };
 }
@@ -129,6 +159,57 @@ export function VehicleEditor({
   const [generating, setGenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const genImage = useServerFn(generateVehicleImage);
+  const loadFinance = useServerFn(getVehicleFinance);
+  const storeFinance = useServerFn(saveVehicleFinance);
+
+  const [fin, setFin] = useState<FinanceState>(EMPTY_FINANCE);
+  // Whether to show the financing card at all is the server's answer, not a
+  // role check copied into the browser. getVehicleFinance refuses anyone below
+  // Manager, so a Coordinator's request fails and the card never renders — and
+  // if this flag were wrong, the save would still be refused.
+  const [canFinance, setCanFinance] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    if (!vehicle?.id) {
+      // A new vehicle has no id to key financing to yet. Offer it anyway: the
+      // record is created immediately after the insert returns an id.
+      setCanFinance(true);
+      setFin(EMPTY_FINANCE);
+      return;
+    }
+    loadFinance({ data: { vehicle_id: vehicle.id } })
+      .then((r) => {
+        if (!live) return;
+        setCanFinance(true);
+        setFin(
+          r
+            ? {
+                ownership_type: r.ownership_type ?? "",
+                legal_owner: r.legal_owner ?? "",
+                seller_dealer: r.seller_dealer ?? "",
+                lienholder: r.lienholder ?? "",
+                purchase_date: r.purchase_date ?? "",
+                purchase_price: r.purchase_price != null ? Number(r.purchase_price) : null,
+                loan_reference: r.loan_reference ?? "",
+                payoff_amount: r.payoff_amount != null ? Number(r.payoff_amount) : null,
+                monthly_payment: r.monthly_payment != null ? Number(r.monthly_payment) : null,
+                loan_maturity_date: r.loan_maturity_date ?? "",
+              }
+            : EMPTY_FINANCE,
+        );
+      })
+      .catch(() => {
+        if (live) setCanFinance(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [vehicle?.id, loadFinance]);
+
+  function setFinField<K extends keyof FinanceState>(k: K, v: FinanceState[K]) {
+    setFin((s) => ({ ...s, [k]: v }));
+  }
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setF((s) => ({ ...s, [k]: v }));
@@ -172,7 +253,6 @@ export function VehicleEditor({
       registration_expires_on: f.registration_expires_on || null,
       title_status: f.title_status || null,
       title_number: f.title_number.trim() || null,
-      lienholder: f.lienholder.trim() || null,
       gps_provider: f.gps_provider.trim() || null,
       gps_device_id: f.gps_device_id.trim() || null,
       gps_installed_on: f.gps_installed_on || null,
@@ -181,16 +261,14 @@ export function VehicleEditor({
       insurance_carrier: f.insurance_carrier.trim() || null,
       insurance_policy_number: f.insurance_policy_number.trim() || null,
       insurance_expires_on: f.insurance_expires_on || null,
-      purchase_date: f.purchase_date || null,
-      purchase_price: f.purchase_price,
       key_count: f.key_count,
       internal_notes: f.internal_notes.trim() || null,
     };
-    const { error } = vehicle
-      ? await supabase.from("vehicles").update(payload).eq("id", vehicle.id)
-      : await supabase.from("vehicles").insert(payload);
-    setSaving(false);
+    const { data: saved, error } = vehicle
+      ? await supabase.from("vehicles").update(payload).eq("id", vehicle.id).select("id").single()
+      : await supabase.from("vehicles").insert(payload).select("id").single();
     if (error) {
+      setSaving(false);
       const msg = error.message.includes("vehicles_vin_unique_idx")
         ? "Another vehicle already has that VIN."
         : error.message.includes("vehicles_plate_unique_idx")
@@ -198,6 +276,33 @@ export function VehicleEditor({
           : error.message;
       return toast.error(msg);
     }
+
+    // Financing is a second, separately authorised write. Reported rather than
+    // swallowed: silently failing to save a payoff figure is how a number goes
+    // stale without anyone noticing.
+    if (canFinance && saved?.id && hasFinance(fin)) {
+      const res = await storeFinance({
+        data: {
+          vehicle_id: saved.id,
+          ownership_type: (fin.ownership_type || null) as any,
+          legal_owner: fin.legal_owner || null,
+          seller_dealer: fin.seller_dealer || null,
+          lienholder: fin.lienholder || null,
+          purchase_date: fin.purchase_date || null,
+          purchase_price: fin.purchase_price,
+          loan_reference: fin.loan_reference || null,
+          payoff_amount: fin.payoff_amount,
+          monthly_payment: fin.monthly_payment,
+          loan_maturity_date: fin.loan_maturity_date || null,
+        },
+      }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : "Financing was not saved." }));
+      if (!res.ok) {
+        setSaving(false);
+        return toast.error(res.error ?? "The vehicle saved, but its financing did not.");
+      }
+    }
+
+    setSaving(false);
     toast.success(vehicle ? "Vehicle updated" : "Vehicle created");
     onSaved();
   }
@@ -373,9 +478,76 @@ export function VehicleEditor({
                 v={f.title_number}
                 onChange={(x) => set("title_number", x)}
               />
-              <Txt label="Lienholder" v={f.lienholder} onChange={(x) => set("lienholder", x)} />
             </div>
           </div>
+
+          {canFinance && (
+            <div className="rounded-xl border border-[#EDEDF0] p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Acquisition &amp; Financing
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Owners and managers only. Coordinators cannot read these figures — not here, and
+                not from the database.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <Sel
+                  label="Ownership"
+                  v={fin.ownership_type}
+                  options={["", ...OWNERSHIP_TYPES.map((o) => o.value)]}
+                  onChange={(x) => setFinField("ownership_type", x)}
+                />
+                <Txt
+                  label="Legal Owner"
+                  v={fin.legal_owner}
+                  onChange={(x) => setFinField("legal_owner", x)}
+                />
+                <Txt
+                  label="Seller / Dealer"
+                  v={fin.seller_dealer}
+                  onChange={(x) => setFinField("seller_dealer", x)}
+                />
+                <Txt
+                  label="Lienholder"
+                  v={fin.lienholder}
+                  onChange={(x) => setFinField("lienholder", x)}
+                />
+                <DateField
+                  label="Purchase Date"
+                  v={fin.purchase_date}
+                  onChange={(x) => setFinField("purchase_date", x)}
+                />
+                <Num
+                  label="Purchase Price $"
+                  v={fin.purchase_price}
+                  onChange={(n) => setFinField("purchase_price", n)}
+                />
+                <Txt
+                  label="Loan / Lease Ref"
+                  v={fin.loan_reference}
+                  onChange={(x) => setFinField("loan_reference", x)}
+                />
+                <Num
+                  label="Payoff $"
+                  v={fin.payoff_amount}
+                  onChange={(n) => setFinField("payoff_amount", n)}
+                />
+                <Num
+                  label="Monthly Payment $"
+                  v={fin.monthly_payment}
+                  onChange={(n) => setFinField("monthly_payment", n)}
+                />
+                <DateField
+                  label="Matures"
+                  v={fin.loan_maturity_date}
+                  onChange={(x) => setFinField("loan_maturity_date", x)}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl border border-[#EDEDF0] p-4 space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -422,16 +594,6 @@ export function VehicleEditor({
                 label="Policy Expires"
                 v={f.insurance_expires_on}
                 onChange={(x) => set("insurance_expires_on", x)}
-              />
-              <DateField
-                label="Purchase Date"
-                v={f.purchase_date}
-                onChange={(x) => set("purchase_date", x)}
-              />
-              <Num
-                label="Purchase Price $"
-                v={f.purchase_price}
-                onChange={(n) => set("purchase_price", n)}
               />
             </div>
             <div>
@@ -724,4 +886,9 @@ function DateField({
       />
     </label>
   );
+}
+
+/** Is there anything worth writing? Avoids creating an empty financing row. */
+function hasFinance(fin: FinanceState): boolean {
+  return Object.values(fin).some((v) => v !== null && v !== "");
 }

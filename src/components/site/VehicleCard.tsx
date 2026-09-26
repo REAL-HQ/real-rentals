@@ -3,9 +3,12 @@ import type { Tables } from "@/integrations/supabase/types";
 import { DoorOpen, Car, BadgeCheck, Users, Wrench, Infinity as InfinityIcon, ArrowRight, Fuel, Zap, Leaf, Wallet, Headphones } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
-type Vehicle = Tables<"vehicles">;
+type Vehicle = Tables<"vehicles_public">;
 
 export function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
+  // View columns come back nullable because a view cannot promise otherwise.
+  // Without an id the card has nowhere to link, so there is nothing to show.
+  if (!vehicle.id) return null;
   const img = resolvePhotoUrl(vehicle.photos?.[0]);
   const uber = vehicle.uber_eligibility ?? [];
   const fuel = vehicle.fuel_type ?? "gas";

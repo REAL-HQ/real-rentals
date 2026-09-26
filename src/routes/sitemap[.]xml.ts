@@ -42,7 +42,7 @@ export const Route = createFileRoute("/sitemap.xml")({
 
         try {
           const { data: vehicles } = await supabase
-            .from("vehicles")
+            .from("vehicles_public")
             .select("id")
             .neq("status", "retired");
           for (const v of vehicles ?? []) {

@@ -12,6 +12,7 @@ export type PartnerVehicle = {
   trim: string | null;
   color: string | null;
   vin: string | null;
+  /** First photo, resolved from vehicles.photos. */
   photo: string | null;
   status: string | null;
   renter: {
@@ -55,9 +56,17 @@ export const getMyPartner = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const partner = await loadPartnerForCaller(supabase, userId);
 
-    const { data: vehicles, error: vErr } = await supabase
+    // Partners no longer hold a SELECT policy on vehicles. They own the car,
+    // not the operation: GPS identifiers, the SIM, the tracking URL, where the
+    // keys hang, toll and insurance account numbers and internal notes are all
+    // ours, and financing lives in a manager-only table they cannot reach at
+    // all. Ownership of the row is proved by partner_id below, and this list is
+    // exactly what the partner dashboard renders — nothing is fetched to be
+    // discarded later.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: vehicles, error: vErr } = await supabaseAdmin
       .from("vehicles")
-      .select("id,year,make,model,trim,color,vin,photo,status")
+      .select("id,year,make,model,trim,color,vin,photos,status")
       .eq("partner_id", partner.id)
       .order("year", { ascending: false });
     if (vErr) throw new Error(vErr.message);
@@ -92,8 +101,10 @@ export const getMyPartner = createServerFn({ method: "GET" })
 
     const result: PartnerVehicle[] = (vehicles ?? []).map((v: any) => {
       const r = byVehicleDriver.get(v.id);
+      const { photos, ...rest } = v;
       return {
-        ...v,
+        ...rest,
+        photo: (photos as string[] | null)?.[0] ?? null,
         renter: r
           ? {
               id: r.id,
@@ -160,7 +171,8 @@ export const getMyEarnings = createServerFn({ method: "POST" })
     else since.setMonth(since.getMonth() - 1);
     const sinceIso = since.toISOString().slice(0, 10);
 
-    const { data: vehicles } = await supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: vehicles } = await supabaseAdmin
       .from("vehicles")
       .select("id,year,make,model")
       .eq("partner_id", partner.id);

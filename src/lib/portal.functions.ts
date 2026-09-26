@@ -80,7 +80,13 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
 
     let vehicle: DriverDashboard["vehicle"] = null;
     if (rental?.vehicle_id) {
-      const { data: v } = await supabase
+      // Read as the service role, not as the renter. The renter's own session
+      // has no policy on vehicles and never should: the table carries GPS
+      // identifiers, key locations and internal notes. Their claim to this one
+      // car is the active rental checked immediately above, so the column list
+      // here is the whole of what a driver may learn about the car they drive.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: v } = await supabaseAdmin
         .from("vehicles")
         .select("id,year,make,model,trim,color,status,photos,license_plate")
         .eq("id", rental.vehicle_id)
@@ -428,7 +434,10 @@ export const getDriverPictures = createServerFn({ method: "GET" })
       .limit(1)
       .maybeSingle();
     if (!rental?.vehicle_id) return [];
-    const { data: v } = await supabase
+    // Same reasoning as the dashboard: the rental above is the proof of claim,
+    // and the service role fetches exactly the four fields a photo strip needs.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: v } = await supabaseAdmin
       .from("vehicles")
       .select("year,make,model,photos")
       .eq("id", rental.vehicle_id)

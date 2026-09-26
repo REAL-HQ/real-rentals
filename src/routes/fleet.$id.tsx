@@ -10,7 +10,7 @@ import { resolvePhotoUrl } from "@/lib/photoUrl";
 export const Route = createFileRoute("/fleet/$id")({
   loader: async ({ params }) => {
     const { data } = await supabase
-      .from("vehicles")
+      .from("vehicles_public")
       .select("id, make, model, weekly_rate, status")
       .eq("id", params.id)
       .maybeSingle();
@@ -108,7 +108,7 @@ function VehicleNotFound() {
 
 function VehicleDetail() {
   const { id } = useParams({ from: "/fleet/$id" });
-  const [v, setV] = useState<Tables<"vehicles"> | null>(null);
+  const [v, setV] = useState<Tables<"vehicles_public"> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "missing">("loading");
   const [term, setTerm] = useState<"weekly" | "monthly">("weekly");
 
@@ -117,7 +117,7 @@ function VehicleDetail() {
     setStatus("loading");
     setV(null);
     supabase
-      .from("vehicles")
+      .from("vehicles_public")
       .select("*")
       .eq("id", id)
       .maybeSingle()
@@ -229,7 +229,7 @@ function VehicleDetail() {
             <div className="mt-8 sticky bottom-4">
               <Link
                 to="/apply"
-                search={{ vehicle: v.id }}
+                search={{ vehicle: v.id ?? undefined }}
                 className="inline-flex w-full sm:w-auto justify-center items-center rounded-lg bg-real-red px-8 py-4 text-sm font-medium text-white hover:opacity-90 transition active:scale-95"
               >
                 Book This Car

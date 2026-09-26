@@ -2840,6 +2840,65 @@ export type Database = {
           },
         ]
       }
+      vehicle_finance: {
+        Row: {
+          created_at: string
+          legal_owner: string | null
+          lienholder: string | null
+          loan_maturity_date: string | null
+          loan_reference: string | null
+          monthly_payment: number | null
+          ownership_type: string | null
+          payoff_amount: number | null
+          purchase_date: string | null
+          purchase_price: number | null
+          seller_dealer: string | null
+          updated_at: string
+          updated_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          legal_owner?: string | null
+          lienholder?: string | null
+          loan_maturity_date?: string | null
+          loan_reference?: string | null
+          monthly_payment?: number | null
+          ownership_type?: string | null
+          payoff_amount?: number | null
+          purchase_date?: string | null
+          purchase_price?: number | null
+          seller_dealer?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          legal_owner?: string | null
+          lienholder?: string | null
+          loan_maturity_date?: string | null
+          loan_reference?: string | null
+          monthly_payment?: number | null
+          ownership_type?: string | null
+          payoff_amount?: number | null
+          purchase_date?: string | null
+          purchase_price?: number | null
+          seller_dealer?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_finance_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_media: {
         Row: {
           caption: string | null
@@ -2910,13 +2969,6 @@ export type Database = {
           unit_number: string | null
           archived_at: string | null
           archive_reason: string | null
-          ownership_type: string | null
-          legal_owner: string | null
-          seller_dealer: string | null
-          loan_reference: string | null
-          payoff_amount: number | null
-          monthly_payment: number | null
-          loan_maturity_date: string | null
           registration_number: string | null
           insurance_coverage: string | null
           insurance_agent_name: string | null
@@ -2961,7 +3013,6 @@ export type Database = {
           last_oil_change_miles: number | null
           last_tire_date: string | null
           license_plate: string | null
-          lienholder: string | null
           maintenance_status: string | null
           make: string
           market_id: string | null
@@ -2975,8 +3026,6 @@ export type Database = {
           photos: string[] | null
           plate_expires_on: string | null
           plate_state: string | null
-          purchase_date: string | null
-          purchase_price: number | null
           registration_expires_on: string | null
           registration_state: string | null
           seats: number | null
@@ -3014,7 +3063,6 @@ export type Database = {
           last_oil_change_miles?: number | null
           last_tire_date?: string | null
           license_plate?: string | null
-          lienholder?: string | null
           maintenance_status?: string | null
           make: string
           market_id?: string | null
@@ -3028,8 +3076,6 @@ export type Database = {
           photos?: string[] | null
           plate_expires_on?: string | null
           plate_state?: string | null
-          purchase_date?: string | null
-          purchase_price?: number | null
           registration_expires_on?: string | null
           registration_state?: string | null
           seats?: number | null
@@ -3067,7 +3113,6 @@ export type Database = {
           last_oil_change_miles?: number | null
           last_tire_date?: string | null
           license_plate?: string | null
-          lienholder?: string | null
           maintenance_status?: string | null
           make?: string
           market_id?: string | null
@@ -3081,8 +3126,6 @@ export type Database = {
           photos?: string[] | null
           plate_expires_on?: string | null
           plate_state?: string | null
-          purchase_date?: string | null
-          purchase_price?: number | null
           registration_expires_on?: string | null
           registration_state?: string | null
           seats?: number | null
@@ -3258,7 +3301,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      vehicles_public: {
+        Row: {
+          badges: string[] | null
+          body_type: string | null
+          color: string | null
+          description: string | null
+          doors: number | null
+          fuel_type: string | null
+          id: string | null
+          make: string | null
+          miles_per_tank: number | null
+          model: string | null
+          monthly_rate: number | null
+          mpg: number | null
+          photos: string[] | null
+          seats: number | null
+          status: string | null
+          trim: string | null
+          uber_eligibility: string[] | null
+          weekly_rate: number | null
+          year: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       application_accepts_uploads: {

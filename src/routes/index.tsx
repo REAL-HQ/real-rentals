@@ -93,12 +93,12 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [vehicles, setVehicles] = useState<Tables<"vehicles">[]>([]);
+  const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
   useEffect(() => {
     (async () => {
       const fetchType = (type: string) =>
         supabase
-          .from("vehicles")
+          .from("vehicles_public")
           .select("*")
           .eq("status", "available")
           .eq("body_type", type)

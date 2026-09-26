@@ -271,7 +271,6 @@ export const createVehicle = createServerFn({ method: "POST" })
         license_plate: data.license_plate?.trim().toUpperCase() || null,
         plate_state: data.plate_state?.trim().toUpperCase() || null,
         status: data.status || "available",
-        ownership_type: data.ownership_type || null,
         partner_id: data.partner_id || null,
         // Required by the table. Defaulted rather than demanded up front, so a
         // car can be recorded the moment it exists and priced later.
@@ -287,6 +286,19 @@ export const createVehicle = createServerFn({ method: "POST" })
       if (msg.includes("vehicles_unit_number_unique_idx")) return { ok: false, error: "That unit number is already in use.", field: "unit_number" };
       console.error("[vehicles] create failed", msg);
       return { ok: false, error: msg || "Could not create the vehicle." };
+    }
+
+    // Ownership type is financing data and lives in the manager-only table.
+    // Recorded after the vehicle exists because it is keyed by vehicle_id, and
+    // best-effort because a car that is on the lot is a fact whether or not we
+    // managed to write down how it is held.
+    if (data.ownership_type) {
+      const { error: finErr } = await supabaseAdmin
+        .from("vehicle_finance")
+        .upsert({ vehicle_id: row.id, ownership_type: data.ownership_type, updated_by: actor.userId } as any, {
+          onConflict: "vehicle_id",
+        });
+      if (finErr) console.error("[vehicles] ownership type not recorded", finErr.message);
     }
 
     await logAudit(actor, {
@@ -365,6 +377,12 @@ export type VehicleProfile = {
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */
   financials: { revenue: number; expenses: number; maintenance: number; net: number; days_on_rent: number } | null;
+  /**
+   * Acquisition and financing, from the manager-only vehicle_finance table.
+   * Null for a Coordinator because the row is not theirs to read — the
+   * database says so, not this function.
+   */
+  finance: Record<string, any> | null;
 };
 
 export const getVehicleProfile = createServerFn({ method: "POST" })
@@ -423,6 +441,16 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
+    let finance: VehicleProfile["finance"] = null;
+    if (isManager) {
+      const { data: fin } = await supabaseAdmin
+        .from("vehicle_finance")
+        .select("*")
+        .eq("vehicle_id", data.id)
+        .maybeSingle();
+      finance = (fin as Record<string, any> | null) ?? null;
+    }
+
     let financials: VehicleProfile["financials"] = null;
     if (isManager) {
       // The RPC is service-role only; a Coordinator never reaches this branch,
@@ -440,17 +468,18 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
       }
     }
 
-    // Strip the money-bearing columns for a Coordinator rather than trusting
-    // the UI not to render them.
-    const safeVehicle: Record<string, any> = { ...v };
-    if (!isManager) {
-      for (const k of ["purchase_price", "payoff_amount", "monthly_payment", "weekly_rate", "monthly_rate", "deposit", "loan_reference", "loan_maturity_date"]) {
-        delete safeVehicle[k];
-      }
-    }
+    // No stripping happens here any more, and that is the point. The
+    // acquisition and financing columns no longer exist on this table — they
+    // live in vehicle_finance behind private.is_manager() — so a Coordinator
+    // could not receive them even if this code tried to hand them over.
+    //
+    // Nor is pricing removed. weekly_rate, monthly_rate and deposit are
+    // printed on drivereal.com; hiding them from a Coordinator withheld
+    // nothing from anyone and made the fleet list read wrongly.
 
     return {
-      vehicle: safeVehicle,
+      vehicle: v,
+      finance,
       unitLabel: v.unit_number || `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim(),
       vinLast4: v.vin ? String(v.vin).slice(-4) : "",
       isActive: !INACTIVE_STATUSES.includes(String(v.status ?? "")),
