@@ -383,6 +383,8 @@ export type VehicleProfile = {
    * database says so, not this function.
    */
   finance: Record<string, any> | null;
+  /** Writing to vehicles is manager-only at the RLS layer; the UI hides what the server would refuse. */
+  canEdit: boolean;
 };
 
 export const getVehicleProfile = createServerFn({ method: "POST" })
@@ -480,6 +482,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     return {
       vehicle: v,
       finance,
+      canEdit: isManager,
       unitLabel: v.unit_number || `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim(),
       vinLast4: v.vin ? String(v.vin).slice(-4) : "",
       isActive: !INACTIVE_STATUSES.includes(String(v.status ?? "")),
@@ -503,3 +506,405 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
   });
 
 export { diffFields };
+
+// ============================================================ section edits
+//
+// The profile is a record to read, not a form to fill in, so editing happens
+// one domain at a time through a drawer. Each drawer patches exactly the
+// columns its section owns.
+//
+// The whitelist is the point. A drawer sends a section name and a bag of
+// values; anything not listed for that section is dropped before the update is
+// built, so the GPS drawer cannot set a rate and the Keys drawer cannot change
+// a plate — whatever the browser sends. Writing to vehicles is manager-only at
+// the RLS layer too; this runs through the service role, so the check below is
+// the gate, not a courtesy.
+
+export const VEHICLE_SECTIONS = {
+  identity: [
+    "unit_number", "year", "make", "model", "trim", "color", "body_type",
+    "seats", "doors", "mpg", "miles_per_tank", "fuel_type", "description",
+    "status", "partner_id", "current_odometer", "internal_notes",
+    "weekly_rate", "monthly_rate", "deposit",
+  ],
+  insurance: [
+    "insurance_carrier", "insurance_policy_number", "insurance_coverage",
+    "insurance_expires_on", "insurance_status",
+    "insurance_agent_name", "insurance_agent_phone", "insurance_agent_email",
+  ],
+  dmv: [
+    "vin", "license_plate", "plate_state", "plate_expires_on",
+    "registration_number", "registration_state", "registration_expires_on",
+    "title_status", "title_number",
+  ],
+  gps: [
+    "gps_provider", "gps_device_id", "gps_serial", "gps_imei", "gps_sim",
+    "gps_status", "gps_installed_on", "gps_tracking_url",
+    "gps_geofence_status", "gps_install_notes",
+  ],
+  keys: [
+    "key_count", "spare_key", "key_type", "key_tag", "key_location", "key_notes",
+  ],
+} as const;
+
+export type VehicleSection = keyof typeof VEHICLE_SECTIONS;
+
+/** Fields that are always stored upper-cased, so lookups and the case-insensitive unique indexes agree. */
+const UPPERCASE_FIELDS = new Set(["vin", "license_plate", "plate_state", "registration_state"]);
+
+/** Numeric columns — an empty form field means "not recorded", not zero. */
+const NUMERIC_FIELDS = new Set([
+  "year", "seats", "doors", "mpg", "miles_per_tank", "current_odometer",
+  "weekly_rate", "monthly_rate", "deposit", "key_count",
+]);
+
+const SECTION_LABEL: Record<VehicleSection, string> = {
+  identity: "details",
+  insurance: "insurance",
+  dmv: "registration and title",
+  gps: "GPS",
+  keys: "keys",
+};
+
+/** Field names a human recognises, for the audit summary. */
+const FIELD_LABEL: Record<string, string> = {
+  unit_number: "unit number", body_type: "body type", current_odometer: "odometer",
+  internal_notes: "internal notes", weekly_rate: "weekly rate", monthly_rate: "monthly rate",
+  partner_id: "partner", miles_per_tank: "range", fuel_type: "fuel",
+  insurance_carrier: "carrier", insurance_policy_number: "policy number",
+  insurance_coverage: "coverage", insurance_expires_on: "policy expiry",
+  insurance_status: "insurance status", insurance_agent_name: "agent",
+  insurance_agent_phone: "agent phone", insurance_agent_email: "agent email",
+  license_plate: "plate", plate_state: "plate state", plate_expires_on: "plate expiry",
+  registration_number: "registration number", registration_state: "registration state",
+  registration_expires_on: "registration expiry", title_status: "title status",
+  title_number: "title number",
+  gps_provider: "GPS provider", gps_device_id: "device ID", gps_serial: "serial",
+  gps_imei: "IMEI", gps_sim: "SIM", gps_status: "GPS status",
+  gps_installed_on: "install date", gps_tracking_url: "tracking link",
+  gps_geofence_status: "geofence", gps_install_notes: "install notes",
+  key_count: "key count", spare_key: "spare key", key_type: "key type",
+  key_tag: "key tag", key_location: "key location", key_notes: "key notes",
+};
+
+export const updateVehicleSection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      id: z.string().uuid(),
+      section: z.enum(["identity", "insurance", "dmv", "gps", "keys"]),
+      // Shapes differ per section and the whitelist below is what actually
+      // constrains this, so the values are validated by column rather than by
+      // a schema that would have to be kept in sync with the table twice.
+      values: z.record(z.string(), z.unknown()),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string; field?: string }> => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const allowed: readonly string[] = VEHICLE_SECTIONS[data.section as VehicleSection];
+
+    const patch: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (!(key in data.values)) continue;
+      let v = data.values[key];
+
+      if (typeof v === "string") {
+        v = v.trim();
+        if (UPPERCASE_FIELDS.has(key)) v = (v as string).toUpperCase();
+        if (v === "") v = null;
+      }
+      if (NUMERIC_FIELDS.has(key) && v !== null && v !== undefined) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return { ok: false, error: `${FIELD_LABEL[key] ?? key} must be a number.`, field: key };
+        v = n;
+      }
+      patch[key] = v ?? null;
+    }
+
+    if (!Object.keys(patch).length) return { ok: true };
+
+    // weekly_rate is NOT NULL on the table. Clearing it would fail with a
+    // constraint name nobody can act on, so say what is wrong instead.
+    if ("weekly_rate" in patch && (patch.weekly_rate === null || patch.weekly_rate === undefined)) {
+      return { ok: false, error: "A weekly rate is required.", field: "weekly_rate" };
+    }
+
+    const { data: before } = await supabaseAdmin
+      .from("vehicles")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!before) return { ok: false, error: "That vehicle no longer exists." };
+
+    // A status field in a drawer is still a way out of the fleet, so it has to
+    // obey the same rule as the Archive button rather than being a quieter
+    // route around it: a car on an active rental cannot leave, because the
+    // rental would still be pointing at it.
+    if (typeof patch.status === "string" && patch.status !== before.status) {
+      const leaving = INACTIVE_STATUSES.includes(patch.status);
+      if (leaving) {
+        const { count } = await supabaseAdmin
+          .from("rentals")
+          .select("id", { count: "exact", head: true })
+          .eq("vehicle_id", data.id)
+          .eq("status", "active");
+        if ((count ?? 0) > 0) {
+          return { ok: false, error: "This vehicle is on an active rental. End the rental first.", field: "status" };
+        }
+        // Stamped here too, so a car archived from the drawer and one archived
+        // from the button are the same row afterwards.
+        if (!before.archived_at) patch.archived_at = new Date().toISOString();
+      } else if (before.archived_at) {
+        // Coming back into service: the archive stamp would otherwise linger
+        // and keep the car out of the public projection.
+        patch.archived_at = null;
+        patch.archive_reason = null;
+      }
+    }
+
+    // Identity clashes are checked here as well as by the unique indexes, so
+    // the operator gets "RR-004 already has that VIN" rather than the name of
+    // a constraint.
+    if (typeof patch.vin === "string" && patch.vin) {
+      const vin = normalizeVin(patch.vin);
+      const check = checkVin(vin);
+      if (!check.formatValid) return { ok: false, error: check.problem ?? "Invalid VIN.", field: "vin" };
+      patch.vin = vin;
+      const { data: dupe } = await supabaseAdmin
+        .from("vehicles").select("id,unit_number,year,make,model").ilike("vin", vin).neq("id", data.id).maybeSingle();
+      if (dupe) {
+        return { ok: false, error: `${dupe.unit_number || `${dupe.year} ${dupe.make} ${dupe.model}`} already has that VIN.`, field: "vin" };
+      }
+    }
+    for (const [col, field, label] of [
+      ["license_plate", "license_plate", "plate"],
+      ["unit_number", "unit_number", "unit number"],
+    ] as const) {
+      if (typeof patch[col] === "string" && patch[col]) {
+        const { data: dupe } = await supabaseAdmin
+          .from("vehicles").select("id,unit_number,year,make,model").ilike(col, String(patch[col])).neq("id", data.id).maybeSingle();
+        if (dupe) {
+          return {
+            ok: false,
+            error: `${dupe.unit_number || `${dupe.year} ${dupe.make} ${dupe.model}`} already has that ${label}.`,
+            field,
+          };
+        }
+      }
+    }
+
+    const { error } = await supabaseAdmin.from("vehicles").update(patch as any).eq("id", data.id);
+    if (error) {
+      const msg = String(error.message);
+      if (msg.includes("vehicles_vin_unique_idx")) return { ok: false, error: "Another vehicle already has that VIN.", field: "vin" };
+      if (msg.includes("vehicles_plate_unique_idx")) return { ok: false, error: "Another vehicle already has that plate.", field: "license_plate" };
+      if (msg.includes("vehicles_unit_number_unique_idx")) return { ok: false, error: "That unit number is already in use.", field: "unit_number" };
+      console.error("[vehicles] section update failed", data.section, msg);
+      return { ok: false, error: msg };
+    }
+
+    const changed = diffFields(before as any, patch, Object.keys(patch));
+    const changedKeys = Object.keys(changed);
+    if (changedKeys.length) {
+      const label = before.unit_number || `${before.year} ${before.make} ${before.model}`;
+
+      // A status move is the thing people scan the activity list for, so it
+      // gets its own entry rather than hiding inside "details updated".
+      if (changed.status) {
+        await logAudit(actor, {
+          action: "vehicle.status.changed",
+          summary: `${label} moved from ${String(changed.status.from ?? "—")} to ${String(changed.status.to ?? "—")}`,
+          entityType: "vehicle",
+          entityId: data.id,
+          metadata: { from: changed.status.from, to: changed.status.to },
+        });
+      }
+
+      const rest = changedKeys.filter((k) => k !== "status");
+      if (rest.length) {
+        const metadata: Record<string, unknown> = {};
+        for (const k of rest) metadata[k] = changed[k];
+        await logAudit(actor, {
+          action: `vehicle.${data.section}.updated`,
+          summary: `Updated ${SECTION_LABEL[data.section as VehicleSection]} for ${label} — ${rest
+            .map((k) => FIELD_LABEL[k] ?? k.replace(/_/g, " "))
+            .join(", ")}`,
+          entityType: "vehicle",
+          entityId: data.id,
+          metadata,
+        });
+      }
+    }
+
+    return { ok: true };
+  });
+
+// ============================================================== share sheet
+//
+// "Send me the details on the car" is a real request from a real person — an
+// adjuster, a shop, a driver, an Uber inspection station — and the answer has
+// always been someone retyping fields into a message and getting one wrong.
+//
+// The payload is assembled here, not in the browser, and the toggles can only
+// ever narrow it. Four categories are absent from this function entirely
+// rather than defaulted off, because a toggle is a thing that can be flipped:
+//
+//   financing        purchase price, payoff, loan — a Coordinator cannot even
+//                    read these, so they certainly do not leave the building
+//   keys             how many, what type, and where they hang
+//   GPS credentials  IMEI, SIM, serial, device ID, tracking link — handing
+//                    these out is handing over the tracker
+//   internal notes   written for us, about them, sometimes about both
+//
+// What remains is what you would tell someone standing next to the car.
+
+export type VehicleShare = {
+  title: string;
+  unitLabel: string;
+  generatedAt: string;
+  sections: Array<{ heading: string; rows: Array<{ label: string; value: string }> }>;
+  photos: string[];
+  /** Named so the sender can see what the recipient will get. */
+  included: string[];
+};
+
+const shareInput = z.object({
+  id: z.string().uuid(),
+  includeVin: z.boolean().default(true),
+  includeRegistration: z.boolean().default(true),
+  includeInsurance: z.boolean().default(true),
+  /** Off by default: the carrier and expiry answer most questions on their own. */
+  includePolicyNumber: z.boolean().default(false),
+  includeRates: z.boolean().default(false),
+  includePhotos: z.boolean().default(true),
+});
+
+export const getVehicleShare = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => shareInput.parse(d))
+  .handler(async ({ data, context }): Promise<VehicleShare | null> => {
+    const actor = await requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: v } = await supabaseAdmin
+      .from("vehicles")
+      .select(
+        "id,unit_number,year,make,model,trim,color,body_type,seats,doors,mpg,miles_per_tank," +
+          "fuel_type,uber_eligibility,status,current_odometer,photos,description,weekly_rate," +
+          "monthly_rate,deposit,vin,license_plate,plate_state,plate_expires_on,registration_number," +
+          "registration_state,registration_expires_on,insurance_carrier,insurance_policy_number," +
+          "insurance_coverage,insurance_expires_on",
+      )
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!v) return null;
+
+    const row = v as Record<string, any>;
+    const name = `${row.year ?? ""} ${row.make ?? ""} ${row.model ?? ""}${row.trim ? " " + row.trim : ""}`.trim();
+    const unitLabel = row.unit_number || name || "Vehicle";
+    const sections: VehicleShare["sections"] = [];
+    const included: string[] = ["Vehicle & specifications"];
+
+    const fmtDate = (d: string | null) =>
+      d ? new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+    const rows = (pairs: Array<[string, unknown]>) =>
+      pairs
+        .filter(([, val]) => val !== null && val !== undefined && String(val).trim() !== "")
+        .map(([label, val]) => ({ label, value: String(val) }));
+
+    sections.push({
+      heading: "Vehicle",
+      rows: rows([
+        ["Unit", row.unit_number],
+        ["Year", row.year],
+        ["Make", row.make],
+        ["Model", row.model],
+        ["Trim", row.trim],
+        ["Color", row.color],
+        ["Body type", row.body_type],
+        ["Status", row.status],
+        ...(data.includeVin ? ([["VIN", row.vin]] as Array<[string, unknown]>) : []),
+      ]),
+    });
+    if (data.includeVin) included.push("VIN");
+
+    sections.push({
+      heading: "Specifications",
+      rows: rows([
+        ["Seats", row.seats],
+        ["Doors", row.doors],
+        ["Fuel", row.fuel_type],
+        ["MPG", row.mpg],
+        ["Range per tank", row.miles_per_tank ? `${row.miles_per_tank} miles` : null],
+        ["Odometer", row.current_odometer ? `${Number(row.current_odometer).toLocaleString()} miles` : null],
+        ["Platforms", Array.isArray(row.uber_eligibility) && row.uber_eligibility.length ? row.uber_eligibility.join(", ") : null],
+      ]),
+    });
+
+    if (data.includeRegistration) {
+      sections.push({
+        heading: "Registration & plate",
+        rows: rows([
+          ["Plate", row.license_plate],
+          ["Plate state", row.plate_state],
+          ["Plate expires", row.plate_expires_on ? fmtDate(row.plate_expires_on) : null],
+          ["Registration #", row.registration_number],
+          ["Registration state", row.registration_state],
+          ["Registration expires", row.registration_expires_on ? fmtDate(row.registration_expires_on) : null],
+        ]),
+      });
+      included.push("Registration & plate");
+    }
+
+    if (data.includeInsurance) {
+      sections.push({
+        heading: "Insurance",
+        rows: rows([
+          ["Carrier", row.insurance_carrier],
+          ["Coverage", row.insurance_coverage],
+          ["Expires", row.insurance_expires_on ? fmtDate(row.insurance_expires_on) : null],
+          ...(data.includePolicyNumber ? ([["Policy number", row.insurance_policy_number]] as Array<[string, unknown]>) : []),
+        ]),
+      });
+      included.push(data.includePolicyNumber ? "Insurance incl. policy number" : "Insurance (no policy number)");
+    }
+
+    if (data.includeRates) {
+      sections.push({
+        heading: "Rates",
+        rows: rows([
+          ["Weekly", row.weekly_rate != null ? `$${Number(row.weekly_rate).toFixed(2)}` : null],
+          ["Monthly", row.monthly_rate != null ? `$${Number(row.monthly_rate).toFixed(2)}` : null],
+          ["Deposit", row.deposit != null ? `$${Number(row.deposit).toFixed(2)}` : null],
+        ]),
+      });
+      included.push("Rates");
+    }
+
+    if (row.description) {
+      sections.push({ heading: "Description", rows: [{ label: "", value: String(row.description) }] });
+    }
+
+    const photos = data.includePhotos ? ((row.photos as string[] | null) ?? []).filter(Boolean).slice(0, 6) : [];
+    if (photos.length) included.push(`${photos.length} photo${photos.length === 1 ? "" : "s"}`);
+
+    // Worth recording: this is the moment vehicle details left the building.
+    await logAudit(actor, {
+      action: "vehicle.info.shared",
+      summary: `Shared vehicle info for ${unitLabel} — ${included.join(", ")}`,
+      entityType: "vehicle",
+      entityId: data.id,
+      metadata: { included },
+    });
+
+    return {
+      title: name || unitLabel,
+      unitLabel,
+      generatedAt: new Date().toISOString(),
+      sections: sections.filter((s) => s.rows.length),
+      photos,
+      included,
+    };
+  });

@@ -125,7 +125,10 @@ export const saveVehicleFinance = createServerFn({ method: "POST" })
       .eq("vehicle_id", data.vehicle_id)
       .maybeSingle();
 
-    const payload: Record<string, unknown> = { vehicle_id: data.vehicle_id, updated_by: actor.userId };
+    const payload: Record<string, unknown> = {
+      vehicle_id: data.vehicle_id,
+      updated_by: actor.userId,
+    };
     for (const k of FIELDS) payload[k] = blankToNull((data as any)[k]);
 
     const { error } = await supabaseAdmin
@@ -182,7 +185,9 @@ export const deleteVehicleFinance = createServerFn({ method: "POST" })
     await logAudit(actor, {
       action: "vehicle.finance.deleted",
       summary: `Cleared the financing record for ${
-        vehicle?.unit_number || `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim() || "a vehicle"
+        vehicle?.unit_number ||
+        `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim() ||
+        "a vehicle"
       }`,
       entityType: "vehicle",
       entityId: data.vehicle_id,

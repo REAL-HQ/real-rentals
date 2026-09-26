@@ -21,7 +21,7 @@ import {
 // Uploading a document of a kind that already exists supersedes the old one
 // rather than deleting it, so last year's registration is still on file.
 
-export function VehicleDocuments({ vehicleId }: { vehicleId: string }) {
+export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: string; bare?: boolean }) {
   const load = useServerFn(listVehicleDocs);
   const register = useServerFn(registerVehicleDoc);
   const remove = useServerFn(deleteVehicleDoc);
@@ -93,11 +93,16 @@ export function VehicleDocuments({ vehicleId }: { vehicleId: string }) {
 
   const byKind = new Map(docs.map((d) => [d.kind, d]));
 
+  // `bare` drops the card and heading for callers that already supply their own
+  // — the vehicle profile puts this inside a SectionCard, and two nested
+  // bordered boxes reading "Documents" twice looks like a mistake.
   return (
-    <div className="rounded-xl border border-[#EDEDF0] p-4 space-y-3">
-      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Documents
-      </div>
+    <div className={bare ? "space-y-3" : "rounded-xl border border-[#EDEDF0] p-4 space-y-3"}>
+      {!bare && (
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Documents
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

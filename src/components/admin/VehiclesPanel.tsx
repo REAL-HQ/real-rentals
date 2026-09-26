@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Vehicle } from "./types";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { VehicleEditor } from "./VehicleEditor";
+import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Car } from "lucide-react";
+import { Plus, Trash2, Car, ArrowRight } from "lucide-react";
 import { EmptyState } from "./ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -40,6 +41,7 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const [editing, setEditing] = useState<Vehicle | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -140,14 +142,18 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
         {filtered.map((v) => {
           const img = resolvePhotoUrl(v.photos?.[0]);
           return (
-            <div key={v.id} className="rounded-2xl bg-soft overflow-hidden">
+            <div
+              key={v.id}
+              onClick={() => setViewing(v.id)}
+              className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
+            >
               <div className="aspect-[4/3] bg-white flex items-center justify-center">
                 {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
               </div>
               <div className="p-4">
                 <div className="font-medium">{v.year} {v.make} {v.model}</div>
                 <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}</div>
-                <div className="mt-2">
+                <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
                   <PartnerAssignSelect
                     value={(v as any).partner_id ?? null}
@@ -155,9 +161,9 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
                     onChange={(pid) => assignPartner(v, pid)}
                   />
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => setEditing(v)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
-                    <Pencil className="w-3.5 h-3.5" /> Edit
+                <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
+                    Open record <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                   <button onClick={() => remove(v)} className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
                     <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
@@ -189,6 +195,17 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
         <AddVehicleDialog
           onClose={() => setAdding(false)}
           onCreated={async () => { await load(); setAdding(false); }}
+        />
+      )}
+      {viewing && (
+        <VehicleProfile
+          vehicleId={viewing}
+          onClose={() => setViewing(null)}
+          onChanged={load}
+          onOpenFullEditor={() => {
+            const v = rows.find((r) => r.id === viewing);
+            if (v) setEditing(v);
+          }}
         />
       )}
       {editing && (
