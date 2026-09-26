@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "outDir": "../.readiness-build",
+    "rootDir": "../src/lib",
+    "skipLibCheck": true,
+    "baseUrl": "..",
+    "paths": { "@/*": ["./src/*"] },
+    "noEmitOnError": true
+  },
+  "include": ["../src/lib/readiness.ts", "../src/lib/readiness-index.ts"]
+}

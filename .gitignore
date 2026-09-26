@@ -39,3 +39,4 @@ package-lock.json
 
 # One-off database exports (row data, not source — keep out of git)
 demo-data-backup-*.json
+.readiness-build

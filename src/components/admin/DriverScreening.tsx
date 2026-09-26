@@ -11,11 +11,16 @@ import {
   FileText,
   Loader2,
   PhoneCall,
-  ShieldCheck,
   Upload,
   X,
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   REQUIRED_DOC_TYPES,
   SCREENING_STATUSES,
@@ -26,26 +31,36 @@ import {
   type ScreeningStatus,
 } from "./types";
 import { PlatformLogo, platformLabel } from "./PlatformLogo";
+import { computeReadiness, type ReadinessInput } from "@/lib/readiness";
 
 /* ------------------------------------------------------------------ */
-/* Scoring + disqualifier rules                                        */
+/* Disqualifier rules                                                  */
 /* ------------------------------------------------------------------ */
 
-export function computeScreening(s: Partial<DriverScreening>): {
-  score: number;
+/**
+ * Hard eligibility problems found during the interview.
+ *
+ * This used to also return a 0–100 `score`, which is gone. That number was a
+ * second, competing answer to "is this applicant any good", computed from a
+ * different set of facts with different weights than everything else on the
+ * screen — and it read a null accident count and a null licence-points count
+ * as a clean record, paying fifteen points for two questions nobody had asked.
+ *
+ * It was not replaced by the same arithmetic with the nulls removed. That
+ * would have swapped one lie for another: an unanswered question would then
+ * have scored zero, and the strongest applicant in the pipeline would have
+ * dropped from an amber 50 to a red 35 for facts we never collected. Strength
+ * now comes from computeReadiness, which keeps unknowns out of the maths
+ * entirely and reports separately how much has been asked.
+ *
+ * What survives is this list, because every rule in it already required an
+ * explicit answer. `license_active === false` is a fact. `license_active ==
+ * null` is silence, and silence disqualifies nobody.
+ */
+export function screeningConcerns(s: Partial<DriverScreening>): {
   disqualified: boolean;
   reasons: string[];
 } {
-  let score = 0;
-  if (s.gig_account_status === "active") score += 25;
-  if (s.license_active) score += 20;
-  if ((s.license_years ?? 0) >= 3) score += 10;
-  if (s.has_personal_insurance && s.policy_active) score += 20;
-  if ((s.accidents_last_3yr ?? 0) === 0) score += 10;
-  if ((s.license_points ?? 0) === 0) score += 5;
-  if (s.drive_type === "full_time") score += 5;
-  if (s.rate_confirmed && s.card_in_own_name) score += 5;
-
   const reasons: string[] = [];
   if (s.license_active === false) reasons.push("License Not Active");
   if (s.has_dui === true) reasons.push("DUI On Record");
@@ -56,7 +71,7 @@ export function computeScreening(s: Partial<DriverScreening>): {
   }
   if (s.driver_age != null && s.driver_age < 21) reasons.push("Driver Under 21");
 
-  return { score: Math.min(100, score), disqualified: reasons.length > 0, reasons };
+  return { disqualified: reasons.length > 0, reasons };
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,7 +87,11 @@ export function useDriverScreening(leadId: string) {
     setLoading(true);
     const [{ data: s }, { data: d }] = await Promise.all([
       supabase.from("driver_screenings").select("*").eq("lead_id", leadId).maybeSingle(),
-      supabase.from("lead_documents").select("*").eq("lead_id", leadId).order("uploaded_at", { ascending: false }),
+      supabase
+        .from("lead_documents")
+        .select("*")
+        .eq("lead_id", leadId)
+        .order("uploaded_at", { ascending: false }),
     ]);
     setScreening(s ?? null);
     setDocs(d ?? []);
@@ -119,7 +138,9 @@ export function ScreeningPipeline({
   const isDq = screening?.disqualified === true || current === "disqualified";
   const activeIdx = statusIndex(current);
   const docCount = new Set(
-    docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).map((d) => d.doc_type),
+    docs
+      .filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType))
+      .map((d) => d.doc_type),
   ).size;
   const hasRecording = docs.some((d) => d.doc_type === "verification_recording");
 
@@ -192,7 +213,11 @@ export function ScreeningPipeline({
                 title={p.label}
                 className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors ${dotCls}`}
               >
-                {done ? <CheckCircle2 className="h-3 w-3" /> : <span className="text-[10px] font-semibold">{i + 1}</span>}
+                {done ? (
+                  <CheckCircle2 className="h-3 w-3" />
+                ) : (
+                  <span className="text-[10px] font-semibold">{i + 1}</span>
+                )}
               </button>
             );
           })}
@@ -202,40 +227,6 @@ export function ScreeningPipeline({
         <span>{PIPELINE[0].label}</span>
         <span>{PIPELINE[PIPELINE.length - 1].label}</span>
       </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Screening badge (for list column)                                   */
-/* ------------------------------------------------------------------ */
-
-export function ScreeningBadge({
-  screening,
-  docCount,
-}: {
-  screening: Pick<DriverScreening, "qualification_score" | "disqualified"> | null | undefined;
-  docCount: number;
-}) {
-  if (!screening || screening.qualification_score == null) {
-    return <span className="text-[11px] text-muted-foreground">Not Screened</span>;
-  }
-  const score = screening.qualification_score;
-  const dq = screening.disqualified;
-  const cls = dq
-    ? "bg-red-100 text-red-800 border-red-200"
-    : score >= 70
-      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-      : score >= 40
-        ? "bg-amber-100 text-amber-800 border-amber-200"
-        : "bg-red-100 text-red-800 border-red-200";
-  return (
-    <div className="flex flex-col items-start gap-0.5">
-      <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${cls}`}>
-        {dq ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
-        {dq ? "DQ" : score}
-      </span>
-      <span className="text-[10px] text-muted-foreground">{docCount}/4 Docs</span>
     </div>
   );
 }
@@ -298,16 +289,19 @@ export function InterviewTab({
   async function completeInterview() {
     setSaving(true);
     try {
-      const { score, disqualified, reasons } = computeScreening(s);
+      const { disqualified, reasons } = screeningConcerns(s);
       const {
         data: { user },
       } = await supabase.auth.getUser();
       const nowIso = new Date().toISOString();
       const nextStatus: ScreeningStatus = disqualified ? "disqualified" : "docs_pending";
+      // qualification_score is deliberately not written. Existing values stay
+      // in the column as history; nothing recomputes them and nothing displays
+      // them as a current signal. Completing an interview now saves the
+      // answers, and coverage rises because the answers exist.
       const patch: Partial<DriverScreening> = {
         ...s,
         lead_id: driver.id,
-        qualification_score: score,
         disqualified,
         disqualification_reason: disqualified ? reasons.join(", ") : null,
         interview_completed_at: nowIso,
@@ -324,7 +318,7 @@ export function InterviewTab({
       toast.success(
         disqualified
           ? `Interview Saved — Driver Disqualified (${reasons.length} rule${reasons.length === 1 ? "" : "s"})`
-          : `Interview Complete — Score ${score}/100. Advanced To Docs Pending.`,
+          : "Interview Complete. Advanced To Docs Pending.",
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save interview");
@@ -334,7 +328,12 @@ export function InterviewTab({
   }
 
   const insuranceProvided = s.has_personal_insurance === true;
-  const previewScore = computeScreening(s);
+  // Live readiness over the interview draft. The old readout was a "Preview
+  // Score N/100" from the retired screening arithmetic; this shows the
+  // interviewer the two things that actually move as they work — how much of
+  // the picture is now filled in, and how what they have heard so far reads.
+  const preview = computeReadiness({}, s as ReadinessInput);
+  const concerns = screeningConcerns(s);
 
   return (
     <div className="space-y-4">
@@ -344,7 +343,9 @@ export function InterviewTab({
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9A9AA3]">
               Step {step} Of {total}
             </div>
-            <div className="text-[13px] font-semibold text-[#111114]">{INTERVIEW_STEPS[step - 1]}</div>
+            <div className="text-[13px] font-semibold text-[#111114]">
+              {INTERVIEW_STEPS[step - 1]}
+            </div>
           </div>
           <div className="mt-2 flex gap-1">
             {INTERVIEW_STEPS.map((label, i) => (
@@ -365,236 +366,293 @@ export function InterviewTab({
       {show(1) && (
         <ScriptCard title="1. Opening">
           <Script>
-          "Hey {driver.full_name?.split(/\s+/)[0] ?? "there"}, this is [You] with REAL RENTALS. You requested info about
-          renting a car for rideshare. Got a couple minutes so I can get you set up?"
-        </Script>
+            "Hey {driver.full_name?.split(/\s+/)[0] ?? "there"}, this is [You] with REAL RENTALS.
+            You requested info about renting a car for rideshare. Got a couple minutes so I can get
+            you set up?"
+          </Script>
         </ScriptCard>
       )}
 
       {show(2) && (
         <ScriptCard title="2. Gig Qualification">
           <Script>
-          "Which apps do you drive on, how long have you been on them, and what does your account look like right now?"
-        </Script>
-        <Field label="Gig Apps">
-          <div className="flex flex-wrap gap-1.5">
-            {GIG_APPS.map((a) => {
-              const on = (s.gig_apps ?? []).includes(a);
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => toggleApp(a)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
-                    on ? "border-real-red bg-red-50 text-red-800" : "border-border bg-white hover:bg-soft"
-                  }`}
-                >
-                  <PlatformLogo platform={a} size={14} />
-                  <span>{platformLabel(a)}</span>
-                  {on && <CheckCircle2 className="h-3 w-3" />}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-        <Row cols={2}>
-          <Field label="Gig Account Status">
-            <SelectInput
-              value={s.gig_account_status ?? ""}
-              onChange={(v) => up("gig_account_status" as any, (v || null) as any)}
+            "Which apps do you drive on, how long have you been on them, and what does your account
+            look like right now?"
+          </Script>
+          <Field label="Gig Apps">
+            <div className="flex flex-wrap gap-1.5">
+              {GIG_APPS.map((a) => {
+                const on = (s.gig_apps ?? []).includes(a);
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => toggleApp(a)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+                      on
+                        ? "border-real-red bg-red-50 text-red-800"
+                        : "border-border bg-white hover:bg-soft"
+                    }`}
+                  >
+                    <PlatformLogo platform={a} size={14} />
+                    <span>{platformLabel(a)}</span>
+                    {on && <CheckCircle2 className="h-3 w-3" />}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Row cols={2}>
+            <Field label="Gig Account Status">
+              <SelectInput
+                value={s.gig_account_status ?? ""}
+                onChange={(v) => up("gig_account_status" as any, (v || null) as any)}
+                options={[
+                  { v: "active", l: "Active" },
+                  { v: "pending", l: "Pending" },
+                  { v: "deactivated", l: "Deactivated" },
+                ]}
+              />
+            </Field>
+            <Field label="Months On Platform">
+              <NumInput
+                value={s.months_on_platform}
+                onChange={(v) => up("months_on_platform" as any, v as any)}
+              />
+            </Field>
+            <Field label="Trip Count">
+              <NumInput value={s.trip_count} onChange={(v) => up("trip_count" as any, v as any)} />
+            </Field>
+            <Field label="Driver Rating">
+              <NumInput
+                value={s.driver_rating as any}
+                step="0.01"
+                onChange={(v) => up("driver_rating" as any, v as any)}
+              />
+            </Field>
+          </Row>
+          <Field label="Drive Type">
+            <Toggle
               options={[
-                { v: "active", l: "Active" },
-                { v: "pending", l: "Pending" },
-                { v: "deactivated", l: "Deactivated" },
+                { v: "full_time", l: "Full Time" },
+                { v: "part_time", l: "Part Time" },
               ]}
+              value={s.drive_type ?? null}
+              onChange={(v) => up("drive_type" as any, v as any)}
             />
           </Field>
-          <Field label="Months On Platform">
-            <NumInput value={s.months_on_platform} onChange={(v) => up("months_on_platform" as any, v as any)} />
-          </Field>
-          <Field label="Trip Count">
-            <NumInput value={s.trip_count} onChange={(v) => up("trip_count" as any, v as any)} />
-          </Field>
-          <Field label="Driver Rating">
-            <NumInput
-              value={s.driver_rating as any}
-              step="0.01"
-              onChange={(v) => up("driver_rating" as any, v as any)}
-            />
-          </Field>
-        </Row>
-        <Field label="Drive Type">
-          <Toggle
-            options={[
-              { v: "full_time", l: "Full Time" },
-              { v: "part_time", l: "Part Time" },
-            ]}
-            value={s.drive_type ?? null}
-            onChange={(v) => up("drive_type" as any, v as any)}
-          />
-        </Field>
         </ScriptCard>
       )}
 
       {show(3) && (
         <ScriptCard title="3. Vehicle Need And Timing">
           <Script>
-          "Do you have a car right now, or is this replacing one? When do you need to be behind the wheel? Just to
-          confirm — the rate is $350 a week, weekly in advance, no deposit, on a card in your own name. That work?"
-        </Script>
-        <Row cols={2}>
-          <Field label="Has Current Vehicle">
-            <BoolToggle value={s.has_current_vehicle} onChange={(v) => up("has_current_vehicle" as any, v as any)} />
-          </Field>
-          <Field label="Needed By Date">
-            <input
-              type="date"
-              value={s.needed_by_date ?? ""}
-              onChange={(e) => up("needed_by_date" as any, (e.target.value || null) as any)}
-              className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
-            />
-          </Field>
-          <Field label="Confirmed $350/Week, No Deposit, Card On File">
-            <BoolToggle value={s.rate_confirmed} onChange={(v) => up("rate_confirmed" as any, v as any)} />
-          </Field>
-          <Field label="Card In Own Name">
-            <BoolToggle value={s.card_in_own_name} onChange={(v) => up("card_in_own_name" as any, v as any)} />
-          </Field>
-        </Row>
+            "Do you have a car right now, or is this replacing one? When do you need to be behind
+            the wheel? Just to confirm — the rate is $350 a week, weekly in advance, no deposit, on
+            a card in your own name. That work?"
+          </Script>
+          <Row cols={2}>
+            <Field label="Has Current Vehicle">
+              <BoolToggle
+                value={s.has_current_vehicle}
+                onChange={(v) => up("has_current_vehicle" as any, v as any)}
+              />
+            </Field>
+            <Field label="Needed By Date">
+              <input
+                type="date"
+                value={s.needed_by_date ?? ""}
+                onChange={(e) => up("needed_by_date" as any, (e.target.value || null) as any)}
+                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
+              />
+            </Field>
+            <Field label="Confirmed $350/Week, No Deposit, Card On File">
+              <BoolToggle
+                value={s.rate_confirmed}
+                onChange={(v) => up("rate_confirmed" as any, v as any)}
+              />
+            </Field>
+            <Field label="Card In Own Name">
+              <BoolToggle
+                value={s.card_in_own_name}
+                onChange={(v) => up("card_in_own_name" as any, v as any)}
+              />
+            </Field>
+          </Row>
         </ScriptCard>
       )}
 
       {show(4) && (
         <ScriptCard title="4. License Verification">
-          <Script>"What state issued your license, how old are you, and how long have you been licensed?"</Script>
-        <Row cols={2}>
-          <Field label="License State">
-            <input
-              value={s.license_state ?? ""}
-              maxLength={2}
-              onChange={(e) => up("license_state" as any, (e.target.value.toUpperCase() || null) as any)}
-              className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm uppercase"
-            />
-          </Field>
-          <Field label="License Active">
-            <BoolToggle value={s.license_active} onChange={(v) => up("license_active" as any, v as any)} />
-          </Field>
-          <Field label="Driver Age">
-            <NumInput value={s.driver_age} onChange={(v) => up("driver_age" as any, v as any)} />
-          </Field>
-          <Field label="Years Licensed">
-            <NumInput value={s.license_years} onChange={(v) => up("license_years" as any, v as any)} />
-          </Field>
-        </Row>
+          <Script>
+            "What state issued your license, how old are you, and how long have you been licensed?"
+          </Script>
+          <Row cols={2}>
+            <Field label="License State">
+              <input
+                value={s.license_state ?? ""}
+                maxLength={2}
+                onChange={(e) =>
+                  up("license_state" as any, (e.target.value.toUpperCase() || null) as any)
+                }
+                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm uppercase"
+              />
+            </Field>
+            <Field label="License Active">
+              <BoolToggle
+                value={s.license_active}
+                onChange={(v) => up("license_active" as any, v as any)}
+              />
+            </Field>
+            <Field label="Driver Age">
+              <NumInput value={s.driver_age} onChange={(v) => up("driver_age" as any, v as any)} />
+            </Field>
+            <Field label="Years Licensed">
+              <NumInput
+                value={s.license_years}
+                onChange={(v) => up("license_years" as any, v as any)}
+              />
+            </Field>
+          </Row>
         </ScriptCard>
       )}
 
       {show(5) && (
         <ScriptCard title="5. Insurance">
           <Script>
-          "Do you have your own personal auto insurance policy right now? I'll need the carrier, policy number, and
-          their phone so we can verify."
-        </Script>
-        <Field label="Has Personal Insurance">
-          <BoolToggle value={s.has_personal_insurance} onChange={(v) => up("has_personal_insurance" as any, v as any)} />
-        </Field>
-        {insuranceProvided && (
-          <Row cols={2}>
-            <Field label="Insurance Carrier">
-              <input
-                value={s.insurance_carrier ?? ""}
-                onChange={(e) => up("insurance_carrier" as any, (e.target.value || null) as any)}
-                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
-              />
-            </Field>
-            <Field label="Policy Number">
-              <input
-                value={s.insurance_policy_number ?? ""}
-                onChange={(e) => up("insurance_policy_number" as any, (e.target.value || null) as any)}
-                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
-              />
-            </Field>
-            <Field label="Carrier Phone">
-              <input
-                value={s.insurance_carrier_phone ?? ""}
-                onChange={(e) => up("insurance_carrier_phone" as any, (e.target.value || null) as any)}
-                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
-              />
-            </Field>
-            <Field label="Policy Active">
-              <BoolToggle value={s.policy_active} onChange={(v) => up("policy_active" as any, v as any)} />
-            </Field>
-            <Field label="Rideshare Endorsement">
-              <BoolToggle
-                value={s.rideshare_endorsement}
-                onChange={(v) => up("rideshare_endorsement" as any, v as any)}
-              />
-            </Field>
-            <Field label="Insured Name Matches License">
-              <BoolToggle
-                value={s.insurance_name_matches_license}
-                onChange={(v) => up("insurance_name_matches_license" as any, v as any)}
-              />
-            </Field>
-          </Row>
-        )}
-        {s.has_personal_insurance === false && (
-          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            Driver Must Obtain A Policy Before Vehicle Release.
-          </div>
-        )}
+            "Do you have your own personal auto insurance policy right now? I'll need the carrier,
+            policy number, and their phone so we can verify."
+          </Script>
+          <Field label="Has Personal Insurance">
+            <BoolToggle
+              value={s.has_personal_insurance}
+              onChange={(v) => up("has_personal_insurance" as any, v as any)}
+            />
+          </Field>
+          {insuranceProvided && (
+            <Row cols={2}>
+              <Field label="Insurance Carrier">
+                <input
+                  value={s.insurance_carrier ?? ""}
+                  onChange={(e) => up("insurance_carrier" as any, (e.target.value || null) as any)}
+                  className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
+                />
+              </Field>
+              <Field label="Policy Number">
+                <input
+                  value={s.insurance_policy_number ?? ""}
+                  onChange={(e) =>
+                    up("insurance_policy_number" as any, (e.target.value || null) as any)
+                  }
+                  className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
+                />
+              </Field>
+              <Field label="Carrier Phone">
+                <input
+                  value={s.insurance_carrier_phone ?? ""}
+                  onChange={(e) =>
+                    up("insurance_carrier_phone" as any, (e.target.value || null) as any)
+                  }
+                  className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
+                />
+              </Field>
+              <Field label="Policy Active">
+                <BoolToggle
+                  value={s.policy_active}
+                  onChange={(v) => up("policy_active" as any, v as any)}
+                />
+              </Field>
+              <Field label="Rideshare Endorsement">
+                <BoolToggle
+                  value={s.rideshare_endorsement}
+                  onChange={(v) => up("rideshare_endorsement" as any, v as any)}
+                />
+              </Field>
+              <Field label="Insured Name Matches License">
+                <BoolToggle
+                  value={s.insurance_name_matches_license}
+                  onChange={(v) => up("insurance_name_matches_license" as any, v as any)}
+                />
+              </Field>
+            </Row>
+          )}
+          {s.has_personal_insurance === false && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              Driver Must Obtain A Policy Before Vehicle Release.
+            </div>
+          )}
         </ScriptCard>
       )}
 
       {show(6) && (
         <ScriptCard title="6. Driving History">
           <Script>
-          "In the last three years, any accidents at fault? Any DUIs — ever? Any major violations like reckless or
-          suspension? How many points on your license right now? And can we pull your MVR?"
-        </Script>
-        <Row cols={2}>
-          <Field label="Accidents Last 3 Yr">
-            <NumInput value={s.accidents_last_3yr} onChange={(v) => up("accidents_last_3yr" as any, v as any)} />
-          </Field>
-          <Field label="Has DUI">
-            <BoolToggle value={s.has_dui} onChange={(v) => up("has_dui" as any, v as any)} />
-          </Field>
-          <Field label="Major Violations">
-            <BoolToggle value={s.major_violations} onChange={(v) => up("major_violations" as any, v as any)} />
-          </Field>
-          <Field label="License Points">
-            <NumInput value={s.license_points} onChange={(v) => up("license_points" as any, v as any)} />
-          </Field>
-          <Field label="MVR Authorized">
-            <BoolToggle value={s.mvr_authorized} onChange={(v) => up("mvr_authorized" as any, v as any)} />
-          </Field>
-        </Row>
+            "In the last three years, any accidents at fault? Any DUIs — ever? Any major violations
+            like reckless or suspension? How many points on your license right now? And can we pull
+            your MVR?"
+          </Script>
+          <Row cols={2}>
+            <Field label="Accidents Last 3 Yr">
+              <NumInput
+                value={s.accidents_last_3yr}
+                onChange={(v) => up("accidents_last_3yr" as any, v as any)}
+              />
+            </Field>
+            <Field label="Has DUI">
+              <BoolToggle value={s.has_dui} onChange={(v) => up("has_dui" as any, v as any)} />
+            </Field>
+            <Field label="Major Violations">
+              <BoolToggle
+                value={s.major_violations}
+                onChange={(v) => up("major_violations" as any, v as any)}
+              />
+            </Field>
+            <Field label="License Points">
+              <NumInput
+                value={s.license_points}
+                onChange={(v) => up("license_points" as any, v as any)}
+              />
+            </Field>
+            <Field label="MVR Authorized">
+              <BoolToggle
+                value={s.mvr_authorized}
+                onChange={(v) => up("mvr_authorized" as any, v as any)}
+              />
+            </Field>
+          </Row>
         </ScriptCard>
       )}
 
       {show(7) && (
         <ScriptCard title="7. Notes">
           <Script>"Anything else I should know before I lock in your reservation?"</Script>
-        <Field label="Interview Notes">
-          <textarea
-            rows={4}
-            value={s.interview_notes ?? ""}
-            onChange={(e) => up("interview_notes" as any, (e.target.value || null) as any)}
-            className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
-          />
-        </Field>
+          <Field label="Interview Notes">
+            <textarea
+              rows={4}
+              value={s.interview_notes ?? ""}
+              onChange={(e) => up("interview_notes" as any, (e.target.value || null) as any)}
+              className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+            />
+          </Field>
         </ScriptCard>
       )}
 
       <div className="sticky bottom-0 flex items-center justify-between gap-3 rounded-xl border border-border bg-white p-4 shadow-lg">
-        <div className="text-xs">
-          <div className="text-muted-foreground">Preview Score</div>
-          <div className="text-lg font-semibold">
-            {previewScore.score}/100
-            {previewScore.disqualified && (
-              <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
-                Will Disqualify: {previewScore.reasons.join(", ")}
+        <div className="text-xs min-w-0">
+          <div className="text-muted-foreground">From This Interview</div>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-lg font-semibold tabular-nums">
+              {preview.coverage}% <span className="text-xs font-normal">answered</span>
+            </span>
+            {preview.qualification !== null && (
+              <span className="text-[12px] text-muted-foreground tabular-nums">
+                Qualification {preview.qualification} of what is answered
+              </span>
+            )}
+            {concerns.disqualified && (
+              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                Will Disqualify: {concerns.reasons.join(", ")}
               </span>
             )}
           </div>
@@ -626,7 +684,11 @@ export function InterviewTab({
               disabled={saving}
               className="inline-flex items-center gap-2 rounded-md bg-real-red px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ClipboardList className="h-4 w-4" />
+              )}
               Complete Interview
             </button>
           )}
@@ -656,7 +718,9 @@ export function DocumentsCard({
   docs: LeadDocument[];
   onChange: (next: LeadDocument[]) => void;
 }) {
-  const requiredDocs = docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType));
+  const requiredDocs = docs.filter((d) =>
+    REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType),
+  );
   const have = new Set(requiredDocs.map((d) => d.doc_type));
 
   return (
@@ -774,7 +838,10 @@ function DocSlot({
     }
   }
 
-  const isImage = existing && !existing.file_url.toLowerCase().endsWith(".pdf") && !isAudioVideo(existing.file_url);
+  const isImage =
+    existing &&
+    !existing.file_url.toLowerCase().endsWith(".pdf") &&
+    !isAudioVideo(existing.file_url);
 
   return (
     <div className="rounded-lg border border-border bg-soft/40 p-3">
@@ -909,7 +976,11 @@ export function InsuranceVerificationCard({
           onClick={() => setExpanded((x) => !x)}
           className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
         >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
           Call Script
         </button>
         {expanded && (
@@ -922,11 +993,15 @@ export function InsuranceVerificationCard({
             <BoolToggle value={screening?.insurance_verified ?? null} onChange={toggleVerified} />
           </Field>
           <Field label="Verified By">
-            <div className="rounded-md bg-soft px-2 py-1.5 text-sm">{screening?.insurance_verified_by ?? "—"}</div>
+            <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
+              {screening?.insurance_verified_by ?? "—"}
+            </div>
           </Field>
           <Field label="Verified At">
             <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
-              {screening?.insurance_verified_at ? new Date(screening.insurance_verified_at).toLocaleString() : "—"}
+              {screening?.insurance_verified_at
+                ? new Date(screening.insurance_verified_at).toLocaleString()
+                : "—"}
             </div>
           </Field>
         </Row>
@@ -962,7 +1037,10 @@ function ScriptCard({ title, children }: { title: string; children: React.ReactN
   const step = m ? m[1] : null;
   const label = m ? m[2] : title;
   return (
-    <details open className="group rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+    <details
+      open
+      className="group rounded-xl border border-border bg-white overflow-hidden shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+    >
       <summary className="flex cursor-pointer list-none items-center gap-3 border-b border-transparent px-4 py-3 hover:bg-soft/40 group-open:border-border">
         {step && (
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-black text-[11px] font-semibold text-white">
@@ -991,13 +1069,19 @@ function Script({ children }: { children: React.ReactNode }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
       {children}
     </div>
   );
 }
 function Row({ cols, children }: { cols: 2 | 3; children: React.ReactNode }) {
-  return <div className={`grid grid-cols-1 gap-3 ${cols === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>{children}</div>;
+  return (
+    <div className={`grid grid-cols-1 gap-3 ${cols === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+      {children}
+    </div>
+  );
 }
 function NumInput({
   value,

@@ -212,32 +212,26 @@ const stepUpdateSchema = z.object({
   how_heard: z.string().trim().max(60).nullable().optional(),
 });
 
-function computeScore(row: any): number {
-  let s = 0;
-  if (row.gig_status === "Yes, already driving" || row.gig_status === "Yes") s += 30;
-  else if (row.gig_status === "Not yet, ready to start" || row.gig_status === "Pending") s += 12;
-  const platformCount = Array.isArray(row.platforms) ? row.platforms.length : 0;
-  if (platformCount >= 3) s += 18;
-  else if (platformCount === 2) s += 12;
-  else if (platformCount === 1) s += 7;
-  if (row.profile_screenshot_url) s += 10;
-  const shotCount = Array.isArray(row.trip_screenshots) ? row.trip_screenshots.length : 0;
-  if (shotCount >= 2) s += 12;
-  else if (shotCount === 1) s += 8;
-  const trips = Number(row.trips_completed);
-  if (!Number.isNaN(trips)) {
-    if (trips >= 1000) s += 14;
-    else if (trips >= 500) s += 10;
-    else if (trips >= 200) s += 8;
-  }
-  if (typeof row.rating === "number" && row.rating >= 4.9) s += 10;
-  else if (typeof row.rating === "number" && row.rating >= 4.7) s += 6;
-  if (row.license_valid === true) s += 12;
-  if (row.full_coverage_insurance === true) s += 10;
-  if (row.license_photo_url) s += 5;
-  if (row.start_timing === "Today" || row.start_timing === "This week") s += 5;
-  return Math.min(100, s);
-}
+/*
+ * `applications.score` is legacy.
+ *
+ * computeScore() lived here and ran on every wizard step, writing a 0–100
+ * number that the dashboard then coloured and sorted by. It was retired with
+ * the deterministic readiness model, for the reason the whole model exists:
+ * it scored every unanswered question as zero, so a thin application was
+ * indistinguishable from a poor one. The applicant with a thousand completed
+ * trips and an active gig account scored 12 out of 100 because she never
+ * finished the web form.
+ *
+ * The canonical applicant-quality signal is now src/lib/readiness.ts, which
+ * reports qualification and coverage separately and is computed on read rather
+ * than stored.
+ *
+ * The column itself stays. It is NOT NULL DEFAULT 0, every historical value is
+ * intact, and nothing recomputes, reinterprets or displays it as a current
+ * signal — new rows simply take the default. Do not drop it, and do not
+ * resurrect a writer for it.
+ */
 
 export const savePartialApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
@@ -429,11 +423,6 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       console.error("[documents] application sync setup failed", e);
     }
 
-    // Recompute score on every step update
-    const newScore = computeScore(row);
-    if (newScore !== row.score) {
-      await supabaseAdmin.from("applications").update({ score: newScore }).eq("id", id);
-    }
     // Wizard-complete alert email. Fire-and-forget.
     if (isComplete) {
       try {
@@ -486,7 +475,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
         console.error("[automations] enroll setup failed", e);
       }
     }
-    return { ok: true, score: newScore };
+    return { ok: true };
   });
 
 export const getApplicationForWizard = createServerFn({ method: "POST" })
