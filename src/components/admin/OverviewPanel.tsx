@@ -24,9 +24,38 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { SectionCard, MicroLabel, StatusPill } from "./ui";
+import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
+import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import {
+  buildReadinessIndex,
+  READINESS_APPLICATION_SELECT,
+  READINESS_DOCUMENT_SELECT,
+  READINESS_SCREENING_SELECT,
+} from "@/lib/readiness-index";
 import { computeDueReasons, needsOdometer } from "./MaintenancePanel";
 import { applicationStage, wizardProgress } from "@/lib/application-stage";
+
+/**
+ * How many applicants the dashboard pulls in to derive readiness from.
+ *
+ * Readiness is computed, not stored, so "who is a Hot Prospect" cannot be a
+ * WHERE clause. This bounds the work instead. Raise it, or move to a
+ * projection built from the same module, when the pipeline outgrows it — do
+ * not add a cached column, which is how the old score came to disagree with
+ * the data it was derived from.
+ */
+const APPLICANT_WINDOW = 500;
+
+type ApplicantRow = {
+  id: string;
+  full_name: string | null;
+  status: string | null;
+  current_step: string | null;
+  created_at: string | null;
+  reviewed_at: string | null;
+  [key: string]: unknown;
+};
+type ScreeningRow = { lead_id: string; [key: string]: unknown };
 import {
   RANGE_LABELS,
   resolveRange,
@@ -103,10 +132,11 @@ export function OverviewPanel() {
   const [revenue, setRevenue] = useState(0);
   const [priorRevenue, setPriorRevenue] = useState(0);
   const [revenueLoading, setRevenueLoading] = useState(true);
-  const [appSort, setAppSort] = useState<"newest" | "oldest" | "score" | "attention">("newest");
+  const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
-  const [recentApps, setRecentApps] = useState<any[]>([]);
-  const [hot, setHot] = useState<any[]>([]);
+  const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
+  const [screenings, setScreenings] = useState<ScreeningRow[]>([]);
+  const [leadDocs, setLeadDocs] = useState<{ lead_id: string; doc_type: string }[]>([]);
   const [serviceDue, setServiceDue] = useState(0);
   const [serviceNeedsOdo, setServiceNeedsOdo] = useState(0);
 
@@ -128,7 +158,8 @@ export function OverviewPanel() {
         billed12wQ,
         nextReturnQ,
         recentAppsQ,
-        hotAppsQ,
+        screeningsQ,
+        leadDocsQ,
         allVehiclesQ,
       ] = await Promise.all([
         supabase.from("vehicles").select("id", { count: "exact", head: true }),
@@ -180,28 +211,27 @@ export function OverviewPanel() {
           .gte("end_date", new Date().toISOString().slice(0, 10))
           .order("end_date", { ascending: true })
           .limit(1),
-        // Newest first, on created_at. It used to sort by score, so the most
-        // recent applicant could sit below a weeks-old one and look missed.
-        // A wider slice than the five shown, so the client-side sort controls
-        // have something to reorder.
+        // One applicant query feeds both the recent list and the priority
+        // strip. Hot Prospect is no longer a column you can filter on — it is
+        // derived from the application, the screening and the documents — so
+        // the strip cannot be a `.gte("score", 80)` any more.
+        //
+        // The window is bounded (APPLICANT_WINDOW) rather than unbounded: the
+        // cost of computing readiness on read is that the rows have to come
+        // back. At the current pipeline size this is every applicant several
+        // times over. When it stops being, the answer is a projection built
+        // from the same module, not a cached column that goes stale the moment
+        // somebody uploads a document.
         supabase
           .from("applications")
           .select(
-            "id, full_name, status, current_step, ai_tier, ai_score, score, created_at, reviewed_at",
+            `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}`,
           )
           .neq("status", "duplicate")
           .order("created_at", { ascending: false })
-          .limit(25),
-        // Hot prospects keep the threshold that was already here — score >= 80
-        // on the rule-based computeScore. Not changed on a whim: see the note
-        // in the strip below about the second, unrelated AI tier.
-        supabase
-          .from("applications")
-          .select("id, full_name, score, status")
-          .neq("status", "duplicate")
-          .gte("score", 80)
-          .order("score", { ascending: false })
-          .limit(5),
+          .limit(APPLICANT_WINDOW),
+        supabase.from("driver_screenings").select(READINESS_SCREENING_SELECT),
+        supabase.from("lead_documents").select(READINESS_DOCUMENT_SELECT),
         supabase
           .from("vehicles")
           .select(
@@ -263,8 +293,12 @@ export function OverviewPanel() {
       }
       setWeekly(series);
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
-      setRecentApps(recentAppsQ.data ?? []);
-      setHot(hotAppsQ.data ?? []);
+      // Cast: the generated client cannot type a select built from a shared
+      // column list, so the shape is asserted here and guaranteed by
+      // READINESS_*_SELECT rather than by inference.
+      setRecentApps((recentAppsQ.data ?? []) as unknown as ApplicantRow[]);
+      setScreenings((screeningsQ.data ?? []) as unknown as ScreeningRow[]);
+      setLeadDocs((leadDocsQ.data ?? []) as unknown as { lead_id: string; doc_type: string }[]);
     })();
   }, []);
 
@@ -315,23 +349,54 @@ export function OverviewPanel() {
 
   const serviceAttention = maintOpen + serviceDue;
 
+  // Readiness for every applicant in the window, from the three result sets
+  // already fetched. Both the priority strip and the recent list read this
+  // map, so they cannot disagree about the same person.
+  const readinessIndex = useMemo(
+    () => buildReadinessIndex(recentApps, screenings, leadDocs),
+    [recentApps, screenings, leadDocs],
+  );
+
+  /**
+   * Hot Prospect: worth prioritising for follow-up. Not approved, not decision
+   * ready, not verified, not rental ready. The rule lives in the readiness
+   * module — qualification, coverage and no critical concern — and this strip
+   * only renders what it returns.
+   */
+  const hot = useMemo(() => {
+    return recentApps
+      .flatMap((a) => {
+        const r = readinessIndex.get(a.id);
+        return r && isHotProspect(r) ? [{ app: a, readiness: r }] : [];
+      })
+      .sort((x, y) => compareReadiness(x.readiness, y.readiness))
+      .slice(0, 5);
+  }, [recentApps, readinessIndex]);
+
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
-    const t = (a: any) => new Date(a.created_at ?? 0).getTime();
+    const t = (a: ApplicantRow) => new Date(a.created_at ?? 0).getTime();
     switch (appSort) {
       case "oldest":
         return rows.sort((a, b) => t(a) - t(b));
-      case "score":
-        return rows.sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || t(b) - t(a));
+      case "readiness":
+        // State first, then how much we know — the module's own ordering, so
+        // the dashboard and the drivers list rank people identically.
+        return rows.sort((a, b) => {
+          const ra = readinessIndex.get(a.id);
+          const rb = readinessIndex.get(b.id);
+          if (!ra || !rb) return t(b) - t(a);
+          return compareReadiness(ra, rb) || t(b) - t(a);
+        });
       case "attention":
         return rows.sort((a, b) => {
-          const w = (x: any) => (applicationStage(x.status).needsAttention ? 0 : 1);
+          const w = (x: ApplicantRow) => (applicationStage(x.status).needsAttention ? 0 : 1);
           return w(a) - w(b) || t(b) - t(a);
         });
       default:
         return rows.sort((a, b) => t(b) - t(a));
     }
-  }, [recentApps, appSort]);
+  }, [recentApps, appSort, readinessIndex]);
 
   return (
     <div className="space-y-6">
@@ -342,45 +407,57 @@ export function OverviewPanel() {
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      {/* Priority strip — who needs attention, above everything else.
-          Absent entirely when there is nobody, rather than an empty module. */}
+      {/* Priority strip — who is worth calling first, above everything else.
+          Absent entirely when there is nobody, rather than an empty module.
+
+          Hot Prospect means "worth prioritising for follow-up" and nothing
+          more. It is not approval, not Decision Ready, not verification. So
+          the strip carries the readiness state alongside the name: a hot
+          prospect who is still 55% known says so on its face. */}
       {hot.length > 0 && (
-        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
+          <div className="flex items-center gap-2">
             <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
             <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
               {hot.length}
             </span>
+            <span className="text-[11px] text-[#9A9AA3]">Worth following up first</span>
+            <Link
+              to="/admin"
+              search={{ tab: "drivers" } as any}
+              className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
+            >
+              {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 flex-1">
-            {hot.map((h, i) => (
-              <span
-                key={h.id}
-                className="inline-flex items-center gap-1.5 text-[12px] text-[#111114] min-w-0"
-              >
-                {i > 0 && <span className="text-[#C7C7CC] mr-1">·</span>}
+          <ul className="mt-2.5 flex flex-wrap gap-x-6 gap-y-2.5">
+            {hot.map(({ app, readiness }) => (
+              <li key={app.id} className="min-w-0">
                 <Link
                   to="/admin"
-                  search={{ tab: "drivers", id: h.id } as any}
-                  className="truncate hover:text-[#D03020] transition-colors"
+                  search={{ tab: "drivers", id: app.id } as any}
+                  className="group inline-flex flex-col gap-1 min-w-0"
                 >
-                  {h.full_name || "Unnamed"}
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-[13px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
+                      {app.full_name || "Unnamed"}
+                    </span>
+                    <ReadinessStatePill state={readiness.state} short />
+                  </span>
+                  <ReadinessMetrics result={readiness} compact />
+                  {readiness.positives.length > 0 && (
+                    <span className="text-[11px] text-[#9A9AA3] truncate">
+                      {readiness.positives
+                        .slice(0, 2)
+                        .map((f) => f.detail)
+                        .join(" · ")}
+                    </span>
+                  )}
                 </Link>
-                <span className="tabular-nums font-semibold text-[#D03020]">{h.score}</span>
-                {hot.length === 1 && (
-                  <span className="text-[#9A9AA3]">· {applicationStage(h.status).label}</span>
-                )}
-              </span>
+              </li>
             ))}
-          </div>
-          <Link
-            to="/admin"
-            search={{ tab: "drivers" } as any}
-            className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
-          >
-            {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
-          </Link>
+          </ul>
         </div>
       )}
 
@@ -555,7 +632,7 @@ export function OverviewPanel() {
               >
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
-                <option value="score">Highest Score</option>
+                <option value="readiness">Readiness</option>
                 <option value="attention">Needs Attention</option>
               </select>
               <Link
@@ -606,7 +683,14 @@ export function OverviewPanel() {
                         </div>
                       </div>
                       <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
-                      <ScorePill score={a.score} />
+                      {(() => {
+                        const r = readinessIndex.get(a.id);
+                        // The old bare score pill lived here. A number on its
+                        // own could not say whether 100 meant a complete
+                        // applicant or two lucky answers, so the state goes in
+                        // its place and the figures stay on the profile.
+                        return r ? <ReadinessStatePill state={r.state} short /> : null;
+                      })()}
                     </Link>
                   </li>
                 );
@@ -939,12 +1023,6 @@ function RevenueCard({
       <span className="sr-only">Comparing against {describeRange(compare)}</span>
     </div>
   );
-}
-
-function ScorePill({ score }: { score: number | null | undefined }) {
-  if (score == null) return null;
-  const tone = score >= 80 ? "green" : score >= 50 ? "amber" : "neutral";
-  return <StatusPill tone={tone as any}>{score}</StatusPill>;
 }
 
 function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {

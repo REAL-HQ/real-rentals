@@ -69,11 +69,16 @@ export type FactorResult = {
 /**
  * Four states, no fifth. There is deliberately no single 0–100 readiness
  * number: the state is the headline, and qualification/coverage/verification
- * travel underneath it. "Approved" is not among these — approval is an
- * Owner/Manager decision, not a computed property.
+ * travel underneath it.
+ *
+ * "Decision Ready" is the strongest state and it means exactly one thing:
+ * enough information exists for an authorised human to make a decision. It
+ * does not mean approved, automatically qualified, guaranteed a rental, or
+ * verified safe. There is no "Approved" state here and there must never be
+ * one — approval is an Owner/Manager action, not a computed property.
  */
 export type ReadinessState =
-  | "ready_for_review"
+  | "decision_ready"
   | "promising_more_info"
   | "more_info_needed"
   | "needs_attention";
@@ -101,6 +106,16 @@ export type ReadinessResult = {
 
 /** Anything this module reads. Wizard row and screening row, both optional-ish. */
 export type ReadinessInput = Record<string, unknown>;
+
+/**
+ * Rows from the document vault (`lead_documents`) for one applicant.
+ *
+ * Uploads used to live as URL columns on the application row and are now
+ * moving into the vault, so the model reads both and treats either as the
+ * document being on file. When the last URL column is gone this stays correct
+ * without a change here.
+ */
+export type ReadinessDocument = { doc_type?: string | null; file_url?: string | null };
 
 // ---------------------------------------------------------------- helpers
 
@@ -143,7 +158,7 @@ type Factor = {
   group: string;
   weight: number;
   remedy: Remedy;
-  evaluate: (a: ReadinessInput, s: ReadinessInput) => Verdict;
+  evaluate: (a: ReadinessInput, s: ReadinessInput, d: Set<string>) => Verdict;
 };
 
 // ---------------------------------------------------------------- factors
@@ -202,14 +217,15 @@ export const FACTORS: Factor[] = [
     label: "Driver rating",
     group: "Gig work",
     weight: 7,
-    evaluate: (a, s) => {
+    evaluate: (a, s, d) => {
       const staff = num(s.driver_rating);
       const self = num(a.rating);
       const r = staff ?? self;
       // Null is not a bad rating. This is the exact conflation being fixed.
       if (r === null) return unknown("Driver rating not provided");
+      const shot = Boolean(a.profile_screenshot_url) || d.has("driver_profile_screenshot");
       const evidence: Evidence =
-        staff !== null ? "staff_verified" : a.profile_screenshot_url ? "document" : "self_reported";
+        staff !== null ? "staff_verified" : shot ? "document" : "self_reported";
       if (r < 4.5) return attention(`Rating ${r}`, evidence);
       const band = r >= 4.9 ? 1 : r >= 4.7 ? 0.75 : 0.5;
       return positive(`Rating ${r}`, evidence, band);
@@ -271,8 +287,8 @@ export const FACTORS: Factor[] = [
     label: "Licence on file",
     group: "Licence",
     weight: 4,
-    evaluate: (a) =>
-      a.license_photo_url
+    evaluate: (a, _s, d) =>
+      a.license_photo_url || d.has("license_front") || d.has("license_back")
         ? positive("Licence image on file", "document")
         : unknown("No licence image"),
   },
@@ -322,10 +338,11 @@ export const FACTORS: Factor[] = [
     label: "Insurance document",
     group: "Insurance",
     weight: 4,
-    evaluate: (a, s) => {
+    evaluate: (a, s, d) => {
       if (bool(s.insurance_verified) === true)
         return positive("Insurance verified by staff", "staff_verified");
-      if (a.insurance_doc_url) return positive("Insurance document on file", "document");
+      if (a.insurance_doc_url || d.has("insurance_card"))
+        return positive("Insurance document on file", "document");
       return unknown("No insurance document");
     },
   },
@@ -518,7 +535,14 @@ function findDisqualifiers(a: ReadinessInput, s: ReadinessInput): string[] {
  * with as business rules rather than hunted for in branches.
  */
 export const THRESHOLDS = {
-  /** Enough of the picture to call somebody ready for a human decision. */
+  /**
+   * Enough of the picture for an authorised human to decide.
+   *
+   * PROVISIONAL. No applicant in company history reaches 60% coverage, so no
+   * real row has ever exercised this threshold — it rests on judgement, not on
+   * evidence. Revisit after roughly ten applicants have been through the
+   * improved interview workflow.
+   */
   READY_COVERAGE: 60,
   /** Strong enough, of what is known, to be worth a decision. */
   READY_QUALIFICATION: 75,
@@ -536,6 +560,10 @@ export const THRESHOLDS = {
    * Concern needs evidence too. Below this coverage a low qualification is a
    * thin sample, not a bad applicant, so it reads as More Info Needed rather
    * than Needs Attention. A critical concern raises the flag at any coverage.
+   *
+   * PROVISIONAL, for the same reason as READY_COVERAGE: no applicant on file
+   * has a recorded concern, so nothing has ever tested this branch. Revisit
+   * alongside READY_COVERAGE.
    */
   ATTENTION_COVERAGE: 40,
   ATTENTION_QUALIFICATION: 50,
@@ -544,10 +572,12 @@ export const THRESHOLDS = {
 export function computeReadiness(
   app: ReadinessInput,
   screening: ReadinessInput | null = null,
+  documents: ReadinessDocument[] = [],
 ): ReadinessResult {
   const s = screening ?? {};
+  const d = new Set(documents.map((x) => (x?.doc_type ?? "").trim()).filter((t) => t.length > 0));
   const factors: FactorResult[] = FACTORS.map((f) => {
-    const v = f.evaluate(app, s);
+    const v = f.evaluate(app, s, d);
     const earned = v.state === "positive" ? f.weight * (v.partial ?? 1) : 0;
     return {
       key: f.key,
@@ -576,6 +606,7 @@ export function computeReadiness(
   const verifiedCoverage = (verifiedWeight / TOTAL_WEIGHT) * 100;
 
   const disqualifiers = findDisqualifiers(app, s);
+  const state = classify(qualification, coverage, disqualifiers.length);
   const byWeight = (x: FactorResult, y: FactorResult) => y.weight - x.weight || y.earned - x.earned;
   const attentionList = factors.filter((f) => f.state === "attention").sort(byWeight);
 
@@ -583,7 +614,8 @@ export function computeReadiness(
     qualification: qualification === null ? null : Math.round(qualification),
     coverage: Math.round(coverage),
     verifiedCoverage: Math.round(verifiedCoverage),
-    ...classify(qualification, coverage, disqualifiers.length),
+    state,
+    stateLabel: STATE_LABEL[state],
     factors,
     positives: factors.filter((f) => f.state === "positive").sort(byWeight),
     attention: attentionList,
@@ -609,14 +641,14 @@ function classify(
   qualification: number | null,
   coverage: number,
   criticalCount: number,
-): { state: ReadinessState; stateLabel: string } {
+): ReadinessState {
   // A critical concern outranks everything, at any coverage. One known
   // disqualifying fact is enough; it is never averaged against good answers.
-  if (criticalCount > 0) return { state: "needs_attention", stateLabel: "Needs Attention" };
+  if (criticalCount > 0) return "needs_attention";
 
   // Nothing known at all. Not bad — empty.
   if (qualification === null) {
-    return { state: "more_info_needed", stateLabel: "More Info Needed" };
+    return "more_info_needed";
   }
 
   // Weak, and we know enough for that to mean something.
@@ -624,21 +656,21 @@ function classify(
     coverage >= THRESHOLDS.ATTENTION_COVERAGE &&
     qualification < THRESHOLDS.ATTENTION_QUALIFICATION
   ) {
-    return { state: "needs_attention", stateLabel: "Needs Attention" };
+    return "needs_attention";
   }
 
   if (coverage >= THRESHOLDS.READY_COVERAGE && qualification >= THRESHOLDS.READY_QUALIFICATION) {
-    return { state: "ready_for_review", stateLabel: "Ready For Review" };
+    return "decision_ready";
   }
 
   if (
     coverage >= THRESHOLDS.PROMISING_COVERAGE &&
     qualification >= THRESHOLDS.PROMISING_QUALIFICATION
   ) {
-    return { state: "promising_more_info", stateLabel: "Promising — More Info Needed" };
+    return "promising_more_info";
   }
 
-  return { state: "more_info_needed", stateLabel: "More Info Needed" };
+  return "more_info_needed";
 }
 
 /**
@@ -648,9 +680,37 @@ function classify(
  * ends up rendered, and then it is the headline again. Sorting is a tuple:
  * state first, then how much we know, then how good it looks.
  */
+/** Every user-facing state string lives here, so no component invents one. */
+export const STATE_LABEL: Record<ReadinessState, string> = {
+  needs_attention: "Needs Attention",
+  decision_ready: "Decision Ready",
+  promising_more_info: "Promising — More Info Needed",
+  more_info_needed: "More Info Needed",
+};
+
+/** Short form for tight spaces (table cells, list rows). Never a number. */
+export const STATE_SHORT: Record<ReadinessState, string> = {
+  needs_attention: "Needs Attention",
+  decision_ready: "Decision Ready",
+  promising_more_info: "Promising",
+  more_info_needed: "More Info Needed",
+};
+
+/**
+ * Presentation tone. Note that "more_info_needed" is neutral, not bad: an
+ * applicant we have not asked anything is not a poor applicant, and colouring
+ * them red is the same mistake as scoring their unknowns zero.
+ */
+export const STATE_TONE: Record<ReadinessState, "critical" | "ready" | "promising" | "neutral"> = {
+  needs_attention: "critical",
+  decision_ready: "ready",
+  promising_more_info: "promising",
+  more_info_needed: "neutral",
+};
+
 const STATE_RANK: Record<ReadinessState, number> = {
   needs_attention: 0,
-  ready_for_review: 1,
+  decision_ready: 1,
   promising_more_info: 2,
   more_info_needed: 3,
 };
@@ -692,4 +752,41 @@ export function isHotProspect(r: ReadinessResult): boolean {
   return (
     r.qualification >= HOT_PROSPECT.MIN_QUALIFICATION && r.coverage >= HOT_PROSPECT.MIN_COVERAGE
   );
+}
+
+/**
+ * The highest-leverage things still to collect, grouped by the one action that
+ * would collect them.
+ *
+ * This is what makes "Still Needed" a worklist rather than a list of regrets.
+ * Groups are ordered by how much coverage the action would unlock, because on
+ * the current pipeline one completed interview is worth roughly 45 points of
+ * coverage and everything else is worth single digits. The caller decides
+ * whether a given action is actually available — this function only says what
+ * would help, never that a button exists.
+ */
+export type NextAction = {
+  remedy: Remedy;
+  label: string;
+  /** Coverage points this action would unlock, 0–100. */
+  coverageGain: number;
+  /** What it would answer, heaviest first. */
+  factors: FactorResult[];
+};
+
+export function nextActions(r: ReadinessResult): NextAction[] {
+  const groups = new Map<Remedy, FactorResult[]>();
+  for (const u of r.unknowns) {
+    const list = groups.get(u.remedy);
+    if (list) list.push(u);
+    else groups.set(u.remedy, [u]);
+  }
+  return [...groups.entries()]
+    .map(([remedy, factors]) => ({
+      remedy,
+      label: REMEDY_LABEL[remedy],
+      coverageGain: Math.round((factors.reduce((a, f) => a + f.weight, 0) / TOTAL_WEIGHT) * 100),
+      factors,
+    }))
+    .sort((a, b) => b.coverageGain - a.coverageGain);
 }

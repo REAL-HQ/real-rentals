@@ -18,7 +18,6 @@ import {
   DocumentsCard,
   InsuranceVerificationCard,
   InterviewTab,
-  ScreeningBadge,
   ScreeningPipeline,
   useDriverScreening,
 } from "./DriverScreening";
@@ -61,9 +60,6 @@ import {
   PhoneOutgoing,
   BadgeDollarSign,
   Globe,
-  Flame,
-  Thermometer,
-  Snowflake,
   Sparkles,
   AlertTriangle,
   Wallet,
@@ -86,16 +82,18 @@ import {
   StatusPill,
   LifecycleRail,
   ReadinessSummary,
+  ReadinessStatePill,
+  ReadinessMetrics,
   SectionCard,
   MicroLabel,
   EmptyState,
   type LifecycleStage,
-  type Readiness,
 } from "./ui";
+import { computeReadiness, nextActions, type ReadinessResult, type Remedy } from "@/lib/readiness";
+import { buildReadinessIndex } from "@/lib/readiness-index";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -129,59 +127,23 @@ const statusBadge: Record<string, string> = {
   closed: "bg-gray-200 text-gray-700",
 };
 
-function TierBadge({
-  tier,
-  score,
-  size = "sm",
-}: {
-  tier?: string | null;
-  score?: number | null;
-  size?: "sm" | "md";
-}) {
-  if (!tier) return null;
-  const t = String(tier).toLowerCase();
-  const cls =
-    t === "hot"
-      ? "bg-red-100 text-red-800 border-red-200"
-      : t === "warm"
-        ? "bg-amber-100 text-amber-800 border-amber-200"
-        : "bg-gray-100 text-gray-700 border-gray-200";
-  const Icon = t === "hot" ? Flame : t === "warm" ? Thermometer : Snowflake;
-  const pad = size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
+/**
+ * The list's readiness cell.
+ *
+ * State, then coverage, then document progress. Qualification is deliberately
+ * absent from this cell: in a table row there is no space to carry the
+ * coverage that makes it meaningful, and a bare "100" next to a name is the
+ * exact misreading this whole model exists to prevent.
+ */
+function ReadinessCell({ result, docCount }: { result?: ReadinessResult; docCount: number }) {
+  if (!result) return <span className="text-[11px] text-muted-foreground">—</span>;
   return (
-    <span
-      className={`inline-flex items-center gap-1 font-medium border rounded ${pad} ${cls}`}
-      title={`AI tier: ${t}${score != null ? ` (${score})` : ""}`}
-    >
-      <Icon className={size === "md" ? "w-3.5 h-3.5" : "w-3 h-3"} />
-      <span className="capitalize">{t}</span>
-      {score != null && <span className="opacity-70">{score}</span>}
-    </span>
-  );
-}
-
-function AIScoreDot({ tier, score }: { tier?: string | null; score?: number | null }) {
-  const t = tier ? String(tier).toLowerCase() : null;
-  const label = t ? `AI: ${t}${score != null ? ` (${score})` : ""}` : "AI: not scored yet";
-  const cls =
-    t === "hot"
-      ? "bg-red-500 text-white"
-      : t === "warm"
-        ? "bg-amber-400 text-white"
-        : t === "cold"
-          ? "bg-slate-400 text-white"
-          : "bg-neutral-200 text-neutral-500 border border-dashed border-neutral-300";
-  return (
-    <TooltipProvider delayDuration={100}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${cls}`}>
-            {t === "hot" ? <Flame className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <div className="flex flex-col items-start gap-0.5">
+      <ReadinessStatePill state={result.state} short />
+      <span className="text-[10px] text-muted-foreground tabular-nums">
+        {result.coverage}% Known · {docCount}/4 Docs
+      </span>
+    </div>
   );
 }
 
@@ -230,6 +192,7 @@ export function DriversPanel({
   const [merging, setMerging] = useState(false);
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
+  const [docRows, setDocRows] = useState<{ lead_id: string; doc_type: string }[]>([]);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -300,19 +263,31 @@ export function DriversPanel({
       .from("lead_documents")
       .select("lead_id,doc_type")
       .then(({ data }) => {
+        const rows = (data ?? []) as { lead_id: string; doc_type: string }[];
         const counts: Record<string, number> = {};
         const seen: Record<string, Set<string>> = {};
-        (data || []).forEach((d: any) => {
+        rows.forEach((d) => {
           if (!REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)) return;
           const set = seen[d.lead_id] ?? (seen[d.lead_id] = new Set());
           set.add(d.doc_type);
           counts[d.lead_id] = set.size;
         });
         setDocCounts(counts);
+        // Kept as rows as well: readiness needs to know which documents exist,
+        // not how many.
+        setDocRows(rows);
       });
   }, []);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
+
+  // Readiness for the whole list, from the three result sets already loaded
+  // above. No per-row query: the list stays three round trips whether it holds
+  // nineteen applicants or nineteen thousand.
+  const readinessIndex = useMemo(
+    () => buildReadinessIndex(drivers, Object.values(screenings), docRows),
+    [drivers, screenings, docRows],
+  );
 
   // Group by primary_application_id (falls back to id). Primary row = the one
   // whose id === groupKey; others render as collapsed history.
@@ -460,7 +435,7 @@ export function DriversPanel({
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">
-                  Screening
+                  Readiness
                 </th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">
                   Payment
@@ -499,7 +474,6 @@ export function DriversPanel({
                   >
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
-                        <AIScoreDot tier={a.ai_tier} score={a.ai_score} />
                         <span>{a.full_name}</span>
                       </span>
                       <SourceBadge
@@ -551,8 +525,8 @@ export function DriversPanel({
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      <ScreeningBadge
-                        screening={screenings[a.id] ?? null}
+                      <ReadinessCell
+                        result={readinessIndex.get(a.id)}
                         docCount={docCounts[a.id] ?? 0}
                       />
                     </td>
@@ -788,67 +762,17 @@ function DriverDetail({
     ? formatDuration(Date.now() - new Date(stageStartIso).getTime())
     : undefined;
 
-  // ---- Derive readiness ------------------------------------------------
-  const blockers: string[] = [];
-  const positives: string[] = [];
-  const missing: string[] = [];
-  if (driver.rating != null) positives.push(`Rating ${driver.rating}/5`);
-  else missing.push("Driver rating");
-  if (tripsOk) positives.push(`${trips.toLocaleString()} trips completed`);
-  else if (!driver.trips_completed) missing.push("Trip history");
-  else blockers.push(`Only ${trips} trips (need 200+)`);
-  if (driver.license_valid || driver.license_photo_url) positives.push("License on file");
-  else missing.push("License image");
-  if (insuranceOk) positives.push("Insurance verified");
-  else if ((screening as any)?.has_personal_insurance === false)
-    blockers.push("No personal insurance policy");
-  else missing.push("Insurance verification");
-  if ((screening as any)?.card_in_own_name === false)
-    blockers.push("Payment card not in driver's name");
-  if ((screening as any)?.has_dui === true) blockers.push("DUI on record");
-  if (driver.card_last4) positives.push(`Card on file ····${driver.card_last4}`);
-  if ((screening as any)?.drive_type === "full_time") positives.push("Full-time driver");
-  if ((screening as any)?.needed_by_date) {
-    const days = Math.ceil(
-      (new Date((screening as any).needed_by_date).getTime() - Date.now()) / 864e5,
-    );
-    if (days > 0 && days <= 7) positives.push(`Needs vehicle within ${days} days`);
-  }
-
-  const readinessStatus: Readiness["status"] =
-    blockers.length > 0
-      ? "not_ready"
-      : missing.length > 0 || !screeningDone || !docsComplete || !insuranceOk
-        ? "almost"
-        : "ready";
-  const readinessLabel =
-    readinessStatus === "ready"
-      ? "Ready For Approval"
-      : readinessStatus === "almost"
-        ? "Almost Ready"
-        : "Not Ready";
-  const nextAction = !screeningDone
-    ? "Continue interview and capture qualification signals"
-    : !docsComplete
-      ? "Request the remaining documents from the driver"
-      : !insuranceOk
-        ? "Complete insurance verification call"
-        : !approved
-          ? "Approve driver and prepare pickup"
-          : !driver.card_last4
-            ? "Send card-on-file link"
-            : !pickedUp
-              ? "Schedule vehicle pickup"
-              : "Monitor active rental";
-
-  const readiness: Readiness = {
-    status: readinessStatus,
-    label: readinessLabel,
-    blockers,
-    positives,
-    missing,
-    nextAction,
-  };
+  // ---- Readiness -------------------------------------------------------
+  //
+  // One deterministic model over the application row, the screening row and
+  // the document vault. This used to be a hand-written ladder here, which is
+  // how the profile and the drivers list came to disagree about the same
+  // applicant. Nothing is derived locally any more; if a rule needs changing
+  // it changes in src/lib/readiness.ts and every surface follows.
+  const readiness = useMemo(
+    () => computeReadiness(driver, screening, docs),
+    [driver, screening, docs],
+  );
 
   // ---- Primary action -------------------------------------------------
   const approve = useServerFn(approveApplication);
@@ -939,6 +863,26 @@ function DriverDetail({
                 icon: Car,
               };
   const PrimaryIcon = primaryAction.icon;
+
+  // What to collect next, ordered by how much coverage each action unlocks.
+  //
+  // Every entry here opens a workflow that already exists on this page. There
+  // is deliberately no generic "collect information" button: a gap the app
+  // cannot act on is shown in Still Needed as text and nothing more, because a
+  // button that does nothing is worse than no button.
+  const readinessActions = useMemo(() => {
+    const open = (tab: string) => () => document.getElementById(tab)?.click();
+    const route: Partial<Record<Remedy, { label: string; onClick: () => void }>> = {
+      interview: { label: "Complete Interview", onClick: () => setInterviewOpen(true) },
+      request_document: { label: "Review Documents", onClick: open("tab-documents") },
+      verify: { label: "Verify Insurance", onClick: open("tab-screening") },
+      applicant: { label: "Review Driver Information", onClick: open("tab-application") },
+    };
+    return nextActions(readiness).flatMap((g) => {
+      const r = route[g.remedy];
+      return r ? [{ ...r, coverageGain: g.coverageGain }] : [];
+    });
+  }, [readiness]);
 
   return (
     <div className="-mx-8 -my-8 min-h-full bg-[#FAFAFB]">
@@ -1065,7 +1009,7 @@ function DriverDetail({
           stages={lifecycle}
           percent={percentComplete}
           timeInStage={timeInStage}
-          blocker={readiness.blockers[0]}
+          blocker={readiness.disqualifiers[0]}
         />
 
         <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -1195,8 +1139,17 @@ function DriverDetail({
           {/* Main workspace */}
           <div className="min-w-0 space-y-6">
             <ReadinessSummary
-              readiness={readiness}
-              score={typeof driver.ai_score === "number" ? driver.ai_score : null}
+              result={readiness}
+              actions={readinessActions.map((a) => (
+                <button
+                  key={a.label}
+                  onClick={a.onClick}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] transition-colors"
+                >
+                  {a.label}
+                  <span className="text-[#9A9AA3] tabular-nums">+{a.coverageGain}%</span>
+                </button>
+              ))}
               primary={
                 <button
                   onClick={primaryAction.onClick}
@@ -1629,98 +1582,6 @@ function Card({
         <div className="text-sm font-semibold">{title}</div>
       </div>
       <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function AIScoreCard({
-  driver,
-  onUpdate,
-}: {
-  driver: Application;
-  onUpdate: (p: Partial<Application>) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const rescore = useServerFn(scoreApplication);
-  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
-  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
-  async function run() {
-    setBusy(true);
-    try {
-      const res = await rescore({ data: { id: driver.id } });
-      if (res && (res as any).ok !== false) {
-        const r = res as any;
-        onUpdate({
-          ai_score: r.score,
-          ai_tier: r.tier,
-          ai_flags: r.flags,
-          ai_summary: r.summary,
-          scored_at: new Date().toISOString(),
-        } as any);
-        toast.success(`AI scored: ${r.tier} (${r.score})`);
-      } else {
-        toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Scoring failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="rounded-xl border border-border bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-        <span className="text-muted-foreground">
-          <Sparkles className="w-4 h-4" />
-        </span>
-        <div className="text-sm font-semibold">Driver Readiness</div>
-        {driver.ai_tier && (
-          <span className="ml-1">
-            <TierBadge tier={driver.ai_tier} score={driver.ai_score ?? null} size="md" />
-          </span>
-        )}
-        <button
-          onClick={run}
-          disabled={busy}
-          className="ml-auto inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-border bg-white hover:bg-soft disabled:opacity-60"
-        >
-          <Sparkles className="w-3.5 h-3.5" />{" "}
-          {busy ? "Scoring…" : driver.ai_tier ? "Re-score" : "Score now"}
-        </button>
-      </div>
-      <div className="p-4 space-y-3">
-        {driver.ai_summary ? (
-          <p className="text-sm text-foreground leading-relaxed">{driver.ai_summary}</p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Not yet scored. Click "Score now" to run the AI review of trips, rating, license, and
-            screenshots.
-          </p>
-        )}
-        {flags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {flags.map((f, i) => {
-              const missing = /missing|unreadable|no_|not_provided|incomplete/i.test(f);
-              return (
-                <span
-                  key={i}
-                  className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border ${
-                    missing
-                      ? "bg-[#F5F5F7] text-[#55555E] border-[#EDEDF0]"
-                      : "bg-amber-50 text-amber-800 border-amber-200"
-                  }`}
-                  title={missing ? "Missing information" : "Risk signal"}
-                >
-                  <AlertTriangle className="w-3 h-3" /> {f.replace(/_/g, " ")}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        {scoredAt && (
-          <p className="text-[11px] text-muted-foreground">Scored {scoredAt.toLocaleString()}</p>
-        )}
-      </div>
     </div>
   );
 }
