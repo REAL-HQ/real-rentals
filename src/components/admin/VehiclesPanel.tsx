@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Vehicle } from "./types";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { VehicleEditor } from "./VehicleEditor";
+import { AddVehicleDialog } from "./AddVehicleDialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Car } from "lucide-react";
 import { EmptyState } from "./ui";
@@ -38,7 +39,8 @@ function PartnerAssignSelect({ value, partners, onChange }: { value: string | nu
 export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
-  const [editing, setEditing] = useState<Vehicle | "new" | null>(null);
+  const [editing, setEditing] = useState<Vehicle | null>(null);
+  const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [bodyFilter, setBodyFilter] = useState<string>("all");
@@ -129,7 +131,7 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
             </button>
           )}
         </div>
-        <button onClick={() => setEditing("new")}
+        <button onClick={() => setAdding(true)}
           className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 self-start lg:self-auto">
           <Plus className="w-4 h-4" /> Add Vehicle
         </button>
@@ -183,9 +185,15 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
         />
       )}
 
+      {adding && (
+        <AddVehicleDialog
+          onClose={() => setAdding(false)}
+          onCreated={async () => { await load(); setAdding(false); }}
+        />
+      )}
       {editing && (
         <VehicleEditor
-          vehicle={editing === "new" ? null : editing}
+          vehicle={editing}
           onClose={() => setEditing(null)}
           onSaved={async () => { await load(); setEditing(null); }}
         />

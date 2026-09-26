@@ -2840,8 +2840,105 @@ export type Database = {
           },
         ]
       }
+      vehicle_media: {
+        Row: {
+          caption: string | null
+          created_at: string
+          derived_from_id: string | null
+          enhancement_mode: string | null
+          enhancement_provider: string | null
+          file_name: string | null
+          id: string
+          is_primary: boolean
+          kind: string
+          mime_type: string | null
+          size_bytes: number | null
+          sort_order: number
+          storage_bucket: string
+          storage_path: string
+          uploaded_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          derived_from_id?: string | null
+          enhancement_mode?: string | null
+          enhancement_provider?: string | null
+          file_name?: string | null
+          id?: string
+          is_primary?: boolean
+          kind: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          sort_order?: number
+          storage_bucket?: string
+          storage_path: string
+          uploaded_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          derived_from_id?: string | null
+          enhancement_mode?: string | null
+          enhancement_provider?: string | null
+          file_name?: string | null
+          id?: string
+          is_primary?: boolean
+          kind?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          sort_order?: number
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_media_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
+          unit_number: string | null
+          archived_at: string | null
+          archive_reason: string | null
+          ownership_type: string | null
+          legal_owner: string | null
+          seller_dealer: string | null
+          loan_reference: string | null
+          payoff_amount: number | null
+          monthly_payment: number | null
+          loan_maturity_date: string | null
+          registration_number: string | null
+          insurance_coverage: string | null
+          insurance_agent_name: string | null
+          insurance_agent_phone: string | null
+          insurance_agent_email: string | null
+          insurance_status: string | null
+          gps_serial: string | null
+          gps_imei: string | null
+          gps_sim: string | null
+          gps_status: string | null
+          gps_last_ping_at: string | null
+          gps_last_location: Json | null
+          gps_odometer: number | null
+          gps_battery: string | null
+          gps_geofence_status: string | null
+          gps_install_notes: string | null
+          gps_tracking_url: string | null
+          spare_key: boolean | null
+          key_type: string | null
+          key_tag: string | null
+          key_location: string | null
+          key_notes: string | null
           badges: string[] | null
           body_type: string | null
           color: string | null
@@ -3169,6 +3266,10 @@ export type Database = {
         Returns: boolean
       }
       get_cron_token: { Args: { _name: string }; Returns: string }
+      next_unit_number: {
+        Args: { _prefix?: string }
+        Returns: string
+      }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
