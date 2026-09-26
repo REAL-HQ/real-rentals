@@ -11,7 +11,23 @@ export const DOC_CATEGORIES = [
   { key: "gig_profile", label: "Gig profile screenshot", expiring: false },
   { key: "agreement", label: "Signed agreement", expiring: false },
   { key: "other", label: "Other document", expiring: false },
+  // Owner-only. A recording of an insurance verification call carries a third
+  // party's voice and policy details, so it is confined at the row level in
+  // RLS, not merely hidden in the UI. See RESTRICTED_CATEGORIES.
+  { key: "verification_recording", label: "Verification call recording", expiring: false },
 ] as const;
+
+/**
+ * Categories no staff member below Owner may see, in any payload.
+ *
+ * Enforced twice, because each layer alone has a hole. The RLS policy on
+ * `documents` stops a Manager or Coordinator reading the row through
+ * PostgREST with their own JWT — verified, because before that policy existed
+ * a Coordinator could read the row and its storage_path directly. The server
+ * checks below stop the same row escaping through these functions, which sign
+ * URLs with the service role and therefore bypass RLS entirely.
+ */
+export const RESTRICTED_CATEGORIES: readonly string[] = ["verification_recording"];
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number]["key"];
 
@@ -50,7 +66,13 @@ const CategoryEnum = z.enum([
   "gig_profile",
   "agreement",
   "other",
+  "verification_recording",
 ]);
+
+/** Owner, in the tier vocabulary the rest of the app uses. */
+async function isOwner(supabase: any, userId: string): Promise<boolean> {
+  return isAdmin(supabase, userId);
+}
 
 async function isAdmin(supabase: any, userId: string): Promise<boolean> {
   const { data } = await supabase
@@ -286,7 +308,12 @@ export const adminListDriverDocuments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<VaultDocument[]> => {
-    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    // Coordinator and above. Checking an applicant's licence is operational
+    // screening work, not an approval decision — this used to be Owner-only,
+    // which meant a Coordinator could not do the job they are here to do.
+    const { requireStaff } = await import("@/lib/roles.server");
+    await requireStaff(context.userId);
+    const owner = await isOwner(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Backfill on read: applications submitted before uploads were mirrored
@@ -301,10 +328,36 @@ export const adminListDriverDocuments = createServerFn({ method: "POST" })
       .maybeSingle();
     if (app) await syncApplicationUploads(supabaseAdmin, app);
 
+    // Filtered in the query, not after it. Everything below Owner must not
+    // receive the restricted row at all — not the id, not the storage path,
+    // not a signed URL that a network tab would show. This query runs as the
+    // service role, so RLS is not doing the work here; the RLS policy is the
+    // second lock, for a browser that skips this function entirely.
+    let q = supabaseAdmin.from("documents").select(SELECT).eq("driver_id", data.applicationId);
+    if (!owner) q = q.not("category", "in", `(${RESTRICTED_CATEGORIES.join(",")})`);
+    const { data: rows } = await q.order("created_at", { ascending: false });
+    return withUrls(supabaseAdmin, rows ?? []);
+  });
+
+/**
+ * The verification call recording, for the one tier allowed to hear it.
+ *
+ * Separate from adminListDriverDocuments on purpose: a caller who is not an
+ * Owner cannot reach this at all, so there is no filtering to get wrong and no
+ * payload for a restricted row to hide inside.
+ */
+export const ownerListVerificationRecordings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<VaultDocument[]> => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    await requireOwner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows } = await supabaseAdmin
       .from("documents")
       .select(SELECT)
       .eq("driver_id", data.applicationId)
+      .eq("category", "verification_recording")
       .order("created_at", { ascending: false });
     return withUrls(supabaseAdmin, rows ?? []);
   });
@@ -323,8 +376,17 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const admin = await isAdmin(context.supabase, context.userId);
+    // A restricted category may only ever be written by an Owner, whichever
+    // door the upload comes through.
+    if (RESTRICTED_CATEGORIES.includes(data.category)) {
+      const { requireOwner } = await import("@/lib/roles.server");
+      await requireOwner(context.userId);
+    }
     let applicationId = data.applicationId ?? null;
     if (admin) {
+      if (!applicationId) throw new Error("Missing driver");
+    } else if (await isStaffUser(context.userId)) {
+      // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
     } else {
       const { data: app } = await context.supabase
@@ -347,6 +409,37 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
     return { path: signed.path, token: signed.token, bucket: DOC_BUCKET, applicationId };
   });
 
+/**
+ * Refuse to act on a restricted document unless the caller is an Owner.
+ *
+ * Used by the functions that take a document id rather than a category — the
+ * category has to be read back before the tier can be judged.
+ */
+async function assertMayTouch(userId: string, documentId: string): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: doc } = await supabaseAdmin
+    .from("documents")
+    .select("category")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) throw new Error("Document not found");
+  if (RESTRICTED_CATEGORIES.includes(doc.category as string)) {
+    const { requireOwner } = await import("@/lib/roles.server");
+    await requireOwner(userId);
+  }
+}
+
+/** True for Coordinator and above. */
+async function isStaffUser(userId: string): Promise<boolean> {
+  try {
+    const { requireStaff } = await import("@/lib/roles.server");
+    await requireStaff(userId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const confirmDocumentUpload = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
@@ -366,7 +459,13 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const admin = await isAdmin(context.supabase, context.userId);
-    if (!admin) {
+    const restricted = RESTRICTED_CATEGORIES.includes(data.category);
+    if (restricted) {
+      const { requireOwner } = await import("@/lib/roles.server");
+      await requireOwner(context.userId);
+    }
+    const staff = admin || (await isStaffUser(context.userId));
+    if (!staff) {
       const { data: app } = await context.supabase
         .from("applications")
         .select("id")
@@ -378,7 +477,9 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     if (!data.path.startsWith(`${data.applicationId}/`)) throw new Error("Invalid upload path");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const visibility = admin && data.internal ? ["admin"] : ["driver", "admin"];
+    // A recording is never shared with the applicant, whatever the caller
+    // asked for.
+    const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
 
     const { data: row, error } = await supabaseAdmin
       .from("documents")
@@ -419,7 +520,10 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z
       .object({
-        id: z.string().uuid(),
+        // Named documentId, like every other document function. It was `id`
+        // here and `documentId` next door, which is the kind of difference
+        // that typechecks fine and throws at runtime.
+        documentId: z.string().uuid(),
         expiresAt: z.string().max(20).nullable().optional(),
         label: z.string().max(140).nullable().optional(),
         internal: z.boolean().optional(),
@@ -427,7 +531,9 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    const { requireStaff } = await import("@/lib/roles.server");
+    await requireStaff(context.userId);
+    await assertMayTouch(context.userId, data.documentId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const patch: Record<string, any> = {};
     if (data.expiresAt !== undefined) patch.expires_at = data.expiresAt || null;
@@ -437,27 +543,27 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("documents")
       .update(patch as any)
-      .eq("id", data.id);
+      .eq("id", data.documentId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
 
 export const deleteDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ documentId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc } = await supabaseAdmin
       .from("documents")
       .select("id,storage_bucket,storage_path")
-      .eq("id", data.id)
+      .eq("id", data.documentId)
       .maybeSingle();
     if (doc) {
       await supabaseAdmin.storage
         .from(doc.storage_bucket as string)
         .remove([doc.storage_path as string]);
-      await supabaseAdmin.from("documents").delete().eq("id", data.id);
+      await supabaseAdmin.from("documents").delete().eq("id", data.documentId);
     }
     return { ok: true };
   });
@@ -523,6 +629,7 @@ export const setDocumentReview = createServerFn({ method: "POST" })
     const { requireStaff } = await import("@/lib/roles.server");
     const { logAudit } = await import("@/lib/audit.server");
     const actor = await requireStaff(context.userId);
+    await assertMayTouch(context.userId, data.documentId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: doc } = await supabaseAdmin

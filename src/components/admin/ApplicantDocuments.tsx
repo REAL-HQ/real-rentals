@@ -101,6 +101,7 @@ export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
 export function ApplicantDocuments({
   applicationId,
   onRequiredCountChange,
+  onDocumentsChange,
 }: {
   applicationId: string;
   /**
@@ -109,6 +110,8 @@ export function ApplicantDocuments({
    * same vault the tab renders or the two will disagree.
    */
   onRequiredCountChange?: (n: number) => void;
+  /** The current rows, so readiness reads the same vault the tab shows. */
+  onDocumentsChange?: (docs: VaultDocument[]) => void;
 }) {
   const list = useServerFn(adminListDriverDocuments);
   const startUpload = useServerFn(createDocumentUploadUrl);
@@ -158,7 +161,10 @@ export function ApplicantDocuments({
 
   useEffect(() => {
     onRequiredCountChange?.(REQUIRED_VAULT_CATEGORIES.filter((c) => current.has(c)).length);
-  }, [current, onRequiredCountChange]);
+    onDocumentsChange?.(docs);
+    // The callbacks are parent-owned; depending on them would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, docs]);
 
   const extras = useMemo(
     () => docs.filter((d) => d.is_current && current.get(d.category)?.id !== d.id),

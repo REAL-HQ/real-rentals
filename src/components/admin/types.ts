@@ -8,7 +8,10 @@ export type FleetOwner = Tables<"fleet_owner_submissions">;
 export type Partner = Tables<"partners">;
 export type Payment = Tables<"payments">;
 export type DriverScreening = Tables<"driver_screenings">;
-export type LeadDocument = Tables<"lead_documents">;
+// No LeadDocument type. public.lead_documents is retired: it holds no rows,
+// nothing reads or writes it, and applicant documents live in public.documents
+// (src/lib/documents.functions.ts). The table stays in the schema until a later
+// cleanup drops it; nothing in the app should grow a dependency on it again.
 
 export const SCREENING_STATUSES = [
   "new_lead",

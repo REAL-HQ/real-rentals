@@ -108,7 +108,7 @@ export type ReadinessResult = {
 export type ReadinessInput = Record<string, unknown>;
 
 /**
- * Rows from the document vault (`lead_documents`) for one applicant.
+ * Rows from the document vault (`public.documents`) for one applicant.
  *
  * Uploads used to live as URL columns on the application row and are now
  * moving into the vault, so the model reads both and treats either as the
@@ -116,7 +116,7 @@ export type ReadinessInput = Record<string, unknown>;
  * without a change here.
  */
 export type ReadinessDocument = {
-  /** `lead_documents.doc_type` or the vault's `documents.category`. */
+  /** The vault's `documents.category`. `doc_type` is the retired spelling. */
   doc_type?: string | null;
   category?: string | null;
   file_url?: string | null;
@@ -128,10 +128,12 @@ export type ReadinessDocument = {
 /**
  * What the model asks for, and every name the two document systems use for it.
  *
- * `lead_documents` (staff uploads) and `documents` (the vault, which is where
- * applicant uploads land) named the same four things differently. Reading only
- * one vocabulary is how an applicant who supplied everything could still show
- * as having supplied nothing.
+ * The retired `lead_documents` table and `documents` named the same four
+ * things differently, and reading only one vocabulary is how an applicant who
+ * supplied everything could show as having supplied nothing. Only `documents`
+ * is read now, but the aliases stay: `REQUIRED_DOC_TYPES` still uses the older
+ * spellings as the canonical names for the screening gate, and a caller
+ * passing either shape should get the same answer.
  */
 const DOC_ALIASES: Record<string, string[]> = {
   license_front: ["license_front"],

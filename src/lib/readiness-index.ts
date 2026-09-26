@@ -108,4 +108,11 @@ export const READINESS_SCREENING_COLUMNS = [
 /** Ready to drop into `.select(...)`. */
 export const READINESS_APPLICATION_SELECT = READINESS_APPLICATION_COLUMNS.join(",");
 export const READINESS_SCREENING_SELECT = READINESS_SCREENING_COLUMNS.join(",");
-export const READINESS_DOCUMENT_SELECT = "lead_id,doc_type";
+/**
+ * The vault columns readiness needs.
+ *
+ * `driver_id` is aliased to `lead_id` because that is the key
+ * `buildReadinessIndex` groups on — the alias keeps one grouping helper
+ * working for both shapes rather than forking it.
+ */
+export const READINESS_DOCUMENT_SELECT = "lead_id:driver_id,category,review_status,is_current";

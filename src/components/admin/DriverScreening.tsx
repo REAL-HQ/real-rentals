@@ -26,12 +26,12 @@ import {
   SCREENING_STATUSES,
   type Application,
   type DriverScreening,
-  type LeadDocument,
   type RequiredDocType,
   type ScreeningStatus,
 } from "./types";
 import { PlatformLogo, platformLabel } from "./PlatformLogo";
 import { computeReadiness, type ReadinessInput } from "@/lib/readiness";
+import { VerificationRecording } from "./VerificationRecording";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -80,21 +80,20 @@ export function screeningConcerns(s: Partial<DriverScreening>): {
 
 export function useDriverScreening(leadId: string) {
   const [screening, setScreening] = useState<DriverScreening | null>(null);
-  const [docs, setDocs] = useState<LeadDocument[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Documents are not loaded here any more. They live in the vault, and the
+  // Documents tab owns fetching them. This hook used to pull `lead_documents`
+  // alongside the screening row, which is how the same applicant could read
+  // 4/4 on one tab and 0/4 on another.
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: s }, { data: d }] = await Promise.all([
-      supabase.from("driver_screenings").select("*").eq("lead_id", leadId).maybeSingle(),
-      supabase
-        .from("lead_documents")
-        .select("*")
-        .eq("lead_id", leadId)
-        .order("uploaded_at", { ascending: false }),
-    ]);
+    const { data: s } = await supabase
+      .from("driver_screenings")
+      .select("*")
+      .eq("lead_id", leadId)
+      .maybeSingle();
     setScreening(s ?? null);
-    setDocs(d ?? []);
     setLoading(false);
   }, [leadId]);
 
@@ -102,7 +101,7 @@ export function useDriverScreening(leadId: string) {
     void load();
   }, [load]);
 
-  return { screening, setScreening, docs, setDocs, loading, reload: load };
+  return { screening, setScreening, loading, reload: load };
 }
 
 /* ------------------------------------------------------------------ */
@@ -127,12 +126,11 @@ function statusIndex(s: ScreeningStatus | null | undefined): number {
 
 export function ScreeningPipeline({
   screening,
-  docs,
   docCount,
+  hasRecording,
   onAdvance,
 }: {
   screening: DriverScreening | null;
-  docs: LeadDocument[];
   /**
    * How many of the four required document types are on file, counted from
    * the document vault rather than from `lead_documents`.
@@ -143,12 +141,18 @@ export function ScreeningPipeline({
    * everything and still be blocked at Docs Pending.
    */
   docCount: number;
+  /**
+   * Whether a current verification recording exists. Reported by the
+   * Owner-only recording control; a Manager or Coordinator never learns it and
+   * for them this gate simply reads as outstanding. The database decides
+   * either way, so the UI knowing less is not a way around it.
+   */
+  hasRecording: boolean;
   onAdvance: (next: ScreeningStatus) => Promise<void>;
 }) {
   const current = (screening?.status ?? "new_lead") as ScreeningStatus;
   const isDq = screening?.disqualified === true || current === "disqualified";
   const activeIdx = statusIndex(current);
-  const hasRecording = docs.some((d) => d.doc_type === "verification_recording");
 
   function attempt(target: ScreeningStatus) {
     const missing: string[] = [];
@@ -705,211 +709,6 @@ export function InterviewTab({
 }
 
 /* ------------------------------------------------------------------ */
-/* Documents card                                                      */
-/* ------------------------------------------------------------------ */
-
-const DOC_LABELS: Record<RequiredDocType, string> = {
-  license_front: "License Front",
-  license_back: "License Back",
-  insurance_card: "Insurance Card",
-  driver_profile_screenshot: "Driver Profile Screenshot",
-};
-
-export function DocumentsCard({
-  leadId,
-  docs,
-  onChange,
-}: {
-  leadId: string;
-  docs: LeadDocument[];
-  onChange: (next: LeadDocument[]) => void;
-}) {
-  const requiredDocs = docs.filter((d) =>
-    REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType),
-  );
-  const have = new Set(requiredDocs.map((d) => d.doc_type));
-
-  return (
-    <div className="rounded-xl border border-border bg-white">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <FileText className="h-4 w-4 text-muted-foreground" />
-        <div className="text-sm font-semibold">Documents</div>
-        <div className="ml-auto text-xs text-muted-foreground">
-          {have.size} Of 4 Documents Received
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-        {REQUIRED_DOC_TYPES.map((type) => {
-          const doc = requiredDocs.find((d) => d.doc_type === type);
-          return (
-            <DocSlot
-              key={type}
-              leadId={leadId}
-              docType={type}
-              label={DOC_LABELS[type]}
-              existing={doc ?? null}
-              onUploaded={(newDoc) => onChange([newDoc, ...docs.filter((d) => d.id !== newDoc.id)])}
-              onRemoved={(id) => onChange(docs.filter((d) => d.id !== id))}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DocSlot({
-  leadId,
-  docType,
-  label,
-  existing,
-  onUploaded,
-  onRemoved,
-  accept,
-  helper,
-}: {
-  leadId: string;
-  docType: string;
-  label: string;
-  existing: LeadDocument | null;
-  onUploaded: (doc: LeadDocument) => void;
-  onRemoved: (id: string) => void;
-  accept?: string;
-  helper?: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!existing?.file_url) {
-      setPreview(null);
-      return;
-    }
-    let live = true;
-    supabase.storage
-      .from("driver-docs")
-      .createSignedUrl(existing.file_url, 3600)
-      .then(({ data }) => {
-        if (live && data?.signedUrl) setPreview(data.signedUrl);
-      });
-    return () => {
-      live = false;
-    };
-  }, [existing?.file_url]);
-
-  async function upload(file: File) {
-    setBusy(true);
-    try {
-      const ext = file.name.split(".").pop() || "bin";
-      const path = `${leadId}/${docType}-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("driver-docs")
-        .upload(path, file, { upsert: false, contentType: file.type || undefined });
-      if (upErr) throw upErr;
-      if (existing) {
-        await supabase.storage.from("driver-docs").remove([existing.file_url]);
-        await supabase.from("lead_documents").delete().eq("id", existing.id);
-      }
-      const { data, error } = await supabase
-        .from("lead_documents")
-        .insert({ lead_id: leadId, doc_type: docType, file_url: path })
-        .select("*")
-        .single();
-      if (error) throw error;
-      onUploaded(data as LeadDocument);
-      toast.success(`${label} Uploaded`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
-
-  async function remove() {
-    if (!existing) return;
-    if (!confirm(`Remove ${label}?`)) return;
-    setBusy(true);
-    try {
-      await supabase.storage.from("driver-docs").remove([existing.file_url]);
-      const { error } = await supabase.from("lead_documents").delete().eq("id", existing.id);
-      if (error) throw error;
-      onRemoved(existing.id);
-      toast.success(`${label} Removed`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const isImage =
-    existing &&
-    !existing.file_url.toLowerCase().endsWith(".pdf") &&
-    !isAudioVideo(existing.file_url);
-
-  return (
-    <div className="rounded-lg border border-border bg-soft/40 p-3">
-      <div className="mb-2 flex items-center gap-2">
-        {existing ? (
-          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-        ) : (
-          <CircleDashed className="h-4 w-4 text-muted-foreground" />
-        )}
-        <div className="text-xs font-semibold">{label}</div>
-        {existing && (
-          <button
-            type="button"
-            onClick={remove}
-            className="ml-auto rounded p-1 text-muted-foreground hover:bg-white hover:text-red-700"
-            title="Remove"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-      {existing ? (
-        <a
-          href={preview ?? "#"}
-          target="_blank"
-          rel="noreferrer"
-          className="block overflow-hidden rounded-md border border-border bg-white"
-        >
-          {isImage && preview ? (
-            <img src={preview} alt={label} className="h-28 w-full object-cover" />
-          ) : (
-            <div className="flex h-28 w-full items-center justify-center gap-2 text-xs text-muted-foreground">
-              <FileText className="h-4 w-4" /> {preview ? "Open File" : "Loading…"}
-            </div>
-          )}
-        </a>
-      ) : (
-        <label className="flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-white text-xs text-muted-foreground hover:bg-soft">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-          <span>{busy ? "Uploading…" : "Upload"}</span>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={accept ?? "image/*,application/pdf"}
-            hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-            }}
-          />
-        </label>
-      )}
-      {helper && <div className="mt-1.5 text-[10px] text-muted-foreground">{helper}</div>}
-    </div>
-  );
-}
-
-function isAudioVideo(path: string): boolean {
-  return /\.(mp3|wav|m4a|ogg|mp4|mov|webm)$/i.test(path);
-}
-
-/* ------------------------------------------------------------------ */
 /* Insurance Verification card                                         */
 /* ------------------------------------------------------------------ */
 
@@ -918,19 +717,19 @@ const VERIFICATION_SCRIPT = `Hi, I'm calling from REAL RENTALS, a rental car age
 export function InsuranceVerificationCard({
   leadId,
   screening,
-  docs,
+  isOwner,
   onScreening,
-  onDocs,
+  onRecordingChange,
 }: {
   leadId: string;
   screening: DriverScreening | null;
-  docs: LeadDocument[];
+  /** Recordings are Owner-only; see VerificationRecording. */
+  isOwner: boolean;
   onScreening: (next: DriverScreening) => void;
-  onDocs: (next: LeadDocument[]) => void;
+  onRecordingChange?: (hasCurrent: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const recording = docs.find((d) => d.doc_type === "verification_recording");
 
   async function save(patch: Partial<DriverScreening>) {
     setSaving(true);
@@ -1012,15 +811,10 @@ export function InsuranceVerificationCard({
           </Field>
         </Row>
         <div>
-          <DocSlot
-            leadId={leadId}
-            docType="verification_recording"
-            label="Call Recording"
-            existing={recording ?? null}
-            accept="audio/*,video/*"
-            helper="Label file: DriverName_Date_Vehicle"
-            onUploaded={(d) => onDocs([d, ...docs.filter((x) => x.id !== d.id)])}
-            onRemoved={(id) => onDocs(docs.filter((x) => x.id !== id))}
+          <VerificationRecording
+            applicationId={leadId}
+            canAccess={isOwner}
+            onChange={onRecordingChange}
           />
         </div>
         {saving && (

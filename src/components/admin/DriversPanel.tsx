@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type {
-  Application,
-  DriverScreening as DriverScreeningRow,
-  LeadDocument,
-  Vehicle,
-} from "./types";
+import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -194,7 +189,13 @@ function useNow(intervalMs = 30000) {
 export function DriversPanel({
   externalSearch = "",
   initialOpenId,
-}: { externalSearch?: string; initialOpenId?: string } = {}) {
+  isOwner = false,
+}: {
+  externalSearch?: string;
+  initialOpenId?: string;
+  /** Verification recordings are Owner-only. See VerificationRecording. */
+  isOwner?: boolean;
+} = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [open, setOpen] = useState<Application | null>(null);
@@ -270,45 +271,35 @@ export function DriversPanel({
         });
         setScreenings(map);
       });
-    // Two document sources, fetched in bulk and merged once.
+    // The document vault, in bulk. One source.
     //
-    // `lead_documents` holds what staff uploaded in the back office;
-    // `documents` is the vault, which is where an applicant's own uploads
-    // land. Counting only the first is why a driver who sent everything
-    // through the application read as 0/4 in this list.
+    // This used to union `documents` with `lead_documents` and de-duplicate by
+    // category name. lead_documents is retired — nothing writes it and nothing
+    // reads it — so the union is gone and with it the chance of the two
+    // disagreeing about the same applicant.
     void (async () => {
-      const [legacy, vault] = await Promise.all([
-        supabase.from("lead_documents").select("lead_id,doc_type"),
-        supabase
-          .from("documents")
-          .select("driver_id,category,review_status,is_current")
-          .not("driver_id", "is", null),
-      ]);
-      const rows: ReadinessDocument[] = [
-        ...(((legacy.data ?? []) as { lead_id: string; doc_type: string }[]).map((d) => ({
-          lead_id: d.lead_id,
-          doc_type: d.doc_type,
-        })) as ReadinessDocument[]),
-        ...((
-          (vault.data ?? []) as {
-            driver_id: string;
-            category: string;
-            review_status: string | null;
-            is_current: boolean | null;
-          }[]
-        ).map((d) => ({
-          lead_id: d.driver_id,
-          category: d.category,
-          review_status: d.review_status,
-          is_current: d.is_current,
-        })) as ReadinessDocument[]),
-      ];
+      const { data } = await supabase
+        .from("documents")
+        .select("driver_id,category,review_status,is_current")
+        .not("driver_id", "is", null);
+      const rows: ReadinessDocument[] = (
+        (data ?? []) as {
+          driver_id: string;
+          category: string;
+          review_status: string | null;
+          is_current: boolean | null;
+        }[]
+      ).map((d) => ({
+        lead_id: d.driver_id,
+        category: d.category,
+        review_status: d.review_status,
+        is_current: d.is_current,
+      }));
       const seen: Record<string, Set<string>> = {};
       for (const r of rows) {
         const id = (r as { lead_id?: string }).lead_id;
         if (!id || r.is_current === false || r.review_status === "rejected") continue;
-        const name = (r.category ?? r.doc_type ?? "").trim();
-        const canonical = VAULT_TO_REQUIRED[name] ?? name;
+        const canonical = VAULT_TO_REQUIRED[(r.category ?? "").trim()] ?? (r.category ?? "").trim();
         if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) continue;
         (seen[id] ?? (seen[id] = new Set())).add(canonical);
       }
@@ -430,14 +421,8 @@ export function DriversPanel({
         onUpdate={(p) => update(open.id, p)}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
-        onDocsChange={(docs) => {
-          const count = new Set(
-            docs
-              .filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType))
-              .map((d) => d.doc_type),
-          ).size;
-          setDocCounts((prev) => ({ ...prev, [open.id]: count }));
-        }}
+        onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
+        isOwner={isOwner}
       />
     );
   }
@@ -706,7 +691,8 @@ function DriverDetail({
   onUpdate,
   onDelete,
   onScreeningChange,
-  onDocsChange,
+  onVaultChange,
+  isOwner,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -714,7 +700,8 @@ function DriverDetail({
   onUpdate: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
-  onDocsChange?: (docs: LeadDocument[]) => void;
+  onVaultChange?: (requiredCount: number) => void;
+  isOwner: boolean;
 }) {
   const veh = driver.vehicle_id ? vehicles.find((v) => v.id === driver.vehicle_id) : null;
   const initials = (driver.full_name || "?")
@@ -726,7 +713,7 @@ function DriverDetail({
     .toUpperCase();
   const trips = Number(driver.trips_completed);
   const tripsOk = !Number.isNaN(trips) && trips >= 200;
-  const { screening, setScreening, docs, setDocs } = useDriverScreening(driver.id);
+  const { screening, setScreening } = useDriverScreening(driver.id);
 
   async function advanceStatus(next: import("./types").ScreeningStatus) {
     try {
@@ -753,6 +740,10 @@ function DriverDetail({
   // Required documents on file, reported by the Documents tab so the screening
   // pipeline gates on the same vault the operator is looking at.
   const [vaultDocCount, setVaultDocCount] = useState(0);
+  const [vaultDocs, setVaultDocs] = useState<ReadinessDocument[]>([]);
+  // Owner-only; for every other tier this stays false and the gate reads the
+  // recording as outstanding. The database decides regardless.
+  const [hasRecording, setHasRecording] = useState(false);
 
   // ---- Derive lifecycle stages from driver + screening ------------------
   const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
@@ -813,8 +804,8 @@ function DriverDetail({
   // applicant. Nothing is derived locally any more; if a rule needs changing
   // it changes in src/lib/readiness.ts and every surface follows.
   const readiness = useMemo(
-    () => computeReadiness(driver, screening, docs),
-    [driver, screening, docs],
+    () => computeReadiness(driver, screening, vaultDocs),
+    [driver, screening, vaultDocs],
   );
 
   // ---- Primary action -------------------------------------------------
@@ -1120,7 +1111,7 @@ function DriverDetail({
                 <SignalRow
                   label="Documents"
                   ok={docsComplete}
-                  detail={`${docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).length}/4`}
+                  detail={`${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}`}
                 />
                 <SignalRow label="Insurance" ok={insuranceOk} />
                 <SignalRow label="Card on file" ok={!!driver.card_last4} />
@@ -1307,7 +1298,11 @@ function DriverDetail({
                         controls and the insurance document appeared nowhere. */}
                     <ApplicantDocuments
                       applicationId={driver.id}
-                      onRequiredCountChange={setVaultDocCount}
+                      onRequiredCountChange={(n) => {
+                        setVaultDocCount(n);
+                        onVaultChange?.(n);
+                      }}
+                      onDocumentsChange={setVaultDocs}
                     />
                   </div>
                 </SectionCard>
@@ -1316,22 +1311,19 @@ function DriverDetail({
               <TabsContent value="screening" className="mt-4 space-y-4">
                 <ScreeningPipeline
                   screening={screening}
-                  docs={docs}
                   docCount={vaultDocCount}
+                  hasRecording={hasRecording}
                   onAdvance={advanceStatus}
                 />
                 <InsuranceVerificationCard
                   leadId={driver.id}
                   screening={screening}
-                  docs={docs}
+                  isOwner={isOwner}
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
                   }}
-                  onDocs={(d) => {
-                    setDocs(d);
-                    onDocsChange?.(d);
-                  }}
+                  onRecordingChange={setHasRecording}
                 />
                 <AISnapshotCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>

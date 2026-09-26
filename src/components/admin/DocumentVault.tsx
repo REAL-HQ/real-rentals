@@ -19,7 +19,9 @@ const MAX_MB = 15;
 
 function fmtSize(n: number | null) {
   if (!n) return "";
-  return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+  return n > 1024 * 1024
+    ? `${(n / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
 function expiryTone(d: VaultDocument): "expired" | "soon" | null {
@@ -113,7 +115,7 @@ export function DocumentVault({
           category: ctx.category,
           path: signed.path,
           fileName: file.name,
-          mimeType: file.type || null as any,
+          mimeType: file.type || (null as any),
           sizeBytes: file.size,
           internal: ctx.internal,
         },
@@ -130,7 +132,8 @@ export function DocumentVault({
 
   const current = docs.filter((d) => d.is_current);
   const history = docs.filter((d) => !d.is_current);
-  const categories = mode === "admin" ? DOC_CATEGORIES : DOC_CATEGORIES.filter((c) => c.key !== "agreement");
+  const categories =
+    mode === "admin" ? DOC_CATEGORIES : DOC_CATEGORIES.filter((c) => c.key !== "agreement");
 
   if (loading) {
     return (
@@ -142,7 +145,13 @@ export function DocumentVault({
 
   return (
     <div className="space-y-3">
-      <input ref={fileInput} type="file" onChange={onFile} className="hidden" accept="image/*,application/pdf" />
+      <input
+        ref={fileInput}
+        type="file"
+        onChange={onFile}
+        className="hidden"
+        accept="image/*,application/pdf"
+      />
 
       <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-white">
         {categories.map((cat) => {
@@ -166,14 +175,17 @@ export function DocumentVault({
                           : "bg-[#FFF8E5] text-[#8A6A00] border-[#F6E7B8]"
                       }`}
                     >
-                      <AlertTriangle className="w-3 h-3" /> {tone === "expired" ? "Expired" : "Expiring soon"}
+                      <AlertTriangle className="w-3 h-3" />{" "}
+                      {tone === "expired" ? "Expired" : "Expiring soon"}
                     </span>
                   ) : null}
                 </div>
                 <div className="text-[11.5px] text-[#77777F] mt-0.5 truncate">
                   {doc
                     ? `${doc.file_name ?? "Document"} · ${fmtSize(doc.size_bytes)} · uploaded ${new Date(doc.created_at).toLocaleDateString()}${
-                        doc.expires_at ? ` · expires ${new Date(doc.expires_at).toLocaleDateString()}` : ""
+                        doc.expires_at
+                          ? ` · expires ${new Date(doc.expires_at).toLocaleDateString()}`
+                          : ""
                       }`
                     : "Not on file"}
                 </div>
@@ -185,7 +197,9 @@ export function DocumentVault({
                   defaultValue={doc.expires_at ? String(doc.expires_at).slice(0, 10) : ""}
                   onChange={async (e) => {
                     try {
-                      await patchMeta({ data: { id: doc.id, expiresAt: e.target.value || null } });
+                      await patchMeta({
+                        data: { documentId: doc.id, expiresAt: e.target.value || null },
+                      });
                       await refresh();
                     } catch {
                       toast.error("Could not save expiry");
@@ -226,7 +240,7 @@ export function DocumentVault({
                     onClick={async () => {
                       if (!confirm("Delete this document permanently?")) return;
                       try {
-                        await removeDoc({ data: { id: doc.id } });
+                        await removeDoc({ data: { documentId: doc.id } });
                         toast.success("Document deleted");
                         await refresh();
                       } catch {
@@ -260,17 +274,24 @@ export function DocumentVault({
             onClick={() => setShowHistory((v) => !v)}
             className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#55555E] hover:text-[#111114]"
           >
-            <History className="w-3.5 h-3.5" /> {showHistory ? "Hide" : "Show"} previous versions ({history.length})
+            <History className="w-3.5 h-3.5" /> {showHistory ? "Hide" : "Show"} previous versions (
+            {history.length})
           </button>
           {showHistory ? (
             <ul className="mt-2 divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-[#FAFAFB]">
               {history.map((d) => (
                 <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <span className="text-[12px] text-[#55555E] truncate">
-                    {(d.label || d.file_name || d.category)} · {new Date(d.created_at).toLocaleDateString()}
+                    {d.label || d.file_name || d.category} ·{" "}
+                    {new Date(d.created_at).toLocaleDateString()}
                   </span>
                   {d.url ? (
-                    <a href={d.url} target="_blank" rel="noreferrer" className="text-[11.5px] font-semibold text-[#D03020]">
+                    <a
+                      href={d.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11.5px] font-semibold text-[#D03020]"
+                    >
                       View
                     </a>
                   ) : null}

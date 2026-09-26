@@ -231,7 +231,7 @@ export function OverviewPanel() {
           .order("created_at", { ascending: false })
           .limit(APPLICANT_WINDOW),
         supabase.from("driver_screenings").select(READINESS_SCREENING_SELECT),
-        supabase.from("lead_documents").select(READINESS_DOCUMENT_SELECT),
+        supabase.from("documents").select(READINESS_DOCUMENT_SELECT).not("driver_id", "is", null),
         supabase
           .from("vehicles")
           .select(
