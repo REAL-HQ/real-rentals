@@ -2,17 +2,44 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatusPill, EmptyState } from "./ui";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 
-const STATUSES = ["upcoming","current","paid","past_due","failed","collections","waived"] as const;
-const STATUS_LABEL: Record<string,string> = {
-  upcoming: "Upcoming", current: "Due", paid: "Paid", past_due: "Past Due",
-  failed: "Failed", collections: "In Collections", waived: "Waived", late: "Late",
+const STATUSES = [
+  "upcoming",
+  "current",
+  "paid",
+  "past_due",
+  "failed",
+  "collections",
+  "waived",
+] as const;
+/** Everything the dashboard's Collections card counts: due and not received. */
+const OVERDUE_SET = new Set(["late", "past_due", "collections", "failed"]);
+const STATUS_LABEL: Record<string, string> = {
+  upcoming: "Upcoming",
+  current: "Due",
+  paid: "Paid",
+  past_due: "Past Due",
+  failed: "Failed",
+  collections: "In Collections",
+  waived: "Waived",
+  late: "Late",
 };
-const TYPES = ["rent","deposit","late_fee","other"] as const;
+const TYPES = ["rent", "deposit", "late_fee", "other"] as const;
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
@@ -21,70 +48,115 @@ function fmtDate(iso?: string | null) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function PaymentsPanel() {
+export function PaymentsPanel({ initialFilter }: { initialFilter?: string } = {}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Arriving from the dashboard's Collections card asks for everything
+  // unresolved at once, which no single status covers.
+  const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
   const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
-    supabase.from("payments").select("*").then(({ data }) => setPayments(data || []));
-    supabase.from("applications").select("id,full_name,vehicle_id,weekly_rent").then(({ data }) => setDrivers((data as any) || []));
-    supabase.from("vehicles").select("*").then(({ data }) => setVehicles((data as any) || []));
+    supabase
+      .from("payments")
+      .select("*")
+      .then(({ data }) => setPayments(data || []));
+    supabase
+      .from("applications")
+      .select("id,full_name,vehicle_id,weekly_rent")
+      .then(({ data }) => setDrivers((data as any) || []));
+    supabase
+      .from("vehicles")
+      .select("*")
+      .then(({ data }) => setVehicles((data as any) || []));
   }, []);
 
-  const driverMap = useMemo(() => Object.fromEntries(drivers.map(d => [d.id, d])), [drivers]);
-  const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map(v => [v.id, v])), [vehicles]);
+  const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
+  const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
   async function update(id: string, patch: Partial<Payment>) {
     const { error } = await supabase.from("payments").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
-    setPayments(p => p.map(x => x.id === id ? { ...x, ...patch } : x));
+    setPayments((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
   async function remove(id: string) {
     if (!confirm("Delete payment?")) return;
     const { error } = await supabase.from("payments").delete().eq("id", id);
     if (error) return toast.error(error.message);
-    setPayments(p => p.filter(x => x.id !== id));
+    setPayments((p) => p.filter((x) => x.id !== id));
   }
   async function add(p: Partial<Payment>) {
-    const { data, error } = await supabase.from("payments").insert(p as any).select().single();
+    const { data, error } = await supabase
+      .from("payments")
+      .insert(p as any)
+      .select()
+      .single();
     if (error) return toast.error(error.message);
-    setPayments(cur => [data as Payment, ...cur]);
+    setPayments((cur) => [data as Payment, ...cur]);
     setShowAdd(false);
   }
 
-  const filtered = (statusFilter === "all" ? payments : payments.filter(p => p.status === statusFilter)).slice().sort((a, b) => {
-    if (sort === "amount_desc") return Number(b.amount) - Number(a.amount);
-    const ad = a.due_date || "9999"; const bd = b.due_date || "9999";
-    return sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
-  });
+  const filtered = (
+    statusFilter === "all"
+      ? payments
+      : statusFilter === "overdue"
+        ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
+        : payments.filter((p) => p.status === statusFilter)
+  )
+    .slice()
+    .sort((a, b) => {
+      if (sort === "amount_desc") return Number(b.amount) - Number(a.amount);
+      const ad = a.due_date || "9999";
+      const bd = b.due_date || "9999";
+      return sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
+    });
 
-  const totalDue = filtered.filter(p => p.status !== "paid").reduce((s, p) => s + Number(p.balance_due || p.amount || 0), 0);
+  const totalDue = filtered
+    .filter((p) => p.status !== "paid")
+    .reduce((s, p) => s + Number(p.balance_due || p.amount || 0), 0);
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex flex-wrap gap-2 text-xs">
-          {(["all", ...STATUSES] as const).map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-md capitalize ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}>
-              {s.replace(/_/g, " ")} {s !== "all" && `(${payments.filter(p => p.status === s).length})`}
+          {(["all", "overdue", ...STATUSES] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-md capitalize ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
+            >
+              {s.replace(/_/g, " ")}{" "}
+              {s !== "all" &&
+                `(${
+                  s === "overdue"
+                    ? payments.filter((p) => OVERDUE_SET.has(p.status as string)).length
+                    : payments.filter((p) => p.status === s).length
+                })`}
             </button>
           ))}
         </div>
         <Select value={sort} onValueChange={(v) => setSort(v as any)}>
-          <SelectTrigger className="h-8 w-40 bg-white text-foreground"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-40 bg-white text-foreground">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="due_asc">Due date ↑</SelectItem>
             <SelectItem value="due_desc">Due date ↓</SelectItem>
             <SelectItem value="amount_desc">Amount ↓</SelectItem>
           </SelectContent>
         </Select>
-        <div className="text-sm text-muted-foreground">Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span></div>
-        <button onClick={() => setShowAdd(true)} className="ml-auto rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150">+ Add Payment</button>
+        <div className="text-sm text-muted-foreground">
+          Outstanding:{" "}
+          <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="ml-auto rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
+        >
+          + Add Payment
+        </button>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
@@ -104,28 +176,47 @@ export function PaymentsPanel() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(p => {
+            {filtered.map((p) => {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
               const driverName = d?.full_name || (p.driver_id ? "Unnamed driver" : "—");
               const lateFees = Number(p.late_fees || 0);
               return (
-                 <tr key={p.id} className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
+                <tr
+                  key={p.id}
+                  className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150"
+                >
                   <td className="px-3 text-[13px] font-medium text-[#111114]">{driverName}</td>
-                  <td className="px-3 text-xs text-[#55555E]">{v ? `${v.year} ${v.make} ${v.model}` : "—"}</td>
+                  <td className="px-3 text-xs text-[#55555E]">
+                    {v ? `${v.year} ${v.make} ${v.model}` : "—"}
+                  </td>
                   <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
-                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.amount).toLocaleString()}</td>
-                  <td className="px-3 text-[13px] text-[#55555E] tabular-nums">{fmtDate(p.due_date)}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">
+                    ${Number(p.amount).toLocaleString()}
+                  </td>
+                  <td className="px-3 text-[13px] text-[#55555E] tabular-nums">
+                    {fmtDate(p.due_date)}
+                  </td>
                   <td className="px-3">
-                    <Select value={p.status} onValueChange={(s) => update(p.id, { status: s, paid_date: s === "paid" ? new Date().toISOString().slice(0,10) : null })}>
+                    <Select
+                      value={p.status}
+                      onValueChange={(s) =>
+                        update(p.id, {
+                          status: s,
+                          paid_date: s === "paid" ? new Date().toISOString().slice(0, 10) : null,
+                        })
+                      }
+                    >
                       <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
                         <span className="inline-flex items-center gap-1">
-                          <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? p.status.replace(/_/g," ")}</StatusPill>
+                          <StatusPill status={p.status}>
+                            {STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}
+                          </StatusPill>
                           <ChevronDown className="w-3 h-3 text-[#9A9AA3]" />
                         </span>
                       </SelectTrigger>
                       <SelectContent align="start" className="min-w-[11rem]">
-                        {STATUSES.map(s => (
+                        {STATUSES.map((s) => (
                           <SelectItem key={s} value={s} className="text-[13px]">
                             {STATUS_LABEL[s]}
                           </SelectItem>
@@ -134,21 +225,37 @@ export function PaymentsPanel() {
                     </Select>
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
-                  <td className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}>
+                  <td
+                    className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}
+                  >
                     ${lateFees.toLocaleString()}
                   </td>
-                  <td className="px-3 text-right tabular-nums text-[13px]">${Number(p.balance_due).toLocaleString()}</td>
+                  <td className="px-3 text-right tabular-nums text-[13px]">
+                    ${Number(p.balance_due).toLocaleString()}
+                  </td>
                   <td className="px-3 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-[#F4F4F6] text-[#9A9AA3]">
                         <MoreVertical className="w-4 h-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => update(p.id, { status: "paid", paid_date: new Date().toISOString().slice(0,10) })}>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            update(p.id, {
+                              status: "paid",
+                              paid_date: new Date().toISOString().slice(0, 10),
+                            })
+                          }
+                        >
                           <Check className="w-4 h-4 mr-2" /> Mark as paid
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>Waive</DropdownMenuItem>
-                        <DropdownMenuItem className="text-[#D03020] focus:text-[#D03020]" onClick={() => remove(p.id)}>
+                        <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
+                          Waive
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-[#D03020] focus:text-[#D03020]"
+                          onClick={() => remove(p.id)}
+                        >
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -157,61 +264,163 @@ export function PaymentsPanel() {
                 </tr>
               );
             })}
-            {filtered.length === 0 && <tr><td colSpan={10} className="p-4"><EmptyState title="No Payments Yet" hint="Payments appear here once a driver is charged or a rental invoice is created." /></td></tr>}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-4">
+                  <EmptyState
+                    title="No Payments Yet"
+                    hint="Payments appear here once a driver is charged or a rental invoice is created."
+                  />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {showAdd && <AddPayment drivers={drivers} vehicles={vehicles} onClose={() => setShowAdd(false)} onSave={add} />}
+      {showAdd && (
+        <AddPayment
+          drivers={drivers}
+          vehicles={vehicles}
+          onClose={() => setShowAdd(false)}
+          onSave={add}
+        />
+      )}
     </div>
   );
 }
 
-function AddPayment({ drivers, vehicles, onClose, onSave }: {
-  drivers: Application[]; vehicles: Vehicle[]; onClose: () => void; onSave: (p: Partial<Payment>) => void;
+function AddPayment({
+  drivers,
+  vehicles,
+  onClose,
+  onSave,
+}: {
+  drivers: Application[];
+  vehicles: Vehicle[];
+  onClose: () => void;
+  onSave: (p: Partial<Payment>) => void;
 }) {
-  const [form, setForm] = useState<Partial<Payment>>({ type: "rent", status: "current", amount: 0, due_date: new Date().toISOString().slice(0,10) });
+  const [form, setForm] = useState<Partial<Payment>>({
+    type: "rent",
+    status: "current",
+    amount: 0,
+    due_date: new Date().toISOString().slice(0, 10),
+  });
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl max-w-md w-full p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-lg font-semibold mb-4">Add payment</h2>
         <div className="space-y-3 text-sm">
-          <Select value={form.driver_id || "none"} onValueChange={(v) => {
-            const d = drivers.find(x => x.id === v);
-            setForm({ ...form, driver_id: v === "none" ? null : v, vehicle_id: d?.vehicle_id || form.vehicle_id, amount: form.amount || d?.weekly_rent || 0 });
-          }}>
-            <SelectTrigger className="bg-white text-foreground"><SelectValue placeholder="Driver" /></SelectTrigger>
+          <Select
+            value={form.driver_id || "none"}
+            onValueChange={(v) => {
+              const d = drivers.find((x) => x.id === v);
+              setForm({
+                ...form,
+                driver_id: v === "none" ? null : v,
+                vehicle_id: d?.vehicle_id || form.vehicle_id,
+                amount: form.amount || d?.weekly_rent || 0,
+              });
+            }}
+          >
+            <SelectTrigger className="bg-white text-foreground">
+              <SelectValue placeholder="Driver" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">— None —</SelectItem>
-              {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.full_name}</SelectItem>)}
+              {drivers.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.full_name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Select value={form.vehicle_id || "none"} onValueChange={(v) => setForm({ ...form, vehicle_id: v === "none" ? null : v })}>
-            <SelectTrigger className="bg-white text-foreground"><SelectValue placeholder="Vehicle" /></SelectTrigger>
+          <Select
+            value={form.vehicle_id || "none"}
+            onValueChange={(v) => setForm({ ...form, vehicle_id: v === "none" ? null : v })}
+          >
+            <SelectTrigger className="bg-white text-foreground">
+              <SelectValue placeholder="Vehicle" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">— None —</SelectItem>
-              {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.year} {v.make} {v.model}</SelectItem>)}
+              {vehicles.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.year} {v.make} {v.model}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <div className="grid grid-cols-2 gap-2">
             <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
-              <SelectTrigger className="bg-white text-foreground"><SelectValue /></SelectTrigger>
-              <SelectContent>{TYPES.map(t => <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="bg-white text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-              <SelectTrigger className="bg-white text-foreground"><SelectValue /></SelectTrigger>
-              <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="bg-white text-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs">Amount<input type="number" value={form.amount as any} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} className="w-full bg-soft rounded-md px-3 py-2 mt-1" /></label>
-            <label className="text-xs">Due date<input type="date" value={form.due_date || ""} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2 mt-1" /></label>
+            <label className="text-xs">
+              Amount
+              <input
+                type="number"
+                value={form.amount as any}
+                onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
+                className="w-full bg-soft rounded-md px-3 py-2 mt-1"
+              />
+            </label>
+            <label className="text-xs">
+              Due date
+              <input
+                type="date"
+                value={form.due_date || ""}
+                onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+                className="w-full bg-soft rounded-md px-3 py-2 mt-1"
+              />
+            </label>
           </div>
-          <input placeholder="Payment method (e.g. Card, ACH)" value={form.payment_method || ""} onChange={(e) => setForm({ ...form, payment_method: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
+          <input
+            placeholder="Payment method (e.g. Card, ACH)"
+            value={form.payment_method || ""}
+            onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
+            className="w-full bg-soft rounded-md px-3 py-2"
+          />
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm">Cancel</button>
-          <button onClick={() => onSave(form)} className="rounded-md bg-real-red text-white px-4 py-2 text-sm">Add</button>
+          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm">
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(form)}
+            className="rounded-md bg-real-red text-white px-4 py-2 text-sm"
+          >
+            Add
+          </button>
         </div>
       </div>
     </div>

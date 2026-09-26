@@ -58,11 +58,14 @@ function PartnerAssignSelect({
   );
 }
 
-export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
+export function VehiclesPanel({
+  externalSearch = "",
+  autoOpenAdd = false,
+}: { externalSearch?: string; autoOpenAdd?: boolean } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const [viewing, setViewing] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(autoOpenAdd);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [bodyFilter, setBodyFilter] = useState<string>("all");

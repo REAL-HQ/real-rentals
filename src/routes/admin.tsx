@@ -233,6 +233,11 @@ function Admin() {
   // one of those links look broken.
   const search = useRouterSearch({ strict: false }) as Record<string, unknown>;
   const urlTab = typeof search?.tab === "string" ? search.tab : null;
+  // Deep-link parameters the Overview cards and applicant rows send along, so
+  // a click lands on the thing it named rather than on the tab that holds it.
+  const urlDriverId = typeof search?.id === "string" ? search.id : null;
+  const urlFilter = typeof search?.filter === "string" ? search.filter : null;
+  const urlAdd = search?.add === "1" || search?.add === true;
   const initialTab: Tab =
     urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -626,10 +631,17 @@ function Admin() {
                 </div>
               )}
               {tab === "overview" && <OverviewPanel />}
-              {tab === "drivers" && <DriversPanel externalSearch={globalSearch} />}
-              {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} />}
+              {tab === "drivers" && (
+                <DriversPanel
+                  externalSearch={globalSearch}
+                  initialOpenId={urlDriverId ?? undefined}
+                />
+              )}
+              {tab === "vehicles" && (
+                <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} />
+              )}
               {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
-              {tab === "payments" && <PaymentsPanel />}
+              {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} />}
               {tab === "maintenance" && <MaintenancePanel />}
               {tab === "shops" && <ShopsPanel />}
               {tab === "vendors" && <VendorsPanel />}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   Application,
@@ -93,6 +93,7 @@ import {
   type Readiness,
 } from "./ui";
 import { InterviewDrawer } from "./InterviewDrawer";
+import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -217,7 +218,10 @@ function useNow(intervalMs = 30000) {
   return now;
 }
 
-export function DriversPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
+export function DriversPanel({
+  externalSearch = "",
+  initialOpenId,
+}: { externalSearch?: string; initialOpenId?: string } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [open, setOpen] = useState<Application | null>(null);
@@ -227,7 +231,49 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const runMerge = useServerFn(mergeDuplicateApplications);
+  const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
+
+  /**
+   * Open an applicant and record that somebody looked.
+   *
+   * The dashboard's "New" count means unacknowledged, so it only falls when
+   * this runs. Fire-and-forget: the record opens whether or not the stamp
+   * lands, because failing to write a timestamp is no reason to refuse
+   * somebody the page they asked for.
+   */
+  const openDriver = useCallback(
+    (a: Application) => {
+      setOpen(a);
+      if (!(a as any).reviewed_at) {
+        void acknowledge({ data: { id: a.id } })
+          .then(() =>
+            setDrivers((rows) =>
+              rows.map((r) =>
+                r.id === a.id
+                  ? ({ ...r, reviewed_at: new Date().toISOString() } as Application)
+                  : r,
+              ),
+            ),
+          )
+          .catch(() => {});
+      }
+    },
+    [acknowledge],
+  );
+
+  // A dashboard link names an applicant: ?tab=drivers&id=<uuid>. Before this
+  // the id was in the URL and nothing read it, so those links landed on the
+  // list and left the operator to find the person by hand.
+  const openedFromUrl = useRef(false);
+  useEffect(() => {
+    if (openedFromUrl.current || !initialOpenId || !drivers.length) return;
+    const match = drivers.find((d) => d.id === initialOpenId);
+    if (match) {
+      openedFromUrl.current = true;
+      openDriver(match);
+    }
+  }, [initialOpenId, drivers, openDriver]);
 
   useEffect(() => {
     supabase
@@ -448,7 +494,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
                 const rows = [
                   <tr
                     key={a.id}
-                    onClick={() => setOpen(a)}
+                    onClick={() => openDriver(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
@@ -557,7 +603,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
                           <MoreVertical className="w-4 h-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setOpen(a)}>Open</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openDriver(a)}>Open</DropdownMenuItem>
                           {a.phone && (
                             <DropdownMenuItem
                               onClick={() => (window.location.href = `tel:${a.phone}`)}
@@ -593,7 +639,7 @@ export function DriversPanel({ externalSearch = "" }: { externalSearch?: string 
                     rows.push(
                       <tr
                         key={h.id}
-                        onClick={() => setOpen(h)}
+                        onClick={() => openDriver(h)}
                         className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60"
                       >
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>

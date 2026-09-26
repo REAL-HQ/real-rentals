@@ -675,3 +675,39 @@ export const approveApplication = createServerFn({ method: "POST" })
       }
     },
   );
+
+// ---------------------------------------------------------- acknowledgement
+
+/**
+ * Record that a staff member has opened an application.
+ *
+ * The dashboard's "New" count means *unacknowledged*, not "status is still
+ * new" — status only moves when somebody changes it by hand, so counting it
+ * alone would keep showing work that has already been looked at.
+ *
+ * Stamped once and never overwritten: the useful fact is when it was first
+ * seen, not most recently. Idempotent, so opening the same record twice is
+ * free, and deliberately quiet — failing to record a read must never stop
+ * somebody reading.
+ */
+export const acknowledgeApplication = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ ok: boolean }> => {
+    try {
+      const { requireStaff } = await import("@/lib/roles.server");
+      const actor = await requireStaff(context.userId);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      await supabaseAdmin
+        .from("applications")
+        .update({ reviewed_at: new Date().toISOString(), reviewed_by: actor.userId } as any)
+        .eq("id", data.id)
+        .is("reviewed_at", null);
+
+      return { ok: true };
+    } catch {
+      // Not worth an error toast on top of the record the person came to read.
+      return { ok: false };
+    }
+  });

@@ -255,6 +255,8 @@ export type Database = {
           return_date: string | null
           return_time: string | null
           rideshare_history_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           score: number
           scored_at: string | null
           sms_consent: boolean | null
@@ -357,6 +359,8 @@ export type Database = {
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
@@ -459,6 +463,8 @@ export type Database = {
           return_date?: string | null
           return_time?: string | null
           rideshare_history_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
