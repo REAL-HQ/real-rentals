@@ -58,8 +58,12 @@ export type ReadinessState =
   | "too_early";
 
 export type ReadinessResult = {
-  /** 0–100, of what is known. Unknowns excluded from the denominator. */
-  qualification: number;
+  /**
+   * 0–100, of what is known. Unknowns are excluded from the denominator.
+   * Null when nothing at all is known — 0/0 is not zero, and a rendered "0"
+   * would read as a bad applicant rather than an empty one.
+   */
+  qualification: number | null;
   /** 0–100, share of total factor weight that is known. */
   coverage: number;
   /** 0–100, share of total factor weight known from a document or staff. */
@@ -506,7 +510,7 @@ export function computeReadiness(
 
   // Of what we know. An applicant with nothing known has no qualification —
   // not a zero, which would read as "bad".
-  const qualification = knownWeight > 0 ? (earned / knownWeight) * 100 : 0;
+  const qualification = knownWeight > 0 ? (earned / knownWeight) * 100 : null;
   const coverage = (knownWeight / TOTAL_WEIGHT) * 100;
   const verifiedCoverage = (verifiedWeight / TOTAL_WEIGHT) * 100;
 
@@ -514,14 +518,14 @@ export function computeReadiness(
   // thin-but-positive application lands mid-scale rather than at the top:
   //   composite = qualification x coverage + 50 x (1 - coverage)
   const c = knownWeight / TOTAL_WEIGHT;
-  const composite = (qualification / 100) * c * 100 + NEUTRAL_PRIOR * (1 - c) * 100;
+  const composite = ((qualification ?? 0) / 100) * c * 100 + NEUTRAL_PRIOR * (1 - c) * 100;
 
   const disqualifiers = findDisqualifiers(app, s);
   const byWeight = (x: FactorResult, y: FactorResult) => y.weight - x.weight || y.earned - x.earned;
   const attentionList = factors.filter((f) => f.state === "attention").sort(byWeight);
 
   return {
-    qualification: Math.round(qualification),
+    qualification: qualification === null ? null : Math.round(qualification),
     coverage: Math.round(coverage),
     verifiedCoverage: Math.round(verifiedCoverage),
     composite: Math.round(composite),
@@ -542,13 +546,15 @@ export function computeReadiness(
  * to back it. This is the guard against a thin application looking finished.
  */
 function classify(
-  qualification: number,
+  qualification: number | null,
   coverage: number,
   attentionCount: number,
   dqCount: number,
 ): { state: ReadinessState; stateLabel: string } {
   if (dqCount > 0) return { state: "needs_attention", stateLabel: "Needs Attention" };
-  if (coverage < 20) return { state: "too_early", stateLabel: "Too Early To Tell" };
+  if (qualification === null || coverage < 20) {
+    return { state: "too_early", stateLabel: "Too Early To Tell" };
+  }
   if (qualification < 50) return { state: "needs_attention", stateLabel: "Needs Attention" };
   if (coverage < MIN_COVERAGE_FOR_CONFIDENCE) {
     return qualification >= 75
