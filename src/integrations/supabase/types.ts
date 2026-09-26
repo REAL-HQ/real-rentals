@@ -919,6 +919,10 @@ export type Database = {
           storage_bucket: string
           storage_path: string
           superseded_by: string | null
+          review_status: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           updated_at: string
           uploaded_by: string | null
           uploaded_by_role: string | null
@@ -942,6 +946,10 @@ export type Database = {
           storage_bucket: string
           storage_path: string
           superseded_by?: string | null
+          review_status?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           updated_at?: string
           uploaded_by?: string | null
           uploaded_by_role?: string | null
@@ -965,6 +973,10 @@ export type Database = {
           storage_bucket?: string
           storage_path?: string
           superseded_by?: string | null
+          review_status?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           updated_at?: string
           uploaded_by?: string | null
           uploaded_by_role?: string | null

@@ -216,6 +216,44 @@ ok(isHotProspect(highQualMidCov) === false || highQualMidCov.state !== "decision
    "hot and Decision Ready are independent properties");
 eq(typeof isHotProspect(perfect), "boolean", "Hot Prospect is a boolean, never a score");
 
+console.log("\nBOTH DOCUMENT VOCABULARIES COUNT");
+const vaultNames = computeReadiness({}, {}, [
+  { category: "insurance", is_current: true },
+  { category: "gig_profile", is_current: true },
+]);
+const legacyNames = computeReadiness({}, {}, [
+  { doc_type: "insurance_card" },
+  { doc_type: "driver_profile_screenshot" },
+]);
+eq(f(vaultNames, "insurance_doc").state, "positive", "the vault's 'insurance' counts");
+eq(f(legacyNames, "insurance_doc").state, "positive", "so does lead_documents' 'insurance_card'");
+eq(vaultNames.coverage, legacyNames.coverage, "the two vocabularies give identical coverage");
+
+console.log("\nA STAFF-CHECKED DOCUMENT IS BETTER EVIDENCE, NOT MORE POINTS");
+const justUploaded = computeReadiness({}, {}, [{ category: "license_front", is_current: true }]);
+const staffChecked = computeReadiness({}, {}, [
+  { category: "license_front", is_current: true, review_status: "verified" },
+]);
+eq(f(justUploaded, "license_doc").evidence, "document", "an upload is document evidence");
+eq(f(staffChecked, "license_doc").evidence, "staff_verified", "a checked upload is staff-verified");
+eq(f(justUploaded, "license_doc").earned, f(staffChecked, "license_doc").earned,
+   "  and it earns exactly the same points either way");
+eq(justUploaded.coverage, staffChecked.coverage, "  and the same known coverage");
+eq(staffChecked.verifiedCoverage, justUploaded.verifiedCoverage,
+   "  document and staff-verified both count as verified coverage");
+
+console.log("\nA REJECTED DOCUMENT IS NOT EVIDENCE");
+const rejected = computeReadiness({}, {}, [
+  { category: "license_front", is_current: true, review_status: "rejected" },
+]);
+eq(f(rejected, "license_doc").state, "unknown", "a rejected licence reads as no licence on file");
+eq(f(rejected, "license_doc").earned, 0, "  and earns nothing");
+eq(rejected.disqualifiers.length, 0, "  but is not a concern either — it is a gap");
+const superseded = computeReadiness({}, {}, [
+  { category: "license_front", is_current: false },
+]);
+eq(f(superseded, "license_doc").state, "unknown", "a replaced version does not count");
+
 console.log("\nDOCUMENTS RAISE COVERAGE AND VERIFICATION, NOT QUALIFICATION");
 const noDocs = computeReadiness({ license_valid: true }, {}, []);
 const withDoc = computeReadiness({ license_valid: true }, {}, [{ doc_type: "license_front" }]);

@@ -414,13 +414,23 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Mirror any files the applicant uploaded into the document vault so they
     // show up in the portal (where the renter can replace them) and in the
     // admin vault, instead of living only as a URL column on this row.
+    //
+    // AWAITED, deliberately. This was fire-and-forget, and on a serverless
+    // runtime the worker tears down as soon as the response is returned — any
+    // promise still in flight dies with it. Production showed the damage
+    // precisely: one applicant uploaded four files and exactly one was
+    // registered, the first entry in the loop, because the teardown landed
+    // before the second round trip finished. Registering three documents is
+    // worth the few hundred milliseconds it adds to a wizard step.
+    //
+    // Still non-fatal: a vault that failed to record a file must not fail the
+    // applicant's step. The backfill in adminListDriverDocuments catches
+    // anything missed here.
     try {
       const { syncApplicationUploads } = await import("@/lib/documents.functions");
-      void syncApplicationUploads(supabaseAdmin, row).catch((e) =>
-        console.error("[documents] application sync failed", e),
-      );
+      await syncApplicationUploads(supabaseAdmin, row);
     } catch (e) {
-      console.error("[documents] application sync setup failed", e);
+      console.error("[documents] application sync failed", e);
     }
 
     // Wizard-complete alert email. Fire-and-forget.
@@ -491,7 +501,16 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // progress state, the driver's first name for greeting, and the
       // non-sensitive form values the driver themselves entered.
       .select(
-        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, how_heard",
+        // Everything the wizard can edit, so returning to a saved application
+        // shows what was already entered. Six of these were missing, which is
+        // why a returning applicant found their insurance and address boxes
+        // blank and had to type them again.
+        //
+        // Still deliberately absent: email, phone, full street address and zip
+        // are PII, and status/notes/score are ours. The id travels in a
+        // shareable /thank-you?id= link, so this endpoint is effectively
+        // public and must not hand back anything that link should not carry.
+        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, insurance_carrier, insurance_policy_number, insurance_expires_on, insurance_rideshare_endorsement, how_heard",
       )
       .eq("id", data.id)
       .maybeSingle();

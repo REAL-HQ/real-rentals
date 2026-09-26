@@ -15,7 +15,6 @@ import { DepositDialog } from "./DepositDialog";
 import { endRental } from "@/lib/rentals.functions";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
-  DocumentsCard,
   InsuranceVerificationCard,
   InterviewTab,
   ScreeningPipeline,
@@ -66,7 +65,6 @@ import {
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
-import { DocumentVault } from "./DocumentVault";
 import {
   chargeCardOnRental,
   startRentalAutopay,
@@ -89,8 +87,21 @@ import {
   EmptyState,
   type LifecycleStage,
 } from "./ui";
-import { computeReadiness, nextActions, type ReadinessResult, type Remedy } from "@/lib/readiness";
+import {
+  computeReadiness,
+  nextActions,
+  type ReadinessDocument,
+  type ReadinessResult,
+  type Remedy,
+} from "@/lib/readiness";
+
+/** Vault category -> the required-document name the list counts. */
+const VAULT_TO_REQUIRED: Record<string, string> = {
+  insurance: "insurance_card",
+  gig_profile: "driver_profile_screenshot",
+};
 import { buildReadinessIndex } from "@/lib/readiness-index";
+import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
@@ -192,7 +203,7 @@ export function DriversPanel({
   const [merging, setMerging] = useState(false);
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
-  const [docRows, setDocRows] = useState<{ lead_id: string; doc_type: string }[]>([]);
+  const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -259,24 +270,51 @@ export function DriversPanel({
         });
         setScreenings(map);
       });
-    supabase
-      .from("lead_documents")
-      .select("lead_id,doc_type")
-      .then(({ data }) => {
-        const rows = (data ?? []) as { lead_id: string; doc_type: string }[];
-        const counts: Record<string, number> = {};
-        const seen: Record<string, Set<string>> = {};
-        rows.forEach((d) => {
-          if (!REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)) return;
-          const set = seen[d.lead_id] ?? (seen[d.lead_id] = new Set());
-          set.add(d.doc_type);
-          counts[d.lead_id] = set.size;
-        });
-        setDocCounts(counts);
-        // Kept as rows as well: readiness needs to know which documents exist,
-        // not how many.
-        setDocRows(rows);
-      });
+    // Two document sources, fetched in bulk and merged once.
+    //
+    // `lead_documents` holds what staff uploaded in the back office;
+    // `documents` is the vault, which is where an applicant's own uploads
+    // land. Counting only the first is why a driver who sent everything
+    // through the application read as 0/4 in this list.
+    void (async () => {
+      const [legacy, vault] = await Promise.all([
+        supabase.from("lead_documents").select("lead_id,doc_type"),
+        supabase
+          .from("documents")
+          .select("driver_id,category,review_status,is_current")
+          .not("driver_id", "is", null),
+      ]);
+      const rows: ReadinessDocument[] = [
+        ...(((legacy.data ?? []) as { lead_id: string; doc_type: string }[]).map((d) => ({
+          lead_id: d.lead_id,
+          doc_type: d.doc_type,
+        })) as ReadinessDocument[]),
+        ...((
+          (vault.data ?? []) as {
+            driver_id: string;
+            category: string;
+            review_status: string | null;
+            is_current: boolean | null;
+          }[]
+        ).map((d) => ({
+          lead_id: d.driver_id,
+          category: d.category,
+          review_status: d.review_status,
+          is_current: d.is_current,
+        })) as ReadinessDocument[]),
+      ];
+      const seen: Record<string, Set<string>> = {};
+      for (const r of rows) {
+        const id = (r as { lead_id?: string }).lead_id;
+        if (!id || r.is_current === false || r.review_status === "rejected") continue;
+        const name = (r.category ?? r.doc_type ?? "").trim();
+        const canonical = VAULT_TO_REQUIRED[name] ?? name;
+        if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) continue;
+        (seen[id] ?? (seen[id] = new Set())).add(canonical);
+      }
+      setDocCounts(Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.size])));
+      setDocRows(rows);
+    })();
   }, []);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
@@ -712,14 +750,19 @@ function DriverDetail({
   }
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  // Required documents on file, reported by the Documents tab so the screening
+  // pipeline gates on the same vault the operator is looking at.
+  const [vaultDocCount, setVaultDocCount] = useState(0);
 
   // ---- Derive lifecycle stages from driver + screening ------------------
   const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
   const dStatus = String(driver.status ?? "").toLowerCase();
   const contacted = !!driver.contacted_at || scrStatus !== "new_lead";
   const screeningDone = !!screening?.interview_completed_at;
-  const docsComplete =
-    docs.filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType)).length >= 4;
+  // From the vault, not from lead_documents. lead_documents only ever held
+  // files a staff member uploaded in the back office, so an applicant who sent
+  // everything through the application still read as having sent nothing.
+  const docsComplete = vaultDocCount >= REQUIRED_VAULT_CATEGORIES.length;
   const insuranceOk = !!(screening as any)?.insurance_verified;
   const approved = dStatus === "approved" || dStatus === "active";
   const pickedUp = !!(driver as any).pickup_at || dStatus === "active";
@@ -1251,47 +1294,32 @@ function DriverDetail({
               <TabsContent value="documents" className="mt-4 space-y-4">
                 <AgreementsCard applicationId={driver.id} />
                 <SectionCard
-                  title="Document vault"
-                  subtitle="Shared with the driver unless marked team only"
+                  title="Documents"
+                  subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
                   padded={false}
                 >
                   <div className="p-5">
-                    <DocumentVault mode="admin" applicationId={driver.id} />
+                    {/* One view over the document vault. It used to be three
+                        stacked surfaces — the vault as a text list, a card
+                        backed by a different table, and two one-off cards
+                        reading the raw application columns — so the same
+                        licence could appear three times with different
+                        controls and the insurance document appeared nowhere. */}
+                    <ApplicantDocuments
+                      applicationId={driver.id}
+                      onRequiredCountChange={setVaultDocCount}
+                    />
                   </div>
                 </SectionCard>
-                <DocumentsCard
-                  leadId={driver.id}
-                  docs={docs}
-                  onChange={(next) => {
-                    setDocs(next);
-                    onDocsChange?.(next);
-                  }}
-                />
-                {(driver as any).trip_screenshots?.length || driver.profile_screenshot_url ? (
-                  <Card title="Trip / delivery screenshots" icon={<FileText className="w-4 h-4" />}>
-                    <TripScreenshots
-                      paths={Array.from(
-                        new Set(
-                          [
-                            ...(((driver as any).trip_screenshots as string[] | null) ?? []),
-                            ...(driver.profile_screenshot_url
-                              ? [driver.profile_screenshot_url]
-                              : []),
-                          ].filter(Boolean),
-                        ),
-                      )}
-                    />
-                  </Card>
-                ) : null}
-                {driver.license_photo_url ? (
-                  <Card title="License photo" icon={<FileText className="w-4 h-4" />}>
-                    <LicensePhoto path={driver.license_photo_url} />
-                  </Card>
-                ) : null}
               </TabsContent>
 
               <TabsContent value="screening" className="mt-4 space-y-4">
-                <ScreeningPipeline screening={screening} docs={docs} onAdvance={advanceStatus} />
+                <ScreeningPipeline
+                  screening={screening}
+                  docs={docs}
+                  docCount={vaultDocCount}
+                  onAdvance={advanceStatus}
+                />
                 <InsuranceVerificationCard
                   leadId={driver.id}
                   screening={screening}
@@ -1809,74 +1837,6 @@ function NumField({
     </div>
   );
 }
-function LicensePhoto({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    supabase.storage
-      .from("license-uploads")
-      .createSignedUrl(path, 3600)
-      .then(({ data }) => {
-        if (active && data?.signedUrl) setUrl(data.signedUrl);
-      });
-    return () => {
-      active = false;
-    };
-  }, [path]);
-  if (!url) return <div className="aspect-video bg-soft rounded-md" />;
-  return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <img src={url} alt="License" className="rounded-md max-h-64 border border-border" />
-    </a>
-  );
-}
-
-function TripScreenshots({ paths }: { paths: string[] }) {
-  const [urls, setUrls] = useState<Record<string, string>>({});
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const map: Record<string, string> = {};
-      for (const p of paths) {
-        const { data } = await supabase.storage
-          .from("profile-screenshots")
-          .createSignedUrl(p, 3600);
-        if (data?.signedUrl) map[p] = data.signedUrl;
-      }
-      if (active) setUrls(map);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [paths.join("|")]);
-  if (!paths.length) return null;
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {paths.map((p) => {
-        const url = urls[p];
-        const isPdf = p.toLowerCase().endsWith(".pdf");
-        return (
-          <a
-            key={p}
-            href={url ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className="block rounded-md border border-border overflow-hidden bg-soft hover:border-foreground/40"
-          >
-            {url && !isPdf ? (
-              <img src={url} alt="Trip screenshot" className="w-full h-32 object-cover" />
-            ) : (
-              <div className="w-full h-32 flex items-center justify-center text-xs text-muted-foreground">
-                {url ? "Open PDF" : "Loading…"}
-              </div>
-            )}
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
 function VehiclePicker({
   vehicles,
   value,

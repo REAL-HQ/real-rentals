@@ -128,20 +128,26 @@ function statusIndex(s: ScreeningStatus | null | undefined): number {
 export function ScreeningPipeline({
   screening,
   docs,
+  docCount,
   onAdvance,
 }: {
   screening: DriverScreening | null;
   docs: LeadDocument[];
+  /**
+   * How many of the four required document types are on file, counted from
+   * the document vault rather than from `lead_documents`.
+   *
+   * The gate used to count `lead_documents`, which only ever held files a
+   * staff member uploaded here — an applicant's own licence, sent through the
+   * application, was invisible to it. So a driver could have supplied
+   * everything and still be blocked at Docs Pending.
+   */
+  docCount: number;
   onAdvance: (next: ScreeningStatus) => Promise<void>;
 }) {
   const current = (screening?.status ?? "new_lead") as ScreeningStatus;
   const isDq = screening?.disqualified === true || current === "disqualified";
   const activeIdx = statusIndex(current);
-  const docCount = new Set(
-    docs
-      .filter((d) => REQUIRED_DOC_TYPES.includes(d.doc_type as RequiredDocType))
-      .map((d) => d.doc_type),
-  ).size;
   const hasRecording = docs.some((d) => d.doc_type === "verification_recording");
 
   function attempt(target: ScreeningStatus) {
