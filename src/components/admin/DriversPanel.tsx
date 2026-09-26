@@ -4,7 +4,11 @@ import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { mergeDuplicateApplications, approveApplication } from "@/lib/applications.functions";
+import {
+  mergeDuplicateApplications,
+  approveApplication,
+  reissueApplicantLink,
+} from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { DepositDialog } from "./DepositDialog";
 import { endRental } from "@/lib/rentals.functions";
@@ -58,6 +62,7 @@ import {
   AlertTriangle,
   Wallet,
   CalendarDays,
+  Link2 as LinkIcon,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
@@ -975,6 +980,7 @@ function DriverDetail({
                   <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
                 </DropdownMenuItem>
                 <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                <ReissueLinkAction applicationId={driver.id} />
                 <CardOnFileActions driver={driver} onUpdate={onUpdate} />
                 <DropdownMenuItem
                   className="text-[#D03020] focus:text-[#D03020]"
@@ -1099,7 +1105,8 @@ function DriverDetail({
                     // Staff answer first, then the applicant's own, so the row
                     // is not blank just because nobody has run an interview.
                     ((screening as any)?.drive_type as string | undefined)?.replace("_", " ") ??
-                    (((driver as any).drive_type as string | null)?.replace("_", " ") ?? "—")
+                    ((driver as any).drive_type as string | null)?.replace("_", " ") ??
+                    "—"
                   }
                 />
                 <Row2
@@ -1504,8 +1511,8 @@ function DriverDetail({
                     {(driver as any).expected_duration
                       ? ` and expect to need the vehicle for ${DURATION_LABEL[(driver as any).expected_duration as string] ?? (driver as any).expected_duration}`
                       : ""}
-                    . Agree the real dates with them before sending an agreement — it will not
-                    send without both.
+                    . Agree the real dates with them before sending an agreement — it will not send
+                    without both.
                   </p>
                 </Card>
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
@@ -2055,6 +2062,42 @@ function FilterSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Kill every live application link and hand back a fresh one.
+ *
+ * Resume tokens are stored hashed, so nobody — us included — can recover a
+ * link once it has gone out. That makes "they lost the email" and "that link
+ * ended up somewhere it shouldn't" the same operation: revoke, mint, send.
+ */
+function ReissueLinkAction({ applicationId }: { applicationId: string }) {
+  const reissue = useServerFn(reissueApplicantLink);
+  const [busy, setBusy] = useState(false);
+  return (
+    <DropdownMenuItem
+      onSelect={async (e) => {
+        e.preventDefault();
+        if (busy) return;
+        setBusy(true);
+        try {
+          const res = await reissue({ data: { id: applicationId } });
+          await navigator.clipboard.writeText(res.url).catch(() => {});
+          toast.success(
+            res.revoked
+              ? `New link copied. ${res.revoked} older ${res.revoked === 1 ? "link" : "links"} revoked.`
+              : "New link copied.",
+          );
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Could not reissue the link");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy a fresh application link"}
+    </DropdownMenuItem>
   );
 }
 
