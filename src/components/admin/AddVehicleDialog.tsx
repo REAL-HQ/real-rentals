@@ -9,6 +9,8 @@ import {
   OWNERSHIP_TYPES, BODY_TYPES, VEHICLE_STATUSES,
 } from "@/lib/vehicles.functions";
 import { checkVin } from "@/lib/vin";
+import { TitleScanStep } from "./TitleScanStep";
+import { ImportVehiclesStep } from "./ImportVehiclesStep";
 
 // Adding a vehicle.
 //
@@ -17,10 +19,10 @@ import { checkVin } from "@/lib/vin";
 // vehicle should exist the moment it physically exists; pricing, insurance and
 // paperwork follow.
 //
-// Four ways in. Two are built; the other two are Phase 2/3 and say so rather
-// than presenting a button that does nothing.
+// Four ways in, all four built: type it, decode a VIN, photograph the title,
+// or bring a spreadsheet.
 
-type Mode = "choose" | "manual" | "vin";
+type Mode = "choose" | "manual" | "vin" | "scan" | "import";
 
 const DECODED_LABELS: Record<string, string> = {
   year: "Year", make: "Make", model: "Model", trim: "Trim",
@@ -38,6 +40,13 @@ export function AddVehicleDialog({
   onCreated: (id: string) => void;
 }) {
   const [mode, setMode] = useState<Mode>("choose");
+  // Fields read off a scanned title, carried into the form for confirmation.
+  const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
+
+  function back() {
+    setMode("choose");
+    setPrefill(null);
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
@@ -45,12 +54,17 @@ export function AddVehicleDialog({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             {mode !== "choose" && (
-              <button onClick={() => setMode("choose")} aria-label="Back" className="text-muted-foreground hover:text-foreground">
+              <button onClick={back} aria-label="Back" className="text-muted-foreground hover:text-foreground">
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <h3 className="font-semibold">
-              {mode === "choose" ? "Add a vehicle" : mode === "vin" ? "Start from a VIN" : "Vehicle details"}
+              {mode === "choose" ? "Add a vehicle"
+                : mode === "vin" ? "Start from a VIN"
+                : mode === "scan" ? "Scan the title"
+                : mode === "import" ? "Import a spreadsheet"
+                : prefill ? "Confirm the details"
+                : "Vehicle details"}
             </h3>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
@@ -60,8 +74,22 @@ export function AddVehicleDialog({
 
         {mode === "choose" ? (
           <Chooser onPick={setMode} />
+        ) : mode === "scan" ? (
+          <TitleScanStep
+            onUse={(values) => {
+              setPrefill(values);
+              setMode("manual");
+            }}
+          />
+        ) : mode === "import" ? (
+          <ImportVehiclesStep onDone={onClose} />
         ) : (
-          <ManualForm startFromVin={mode === "vin"} onCreated={onCreated} onClose={onClose} />
+          <ManualForm
+            startFromVin={mode === "vin"}
+            prefill={prefill}
+            onCreated={onCreated}
+            onClose={onClose}
+          />
         )}
       </div>
     </div>
@@ -86,14 +114,14 @@ function Chooser({ onPick }: { onPick: (m: Mode) => void }) {
       <Option
         icon={FileText}
         title="Scan the title"
-        hint="Photograph the title and have the details read off it for review."
-        soon="Next phase"
+        hint="Photograph the title or registration and check the details that come off it."
+        onClick={() => onPick("scan")}
       />
       <Option
         icon={Upload}
         title="Import a spreadsheet"
-        hint="Bring in a whole fleet from CSV or XLSX with column mapping and duplicate checks."
-        soon="Next phase"
+        hint="Bring in a whole fleet from CSV, with column mapping and duplicate checks before anything is created."
+        onClick={() => onPick("import")}
       />
     </div>
   );
@@ -143,15 +171,26 @@ const EMPTY: Form = {
 };
 
 function ManualForm({
-  startFromVin, onCreated, onClose,
+  startFromVin, prefill, onCreated, onClose,
 }: {
-  startFromVin: boolean; onCreated: (id: string) => void; onClose: () => void;
+  startFromVin: boolean;
+  /** Read off a scanned document. Pre-filled for confirmation, never saved as-is. */
+  prefill?: Record<string, string> | null;
+  onCreated: (id: string) => void;
+  onClose: () => void;
 }) {
   const suggest = useServerFn(suggestUnitNumber);
   const decode = useServerFn(decodeVin);
   const create = useServerFn(createVehicle);
 
-  const [f, setF] = useState<Form>(EMPTY);
+  const [f, setF] = useState<Form>(() => {
+    if (!prefill) return EMPTY;
+    const next = { ...EMPTY };
+    for (const [k, v] of Object.entries(prefill)) {
+      if (k in next) (next as any)[k] = v;
+    }
+    return next;
+  });
   const [decoded, setDecoded] = useState<Record<string, string> | null>(null);
   const [decodeNote, setDecodeNote] = useState<string | null>(null);
   const [decoding, setDecoding] = useState(false);
@@ -253,6 +292,16 @@ function ManualForm({
 
   return (
     <form onSubmit={submit} className="p-6 space-y-5">
+      {prefill && (
+        <div className="rounded-lg bg-[rgba(240,192,64,0.08)] px-3.5 py-2.5 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-[#C68A12] shrink-0 mt-0.5" />
+          <p className="text-[12px] text-[#8A6410] leading-relaxed">
+            These came off the document you photographed. Read them against the paper in front of you
+            before saving — a transcription is not a verification.
+          </p>
+        </div>
+      )}
+
       {/* VIN first when that is how they started */}
       <section className={startFromVin ? "" : "order-last"}>
         <Legend>Identity</Legend>

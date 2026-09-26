@@ -2909,6 +2909,8 @@ export type Database = {
           file_name: string | null
           id: string
           is_primary: boolean
+          provenance: string
+          published: boolean
           kind: string
           mime_type: string | null
           size_bytes: number | null
@@ -2927,6 +2929,8 @@ export type Database = {
           file_name?: string | null
           id?: string
           is_primary?: boolean
+          provenance?: string
+          published?: boolean
           kind: string
           mime_type?: string | null
           size_bytes?: number | null
@@ -2945,6 +2949,8 @@ export type Database = {
           file_name?: string | null
           id?: string
           is_primary?: boolean
+          provenance?: string
+          published?: boolean
           kind?: string
           mime_type?: string | null
           size_bytes?: number | null

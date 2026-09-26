@@ -8,6 +8,7 @@ import {
   Share2,
   Car,
   FileText,
+  Images,
   ShieldCheck,
   ScrollText,
   Satellite,
@@ -34,6 +35,7 @@ import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./Vehic
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
 import { VehicleDocuments } from "./VehicleDocuments";
+import { VehiclePhotos } from "./VehiclePhotos";
 
 // The vehicle as a record you read.
 //
@@ -47,10 +49,11 @@ import { VehicleDocuments } from "./VehicleDocuments";
 // everybody is slightly afraid of. You should be able to open this to check a
 // plate expiry without feeling like you are inside a database.
 
-type Tab = "overview" | "documents" | "insurance" | "dmv" | "gps" | "keys";
+type Tab = "overview" | "photos" | "documents" | "insurance" | "dmv" | "gps" | "keys";
 
 const TABS: Array<{ key: Tab; label: string; icon: any }> = [
   { key: "overview", label: "Overview", icon: Car },
+  { key: "photos", label: "Photos", icon: Images },
   { key: "documents", label: "Documents", icon: FileText },
   { key: "insurance", label: "Insurance", icon: ShieldCheck },
   { key: "dmv", label: "DMV", icon: ScrollText },
@@ -281,6 +284,7 @@ export function VehicleProfile({
           ) : (
             <>
               {tab === "overview" && <Overview p={p} onEdit={setEditing} />}
+              {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
               {tab === "documents" && (
                 <SectionCard
                   title="Paperwork"

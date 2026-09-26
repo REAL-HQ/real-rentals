@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { generateVehicleImage } from "@/lib/admin-ai.functions";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { OWNERSHIP_TYPES } from "@/lib/vehicles.functions";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
 import type { Vehicle } from "./types";
 import { toast } from "sonner";
 import { VehicleDocuments } from "./VehicleDocuments";
-import { Sparkles, Upload, X, Loader2, Lock } from "lucide-react";
+import { X, Loader2, Lock } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -39,7 +37,6 @@ type FormState = {
   maintenance_status: string;
   badges: string[];
   uber_eligibility: string[];
-  photos: string[];
   current_odometer: number | null;
   last_oil_change_miles: number | null;
   oil_interval_miles: number | null;
@@ -118,7 +115,6 @@ function init(v: Vehicle | null): FormState {
     maintenance_status: v?.maintenance_status ?? "Well Maintained",
     badges: v?.badges ?? [],
     uber_eligibility: v?.uber_eligibility ?? [],
-    photos: v?.photos ?? [],
     current_odometer: (v as any)?.current_odometer ?? null,
     last_oil_change_miles: (v as any)?.last_oil_change_miles ?? null,
     oil_interval_miles: (v as any)?.oil_interval_miles ?? 5000,
@@ -156,9 +152,6 @@ export function VehicleEditor({
 }) {
   const [f, setF] = useState<FormState>(() => init(vehicle));
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const genImage = useServerFn(generateVehicleImage);
   const loadFinance = useServerFn(getVehicleFinance);
   const storeFinance = useServerFn(saveVehicleFinance);
 
@@ -237,7 +230,6 @@ export function VehicleEditor({
       maintenance_status: f.maintenance_status || null,
       badges: f.badges,
       uber_eligibility: f.uber_eligibility,
-      photos: f.photos,
       current_odometer: f.current_odometer,
       last_oil_change_miles: f.last_oil_change_miles,
       oil_interval_miles: f.oil_interval_miles ?? 5000,
@@ -305,69 +297,6 @@ export function VehicleEditor({
     setSaving(false);
     toast.success(vehicle ? "Vehicle updated" : "Vehicle created");
     onSaved();
-  }
-
-  async function uploadFile(file: File) {
-    setUploading(true);
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `vehicles/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error } = await supabase.storage
-      .from("vehicle-photos")
-      .upload(path, file, { upsert: false });
-    setUploading(false);
-    if (error) return toast.error(error.message);
-    set("photos", [...f.photos, path]);
-    toast.success("Photo uploaded");
-  }
-
-  async function aiGenerate() {
-    if (!f.make || !f.model || !f.year || !f.color) {
-      return toast.error("Fill in year, make, model, and color first");
-    }
-    setGenerating(true);
-    try {
-      const result = await genImage({
-        data: {
-          year: f.year,
-          make: f.make,
-          model: f.model,
-          color: f.color,
-          body_type: f.body_type || null,
-          trim: f.trim || null,
-        },
-      });
-      const bytes = Uint8Array.from(atob(result.b64), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes as unknown as BlobPart], { type: "image/png" });
-      const path = `vehicles/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-      const { error } = await supabase.storage
-        .from("vehicle-photos")
-        .upload(path, blob, { contentType: "image/png" });
-      if (error) throw error;
-      set("photos", [...f.photos, path]);
-      toast.success("AI image generated");
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      if (msg.includes("429")) toast.error("AI rate limit — try again in a moment.");
-      else if (msg.includes("402"))
-        toast.error("AI credits exhausted. Add credits in workspace settings.");
-      else toast.error(msg.slice(0, 200));
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  function removePhoto(idx: number) {
-    set(
-      "photos",
-      f.photos.filter((_, i) => i !== idx),
-    );
-  }
-  function movePhoto(idx: number, dir: -1 | 1) {
-    const next = [...f.photos];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    set("photos", next);
   }
 
   return (
@@ -671,93 +600,16 @@ export function VehicleEditor({
               once the vehicle exists — the documents attach to its id. */}
           {vehicle && <VehicleDocuments vehicleId={vehicle.id} />}
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Photos (first is primary)
-              </label>
-              <div className="flex gap-2">
-                <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-border px-3 py-1.5 text-xs hover:bg-soft">
-                  {uploading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5" />
-                  )}{" "}
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) uploadFile(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={aiGenerate}
-                  disabled={generating}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-xs disabled:opacity-50"
-                >
-                  {generating ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  {generating ? "Generating…" : "Generate with AI"}
-                </button>
-              </div>
+          <div className="rounded-xl border border-[#EDEDF0] p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Photos
             </div>
-            <p className="text-[11px] text-muted-foreground mb-2">
-              AI uses year, make, model, color (and trim/body type if set) to create a studio-style
-              photo. Optional — upload your own if you have one.
+            <p className="text-[12px] text-[#55555E] leading-relaxed">
+              Photos live on the vehicle record, under <strong>Photos</strong>. They are managed
+              there because the list the website shows is now derived from them — which one leads,
+              which are published, and in what order — and a second place to edit the same array
+              would quietly undo the first.
             </p>
-            {f.photos.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                No photos yet
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {f.photos.map((p, i) => (
-                  <div key={i} className="relative group">
-                    <div className="aspect-square rounded-md overflow-hidden bg-soft border border-border">
-                      <img
-                        src={resolvePhotoUrl(p) ?? ""}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    {i === 0 && (
-                      <div className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded">
-                        Primary
-                      </div>
-                    )}
-                    <div className="absolute inset-x-1 bottom-1 flex justify-between opacity-0 group-hover:opacity-100 transition">
-                      <button
-                        onClick={() => movePhoto(i, -1)}
-                        className="bg-white/90 rounded text-[10px] px-1.5"
-                      >
-                        ←
-                      </button>
-                      <button
-                        onClick={() => removePhoto(i)}
-                        className="bg-real-red text-white rounded text-[10px] px-1.5"
-                      >
-                        ✕
-                      </button>
-                      <button
-                        onClick={() => movePhoto(i, 1)}
-                        className="bg-white/90 rounded text-[10px] px-1.5"
-                      >
-                        →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-border px-6 py-4 flex justify-end gap-2">
