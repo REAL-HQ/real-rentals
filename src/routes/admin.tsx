@@ -635,6 +635,7 @@ function Admin() {
                 <DriversPanel
                   externalSearch={globalSearch}
                   initialOpenId={urlDriverId ?? undefined}
+                  isOwner={tier === "owner"}
                 />
               )}
               {tab === "vehicles" && (
