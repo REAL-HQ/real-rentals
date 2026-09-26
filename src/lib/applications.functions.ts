@@ -5,195 +5,69 @@ import { z } from "zod";
 const nullableString = z.string().trim().max(255).nullable().optional();
 const nullableUuid = z.string().uuid().nullable().optional();
 
-const submitApplicationSchema = z.object({
-  full_name: z.string().trim().min(2).max(120),
-  phone: z.string().trim().min(7).max(30),
-  email: z.string().trim().email().max(160),
-  platform_status: z.enum(["Yes", "Pending", "Not Yet"]).nullable().optional(),
-  rental_length: nullableString,
-  rental_term: z.enum(["weekly", "monthly"]).nullable().optional(),
-  vehicle_id: nullableUuid,
-  market_id: nullableUuid,
-  city: nullableString,
-  state: nullableString,
-  sms_consent: z.boolean().nullable().optional(),
-  source: z.string().trim().max(40).nullable().optional(),
-  pickup_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  return_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  utm_source: nullableString,
-  utm_medium: nullableString,
-  utm_campaign: nullableString,
-  utm_term: nullableString,
-  utm_content: nullableString,
-  gclid: nullableString,
-});
-
-const completeApplicationSchema = z.object({
-  id: z.string().uuid(),
-  platforms: z.array(z.string().trim().min(1).max(60)).min(1).max(12),
-  trips_completed: z.string().trim().max(40).nullable().optional(),
-  rating: z.number().min(1).max(5).nullable().optional(),
-  rental_term: z.enum(["weekly", "monthly"]),
-  rental_length: z.string().trim().min(1).max(40),
-  pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  pickup_time: z.string().trim().min(1).max(20),
-  return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  return_time: z.string().trim().min(1).max(20),
-});
-
-export const submitApplication = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => submitApplicationSchema.parse(data))
-  .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // ---- Duplicate detection: normalized phone OR email, active records ----
-    const emailNorm = data.email.trim().toLowerCase();
-    const phoneDigits = data.phone.replace(/\D+/g, "");
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: dupes } = await supabaseAdmin
-      .from("applications")
-      .select(
-        "id, primary_application_id, resubmission_count, resubmission_history, created_at, phone, email, status",
-      )
-      .or(`phone.ilike.%${phoneDigits.slice(-10)}%,email.ilike.${emailNorm}`)
-      .neq("status", "duplicate")
-      .gte("created_at", cutoff)
-      .order("updated_at", { ascending: false })
-      .limit(5);
-    const existing = (dupes ?? []).find((r) => {
-      const p = (r.phone ?? "").replace(/\D+/g, "");
-      const e = (r.email ?? "").trim().toLowerCase();
-      return (phoneDigits && p.endsWith(phoneDigits.slice(-10))) || (emailNorm && e === emailNorm);
-    });
-    if (existing) {
-      const primaryId = existing.primary_application_id ?? existing.id;
-      // Build patch of new/changed fields, ignoring nulls/undefined
-      const patch: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(data)) {
-        if (v !== undefined && v !== null && v !== "") patch[k] = v;
-      }
-      const history = Array.isArray(existing.resubmission_history)
-        ? (existing.resubmission_history as unknown[])
-        : [];
-      history.push({
-        at: new Date().toISOString(),
-        source: data.source,
-        pickup_date: data.pickup_date ?? null,
-        return_date: data.return_date ?? null,
-        market_id: data.market_id ?? null,
-      });
-      patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
-      patch.resubmission_history = history;
-      patch.updated_at = new Date().toISOString();
-      const { error: updErr } = await supabaseAdmin
-        .from("applications")
-        .update(patch as any)
-        .eq("id", primaryId);
-      if (updErr) throw new Error(updErr.message);
-      // Fire-and-forget lead alert email so ops still sees the return visit.
-      try {
-        const { sendLeadAlertEmail } = await import("@/lib/email.server");
-        let marketName: string | null = null;
-        if (data.market_id) {
-          const { data: m } = await supabaseAdmin
-            .from("markets")
-            .select("name")
-            .eq("id", data.market_id)
-            .maybeSingle();
-          marketName = m?.name ?? null;
-        }
-        void sendLeadAlertEmail({
-          event: "new",
-          applicationId: primaryId,
-          full_name: data.full_name,
-          phone: data.phone,
-          email: data.email,
-          city: data.city ?? null,
-          state: data.state ?? null,
-          market: marketName,
-          pickup_date: data.pickup_date ?? null,
-          return_date: data.return_date ?? null,
-          platforms: null,
-          sms_consent: data.sms_consent ?? null,
-          source: `${data.source} (resubmission #${patch.resubmission_count})`,
-        }).catch((e) => console.error("[lead-email] resubmission failed", e));
-      } catch (e) {
-        console.error("[lead-email] resubmission setup failed", e);
-      }
-      return { id: primaryId };
-    }
-
-    const { data: row, error } = await supabaseAdmin
-      .from("applications")
-      .insert({ ...data, status: "partial", current_step: "eligibility" })
-      .select("id")
-      .single();
-
-    if (error) throw new Error(error.message);
-    return { id: row.id };
-  });
-
-export const getApplicationRentalInfo = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
-  .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("applications")
-      .select("rental_term, rental_length")
-      .eq("id", data.id)
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    return { rental_term: row?.rental_term ?? null, rental_length: row?.rental_length ?? null };
-  });
-
-export const completeApplicationProfile = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => completeApplicationSchema.parse(data))
-  .handler(async ({ data }) => {
-    const { id, ...updates } = data;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.from("applications").update(updates).eq("id", id);
-
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+/*
+ * Three applicant endpoints used to live here: submitApplication,
+ * getApplicationRentalInfo and completeApplicationProfile. All three are gone.
+ *
+ * None of them had a caller anywhere in the app, and all three authorized on a
+ * bare application UUID — completeApplicationProfile would take an id off the
+ * wire and write rental dates onto that row. A createServerFn is an HTTP
+ * endpoint whether or not the UI ever calls it, so leaving them exported would
+ * have left exactly the UUID-as-credential hole the resume tokens exist to
+ * close. The live paths are savePartialApplication (creates), and
+ * getApplicationForWizard / updateApplicationStep (token-authorized).
+ */
 
 // ---------------- Multi-step wizard server fns ----------------
 
+/**
+ * The wizard's steps, in the order an applicant meets them.
+ *
+ * Part 1 is `rental` then `driving`; submitting it lands on `submitted`, which
+ * is the conversion. Part 2 is `documents`, finishing at `profile_complete`.
+ *
+ * `submitted` deliberately is not called "complete": the storage and screening
+ * gates both treat a current_step of complete/done/confirmation as "this
+ * application is finished, stop accepting uploads", and Part 2 is entirely
+ * about accepting uploads after Part 1 is in.
+ */
+export const WIZARD_STEP_VALUES = [
+  "rental",
+  "driving",
+  "submitted",
+  "documents",
+  "profile_complete",
+] as const;
+
 const stepUpdateSchema = z.object({
-  id: z.string().uuid(),
-  step: z.enum(["eligibility", "rental", "gig", "driver", "complete"]),
-  // Eligibility
-  license_valid: z.boolean().nullable().optional(),
-  gig_status: z.string().trim().max(60).nullable().optional(),
-  start_timing: z.string().trim().max(60).nullable().optional(),
-  // Rental
+  // Not the application id. See resume-tokens.server.ts: holding the UUID no
+  // longer authorizes anything.
+  token: z.string().min(20).max(200),
+  step: z.enum(WIZARD_STEP_VALUES),
+  // Part 1 — rental intent
   vehicle_size: z.string().trim().max(40).nullable().optional(),
-  rental_duration: z.string().trim().max(40).nullable().optional(),
   pickup_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable()
     .optional(),
-  return_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
+  expected_duration: z
+    .enum(["1-2_weeks", "3-4_weeks", "1-2_months", "2plus_months", "ongoing"])
     .nullable()
     .optional(),
+  // Part 1 — driving
+  drive_type: z.enum(["full_time", "part_time"]).nullable().optional(),
+  insurance_answer: z.enum(["yes", "no", "not_sure"]).nullable().optional(),
+  // Part 2 — licence
+  license_valid: z.boolean().nullable().optional(),
+  gig_status: z.string().trim().max(60).nullable().optional(),
   // Gig
   platforms: z.array(z.string().trim().min(1).max(60)).max(12).nullable().optional(),
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
   trips_completed: z.string().trim().max(40).nullable().optional(),
   trip_screenshots: z.array(z.string().trim().max(500)).max(10).nullable().optional(),
   rating: z.number().min(1).max(5).nullable().optional(),
-  // Driver
+  // Part 2 — insurance and address
   license_photo_url: z.string().trim().max(500).nullable().optional(),
   full_coverage_insurance: z.boolean().nullable().optional(),
   insurance_doc_url: z.string().trim().max(500).nullable().optional(),
@@ -209,7 +83,9 @@ const stepUpdateSchema = z.object({
   city: z.string().trim().max(80).nullable().optional(),
   state: z.string().trim().max(60).nullable().optional(),
   zip: z.string().trim().max(20).nullable().optional(),
-  how_heard: z.string().trim().max(60).nullable().optional(),
+  // how_heard is deliberately absent. The question is gone from the applicant
+  // flow and nothing replaces it; the column and its history stay untouched,
+  // but no applicant-facing endpoint may write it any more.
 });
 
 /*
@@ -249,11 +125,10 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .nullable()
           .optional(),
-        return_date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .nullable()
-          .optional(),
+        // No return_date. The lead forms ask when someone wants to start, not
+        // when they will bring the car back — that is a contractual date and
+        // an applicant cannot know it at this point. Part 1 asks for an
+        // expected duration instead. The column keeps its history.
         source: z.enum(["homepage", "city_lp"]),
         utm_source: nullableString,
         utm_medium: nullableString,
@@ -291,7 +166,6 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         at: new Date().toISOString(),
         source: data.source,
         pickup_date: data.pickup_date ?? null,
-        return_date: data.return_date ?? null,
         market_id: data.market_id ?? null,
       });
       patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
@@ -302,15 +176,24 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .update(patch as any)
         .eq("id", primaryId);
       if (updErr) throw new Error(updErr.message);
-      return { id: primaryId };
+      // A returning applicant gets a token for the record they already have,
+      // not a second record. This is the only reason the dedupe path can hand
+      // the browser anything: the id it returns no longer opens the door.
+      const { issueResumeToken } = await import("@/lib/resume-tokens.server");
+      return { id: primaryId, token: await issueResumeToken(supabaseAdmin, primaryId) };
     }
 
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      .insert({ ...data, status: "partial", current_step: "eligibility" })
+      .insert({ ...data, status: "partial", current_step: "rental" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+
+    // Minted before anything else can fail. Without it the applicant has a row
+    // they can never get back to.
+    const { issueResumeToken } = await import("@/lib/resume-tokens.server");
+    const token = await issueResumeToken(supabaseAdmin, row.id);
     // Fire-and-forget lead alert email. Never block the form submission.
     try {
       const { sendLeadAlertEmail } = await import("@/lib/email.server");
@@ -333,7 +216,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         state: data.state ?? null,
         market: marketName,
         pickup_date: data.pickup_date ?? null,
-        return_date: data.return_date ?? null,
+        return_date: null,
         platforms: null,
         sms_consent: data.sms_consent,
         source: data.source,
@@ -341,14 +224,16 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
-    return { id: row.id };
+    return { id: row.id, token };
   });
 
 export const updateApplicationStep = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => stepUpdateSchema.parse(data))
   .handler(async ({ data }) => {
-    const { id, step, ...fields } = data;
+    const { token, step, ...fields } = data;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, token);
 
     // Clean undefined keys so we never overwrite with NULL by accident
     const patch: Record<string, unknown> = {};
@@ -356,19 +241,35 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       if (v !== undefined) patch[k] = v;
     }
 
-    const isComplete = step === "complete";
+    // Part 1 landing on `submitted` is the conversion: this is a real
+    // application from here on, and staff see it whether or not Part 2 is ever
+    // touched. Part 2 finishing does not move the status again — the team, not
+    // the applicant, decides what happens to a submitted application.
+    const isSubmission = step === "submitted";
     patch.current_step = step;
-    if (isComplete) patch.status = "new";
+    if (isSubmission) patch.status = "new";
+
+    // Three-state insurance. "Not sure" is an answer, and it is not "no".
+    //
+    // full_coverage_insurance stays the boolean it always was and stays NULL
+    // for not_sure, so every downstream reader — readiness included — keeps
+    // treating it as unknown. insurance_answer is what distinguishes "they
+    // told us they don't know" from "we never asked", which is a difference
+    // staff can act on and a boolean cannot express.
+    if (fields.insurance_answer !== undefined && fields.insurance_answer !== null) {
+      patch.full_coverage_insurance =
+        fields.insurance_answer === "yes" ? true : fields.insurance_answer === "no" ? false : null;
+    }
 
     // Derive a single qualify/disqualify signal from whatever insurance detail
     // we have, so the team can triage a new lead without opening the record.
     // Verification is a human step, so this never promotes to "verified".
     if (
-      fields.full_coverage_insurance !== undefined ||
+      patch.full_coverage_insurance !== undefined ||
       fields.insurance_expires_on !== undefined ||
       fields.insurance_carrier !== undefined
     ) {
-      const hasCoverage = fields.full_coverage_insurance;
+      const hasCoverage = patch.full_coverage_insurance as boolean | null | undefined;
       const expires = fields.insurance_expires_on ?? null;
       const expired = expires ? new Date(expires) < new Date(new Date().toDateString()) : false;
       patch.insurance_status =
@@ -381,26 +282,28 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
               : "unknown";
     }
 
-    // Derive rental duration from dates whenever both are known on this update.
-    // Fetch current row to fill in any missing date.
-    const { data: existing } = await supabaseAdmin
-      .from("applications")
-      .select("pickup_date, return_date")
-      .eq("id", id)
-      .maybeSingle();
-    const pickup = (patch.pickup_date as string | undefined) ?? existing?.pickup_date ?? null;
-    const ret = (patch.return_date as string | undefined) ?? existing?.return_date ?? null;
-    if (pickup && ret && ret > pickup) {
-      const days = Math.round((new Date(ret).getTime() - new Date(pickup).getTime()) / 86400000);
-      patch.rental_duration_days = days;
-      patch.rental_duration =
-        days <= 14
-          ? "1-2 weeks"
-          : days <= 28
-            ? "2-4 weeks"
-            : days <= 60
-              ? "1-2 months"
-              : "3+ months";
+    // Rental duration from the applicant's stated expectation.
+    //
+    // This used to be computed as return_date minus pickup_date. Both of those
+    // were guesses typed into a date picker by somebody who had not yet been
+    // quoted a rate, and the difference between them was then written into
+    // rental_duration as though it were a plan. Now the applicant says how
+    // long they expect to need the car and that answer is stored as given.
+    //
+    // rental_duration_days is still a number, but it is explicitly the
+    // midpoint of the band they chose, not a date arithmetic result, and
+    // nothing contractual reads it.
+    const DURATION_LABELS: Record<string, { label: string; days: number }> = {
+      "1-2_weeks": { label: "1-2 weeks", days: 10 },
+      "3-4_weeks": { label: "3-4 weeks", days: 24 },
+      "1-2_months": { label: "1-2 months", days: 45 },
+      "2plus_months": { label: "2+ months", days: 90 },
+      ongoing: { label: "Ongoing", days: 90 },
+    };
+    const band = fields.expected_duration ? DURATION_LABELS[fields.expected_duration] : null;
+    if (band) {
+      patch.rental_duration = band.label;
+      patch.rental_duration_days = band.days;
     }
 
     const { data: row, error } = await supabaseAdmin
@@ -434,7 +337,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     }
 
     // Wizard-complete alert email. Fire-and-forget.
-    if (isComplete) {
+    if (isSubmission) {
       try {
         const { sendLeadAlertEmail } = await import("@/lib/email.server");
         let marketName: string | null = null;
@@ -456,7 +359,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
           state: row.state ?? null,
           market: marketName,
           pickup_date: row.pickup_date ?? null,
-          return_date: row.return_date ?? null,
+          return_date: null,
           platforms: Array.isArray(row.platforms) ? row.platforms : null,
           sms_consent: row.sms_consent ?? null,
           source: row.source ?? null,
@@ -489,37 +392,110 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
   });
 
 export const getApplicationForWizard = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
+  .inputValidator((data: unknown) => z.object({ token: z.string().min(20).max(200) }).parse(data))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      // NOTE: The lead id lives in a shareable /thank-you?id= URL, so this
-      // endpoint is effectively public. Do NOT return contact PII (email,
-      // phone, full address, zip) or admin-only fields (status, notes,
-      // score, user_id). Return only what the wizard needs to resume:
-      // progress state, the driver's first name for greeting, and the
-      // non-sensitive form values the driver themselves entered.
+      // Authorized by a resume token now, not by the application id, so this
+      // is no longer "effectively public" and the applicant's own street
+      // address and zip can come back — they typed them, they are resuming,
+      // and making them retype an address they already gave is exactly the
+      // kind of thing that loses a Part 2.
+      //
+      // Still withheld: email, phone, status, notes, score, user_id. The
+      // wizard does not edit them and a resume link is still a bearer
+      // credential that can end up forwarded.
       .select(
-        // Everything the wizard can edit, so returning to a saved application
-        // shows what was already entered. Six of these were missing, which is
-        // why a returning applicant found their insurance and address boxes
-        // blank and had to type them again.
-        //
-        // Still deliberately absent: email, phone, full street address and zip
-        // are PII, and status/notes/score are ours. The id travels in a
-        // shareable /thank-you?id= link, so this endpoint is effectively
-        // public and must not hand back anything that link should not carry.
-        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, insurance_carrier, insurance_policy_number, insurance_expires_on, insurance_rideshare_endorsement, how_heard",
+        "id, full_name, pickup_date, expected_duration, city, state, zip, address, market_id, current_step, source, license_valid, gig_status, vehicle_size, drive_type, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_answer, insurance_doc_url, insurance_carrier, insurance_policy_number, insurance_expires_on, insurance_rideshare_endorsement",
       )
-      .eq("id", data.id)
+      .eq("id", id)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Application not found");
-    // Reduce full_name to a first name only. Enough for the greeting,
-    // avoids handing out the lead's full identity to anyone with the URL.
+    // Reduce full_name to a first name only. Enough for the greeting, and the
+    // surname is not something the wizard ever needs to render.
     const firstName = (row.full_name ?? "").trim().split(/\s+/)[0] ?? "";
     return { ...row, full_name: firstName };
+  });
+
+/**
+ * Hand the browser a one-time signed URL to upload one applicant file.
+ *
+ * Applicant uploads used to go straight from the browser to Supabase Storage
+ * on the anon key, gated by a policy that checked the folder name was a real
+ * application id. That made the application UUID a write credential, which is
+ * the whole thing the resume tokens exist to stop.
+ *
+ * Now the token is checked here, this picks the path, and the service role
+ * mints a signed upload URL for that one path. The bytes still go straight
+ * from the phone to storage — they never pass through this server — but
+ * nothing about the request is chosen by the caller except which document it
+ * is, and the old anon INSERT policies are dropped.
+ */
+export const requestUploadUrl = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history"]),
+        ext: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9]{1,5}$/),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+
+    const bucket =
+      data.kind === "license" || data.kind === "insurance"
+        ? "license-uploads"
+        : "profile-screenshots";
+    const path = `${id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${data.ext}`;
+
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUploadUrl(path);
+    if (error || !signed) throw new Error(error?.message ?? "Could not start the upload.");
+    return { bucket, path, uploadToken: signed.token };
+  });
+
+/**
+ * Staff: revoke every live resume link for an application and mint a fresh one.
+ *
+ * This is the reissue path. It exists because the tokens are stored hashed —
+ * nobody, including us, can recover a link once it has been sent — so "the
+ * applicant lost the email" and "that link ended up somewhere it shouldn't"
+ * have the same answer: kill the old ones, make a new one, send it.
+ */
+export const reissueApplicantLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ url: string; revoked: number }> => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    const actor = await requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { revokeResumeTokens, issueResumeToken, resumeUrl } =
+      await import("@/lib/resume-tokens.server");
+
+    const revoked = await revokeResumeTokens(supabaseAdmin, data.id);
+    const url = resumeUrl(await issueResumeToken(supabaseAdmin, data.id));
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "application.link_reissued",
+      summary: `Reissued the applicant link${revoked ? ` and revoked ${revoked}` : ""}`,
+      entityType: "application",
+      entityId: data.id,
+      metadata: { revoked },
+    });
+    return { url, revoked };
   });
 
 // ---------------- Admin: merge duplicate applications ----------------

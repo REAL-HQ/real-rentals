@@ -47,7 +47,6 @@ export function CityHeroLeadForm({
     phone: "",
     email: "",
     pickup_date: "",
-    return_date: "",
     sms_consent: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -69,10 +68,6 @@ export function CityHeroLeadForm({
     if (!z.string().email().safeParse(form.email).success) next.email = "Invalid Email";
     if (!/^\d{7,}$/.test(form.phone.replace(/\D/g, ""))) next.phone = "Invalid Phone";
     if (!form.pickup_date) next.pickup_date = "Required";
-    if (!form.return_date) next.return_date = "Required";
-    if (form.pickup_date && form.return_date && form.return_date <= form.pickup_date) {
-      next.return_date = "Must be after pick up date";
-    }
     if (!form.sms_consent) next.sms_consent = "Required";
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -90,7 +85,6 @@ export function CityHeroLeadForm({
       phone: form.phone,
       email: form.email,
       pickup_date: form.pickup_date || null,
-      return_date: form.return_date || null,
       market_id: site.market_id,
       city: market?.name ?? site.title,
       state: market?.state ?? null,
@@ -103,7 +97,7 @@ export function CityHeroLeadForm({
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("lead", { detail: { city: site.slug, applicationId: data.id } }));
       }
-      navigate({ to: "/thank-you", search: { id: data.id } });
+      navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (error: any) {
       toast.error(error?.message || "Could not submit your application. Please try again.");
     } finally {
@@ -136,7 +130,7 @@ export function CityHeroLeadForm({
 
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 5</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">Step 1 Of 3</div>
             <h2 className="mt-2 text-2xl font-semibold">Get My Quote</h2>
             {/* honeypot */}
             <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />
@@ -145,24 +139,18 @@ export function CityHeroLeadForm({
               <Field label="Phone" value={form.phone} error={errors.phone} onChange={(value) => update("phone", value)} />
               <Field label="Email" type="email" value={form.email} error={errors.email} onChange={(value) => update("email", value)} />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field
-                  label="Pick Up Date"
-                  type="date"
-                  min={today}
-                  value={form.pickup_date}
-                  error={errors.pickup_date}
-                  onChange={(value) => update("pickup_date", value)}
-                />
-                <Field
-                  label="Return Date"
-                  type="date"
-                  min={form.pickup_date || today}
-                  value={form.return_date}
-                  error={errors.return_date}
-                  onChange={(value) => update("return_date", value)}
-                />
-              </div>
+              {/* Pick-up only. A return date here was an exact contractual
+                  date guessed by somebody who had not been quoted a rate yet;
+                  the wizard asks how long they expect to need the car
+                  instead. */}
+              <Field
+                label="When Do You Want To Start?"
+                type="date"
+                min={today}
+                value={form.pickup_date}
+                error={errors.pickup_date}
+                onChange={(value) => update("pickup_date", value)}
+              />
             </div>
 
             <label className="mt-5 flex items-start gap-2.5 cursor-pointer">

@@ -229,6 +229,22 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   await sendEmail({ to: prefs.recipients, subject, html });
 }
 
+/**
+ * A link that opens one applicant's application, and nothing else.
+ *
+ * Every one of these emails used to carry the application UUID in the URL.
+ * Mail gets forwarded, sits in inboxes for years and passes through gateways
+ * that log full URLs, and that id was the only thing standing between any of
+ * that and somebody else's application — so each send now mints its own
+ * expiring, revocable token instead. Nothing recovers a token once sent; a
+ * replacement is another mint.
+ */
+async function applicantResumeUrl(applicationId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeUrl } = await import("@/lib/resume-tokens.server");
+  return issueResumeUrl(supabaseAdmin, applicationId);
+}
+
 type RecoveryArgs = {
   to: string;
   firstName: string | null;
@@ -238,7 +254,7 @@ type RecoveryArgs = {
 
 export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<void> {
   const name = (firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = `https://drivereal.com/apply?id=${encodeURIComponent(applicationId)}`;
+  const resumeUrl = await applicantResumeUrl(applicationId);
   const subject =
     variant === "24h"
       ? `${name}, finish your REAL RENTALS application`
@@ -428,7 +444,7 @@ type DocRequestArgs = {
 
 export async function sendDocumentRequestEmail(args: DocRequestArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = `https://drivereal.com/thank-you?id=${encodeURIComponent(args.applicationId)}`;
+  const resumeUrl = await applicantResumeUrl(args.applicationId);
   const subject = `Almost Done, ${name} — A Few Items To Finish Your REAL RENTALS Application`;
   const list = args.items
     .map(
@@ -458,18 +474,15 @@ type AbandonedArgs = {
   applicationId: string;
   market: string | null;
   pickupDate: string | null;
-  returnDate: string | null;
 };
 
 export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = `https://drivereal.com/thank-you?id=${encodeURIComponent(args.applicationId)}`;
+  const resumeUrl = await applicantResumeUrl(args.applicationId);
   const subject = "Finish Your REAL RENTALS Quote — Cars Are Moving Fast";
   const details: string[] = [];
   if (args.market) details.push(`in <strong>${escapeHtml(args.market)}</strong>`);
-  if (args.pickupDate && args.returnDate) {
-    details.push(`from <strong>${escapeHtml(args.pickupDate)}</strong> to <strong>${escapeHtml(args.returnDate)}</strong>`);
-  }
+  if (args.pickupDate) details.push(`starting <strong>${escapeHtml(args.pickupDate)}</strong>`);
   const detailLine = details.length
     ? `Your quote ${details.join(" ")} is still open — but our fleet moves fast.`
     : "Your quote is still open — but our fleet moves fast.";

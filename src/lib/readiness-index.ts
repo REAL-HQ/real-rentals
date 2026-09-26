@@ -68,11 +68,16 @@ export const READINESS_APPLICATION_COLUMNS = [
   "platforms",
   "trips_completed",
   "rating",
+  // start_timing is the retired question; pickup_date is what Part 1 asks.
+  // Both are read, the date first.
   "start_timing",
+  "pickup_date",
+  "drive_type",
   "license_valid",
   "license_photo_url",
   "years_licensed",
   "full_coverage_insurance",
+  "insurance_answer",
   "insurance_doc_url",
   "insurance_rideshare_endorsement",
   "profile_screenshot_url",

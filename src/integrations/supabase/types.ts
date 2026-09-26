@@ -181,6 +181,9 @@ export type Database = {
       }
       applications: {
         Row: {
+          drive_type: string | null
+          expected_duration: string | null
+          insurance_answer: string | null
           address: string | null
           ai_flags: Json | null
           ai_score: number | null
@@ -285,6 +288,9 @@ export type Database = {
           zip: string | null
         }
         Insert: {
+          drive_type?: string | null
+          expected_duration?: string | null
+          insurance_answer?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null
@@ -389,6 +395,9 @@ export type Database = {
           zip?: string | null
         }
         Update: {
+          drive_type?: string | null
+          expected_duration?: string | null
+          insurance_answer?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null
