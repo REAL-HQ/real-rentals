@@ -3011,6 +3011,7 @@ export type Database = {
           gps_provider: string | null
           id: string
           insurance_carrier: string | null
+          insurance_effective_on: string | null
           insurance_expires_on: string | null
           insurance_policy_number: string | null
           internal_notes: string | null
@@ -3061,6 +3062,7 @@ export type Database = {
           gps_provider?: string | null
           id?: string
           insurance_carrier?: string | null
+          insurance_effective_on?: string | null
           insurance_expires_on?: string | null
           insurance_policy_number?: string | null
           internal_notes?: string | null
@@ -3111,6 +3113,7 @@ export type Database = {
           gps_provider?: string | null
           id?: string
           insurance_carrier?: string | null
+          insurance_effective_on?: string | null
           insurance_expires_on?: string | null
           insurance_policy_number?: string | null
           internal_notes?: string | null

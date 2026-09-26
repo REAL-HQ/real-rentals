@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -9,6 +10,7 @@ import {
   Car,
   FileText,
   Images,
+  ArrowUpRight,
   ShieldCheck,
   ScrollText,
   Satellite,
@@ -17,7 +19,6 @@ import {
   Wrench,
   Lock,
   ExternalLink,
-  Sliders,
 } from "lucide-react";
 import {
   getVehicleProfile,
@@ -34,6 +35,7 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
+import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { VehiclePhotos } from "./VehiclePhotos";
 
@@ -94,12 +96,10 @@ export function VehicleProfile({
   vehicleId,
   onClose,
   onChanged,
-  onOpenFullEditor,
 }: {
   vehicleId: string;
   onClose: () => void;
   onChanged?: () => void;
-  onOpenFullEditor?: () => void;
 }) {
   const load = useServerFn(getVehicleProfile);
   const [tab, setTab] = useState<Tab>("overview");
@@ -108,6 +108,7 @@ export function VehicleProfile({
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<VehicleSection | "finance" | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -128,11 +129,11 @@ export function VehicleProfile({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !editing && !sharing) onClose();
+      if (e.key === "Escape" && !editing && !sharing && !editorOpen) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, editing, sharing]);
+  }, [onClose, editing, sharing, editorOpen]);
 
   async function afterSave() {
     setEditing(null);
@@ -194,6 +195,14 @@ export function VehicleProfile({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              {p?.canEdit && (
+                <button
+                  onClick={() => setEditorOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit vehicle
+                </button>
+              )}
               <button
                 onClick={() => setSharing(true)}
                 disabled={!p}
@@ -201,16 +210,6 @@ export function VehicleProfile({
               >
                 <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Share</span>
               </button>
-              {onOpenFullEditor && p?.canEdit && (
-                <button
-                  onClick={onOpenFullEditor}
-                  title="Photos, badges, maintenance intervals"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] hover:bg-[#FAFAFB] transition-colors"
-                >
-                  <Sliders className="w-3.5 h-3.5" />{" "}
-                  <span className="hidden sm:inline">Listing</span>
-                </button>
-              )}
               <button
                 onClick={onClose}
                 className="rounded-md p-1.5 text-[#9A9AA3] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
@@ -283,7 +282,7 @@ export function VehicleProfile({
             />
           ) : (
             <>
-              {tab === "overview" && <Overview p={p} onEdit={setEditing} />}
+              {tab === "overview" && <Overview p={p} onEdit={setEditing} onOpenTab={setTab} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
               {tab === "documents" && (
                 <SectionCard
@@ -315,6 +314,20 @@ export function VehicleProfile({
         <FinanceDrawer vehicleId={vehicleId} onClose={() => setEditing(null)} onSaved={afterSave} />
       )}
       {sharing && <ShareVehicleDialog vehicleId={vehicleId} onClose={() => setSharing(false)} />}
+      {editorOpen && p && (
+        <VehicleEditorDrawer
+          profile={{ ...p, id: vehicleId }}
+          onClose={() => setEditorOpen(false)}
+          onSaved={async () => {
+            await refresh();
+            onChanged?.();
+          }}
+          onOpenTab={(t) => {
+            setEditorOpen(false);
+            setTab(t);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -333,9 +346,38 @@ function EditButton({ onClick, show }: { onClick: () => void; show: boolean }) {
   );
 }
 
+/**
+ * A count that leads somewhere.
+ *
+ * The destination list is not filtered to this vehicle — those panels have
+ * their own search — so the number stays here, where it is specific, and the
+ * link only saves the trip through the sidebar.
+ */
+function Elsewhere({ tab, count, label }: { tab: string; count: number; label: string }) {
+  if (!count) return <span className="text-[#C4C4CB]">None</span>;
+  return (
+    <Link
+      to="/admin"
+      search={{ tab } as never}
+      className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
+      title={label}
+    >
+      {count} <ArrowUpRight className="w-3 h-3" />
+    </Link>
+  );
+}
+
 // ---- tabs -----------------------------------------------------------------
 
-function Overview({ p, onEdit }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void }) {
+function Overview({
+  p,
+  onEdit,
+  onOpenTab,
+}: {
+  p: Profile;
+  onEdit: (s: VehicleSection | "finance") => void;
+  onOpenTab: (t: Tab) => void;
+}) {
   const v = p.vehicle;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -455,10 +497,48 @@ function Overview({ p, onEdit }: { p: Profile; onEdit: (s: VehicleSection | "fin
                 : null
             }
           />
-          <Row label="Open maintenance" value={p.counts.openMaintenance || null} />
-          <Row label="Inspections" value={p.counts.inspections || null} />
-          <Row label="Rentals to date" value={p.counts.rentals || null} />
-          <Row label="Photos on file" value={p.counts.photos || null} />
+          <Row
+            label="Open maintenance"
+            value={
+              <Elsewhere
+                tab="maintenance"
+                count={p.counts.openMaintenance}
+                label="View maintenance"
+              />
+            }
+          />
+          <Row
+            label="Inspections"
+            value={
+              <Elsewhere tab="inspections" count={p.counts.inspections} label="View inspections" />
+            }
+          />
+          <Row
+            label="Rentals to date"
+            value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View rental history" />}
+          />
+          <Row
+            label="Photos on file"
+            value={
+              <button
+                onClick={() => onOpenTab("photos")}
+                className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
+              >
+                {p.counts.photos || "None"} <ArrowUpRight className="w-3 h-3" />
+              </button>
+            }
+          />
+          <Row
+            label="Documents"
+            value={
+              <button
+                onClick={() => onOpenTab("documents")}
+                className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
+              >
+                {p.counts.documents || "None"} <ArrowUpRight className="w-3 h-3" />
+              </button>
+            }
+          />
         </SectionCard>
 
         {p.financials && (
@@ -690,6 +770,7 @@ const SECTION_META: Record<VehicleSection, { title: string; subtitle: string; ic
   },
   gps: { title: "Edit GPS", subtitle: "Device and installation", icon: Satellite },
   keys: { title: "Edit keys", subtitle: "Count, type and where they live", icon: KeyRound },
+  service: { title: "Edit service & tolls", subtitle: "Intervals and toll accounts", icon: Wrench },
 };
 
 function SectionDrawer({

@@ -73,6 +73,7 @@ export function Text({
   hint,
   error,
   mono = false,
+  readOnly = false,
 }: {
   label: string;
   value: string;
@@ -81,14 +82,20 @@ export function Text({
   hint?: string;
   error?: string;
   mono?: boolean;
+  /** For a value this screen shows but does not own — a provider reading, say. */
+  readOnly?: boolean;
 }) {
   return (
     <Field label={label} hint={hint} error={error}>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`${inputCls} ${mono ? "font-mono tracking-tight" : ""} ${error ? "border-[#D03020]" : ""}`}
+        placeholder={readOnly ? "—" : placeholder}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        className={`${inputCls} ${mono ? "font-mono tracking-tight" : ""} ${
+          error ? "border-[#D03020]" : ""
+        } ${readOnly ? "bg-[#FAFAFB] text-[#55555E] cursor-default focus:border-[#EDEDF0]" : ""}`}
       />
     </Field>
   );

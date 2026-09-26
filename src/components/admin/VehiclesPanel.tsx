@@ -2,15 +2,28 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Vehicle } from "./types";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
-import { VehicleEditor } from "./VehicleEditor";
 import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Car, ArrowRight } from "lucide-react";
 import { EmptyState } from "./ui";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-function PartnerAssignSelect({ value, partners, onChange }: { value: string | null; partners: Array<{ id: string; name: string }>; onChange: (pid: string | null) => void }) {
+function PartnerAssignSelect({
+  value,
+  partners,
+  onChange,
+}: {
+  value: string | null;
+  partners: Array<{ id: string; name: string }>;
+  onChange: (pid: string | null) => void;
+}) {
   const [q, setQ] = useState("");
   const filtered = partners.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
@@ -18,7 +31,9 @@ function PartnerAssignSelect({ value, partners, onChange }: { value: string | nu
       value={value ?? "__none__"}
       onValueChange={(val) => onChange(val === "__none__" ? null : val)}
     >
-      <SelectTrigger className="h-8 bg-white text-foreground text-xs"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+      <SelectTrigger className="h-8 bg-white text-foreground text-xs">
+        <SelectValue placeholder="Unassigned" />
+      </SelectTrigger>
       <SelectContent>
         <div className="p-1 sticky top-0 bg-white z-10 border-b border-border">
           <input
@@ -30,8 +45,14 @@ function PartnerAssignSelect({ value, partners, onChange }: { value: string | nu
           />
         </div>
         <SelectItem value="__none__">Unassigned</SelectItem>
-        {filtered.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-        {filtered.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>}
+        {filtered.map((p) => (
+          <SelectItem key={p.id} value={p.id}>
+            {p.name}
+          </SelectItem>
+        ))}
+        {filtered.length === 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
+        )}
       </SelectContent>
     </Select>
   );
@@ -40,7 +61,6 @@ function PartnerAssignSelect({ value, partners, onChange }: { value: string | nu
 export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
-  const [editing, setEditing] = useState<Vehicle | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
@@ -54,13 +74,17 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
   }
   useEffect(() => {
     load();
-    supabase.from("partners").select("id,name").order("name").then(({ data }) => setPartners(data || []));
+    supabase
+      .from("partners")
+      .select("id,name")
+      .order("name")
+      .then(({ data }) => setPartners(data || []));
   }, []);
 
   async function assignPartner(v: Vehicle, partner_id: string | null) {
     const { error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id);
     if (error) return toast.error(error.message);
-    setRows((r) => r.map((x) => x.id === v.id ? { ...x, partner_id } as Vehicle : x));
+    setRows((r) => r.map((x) => (x.id === v.id ? ({ ...x, partner_id } as Vehicle) : x)));
   }
 
   async function remove(v: Vehicle) {
@@ -84,13 +108,18 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
     const effective = (externalSearch || search).trim();
     if (effective) {
       const q = effective.toLowerCase();
-      const hay = `${v.year} ${v.make} ${v.model} ${v.trim ?? ""} ${(v as any).color ?? ""}`.toLowerCase();
+      const hay =
+        `${v.year} ${v.make} ${v.model} ${v.trim ?? ""} ${(v as any).color ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 
-  const hasActiveFilters = search.trim() !== "" || statusFilter !== "all" || bodyFilter !== "all" || partnerFilter !== "all";
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    statusFilter !== "all" ||
+    bodyFilter !== "all" ||
+    partnerFilter !== "all";
 
   return (
     <div>
@@ -103,38 +132,63 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
             className="flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white"
           />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              {statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {statuses.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={setBodyFilter}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm"><SelectValue placeholder="Body type" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm">
+              <SelectValue placeholder="Body type" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All body types</SelectItem>
-              {bodyTypes.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+              {bodyTypes.map((b) => (
+                <SelectItem key={b} value={b}>
+                  {b}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={setPartnerFilter}>
-            <SelectTrigger className="h-9 w-[160px] bg-white text-foreground text-sm"><SelectValue placeholder="Partner" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[160px] bg-white text-foreground text-sm">
+              <SelectValue placeholder="Partner" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
-              {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              {partners.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {hasActiveFilters && (
             <button
-              onClick={() => { setSearch(""); setStatusFilter("all"); setBodyFilter("all"); setPartnerFilter("all"); }}
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("all");
+                setBodyFilter("all");
+                setPartnerFilter("all");
+              }}
               className="text-sm text-muted-foreground hover:text-foreground px-2"
             >
               Clear
             </button>
           )}
         </div>
-        <button onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 self-start lg:self-auto">
+        <button
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 self-start lg:self-auto"
+        >
           <Plus className="w-4 h-4" /> Add Vehicle
         </button>
       </div>
@@ -148,13 +202,23 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
               className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
             >
               <div className="aspect-[4/3] bg-white flex items-center justify-center">
-                {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
+                {img ? (
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs text-muted-foreground">No photo</span>
+                )}
               </div>
               <div className="p-4">
-                <div className="font-medium">{v.year} {v.make} {v.model}</div>
-                <div className="text-xs text-muted-foreground">${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}</div>
+                <div className="font-medium">
+                  {v.year} {v.make} {v.model}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  ${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}
+                </div>
                 <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                    Partner
+                  </div>
                   <PartnerAssignSelect
                     value={(v as any).partner_id ?? null}
                     partners={partners}
@@ -162,10 +226,16 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
                   />
                 </div>
                 <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
+                  <button
+                    onClick={() => setViewing(v.id)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm"
+                  >
                     Open record <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => remove(v)} className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
+                  <button
+                    onClick={() => remove(v)}
+                    className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red"
+                  >
                     <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
                   </button>
                 </div>
@@ -194,26 +264,14 @@ export function VehiclesPanel({ externalSearch = "" }: { externalSearch?: string
       {adding && (
         <AddVehicleDialog
           onClose={() => setAdding(false)}
-          onCreated={async () => { await load(); setAdding(false); }}
-        />
-      )}
-      {viewing && (
-        <VehicleProfile
-          vehicleId={viewing}
-          onClose={() => setViewing(null)}
-          onChanged={load}
-          onOpenFullEditor={() => {
-            const v = rows.find((r) => r.id === viewing);
-            if (v) setEditing(v);
+          onCreated={async () => {
+            await load();
+            setAdding(false);
           }}
         />
       )}
-      {editing && (
-        <VehicleEditor
-          vehicle={editing}
-          onClose={() => setEditing(null)}
-          onSaved={async () => { await load(); setEditing(null); }}
-        />
+      {viewing && (
+        <VehicleProfile vehicleId={viewing} onClose={() => setViewing(null)} onChanged={load} />
       )}
     </div>
   );
