@@ -501,7 +501,16 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // progress state, the driver's first name for greeting, and the
       // non-sensitive form values the driver themselves entered.
       .select(
-        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, how_heard",
+        // Everything the wizard can edit, so returning to a saved application
+        // shows what was already entered. Six of these were missing, which is
+        // why a returning applicant found their insurance and address boxes
+        // blank and had to type them again.
+        //
+        // Still deliberately absent: email, phone, full street address and zip
+        // are PII, and status/notes/score are ours. The id travels in a
+        // shareable /thank-you?id= link, so this endpoint is effectively
+        // public and must not hand back anything that link should not carry.
+        "id, full_name, pickup_date, return_date, city, state, market_id, current_step, source, license_valid, gig_status, start_timing, vehicle_size, rental_duration, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_doc_url, insurance_carrier, insurance_policy_number, insurance_expires_on, insurance_rideshare_endorsement, how_heard",
       )
       .eq("id", data.id)
       .maybeSingle();

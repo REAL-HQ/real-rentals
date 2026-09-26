@@ -78,19 +78,42 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // viewport-fit=cover so env(safe-area-inset-*) is non-zero on a
+      // notched phone — without it the sticky Continue bar sits under the
+      // home indicator.
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
-      { name: "description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
+      {
+        name: "description",
+        content:
+          "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval.",
+      },
       { name: "author", content: "Lovable" },
       { property: "og:title", content: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
-      { property: "og:description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
+      {
+        property: "og:description",
+        content:
+          "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
-      { name: "twitter:description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/928465c5-65fb-47c9-9b3c-dc72dfccc873/id-preview-1666aeab--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app-1783916889174.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/928465c5-65fb-47c9-9b3c-dc72dfccc873/id-preview-1666aeab--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app-1783916889174.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/928465c5-65fb-47c9-9b3c-dc72dfccc873/id-preview-1666aeab--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app-1783916889174.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/928465c5-65fb-47c9-9b3c-dc72dfccc873/id-preview-1666aeab--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app-1783916889174.png",
+      },
     ],
     links: [
       {

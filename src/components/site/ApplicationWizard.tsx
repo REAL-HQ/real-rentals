@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -13,12 +13,62 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { DocumentCapture } from "./DocumentCapture";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
 import { FadeUp } from "./FadeUp";
 
 type WizardStep = "eligibility" | "rental" | "gig" | "driver" | "complete";
 
 const WIZARD_STEPS: WizardStep[] = ["eligibility", "rental", "gig", "driver"];
+/**
+ * The fields each step owns, so autosave writes exactly what is on screen.
+ *
+ * Deliberately the same lists the Next handlers send. A step must not autosave
+ * a field it does not show — a half-filled later step would otherwise
+ * overwrite good data with nulls.
+ */
+function fieldsFor(step: WizardStep, s: WizardState): Partial<WizardState> {
+  switch (step) {
+    case "eligibility":
+      return {
+        license_valid: s.license_valid,
+        gig_status: s.gig_status,
+        start_timing: s.start_timing,
+      };
+    case "rental":
+      return {
+        vehicle_size: s.vehicle_size,
+        pickup_date: s.pickup_date,
+        return_date: s.return_date,
+      };
+    case "gig":
+      return {
+        platforms: s.platforms,
+        profile_screenshot_url: s.profile_screenshot_url,
+        trips_completed: s.trips_completed,
+        rating: s.rating,
+        trip_screenshots: s.trip_screenshots,
+      };
+    case "driver":
+      return {
+        license_photo_url: s.license_photo_url,
+        full_coverage_insurance: s.full_coverage_insurance,
+        insurance_doc_url: s.insurance_doc_url,
+        insurance_carrier: s.insurance_carrier,
+        insurance_policy_number: s.insurance_policy_number,
+        insurance_expires_on: s.insurance_expires_on,
+        insurance_rideshare_endorsement: s.insurance_rideshare_endorsement,
+        address: s.address,
+        city: s.city,
+        state: s.state,
+        zip: s.zip,
+        how_heard: s.how_heard,
+      };
+    default:
+      return {};
+  }
+}
+
 const STEP_LABELS: Record<WizardStep, string> = {
   eligibility: "Eligibility",
   rental: "Rental",
@@ -101,6 +151,42 @@ export function ApplicationWizard({ id }: { id: string }) {
   const [state, setState] = useState<WizardState | null>(null);
   const [step, setStep] = useState<WizardStep>("eligibility");
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // Autosave.
+  //
+  // Answers used to live only in React state until the applicant pressed Next,
+  // so closing the tab on the last question of a step threw the whole step
+  // away. This writes a couple of seconds after typing stops. It saves the
+  // fields, never the step: `current_step` still only moves when somebody
+  // presses Next, so a half-finished step resumes where it was abandoned
+  // rather than skipping ahead.
+  const latest = useRef<WizardState | null>(null);
+  const dirty = useRef(false);
+  latest.current = state;
+
+  const update = <K extends keyof WizardState>(k: K, v: WizardState[K]) => {
+    dirty.current = true;
+    setState((p) => (p ? { ...p, [k]: v } : p));
+  };
+
+  useEffect(() => {
+    if (!state || !dirty.current) return;
+    const t = setTimeout(async () => {
+      const snapshot = latest.current;
+      if (!snapshot || !dirty.current) return;
+      dirty.current = false;
+      try {
+        await updateStep({ data: { id, step, ...fieldsFor(step, snapshot) } as never });
+        setSavedAt(Date.now());
+      } catch {
+        // A failed autosave is not worth interrupting anybody over — the
+        // explicit save on Next reports its own errors and is what counts.
+        dirty.current = true;
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [state, step, id, updateStep]);
 
   useEffect(() => {
     fetchApp({ data: { id } })
@@ -126,10 +212,13 @@ export function ApplicationWizard({ id }: { id: string }) {
           license_photo_url: row.license_photo_url,
           full_coverage_insurance: row.full_coverage_insurance,
           insurance_doc_url: (row as any).insurance_doc_url ?? null,
-          insurance_carrier: (row as any).insurance_carrier ?? null,
-          insurance_policy_number: (row as any).insurance_policy_number ?? null,
-          insurance_expires_on: (row as any).insurance_expires_on ?? null,
-          insurance_rideshare_endorsement: (row as any).insurance_rideshare_endorsement ?? null,
+          insurance_carrier: row.insurance_carrier ?? null,
+          insurance_policy_number: row.insurance_policy_number ?? null,
+          insurance_expires_on: row.insurance_expires_on ?? null,
+          insurance_rideshare_endorsement: row.insurance_rideshare_endorsement ?? null,
+          // Street address and zip are PII and stay out of the public-by-id
+          // read. An applicant who already gave them re-enters them here; the
+          // alternative is handing them to anyone holding the link.
           address: null,
           state: row.state,
           zip: null,
@@ -150,9 +239,6 @@ export function ApplicationWizard({ id }: { id: string }) {
     );
   }
 
-  const update = <K extends keyof WizardState>(k: K, v: WizardState[K]) =>
-    setState((p) => (p ? { ...p, [k]: v } : p));
-
   const goNext = async (nextStep: WizardStep, payload: Partial<WizardState>) => {
     setSaving(true);
     try {
@@ -163,6 +249,8 @@ export function ApplicationWizard({ id }: { id: string }) {
           ...payload,
         } as any,
       });
+      dirty.current = false;
+      setSavedAt(Date.now());
       setStep(nextStep);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -184,108 +272,109 @@ export function ApplicationWizard({ id }: { id: string }) {
     // of a widget sitting inside one.
     <div className="min-h-screen w-full">
       <div className="grid lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft">
-      <SideRail current={step} source={state.source} />
-      <FadeUp delay={50}>
-        <div className="p-5 md:p-8">
-          {/* The side rail is desktop-only, so on mobile it would otherwise
+        <SideRail current={step} source={state.source} />
+        <FadeUp delay={50}>
+          <div className="p-5 md:p-8">
+            {/* The side rail is desktop-only, so on mobile it would otherwise
               carry no branding at all once the site nav was removed. One mark,
               either way — never both on screen at once. */}
-          <div className="lg:hidden mb-6">
-            <div className="inline-flex items-center gap-2 mb-5">
-              <span className="inline-flex items-center justify-center h-7 px-2.5 rounded bg-real-red text-white text-[10px] font-black tracking-[0.18em]">
-                REAL
-              </span>
-              <span className="text-[10px] tracking-[0.3em] font-semibold text-muted-foreground">
-                RENTALS
-              </span>
+            <div className="lg:hidden mb-6">
+              <div className="inline-flex items-center gap-2 mb-5">
+                <span className="inline-flex items-center justify-center h-7 px-2.5 rounded bg-real-red text-white text-[10px] font-black tracking-[0.18em]">
+                  REAL
+                </span>
+                <span className="text-[10px] tracking-[0.3em] font-semibold text-muted-foreground">
+                  RENTALS
+                </span>
+              </div>
+              <ProgressBar current={step} source={state.source} />
+              <SavedIndicator savedAt={savedAt} saving={saving} />
             </div>
-            <ProgressBar current={step} source={state.source} />
+            {step === "eligibility" && (
+              <EligibilityStep
+                source={state.source}
+                state={state}
+                update={update}
+                onNext={() =>
+                  goNext("rental", {
+                    license_valid: state.license_valid,
+                    gig_status: state.gig_status,
+                    start_timing: state.start_timing,
+                  })
+                }
+                saving={saving}
+              />
+            )}
+            {step === "rental" && (
+              <RentalStep
+                source={state.source}
+                state={state}
+                update={update}
+                onBack={goBack}
+                onNext={() =>
+                  goNext("gig", {
+                    vehicle_size: state.vehicle_size,
+                    pickup_date: state.pickup_date,
+                    return_date: state.return_date,
+                  })
+                }
+                saving={saving}
+              />
+            )}
+            {step === "gig" && (
+              <GigStep
+                source={state.source}
+                id={id}
+                state={state}
+                update={update}
+                onBack={goBack}
+                onNext={() =>
+                  goNext("driver", {
+                    platforms: state.platforms,
+                    profile_screenshot_url: state.profile_screenshot_url,
+                    trips_completed: state.trips_completed,
+                    rating: state.rating,
+                    trip_screenshots: state.trip_screenshots,
+                  })
+                }
+                saving={saving}
+              />
+            )}
+            {step === "driver" && (
+              <DriverStep
+                source={state.source}
+                id={id}
+                state={state}
+                update={update}
+                onBack={goBack}
+                onSubmit={() =>
+                  goNext("complete", {
+                    license_photo_url: state.license_photo_url,
+                    full_coverage_insurance: state.full_coverage_insurance,
+                    insurance_doc_url: state.insurance_doc_url,
+                    insurance_carrier: state.insurance_carrier,
+                    insurance_policy_number: state.insurance_policy_number,
+                    insurance_expires_on: state.insurance_expires_on,
+                    insurance_rideshare_endorsement: state.insurance_rideshare_endorsement,
+                    address: state.address,
+                    city: state.city,
+                    state: state.state,
+                    zip: state.zip,
+                    how_heard: state.how_heard,
+                  })
+                }
+                saving={saving}
+              />
+            )}
+            {step === "complete" ? (
+              <ConfirmationStep id={id} state={state} />
+            ) : (
+              <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
+                Takes about a minute — no payment required to submit.
+              </p>
+            )}
           </div>
-          {step === "eligibility" && (
-            <EligibilityStep
-              source={state.source}
-              state={state}
-              update={update}
-              onNext={() =>
-                goNext("rental", {
-                  license_valid: state.license_valid,
-                  gig_status: state.gig_status,
-                  start_timing: state.start_timing,
-                })
-              }
-              saving={saving}
-            />
-          )}
-          {step === "rental" && (
-            <RentalStep
-              source={state.source}
-              state={state}
-              update={update}
-              onBack={goBack}
-              onNext={() =>
-                goNext("gig", {
-                  vehicle_size: state.vehicle_size,
-                  pickup_date: state.pickup_date,
-                  return_date: state.return_date,
-                })
-              }
-              saving={saving}
-            />
-          )}
-          {step === "gig" && (
-            <GigStep
-              source={state.source}
-              id={id}
-              state={state}
-              update={update}
-              onBack={goBack}
-              onNext={() =>
-                goNext("driver", {
-                  platforms: state.platforms,
-                  profile_screenshot_url: state.profile_screenshot_url,
-                  trips_completed: state.trips_completed,
-                  rating: state.rating,
-                  trip_screenshots: state.trip_screenshots,
-                })
-              }
-              saving={saving}
-            />
-          )}
-          {step === "driver" && (
-            <DriverStep
-              source={state.source}
-              id={id}
-              state={state}
-              update={update}
-              onBack={goBack}
-              onSubmit={() =>
-                goNext("complete", {
-                  license_photo_url: state.license_photo_url,
-                  full_coverage_insurance: state.full_coverage_insurance,
-                  insurance_doc_url: state.insurance_doc_url,
-                  insurance_carrier: state.insurance_carrier,
-                  insurance_policy_number: state.insurance_policy_number,
-                  insurance_expires_on: state.insurance_expires_on,
-                  insurance_rideshare_endorsement: state.insurance_rideshare_endorsement,
-                  address: state.address,
-                  city: state.city,
-                  state: state.state,
-                  zip: state.zip,
-                  how_heard: state.how_heard,
-                })
-              }
-              saving={saving}
-            />
-          )}
-          {step === "complete" ? (
-            <ConfirmationStep id={id} state={state} />
-          ) : (
-            <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
-              Takes about a minute — no payment required to submit.
-            </p>
-          )}
-        </div>
-      </FadeUp>
+        </FadeUp>
       </div>
     </div>
   );
@@ -322,13 +411,7 @@ export function ProgressBar({
   );
 }
 
-function SideRail({
-  current,
-  source,
-}: {
-  current: WizardStep;
-  source: string | null | undefined;
-}) {
+function SideRail({ current, source }: { current: WizardStep; source: string | null | undefined }) {
   const segments = getBarSegments(source);
   const currentIdx = segments.findIndex((s) => s.key === current);
   return (
@@ -435,6 +518,29 @@ function RadioGroup<T extends string>({
   );
 }
 
+/**
+ * "Saved" — so leaving the page does not feel like losing the work.
+ *
+ * It says Saved only after a write has actually returned. Claiming otherwise
+ * would be worse than saying nothing, because an applicant who believes their
+ * answers are safe will close the tab.
+ */
+function SavedIndicator({ savedAt, saving }: { savedAt: number | null; saving: boolean }) {
+  if (saving) {
+    return (
+      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+      </div>
+    );
+  }
+  if (!savedAt) return null;
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <Check className="h-3 w-3 text-emerald-600" strokeWidth={3} /> Saved automatically
+    </div>
+  );
+}
+
 function NavRow({
   onBack,
   onNext,
@@ -448,13 +554,22 @@ function NavRow({
   nextLabel?: string;
   canNext?: boolean;
 }) {
+  // Sticky on phones, inline on desktop.
+  //
+  // A long step used to scroll its own Submit button off the bottom of the
+  // screen, so the applicant reached the end of the questions and found
+  // nothing to press. The safe-area padding keeps it clear of the home
+  // indicator on a modern iPhone.
   return (
-    <div className="mt-6 flex items-center justify-between gap-3">
+    <div
+      className="mt-6 sticky bottom-0 -mx-5 md:mx-0 md:static border-t border-border md:border-0 bg-white/95 backdrop-blur md:bg-transparent md:backdrop-blur-none px-5 md:px-0 pt-3 md:pt-0 flex items-center justify-between gap-3"
+      style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+    >
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:border-foreground/40"
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 min-h-[48px] text-sm font-medium text-foreground hover:border-foreground/40"
         >
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
@@ -465,7 +580,7 @@ function NavRow({
         type="button"
         onClick={onNext}
         disabled={saving || !canNext}
-        className="inline-flex items-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+        className="inline-flex flex-1 md:flex-none items-center justify-center gap-2 rounded-lg bg-real-red px-6 min-h-[48px] text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         {nextLabel} <ArrowRight className="h-4 w-4" />
@@ -718,13 +833,19 @@ function DriverStep({
         sub="Last step. We need this for delivery + your rental records."
       />
       <div className="space-y-5">
-        <FileUploadField
-          label="Upload A Picture Of Your Driver's License — Optional, Helps Speed Approval"
-          accept="image/*,application/pdf"
+        <DocumentCapture
+          title="Driver's licence"
+          hint="Take a photo of the front of your licence."
+          tips={[
+            "All four corners in the frame",
+            "No glare across the text",
+            "Close enough to read your name and the expiry date",
+          ]}
           bucket="license-uploads"
           applicationId={id}
           value={state.license_photo_url}
           onChange={(v) => update("license_photo_url", v)}
+          optional
         />
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -791,13 +912,15 @@ function DriverStep({
                 })}
               </div>
             </div>
-            <FileUploadField
-              label="Upload Your Insurance Card Or Declaration Page — Optional, Helps Speed Approval"
-              accept="image/*,application/pdf"
+            <DocumentCapture
+              title="Insurance card"
+              hint="Photograph your insurance card or declaration page."
+              tips={["Show the policy number and the dates it covers"]}
               bucket="license-uploads"
               applicationId={id}
               value={state.insurance_doc_url}
               onChange={(v) => update("insurance_doc_url", v)}
+              optional
             />
           </div>
         )}
@@ -1031,88 +1154,6 @@ function extFromMime(mime: string): string {
     default:
       return "jpg";
   }
-}
-
-function FileUploadField({
-  label,
-  accept,
-  bucket,
-  applicationId,
-  value,
-  onChange,
-}: {
-  label: string;
-  accept: string;
-  bucket: string;
-  applicationId: string;
-  value: string | null;
-  onChange: (v: string | null) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const filename = useMemo(() => (value ? value.split("/").pop() : null), [value]);
-
-  async function handleFile(file: File) {
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File must be under 10MB.");
-      return;
-    }
-    setUploading(true);
-    try {
-      const ext = extFromMime(file.type);
-      // Random suffix as well as the timestamp: two uploads landing in the
-      // same millisecond would otherwise collide on the key, and overwriting
-      // an existing object is not something an applicant is allowed to do.
-      const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file, { upsert: true, contentType: file.type || undefined });
-      if (error) throw error;
-      onChange(path);
-      toast.success("Uploaded");
-    } catch (e: any) {
-      console.error("[upload] failed", e);
-      toast.error(
-        "We couldn't upload that file. Please try again — or email it to team@drivereal.com and we'll attach it for you.",
-      );
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </div>
-      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-3 cursor-pointer hover:border-real-red/60">
-        <input
-          type="file"
-          accept={accept}
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-          }}
-        />
-        {uploading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : (
-          <Upload className="h-5 w-5 text-muted-foreground" />
-        )}
-        <div className="text-sm">
-          {value ? (
-            <span className="text-foreground">
-              Uploaded: <span className="text-muted-foreground">{filename}</span>
-            </span>
-          ) : (
-            <span className="text-muted-foreground">
-              Click to upload (PDF, DOC, or image, up to 10MB)
-            </span>
-          )}
-        </div>
-      </label>
-    </div>
-  );
 }
 
 function MultiFileUploadField({
