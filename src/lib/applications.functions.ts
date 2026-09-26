@@ -414,13 +414,23 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Mirror any files the applicant uploaded into the document vault so they
     // show up in the portal (where the renter can replace them) and in the
     // admin vault, instead of living only as a URL column on this row.
+    //
+    // AWAITED, deliberately. This was fire-and-forget, and on a serverless
+    // runtime the worker tears down as soon as the response is returned — any
+    // promise still in flight dies with it. Production showed the damage
+    // precisely: one applicant uploaded four files and exactly one was
+    // registered, the first entry in the loop, because the teardown landed
+    // before the second round trip finished. Registering three documents is
+    // worth the few hundred milliseconds it adds to a wizard step.
+    //
+    // Still non-fatal: a vault that failed to record a file must not fail the
+    // applicant's step. The backfill in adminListDriverDocuments catches
+    // anything missed here.
     try {
       const { syncApplicationUploads } = await import("@/lib/documents.functions");
-      void syncApplicationUploads(supabaseAdmin, row).catch((e) =>
-        console.error("[documents] application sync failed", e),
-      );
+      await syncApplicationUploads(supabaseAdmin, row);
     } catch (e) {
-      console.error("[documents] application sync setup failed", e);
+      console.error("[documents] application sync failed", e);
     }
 
     // Wizard-complete alert email. Fire-and-forget.

@@ -28,7 +28,20 @@ export type VaultDocument = {
   uploaded_by_role: string | null;
   created_at: string;
   url: string | null;
+  /**
+   * uploaded  — received; nobody has looked at it
+   * verified  — a staff member confirmed it is the right, readable document
+   * rejected  — a staff member asked for a replacement
+   *
+   * Verifying a document is not approving the applicant, and nothing here
+   * should ever be rendered as if it were.
+   */
+  review_status: DocumentReviewStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
 };
+
+export type DocumentReviewStatus = "uploaded" | "verified" | "rejected";
 
 const CategoryEnum = z.enum([
   "license_front",
@@ -83,13 +96,16 @@ async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
         uploaded_by_role: d.uploaded_by_role ?? null,
         created_at: d.created_at,
         url,
+        review_status: (d.review_status ?? "uploaded") as DocumentReviewStatus,
+        review_note: d.review_note ?? null,
+        reviewed_at: d.reviewed_at ?? null,
       };
     }),
   );
 }
 
 const SELECT =
-  "id,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path";
+  "id,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
 
 /**
  * Register an already-uploaded file as the current document in its category
@@ -124,10 +140,18 @@ export async function registerDocument(
 ): Promise<{ id: string } | null> {
   const { data: seen } = await admin
     .from("documents")
-    .select("id")
+    .select("id,storage_bucket")
     .eq("storage_path", args.path)
     .maybeSingle();
-  if (seen) return { id: seen.id as string };
+  if (seen) {
+    // Heal a row recorded against the wrong bucket. Rows written before the
+    // per-column bucket map above point gig screenshots at "license-uploads",
+    // where the object does not exist, so signing them returns nothing.
+    if (seen.storage_bucket !== args.bucket) {
+      await admin.from("documents").update({ storage_bucket: args.bucket }).eq("id", seen.id);
+    }
+    return { id: seen.id as string };
+  }
 
   const { data: row, error } = await admin
     .from("documents")
@@ -165,21 +189,45 @@ export async function registerDocument(
   return { id: row.id as string };
 }
 
-/** Application columns that hold an uploaded file, mapped to a vault category. */
-export const APPLICATION_UPLOAD_FIELDS: Array<{ column: string; category: string; label: string }> =
-  [
-    {
-      column: "license_photo_url",
-      category: "license_front",
-      label: "Driver's license (from application)",
-    },
-    { column: "insurance_doc_url", category: "insurance", label: "Insurance (from application)" },
-    {
-      column: "profile_screenshot_url",
-      category: "gig_profile",
-      label: "Gig profile (from application)",
-    },
-  ];
+/**
+ * Application columns that hold an uploaded file, mapped to a vault category
+ * AND to the bucket the wizard actually uploaded them to.
+ *
+ * The bucket used to be hardcoded to "license-uploads" for all of these. It is
+ * right for the licence and the insurance document and wrong for anything the
+ * gig step collects, which goes to "profile-screenshots". A row recorded
+ * against the wrong bucket still looks fine in the database — the failure only
+ * shows up later, when signing the URL returns nothing and the document
+ * silently renders as no link at all.
+ */
+export const APPLICATION_UPLOAD_FIELDS: Array<{
+  column: string;
+  category: string;
+  label: string;
+  bucket: string;
+}> = [
+  {
+    column: "license_photo_url",
+    category: "license_front",
+    label: "Driver's license (from application)",
+    bucket: "license-uploads",
+  },
+  {
+    column: "insurance_doc_url",
+    category: "insurance",
+    label: "Insurance (from application)",
+    bucket: "license-uploads",
+  },
+  {
+    column: "profile_screenshot_url",
+    category: "gig_profile",
+    label: "Gig profile (from application)",
+    bucket: "profile-screenshots",
+  },
+];
+
+/** Trip screenshots are an array on the application, not a single column. */
+const TRIP_SCREENSHOT_BUCKET = "profile-screenshots";
 
 /**
  * Copy any files captured during the application into the document vault.
@@ -200,7 +248,7 @@ export async function syncApplicationUploads(
     const res = await registerDocument(admin, {
       applicationId: application.id as string,
       category: field.category,
-      bucket: "license-uploads",
+      bucket: field.bucket,
       path,
       fileName: path.split("/").pop() ?? null,
       label: field.label,
@@ -219,7 +267,7 @@ export async function syncApplicationUploads(
     const res = await registerDocument(admin, {
       applicationId: application.id as string,
       category: "gig_profile",
-      bucket: "license-uploads",
+      bucket: TRIP_SCREENSHOT_BUCKET,
       path,
       fileName: path.split("/").pop() ?? null,
       label: "Trip screenshot (from application)",
@@ -446,3 +494,76 @@ export const getMyVault = createServerFn({ method: "GET" })
       return { applicationId: app.id as string, documents: await withUrls(supabaseAdmin, visible) };
     },
   );
+
+/**
+ * Record a staff decision about a document.
+ *
+ * Coordinator and above. Checking that a licence photo is the right document,
+ * readable and unexpired is operational work, not an approval decision — a
+ * Coordinator doing it cannot and does not approve the applicant, which stays
+ * an Owner/Manager action elsewhere.
+ *
+ * Audited, because "who said this licence was fine?" is exactly the question
+ * that gets asked after something goes wrong, and the row alone only shows the
+ * current answer. The vehicle document equivalents have always logged; driver
+ * documents did not.
+ */
+export const setDocumentReview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        documentId: z.string().uuid(),
+        status: z.enum(["uploaded", "verified", "rejected"]),
+        note: z.string().trim().max(500).nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    const actor = await requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: doc } = await supabaseAdmin
+      .from("documents")
+      .select("id,driver_id,category,label,review_status")
+      .eq("id", data.documentId)
+      .maybeSingle();
+    if (!doc) throw new Error("Document not found");
+
+    const clearing = data.status === "uploaded";
+    const { error } = await supabaseAdmin
+      .from("documents")
+      .update({
+        review_status: data.status,
+        // A note only belongs to a decision. Clearing the decision clears it.
+        review_note: clearing ? null : (data.note ?? null),
+        reviewed_at: clearing ? null : new Date().toISOString(),
+        reviewed_by: clearing ? null : context.userId,
+      })
+      .eq("id", data.documentId);
+    if (error) throw new Error(error.message);
+
+    await logAudit(actor, {
+      action: `document.${data.status === "uploaded" ? "review_cleared" : data.status}`,
+      summary: `${
+        data.status === "verified"
+          ? "Verified"
+          : data.status === "rejected"
+            ? "Asked for a replacement of"
+            : "Cleared the review on"
+      } ${doc.label ?? doc.category}`,
+      entityType: "application",
+      entityId: doc.driver_id,
+      metadata: {
+        documentId: doc.id,
+        category: doc.category,
+        from: doc.review_status,
+        to: data.status,
+        note: clearing ? null : (data.note ?? null),
+      },
+    });
+
+    return { ok: true as const };
+  });

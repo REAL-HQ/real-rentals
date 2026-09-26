@@ -115,7 +115,55 @@ export type ReadinessInput = Record<string, unknown>;
  * document being on file. When the last URL column is gone this stays correct
  * without a change here.
  */
-export type ReadinessDocument = { doc_type?: string | null; file_url?: string | null };
+export type ReadinessDocument = {
+  /** `lead_documents.doc_type` or the vault's `documents.category`. */
+  doc_type?: string | null;
+  category?: string | null;
+  file_url?: string | null;
+  /** Vault only: has a staff member actually looked at it? */
+  review_status?: string | null;
+  is_current?: boolean | null;
+};
+
+/**
+ * What the model asks for, and every name the two document systems use for it.
+ *
+ * `lead_documents` (staff uploads) and `documents` (the vault, which is where
+ * applicant uploads land) named the same four things differently. Reading only
+ * one vocabulary is how an applicant who supplied everything could still show
+ * as having supplied nothing.
+ */
+const DOC_ALIASES: Record<string, string[]> = {
+  license_front: ["license_front"],
+  license_back: ["license_back"],
+  insurance_card: ["insurance_card", "insurance"],
+  driver_profile_screenshot: ["driver_profile_screenshot", "gig_profile"],
+};
+
+/** What the factors see: canonical name -> was it verified by a person? */
+export type DocumentIndex = {
+  has: (canonical: string) => boolean;
+  verified: (canonical: string) => boolean;
+};
+
+function indexDocuments(documents: ReadinessDocument[]): DocumentIndex {
+  const present = new Set<string>();
+  const checked = new Set<string>();
+  for (const doc of documents) {
+    if (doc?.is_current === false) continue;
+    const raw = (doc?.category ?? doc?.doc_type ?? "").trim();
+    if (!raw) continue;
+    for (const [canonical, names] of Object.entries(DOC_ALIASES)) {
+      if (!names.includes(raw)) continue;
+      present.add(canonical);
+      // A rejected document is not evidence of anything — a staff member has
+      // looked at it and asked for a different one.
+      if (doc.review_status === "rejected") present.delete(canonical);
+      if (doc.review_status === "verified") checked.add(canonical);
+    }
+  }
+  return { has: (c) => present.has(c), verified: (c) => checked.has(c) };
+}
 
 // ---------------------------------------------------------------- helpers
 
@@ -158,7 +206,7 @@ type Factor = {
   group: string;
   weight: number;
   remedy: Remedy;
-  evaluate: (a: ReadinessInput, s: ReadinessInput, d: Set<string>) => Verdict;
+  evaluate: (a: ReadinessInput, s: ReadinessInput, d: DocumentIndex) => Verdict;
 };
 
 // ---------------------------------------------------------------- factors
@@ -225,7 +273,11 @@ export const FACTORS: Factor[] = [
       if (r === null) return unknown("Driver rating not provided");
       const shot = Boolean(a.profile_screenshot_url) || d.has("driver_profile_screenshot");
       const evidence: Evidence =
-        staff !== null ? "staff_verified" : shot ? "document" : "self_reported";
+        staff !== null || d.verified("driver_profile_screenshot")
+          ? "staff_verified"
+          : shot
+            ? "document"
+            : "self_reported";
       if (r < 4.5) return attention(`Rating ${r}`, evidence);
       const band = r >= 4.9 ? 1 : r >= 4.7 ? 0.75 : 0.5;
       return positive(`Rating ${r}`, evidence, band);
@@ -287,10 +339,17 @@ export const FACTORS: Factor[] = [
     label: "Licence on file",
     group: "Licence",
     weight: 4,
-    evaluate: (a, _s, d) =>
-      a.license_photo_url || d.has("license_front") || d.has("license_back")
-        ? positive("Licence image on file", "document")
-        : unknown("No licence image"),
+    evaluate: (a, _s, d) => {
+      const onFile =
+        Boolean(a.license_photo_url) || d.has("license_front") || d.has("license_back");
+      if (!onFile) return unknown("No licence image");
+      // A person having checked the image is a better fact than the image
+      // existing. It changes the evidence, never the points — see the note on
+      // evidence quality above.
+      return d.verified("license_front") || d.verified("license_back")
+        ? positive("Licence image checked by staff", "staff_verified")
+        : positive("Licence image on file", "document");
+    },
   },
   {
     key: "license_tenure",
@@ -339,7 +398,7 @@ export const FACTORS: Factor[] = [
     group: "Insurance",
     weight: 4,
     evaluate: (a, s, d) => {
-      if (bool(s.insurance_verified) === true)
+      if (bool(s.insurance_verified) === true || d.verified("insurance_card"))
         return positive("Insurance verified by staff", "staff_verified");
       if (a.insurance_doc_url || d.has("insurance_card"))
         return positive("Insurance document on file", "document");
@@ -575,7 +634,7 @@ export function computeReadiness(
   documents: ReadinessDocument[] = [],
 ): ReadinessResult {
   const s = screening ?? {};
-  const d = new Set(documents.map((x) => (x?.doc_type ?? "").trim()).filter((t) => t.length > 0));
+  const d = indexDocuments(documents);
   const factors: FactorResult[] = FACTORS.map((f) => {
     const v = f.evaluate(app, s, d);
     const earned = v.state === "positive" ? f.weight * (v.partial ?? 1) : 0;
