@@ -179,6 +179,35 @@ export type Database = {
         }
         Relationships: []
       }
+      applicant_upload_grants: {
+        Row: {
+          application_id: string
+          created_at: string
+          id: string
+          kind: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          id?: string
+          kind: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applicant_upload_grants_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_resume_tokens: {
         Row: {
           application_id: string

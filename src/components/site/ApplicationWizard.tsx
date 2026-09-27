@@ -178,16 +178,39 @@ type WizardState = {
   insurance_answer: string | null;
   // Part 2
   license_valid: boolean | null;
-  license_photo_url: string | null;
-  insurance_doc_url: string | null;
   insurance_carrier: string | null;
-  insurance_policy_number: string | null;
   insurance_expires_on: string | null;
   insurance_rideshare_endorsement: boolean | null;
-  profile_screenshot_url: string | null;
-  trip_screenshots: string[];
   address: string | null;
   zip: string | null;
+
+  /*
+   * Documents are tracked as presence, not paths.
+   *
+   * The server no longer returns storage paths to a resume-token bearer — a
+   * path plus a bucket is the shape of an object, and a resume link is a
+   * bearer credential that travels by email. The wizard only ever used the
+   * path for truthiness anyway; the preview it shows is a local object URL of
+   * the file the applicant just picked.
+   *
+   * `*_on_file` is what the server said. `*_added` is a path from an upload in
+   * this session, which is the one case the browser legitimately holds one.
+   */
+  license_photo_on_file: boolean;
+  insurance_doc_on_file: boolean;
+  profile_screenshot_on_file: boolean;
+  /** Display names of the stored screenshots, in stored order. */
+  trip_screenshot_names: string[];
+  /** Indices of the stored screenshots the applicant still wants. */
+  trip_screenshots_keep: number[];
+  /** Storage paths uploaded during this session only. */
+  trip_screenshots_added: string[];
+
+  /** The policy number is never returned in full; this is the last four. */
+  insurance_policy_on_file: boolean;
+  insurance_policy_last4: string | null;
+  /** Set only when the applicant chooses to replace it. */
+  insurance_policy_number: string | null;
 };
 
 // ------------------------------------------------------------- progress bar
@@ -305,16 +328,20 @@ export function ApplicationWizard({ token }: { token: string }) {
           drive_type: row.drive_type,
           insurance_answer: row.insurance_answer,
           license_valid: row.license_valid,
-          license_photo_url: row.license_photo_url,
-          insurance_doc_url: row.insurance_doc_url ?? null,
           insurance_carrier: row.insurance_carrier ?? null,
-          insurance_policy_number: row.insurance_policy_number ?? null,
           insurance_expires_on: row.insurance_expires_on ?? null,
           insurance_rideshare_endorsement: row.insurance_rideshare_endorsement ?? null,
-          profile_screenshot_url: row.profile_screenshot_url,
-          trip_screenshots: row.trip_screenshots ?? [],
           address: row.address,
           zip: row.zip,
+          license_photo_on_file: row.license_photo_on_file,
+          insurance_doc_on_file: row.insurance_doc_on_file,
+          profile_screenshot_on_file: row.profile_screenshot_on_file,
+          trip_screenshot_names: row.trip_screenshot_names,
+          trip_screenshots_keep: row.trip_screenshot_names.map((_, i) => i),
+          trip_screenshots_added: [],
+          insurance_policy_on_file: row.insurance_policy_on_file,
+          insurance_policy_last4: row.insurance_policy_last4,
+          insurance_policy_number: null,
         });
         setPhase(phaseFrom(row.current_step));
       })
@@ -1104,9 +1131,24 @@ function DriverProfile({
    * photographs their licence, sees the tick and closes the tab used to lose
    * it. The path is written the moment the upload returns.
    */
-  const persistUpload = (field: keyof WizardState, value: string | string[] | null) => {
-    update(field, value as never);
-    void saveSection("upload", { [field]: value }, { quiet: true });
+  const persistUpload = (
+    column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
+    presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
+    path: string | null,
+  ) => {
+    update(presence, Boolean(path));
+    void saveSection("upload", { [column]: path }, { quiet: true });
+  };
+
+  /** Trip screenshots: the session's new paths, plus which stored ones survive. */
+  const persistTripScreenshots = (added: string[], keep: number[]) => {
+    update("trip_screenshots_added", added);
+    update("trip_screenshots_keep", keep);
+    void saveSection(
+      "upload",
+      { trip_screenshots: added, trip_screenshots_keep: keep },
+      { quiet: true },
+    );
   };
 
   const sections: Section[] = useMemo(
@@ -1116,28 +1158,28 @@ function DriverProfile({
         title: "Driver's Licence",
         blurb: "A photo of the front, and confirmation it's current.",
         icon: <IdCard className="h-5 w-5" />,
-        done: Boolean(state.license_photo_url) && state.license_valid === true,
+        done: state.license_photo_on_file && state.license_valid === true,
       },
       {
         key: "insurance",
         title: "Insurance",
         blurb: "Your insurance card or declaration page.",
         icon: <ShieldCheck className="h-5 w-5" />,
-        done: Boolean(state.insurance_doc_url),
+        done: state.insurance_doc_on_file,
       },
       {
         key: "gig_profile",
         title: "Gig Profile",
         blurb: "A screenshot of your driver profile showing your rating.",
         icon: <Smartphone className="h-5 w-5" />,
-        done: Boolean(state.profile_screenshot_url),
+        done: state.profile_screenshot_on_file,
       },
       {
         key: "trips",
         title: "Trip History",
         blurb: "A screenshot of your lifetime trip or delivery count.",
         icon: <ListChecks className="h-5 w-5" />,
-        done: state.trip_screenshots.length > 0,
+        done: state.trip_screenshots_keep.length + state.trip_screenshots_added.length > 0,
       },
       {
         key: "address",
@@ -1205,8 +1247,10 @@ function DriverProfile({
                         ]}
                         kind="license"
                         token={token}
-                        value={state.license_photo_url}
-                        onChange={(v) => persistUpload("license_photo_url", v)}
+                        onFile={state.license_photo_on_file}
+                        onChange={(v) =>
+                          persistUpload("license_photo_url", "license_photo_on_file", v)
+                        }
                       />
                       <YesNo
                         label="Is Your Licence Current And Valid?"
@@ -1217,7 +1261,6 @@ function DriverProfile({
                         busy={savingSection === s.key}
                         onSave={() =>
                           saveSection(s.key, {
-                            license_photo_url: state.license_photo_url,
                             license_valid: state.license_valid,
                           })
                         }
@@ -1234,9 +1277,11 @@ function DriverProfile({
                       busy={savingSection === s.key}
                       onSave={() =>
                         saveSection(s.key, {
-                          insurance_doc_url: state.insurance_doc_url,
                           insurance_carrier: state.insurance_carrier,
-                          insurance_policy_number: state.insurance_policy_number,
+                          // Only sent when the applicant typed a replacement.
+                          ...(state.insurance_policy_number
+                            ? { insurance_policy_number: state.insurance_policy_number }
+                            : {}),
                           insurance_expires_on: state.insurance_expires_on,
                           insurance_rideshare_endorsement: state.insurance_rideshare_endorsement,
                         })
@@ -1252,15 +1297,15 @@ function DriverProfile({
                         tips={["Your rating should be readable", "Any app is fine"]}
                         kind="gig_profile"
                         token={token}
-                        value={state.profile_screenshot_url}
-                        onChange={(v) => persistUpload("profile_screenshot_url", v)}
+                        onFile={state.profile_screenshot_on_file}
+                        onChange={(v) =>
+                          persistUpload("profile_screenshot_url", "profile_screenshot_on_file", v)
+                        }
                       />
                       <SectionSave
                         busy={savingSection === s.key}
                         onSave={() =>
-                          saveSection(s.key, {
-                            profile_screenshot_url: state.profile_screenshot_url,
-                          })
+                          saveSection(s.key, {})
                         }
                       />
                     </>
@@ -1272,14 +1317,14 @@ function DriverProfile({
                         label="Trip / Delivery Totals"
                         hint="A screenshot showing your lifetime trips or deliveries from any app. One per app is best."
                         token={token}
-                        values={state.trip_screenshots}
-                        onChange={(v) => persistUpload("trip_screenshots", v)}
+                        storedNames={state.trip_screenshot_names}
+                        keep={state.trip_screenshots_keep}
+                        added={state.trip_screenshots_added}
+                        onChange={persistTripScreenshots}
                       />
                       <SectionSave
                         busy={savingSection === s.key}
-                        onSave={() =>
-                          saveSection(s.key, { trip_screenshots: state.trip_screenshots })
-                        }
+                        onSave={() => saveSection(s.key, {})}
                       />
                     </>
                   )}
@@ -1395,10 +1440,15 @@ function InsuranceSection({
   onSave,
 }: Omit<StepProps, "saving"> & {
   token: string;
-  persistUpload: (field: keyof WizardState, value: string | string[] | null) => void;
+  persistUpload: (
+    column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
+    presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
+    path: string | null,
+  ) => void;
   busy: boolean;
   onSave: () => void;
 }) {
+  const [replacingPolicy, setReplacingPolicy] = useState(false);
   return (
     <>
       <DocumentCapture
@@ -1407,10 +1457,10 @@ function InsuranceSection({
         tips={["Show the policy number and the dates it covers"]}
         kind="insurance"
         token={token}
-        value={state.insurance_doc_url}
-        onChange={(v) => persistUpload("insurance_doc_url", v)}
+        onFile={state.insurance_doc_on_file}
+        onChange={(v) => persistUpload("insurance_doc_url", "insurance_doc_on_file", v)}
       />
-      {state.insurance_doc_url && (
+      {state.insurance_doc_on_file && (
         <div className="space-y-4 rounded-xl border border-border bg-soft p-4">
           <p className="text-[13px] text-muted-foreground leading-relaxed">
             Got it. If you can read these off the card, it saves us a call — all optional.
@@ -1421,11 +1471,37 @@ function InsuranceSection({
               value={state.insurance_carrier ?? ""}
               onChange={(v) => update("insurance_carrier", v || null)}
             />
-            <TextField
-              label="Policy Number"
-              value={state.insurance_policy_number ?? ""}
-              onChange={(v) => update("insurance_policy_number", v || null)}
-            />
+            {/* Already given us a policy number? Then it stays where it is.
+                The server returns the last four so it can be recognised, not
+                the number itself — a resume link is a bearer credential and
+                should let somebody carry on, not read back everything they
+                have ever handed over. */}
+            {state.insurance_policy_on_file && !replacingPolicy ? (
+              <div className="block">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Policy Number
+                </span>
+                <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
+                  <span className="text-sm">
+                    <span className="font-mono">••••{state.insurance_policy_last4}</span>
+                    <span className="ml-2 text-[11px] text-muted-foreground">Already Provided</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReplacingPolicy(true)}
+                    className="shrink-0 inline-flex items-center min-h-[44px] px-2 -mr-2 text-[11px] font-semibold text-real-red hover:underline"
+                  >
+                    Update
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <TextField
+                label="Policy Number"
+                value={state.insurance_policy_number ?? ""}
+                onChange={(v) => update("insurance_policy_number", v || null)}
+              />
+            )}
           </div>
           <label className="block">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -1451,18 +1527,31 @@ function InsuranceSection({
   );
 }
 
+/**
+ * Trip screenshots, without the browser ever holding a storage path it did
+ * not create.
+ *
+ * Files already on the record arrive as display names only. Removing one is
+ * expressed as "keep these indices", which the server resolves against the
+ * stored array — so the applicant can delete a wrong screenshot without us
+ * handing back the paths of the right ones.
+ */
 function MultiFileUpload({
   label,
   hint,
   token,
-  values,
+  storedNames,
+  keep,
+  added,
   onChange,
 }: {
   label: string;
   hint?: string;
   token: string;
-  values: string[];
-  onChange: (v: string[]) => void;
+  storedNames: string[];
+  keep: number[];
+  added: string[];
+  onChange: (added: string[], keep: number[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
 
@@ -1484,13 +1573,18 @@ function MultiFileUpload({
         }
       }
       if (uploaded.length) {
-        onChange([...values, ...uploaded].slice(0, 10));
+        onChange([...added, ...uploaded].slice(0, 10), keep);
         toast.success(`Uploaded ${uploaded.length}`);
       }
     } finally {
       setUploading(false);
     }
   }
+
+  const rows = [
+    ...storedNames.map((name, i) => ({ name, stored: true as const, index: i })),
+    ...added.map((path) => ({ name: path.split("/").pop() ?? path, stored: false as const, index: -1, path })),
+  ].filter((r) => (r.stored ? keep.includes(r.index) : true));
 
   return (
     <div>
@@ -1518,18 +1612,33 @@ function MultiFileUpload({
           Click to upload one or more files — photos or PDFs
         </div>
       </label>
-      {values.length > 0 && (
+      {rows.length > 0 && (
         <ul className="mt-3 space-y-2">
-          {values.map((path) => (
+          {rows.map((r) => (
             <li
-              key={path}
+              key={`${r.stored ? "s" : "a"}-${r.stored ? r.index : (r as { path: string }).path}`}
               className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm"
             >
-              <span className="truncate text-muted-foreground">{path.split("/").pop()}</span>
+              <span className="truncate text-muted-foreground">
+                {r.name}
+                {r.stored && (
+                  <span className="ml-2 text-[11px] text-muted-foreground/70">On File</span>
+                )}
+              </span>
               <button
                 type="button"
-                onClick={() => onChange(values.filter((v) => v !== path))}
-                className="text-[11px] font-semibold text-real-red hover:underline shrink-0"
+                onClick={() =>
+                  r.stored
+                    ? onChange(
+                        added,
+                        keep.filter((i) => i !== r.index),
+                      )
+                    : onChange(
+                        added.filter((p) => p !== (r as { path: string }).path),
+                        keep,
+                      )
+                }
+                className="shrink-0 inline-flex items-center min-h-[44px] px-2 -mr-2 text-[11px] font-semibold text-real-red hover:underline"
               >
                 Remove
               </button>

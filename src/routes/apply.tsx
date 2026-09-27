@@ -8,6 +8,7 @@ import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWiz
 import { savePartialApplication } from "@/lib/applications.functions";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
+import { useResumeToken } from "@/lib/resume-token";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/apply")({
 
 function ApplyPage() {
   const { t, city: preCity, pickup: prePickup } = Route.useSearch();
+  const token = useResumeToken(t);
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -55,8 +57,8 @@ function ApplyPage() {
     // screen at once. A signup flow also converts better without the rest of
     // the site one click away.
     <div className="min-h-screen bg-background">
-      {t ? (
-        <ApplicationWizard token={t} />
+      {token ? (
+        <ApplicationWizard token={token} />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
           <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} />

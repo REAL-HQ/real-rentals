@@ -67,6 +67,10 @@ const stepUpdateSchema = z.object({
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
   trips_completed: z.string().trim().max(40).nullable().optional(),
   trip_screenshots: z.array(z.string().trim().max(500)).max(10).nullable().optional(),
+  // Which of the stored trip screenshots to keep, by index. The browser never
+  // receives their storage paths, so it cannot send back a rewritten array —
+  // it says which ones to drop and the server does the rewriting.
+  trip_screenshots_keep: z.array(z.number().int().min(0).max(49)).max(50).nullable().optional(),
   rating: z.number().min(1).max(5).nullable().optional(),
   // Part 2 — insurance and address
   license_photo_url: z.string().trim().max(500).nullable().optional(),
@@ -309,6 +313,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Clean undefined keys so we never overwrite with NULL by accident
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
+      if (k === "trip_screenshots_keep") continue;
       if (v !== undefined) patch[k] = v;
     }
 
@@ -319,14 +324,29 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     const isSubmission = step === "submitted";
     patch.current_step = step;
 
-    // One read of the row as it stands. Two later decisions need it: whether
-    // this write may promote the status, and what coverage answer is already
-    // on file.
+    // One read of the row as it stands. Three later decisions need it:
+    // whether this write may promote the status, what coverage answer is
+    // already on file, and which stored trip screenshots survive a removal.
     const { data: before } = await supabaseAdmin
       .from("applications")
-      .select("status, full_coverage_insurance")
+      .select("status, full_coverage_insurance, trip_screenshots")
       .eq("id", id)
       .maybeSingle();
+
+    // Removal by index, resolved against the stored array. An out-of-range
+    // index drops out rather than erroring: the worst it can do is keep a
+    // file the applicant wanted gone, which they can retry.
+    if (Array.isArray(fields.trip_screenshots_keep)) {
+      const stored = Array.isArray(before?.trip_screenshots)
+        ? (before.trip_screenshots as string[])
+        : [];
+      const keep = new Set(fields.trip_screenshots_keep);
+      const survivors = stored.filter((_, i) => keep.has(i));
+      const added = Array.isArray(patch.trip_screenshots)
+        ? (patch.trip_screenshots as string[]).filter((p) => !stored.includes(p))
+        : [];
+      patch.trip_screenshots = [...survivors, ...added].slice(0, 10);
+    }
 
     // Promote to "new" on submission, and only out of "partial".
     //
@@ -496,6 +516,91 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/*
+ * WHAT A RESUME TOKEN IS ALLOWED TO SEE
+ *
+ * A resume token exists so somebody can CONTINUE their own application. It is
+ * a bearer credential that travels by email, so it must not double as a
+ * retrieval key for everything they ever gave us. Every column on the row is
+ * classified below; the payload is built by hand rather than spread, so a
+ * column added to the table in future is withheld until somebody decides
+ * otherwise.
+ *
+ * SAFE TO RETURN — the applicant typed it, the wizard renders it, and seeing
+ * it again is the difference between resuming and starting over:
+ *   first name, city, state, address, zip, pickup_date, expected_duration,
+ *   vehicle_size, drive_type, platforms, trips_completed, rating, gig_status,
+ *   license_valid, insurance_answer, full_coverage_insurance,
+ *   insurance_carrier, insurance_expires_on, insurance_rideshare_endorsement,
+ *   current_step, source
+ *
+ * MASK — useful to recognise, harmful to hand back in full:
+ *   insurance_policy_number -> last four digits only, plus a flag. The wizard
+ *   shows "Already Provided ••••4821" and offers to replace it. Nothing the
+ *   applicant does requires reading the whole value back.
+ *
+ * PRESENCE-ONLY — the fact of the file, never its storage path. A path plus a
+ * bucket name is the shape of an object; the wizard only ever needed to know
+ * whether to say "Uploaded":
+ *   license_photo_url, insurance_doc_url, profile_screenshot_url ->
+ *   booleans; trip_screenshots -> a count and the display names only.
+ *
+ * DO NOT RETURN — the applicant cannot act on it, or it is ours:
+ *   id and market_id (internal identifiers), email and phone (contact
+ *   details, and knowing them is how the dedupe attack started), dob,
+ *   license_number, license_state, license_expiration, status, notes,
+ *   doc_request_note, score, scored_at, ai_score, ai_tier, ai_flags,
+ *   ai_summary, user_id, reviewed_at, reviewed_by, contacted_at,
+ *   weekly_rent, deposit_amount, deposit_paid, deposit_status,
+ *   payment_status, card_last4, card_brand, card_exp_*, card_on_file_at,
+ *   stripe_*, vehicle_id, primary_application_id, resubmission_*,
+ *   contract_start_date, contract_end_date, background_check_status,
+ *   mvr_status, earnings_verified_status, rideshare_history_status,
+ *   incident_count, requested_docs, recovery_*, sms_opt_out_at, utm_*,
+ *   gclid, landing_page, referrer, return_date, start_timing, how_heard,
+ *   platform_status, platform_active, rental_*, weekly_hours,
+ *   years_licensed, consent_*, insurance_status, dob.
+ *
+ * Nothing from driver_screenings, documents, audit_log or the readiness model
+ * is reachable from here at all — this endpoint reads one table.
+ */
+const RESUME_COLUMNS = [
+  "full_name",
+  "city",
+  "state",
+  "address",
+  "zip",
+  "pickup_date",
+  "expected_duration",
+  "vehicle_size",
+  "drive_type",
+  "platforms",
+  "trips_completed",
+  "rating",
+  "gig_status",
+  "license_valid",
+  "insurance_answer",
+  "full_coverage_insurance",
+  "insurance_carrier",
+  "insurance_expires_on",
+  "insurance_rideshare_endorsement",
+  "current_step",
+  "source",
+  // Read to be reduced, never returned as-is.
+  "insurance_policy_number",
+  "license_photo_url",
+  "insurance_doc_url",
+  "profile_screenshot_url",
+  "trip_screenshots",
+] as const;
+
+/** Last four characters of a reference, for recognition only. */
+function lastFour(value: string | null | undefined): string | null {
+  const clean = String(value ?? "").replace(/\s+/g, "");
+  if (clean.length < 4) return clean ? "••••" : null;
+  return clean.slice(-4);
+}
+
 export const getApplicationForWizard = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ token: z.string().min(20).max(200) }).parse(data))
   .handler(async ({ data }) => {
@@ -504,26 +609,52 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const id = await resolveResumeToken(supabaseAdmin, data.token);
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      // Authorized by a resume token now, not by the application id, so this
-      // is no longer "effectively public" and the applicant's own street
-      // address and zip can come back — they typed them, they are resuming,
-      // and making them retype an address they already gave is exactly the
-      // kind of thing that loses a Part 2.
-      //
-      // Still withheld: email, phone, status, notes, score, user_id. The
-      // wizard does not edit them and a resume link is still a bearer
-      // credential that can end up forwarded.
-      .select(
-        "id, full_name, pickup_date, expected_duration, city, state, zip, address, market_id, current_step, source, license_valid, gig_status, vehicle_size, drive_type, platforms, profile_screenshot_url, trip_screenshots, trips_completed, rating, license_photo_url, full_coverage_insurance, insurance_answer, insurance_doc_url, insurance_carrier, insurance_policy_number, insurance_expires_on, insurance_rideshare_endorsement",
-      )
+      .select(RESUME_COLUMNS.join(","))
       .eq("id", id)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Application not found");
-    // Reduce full_name to a first name only. Enough for the greeting, and the
-    // surname is not something the wizard ever needs to render.
-    const firstName = (row.full_name ?? "").trim().split(/\s+/)[0] ?? "";
-    return { ...row, full_name: firstName };
+
+    const r = row as unknown as Record<string, unknown>;
+    const trips = Array.isArray(r.trip_screenshots) ? (r.trip_screenshots as string[]) : [];
+
+    return {
+      // Enough for the greeting. The surname is not something the wizard
+      // renders, so it does not travel.
+      full_name: String(r.full_name ?? "").trim().split(/\s+/)[0] ?? "",
+      city: (r.city ?? null) as string | null,
+      state: (r.state ?? null) as string | null,
+      address: (r.address ?? null) as string | null,
+      zip: (r.zip ?? null) as string | null,
+      pickup_date: (r.pickup_date ?? null) as string | null,
+      expected_duration: (r.expected_duration ?? null) as string | null,
+      vehicle_size: (r.vehicle_size ?? null) as string | null,
+      drive_type: (r.drive_type ?? null) as string | null,
+      platforms: (Array.isArray(r.platforms) ? r.platforms : []) as string[],
+      trips_completed: (r.trips_completed ?? null) as string | null,
+      rating: (r.rating ?? null) as number | null,
+      gig_status: (r.gig_status ?? null) as string | null,
+      license_valid: (r.license_valid ?? null) as boolean | null,
+      insurance_answer: (r.insurance_answer ?? null) as string | null,
+      full_coverage_insurance: (r.full_coverage_insurance ?? null) as boolean | null,
+      insurance_carrier: (r.insurance_carrier ?? null) as string | null,
+      insurance_expires_on: (r.insurance_expires_on ?? null) as string | null,
+      insurance_rideshare_endorsement: (r.insurance_rideshare_endorsement ?? null) as
+        | boolean
+        | null,
+      current_step: (r.current_step ?? null) as string | null,
+      source: (r.source ?? null) as string | null,
+
+      // Masked.
+      insurance_policy_on_file: Boolean(r.insurance_policy_number),
+      insurance_policy_last4: lastFour(r.insurance_policy_number as string | null),
+
+      // Presence only — no storage paths cross this boundary.
+      license_photo_on_file: Boolean(r.license_photo_url),
+      insurance_doc_on_file: Boolean(r.insurance_doc_url),
+      profile_screenshot_on_file: Boolean(r.profile_screenshot_url),
+      trip_screenshot_names: trips.map((p) => String(p).split("/").pop() ?? ""),
+    };
   });
 
 /**
@@ -576,6 +707,31 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
       );
     }
 
+    // One signed URL is one opportunity to write an object, so issuance is
+    // capped. Generous on purpose: a driver profile is five documents, and
+    // retakes on a phone camera are normal. Per application, because that is
+    // what the token binds to.
+    const WINDOW_MINUTES = 60;
+    const MAX_GRANTS_PER_WINDOW = 40;
+    const since = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
+    const { count } = await supabaseAdmin
+      .from("applicant_upload_grants")
+      .select("id", { count: "exact", head: true })
+      .eq("application_id", id)
+      .gte("created_at", since);
+    if ((count ?? 0) >= MAX_GRANTS_PER_WINDOW) {
+      throw new Error(
+        "That's a lot of uploads in one go. Give it an hour and try again, or email team@drivereal.com and we'll take the documents that way.",
+      );
+    }
+
+    // The applicant names a document, never a destination. The bucket comes
+    // from the kind, the folder from the token-resolved application id, and
+    // the filename from a timestamp and a random suffix — so there is no
+    // traversal to attempt, no other application's folder to reach, and no
+    // existing object to overwrite. The restricted verification_recording
+    // category is not in the `kind` enum at all and lives in a different
+    // bucket entirely.
     const bucket =
       data.kind === "license" || data.kind === "insurance"
         ? "license-uploads"
@@ -586,6 +742,10 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
       .from(bucket)
       .createSignedUploadUrl(path);
     if (error || !signed) throw new Error(error?.message ?? "Could not start the upload.");
+    // Recorded after the URL exists, so a failed issue does not spend quota.
+    await supabaseAdmin
+      .from("applicant_upload_grants")
+      .insert({ application_id: id, kind: data.kind });
     return { bucket, path, uploadToken: signed.token };
   });
 

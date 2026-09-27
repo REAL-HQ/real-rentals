@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { ApplicationWizard } from "@/components/site/ApplicationWizard";
+import { useResumeToken } from "@/lib/resume-token";
 
 export const Route = createFileRoute("/thank-you")({
   // `t` is a resume token, not an application id. The id used to travel here
@@ -23,15 +24,20 @@ export const Route = createFileRoute("/thank-you")({
 
 function ThankYouPage() {
   const { t } = Route.useSearch();
+  // The token is stashed for this tab and stripped from the address bar, so
+  // the credential is not sitting in history, screenshots or any third-party
+  // script's view of location.href. See resume-token.client.ts.
+  const token = useResumeToken(t);
 
-  if (!t) {
+  if (token === undefined) return null;
+  if (!token) {
     return <Navigate to="/apply" />;
   }
 
   return (
     // Matches /apply: one logo, carried by the wizard's own panel.
     <div className="min-h-screen bg-background">
-      <ApplicationWizard token={t} />
+      <ApplicationWizard token={token} />
     </div>
   );
 }

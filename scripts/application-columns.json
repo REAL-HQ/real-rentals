@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Which applications columns the browser may UPDATE, and which the server owns.",
+    "public.applications no longer grants table-wide UPDATE to `authenticated`; it",
+    "grants an explicit column list. That is default-closed, which is what we want,",
+    "but it means a column added to the table is silently NOT editable from the",
+    "admin UI until somebody extends the grant — and the symptom is a bare",
+    "'permission denied for table applications'.",
+    "",
+    "serverOwned is the intent. Everything else on the table is expected to be",
+    "browser-editable. scripts/grants.test.mjs compares this to reality."
+  ],
+  "serverOwned": ["ai_summary", "ai_flags", "ai_score", "ai_tier", "scored_at"]
+}

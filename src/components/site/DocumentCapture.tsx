@@ -21,7 +21,7 @@ export function DocumentCapture({
   tips,
   kind,
   token,
-  value,
+  onFile,
   onChange,
   optional,
 }: {
@@ -33,7 +33,13 @@ export function DocumentCapture({
   /** Which document this is. The server turns it into a bucket and a path. */
   kind: UploadKind;
   token: string;
-  value: string | null;
+  /**
+   * Whether a file is already on the record. Deliberately a boolean: the
+   * server does not hand storage paths to a resume-token bearer, and this
+   * component only ever used the path for truthiness — the preview it shows
+   * is a local object URL of the file just chosen.
+   */
+  onFile: boolean;
   onChange: (path: string | null) => void;
   optional?: boolean;
 }) {
@@ -68,6 +74,7 @@ export function DocumentCapture({
     setUploading(true);
     try {
       const { path } = await uploadApplicantFile({ token, kind, file });
+      setJustUploaded(true);
       onChange(path);
     } catch (e) {
       console.error("[upload] failed", e);
@@ -85,7 +92,8 @@ export function DocumentCapture({
     }
   }
 
-  const done = Boolean(value) && !uploading;
+  const [justUploaded, setJustUploaded] = useState(false);
+  const done = (onFile || justUploaded) && !uploading;
 
   return (
     <div className="rounded-2xl border border-[#EDEDF0] bg-white overflow-hidden">
