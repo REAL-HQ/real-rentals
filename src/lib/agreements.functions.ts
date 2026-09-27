@@ -78,18 +78,28 @@ async function buildMergeData(
   if (error) throw new Error(error.message);
   if (!app) throw new Error("Driver not found");
 
-  // An active rental is the authority on its own dates once it exists; before
+  // A LIVE rental is the authority on its own dates once it exists; before
   // activation the agreed contract dates on the application are.
+  //
+  // "Live" is doing real work here. endRental leaves the row in place with
+  // status 'closed' and rewrites end_date to the day it was closed, so taking
+  // the newest rental regardless of status meant a returning driver's second
+  // agreement was rendered with their first rental's dates — staff set new
+  // ones, pressed send, and the contract said something else. Both dates come
+  // from the same source, too: mixing a live rental's start with the
+  // application's end produces a pair nobody agreed together.
   const { data: rental } = await admin
     .from("rentals")
-    .select("start_date,end_date")
+    .select("start_date,end_date,status")
     .eq("application_id", applicationId)
+    .eq("status", "active")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  const startDate = rental?.start_date ?? app.contract_start_date ?? null;
-  const endDate = rental?.end_date ?? app.contract_end_date ?? null;
+  const fromRental = Boolean(rental?.start_date);
+  const startDate = fromRental ? rental.start_date : (app.contract_start_date ?? null);
+  const endDate = fromRental ? (rental.end_date ?? null) : (app.contract_end_date ?? null);
 
   /*
    * Application intent is NOT contract data.
@@ -116,11 +126,17 @@ async function buildMergeData(
       label: "Scheduled end date",
       why: "The applicant only told us roughly how long they expect to need the vehicle. That cannot become a contractual return date.",
     });
+  if (startDate && endDate && endDate <= startDate)
+    blockers.push({
+      field: "contract_end_date",
+      label: "A scheduled end date after the start date",
+      why: `The agreement would run from ${startDate} to ${endDate}, which ends on or before it begins.`,
+    });
   if (!app.address || !app.zip)
     blockers.push({
       field: "driver_address",
       label: "Driver address",
-      why: "The agreement names the driver's address. Collect it in the driver profile, or confirm it with them — do not guess it.",
+      why: "The agreement names the driver's address. Confirm it with the driver and enter it on the Payments tab, or ask them to add it in their driver profile — do not guess it.",
     });
 
   let vehicle: any = null;

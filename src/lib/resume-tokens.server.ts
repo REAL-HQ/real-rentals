@@ -76,21 +76,35 @@ export async function issueResumeToken(admin: AdminClient, applicationId: string
   const raw = newRawToken();
   const expires = new Date(Date.now() + RESUME_TOKEN_DAYS * 86400_000).toISOString();
 
-  const { error } = await admin.from("application_resume_tokens").insert({
-    application_id: applicationId,
-    token_hash: await hashResumeToken(raw),
-    expires_at: expires,
-  });
+  const { data: inserted, error } = await admin
+    .from("application_resume_tokens")
+    .insert({
+      application_id: applicationId,
+      token_hash: await hashResumeToken(raw),
+      expires_at: expires,
+    })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
 
   // Trim the tail. Best-effort: failing to tidy up must not fail the issue.
+  //
+  // created_at comes from the column default, so two links issued in the same
+  // instant tie, and a tie sorted the wrong way would revoke the token this
+  // call just minted — an applicant opening a link that was dead before the
+  // email arrived. The id is the tie-breaker, and the row we just wrote is
+  // excluded outright: whatever else gets trimmed, never this one.
   const { data: live } = await admin
     .from("application_resume_tokens")
     .select("id")
     .eq("application_id", applicationId)
     .is("revoked_at", null)
-    .order("created_at", { ascending: false });
-  const excess = (live ?? []).slice(MAX_LIVE_TOKENS).map((r: { id: string }) => r.id);
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+  const excess = (live ?? [])
+    .map((r: { id: string }) => r.id)
+    .filter((id: string) => id !== inserted?.id)
+    .slice(MAX_LIVE_TOKENS - 1);
   if (excess.length) {
     await admin
       .from("application_resume_tokens")

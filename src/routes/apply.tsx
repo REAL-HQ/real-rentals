@@ -130,6 +130,14 @@ function ContactStep({ preCity, prePickup }: { preCity: string; prePickup: strin
       });
       // The token, not the id. It is minted server-side on this call and this
       // is the only time it exists in plaintext.
+      if (!data.token) {
+        // We matched an application that already exists. The link goes to the
+        // address on that record, not to whoever filled this form in.
+        toast.success(
+          "You already have an application with us — we've emailed you the link to finish it.",
+        );
+        return;
+      }
       navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (e: any) {
       toast.error(e?.message ?? "Could not save. Please try again.");

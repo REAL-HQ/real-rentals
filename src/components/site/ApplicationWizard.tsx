@@ -44,6 +44,40 @@ type Phase = "rental" | "driving" | "submitted" | "documents" | "profile_complet
 
 const PART1_STEPS: Phase[] = ["rental", "driving"];
 
+const PHASES: readonly Phase[] = [
+  "rental",
+  "driving",
+  "submitted",
+  "documents",
+  "profile_complete",
+];
+
+/**
+ * Where an application written by the old wizard picks up.
+ *
+ * The step names changed with the Part 1 / Part 2 split, and the column is
+ * full of the old ones — every partial application in production sits on
+ * `eligibility`. Casting the column straight to Phase rendered none of the
+ * five branches: the applicant clicked the link in a recovery email and got a
+ * logo and an empty page. Anything unrecognised starts at the beginning,
+ * which is safe because every answer is prefilled from the row.
+ */
+const LEGACY_PHASES: Record<string, Phase> = {
+  eligibility: "rental",
+  rental: "rental",
+  gig: "driving",
+  driver: "driving",
+  complete: "submitted",
+  confirmation: "submitted",
+  done: "submitted",
+};
+
+function phaseFrom(stored: unknown): Phase {
+  const raw = typeof stored === "string" ? stored.trim().toLowerCase() : "";
+  if ((PHASES as readonly string[]).includes(raw)) return raw as Phase;
+  return LEGACY_PHASES[raw] ?? "rental";
+}
+
 /**
  * The fields each step owns, so autosave writes exactly what is on screen.
  *
@@ -282,7 +316,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           address: row.address,
           zip: row.zip,
         });
-        setPhase(((row.current_step as Phase) ?? "rental") as Phase);
+        setPhase(phaseFrom(row.current_step));
       })
       .catch((e) => setLoadError(e?.message ?? "Could not load your application."));
   }, [token, fetchApp]);
@@ -298,6 +332,13 @@ export function ApplicationWizard({ token }: { token: string }) {
   }
 
   const go = async (next: Phase, payload: Record<string, unknown>) => {
+    // Stand the autosave down before the explicit write, not after it. The
+    // debounced timer used to be cancelled only when setPhase re-ran the
+    // effect, which happens after the await — so on a slow connection a stale
+    // step:"rental" write could land behind step:"submitted" and rewind
+    // current_step, which in turn made the recovery cron think this applicant
+    // had not finished and email them to say so.
+    dirty.current = false;
     setSaving(true);
     try {
       await updateStep({ data: { token, step: next, ...payload } as never });
@@ -316,10 +357,15 @@ export function ApplicationWizard({ token }: { token: string }) {
 
   return (
     <div className="min-h-screen w-full">
-      <div className="grid lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft">
+      {/* grid-cols-1 is load-bearing, not tidiness. Without it the single
+          mobile track is `auto`, which sizes to the widest child's content —
+          Part 2's section rows have a long no-wrap blurb — and the whole page
+          scrolled sideways at 375px. min-w-0 stops the track from being
+          widened by an overflowing descendant. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft min-w-0">
         <SideRail phase={phase} source={state.source} />
-        <FadeUp delay={50}>
-          <div className="p-5 md:p-8">
+        <FadeUp delay={50} className="min-w-0">
+          <div className="p-5 md:p-8 min-w-0">
             {/* The side rail is desktop-only, so on mobile it would otherwise
               carry no branding at all once the site nav was removed. One mark,
               either way — never both on screen at once. */}
@@ -429,7 +475,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
         <p className="mt-3 text-sm text-white/60 leading-relaxed">
           {inPart1
             ? "A handful of questions about what you drive and what you need. No documents, no uploads."
-            : "Everything below is optional and saves as you go. You can close this page and come back."}
+            : "Everything below is optional. Photos save as soon as they upload; press Save under anything you type."}
         </p>
         {inPart1 && (
           <ol className="mt-10 space-y-1">
@@ -695,7 +741,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             <button
               type="button"
               onClick={() => setEditingPlace(true)}
-              className="text-[11px] font-semibold text-real-red hover:underline shrink-0"
+              className="shrink-0 inline-flex items-center justify-center min-h-[44px] px-3 -mr-3 text-[11px] font-semibold text-real-red hover:underline"
             >
               Change
             </button>
@@ -800,7 +846,7 @@ function DrivingStep({
                   key={p}
                   type="button"
                   onClick={() => toggle(p)}
-                  className={`rounded-lg border px-4 py-2 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+                  className={`rounded-lg border px-4 min-h-[44px] text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
                 >
                   {p}
                 </button>
@@ -845,11 +891,23 @@ function DrivingStep({
               max={5}
               placeholder="e.g. 4.92"
               value={state.rating ?? ""}
-              onChange={(e) =>
-                update("rating", e.target.value === "" ? null : Number(e.target.value))
-              }
+              onChange={(e) => {
+                // min/max on a number input are not enforced as you type, and
+                // the server schema is. An out-of-range rating used to fail
+                // every save silently and then throw raw validation JSON at
+                // the applicant from the Submit button, with nothing pointing
+                // at this field. Clamped here instead.
+                const raw = e.target.value;
+                if (raw === "") return update("rating", null);
+                const n = Number(raw);
+                if (!Number.isFinite(n)) return;
+                update("rating", Math.min(5, Math.max(1, n)));
+              }}
               className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
             />
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Out of 5. Leave blank if you're not sure.
+            </span>
           </label>
         </div>
 
@@ -1010,19 +1068,45 @@ function DriverProfile({
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const updateStep = useServerFn(updateApplicationStep);
 
-  // Each section writes on its own, so a half-finished profile is never lost
-  // and one failed save does not take the others with it.
-  const saveSection = async (key: string, payload: Record<string, unknown>) => {
-    setSavingSection(key);
+  /**
+   * Each section writes on its own, so a half-finished profile is never lost
+   * and one failed save does not take the others with it.
+   *
+   * `step` stays on whatever phase the application is already in. It used to
+   * be hardcoded to "documents", so saving one section on a finished profile
+   * walked current_step backwards from profile_complete.
+   */
+  const saveSection = async (
+    key: string,
+    payload: Record<string, unknown>,
+    opts: { quiet?: boolean } = {},
+  ) => {
+    if (!opts.quiet) setSavingSection(key);
     try {
-      await updateStep({ data: { token, step: "documents", ...payload } as never });
-      toast.success("Saved");
-      setOpen(null);
+      await updateStep({ data: { token, step: phase, ...payload } as never });
+      if (!opts.quiet) {
+        toast.success("Saved");
+        setOpen(null);
+      }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
+      if (!opts.quiet) {
+        toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
+      }
     } finally {
-      setSavingSection(null);
+      if (!opts.quiet) setSavingSection(null);
     }
+  };
+
+  /**
+   * A file that reached storage but whose path never reached the row is a file
+   * nobody can find: the object exists, no column points at it, and the vault
+   * sync never sees it. Part 2 does not autosave, so an applicant who
+   * photographs their licence, sees the tick and closes the tab used to lose
+   * it. The path is written the moment the upload returns.
+   */
+  const persistUpload = (field: keyof WizardState, value: string | string[] | null) => {
+    update(field, value as never);
+    void saveSection("upload", { [field]: value }, { quiet: true });
   };
 
   const sections: Section[] = useMemo(
@@ -1073,7 +1157,7 @@ function DriverProfile({
       <StepHeader
         eyebrow="Complete Your Driver Profile"
         title={`${doneCount} Of ${sections.length} Done`}
-        sub="Everything here saves on its own. Close the page whenever you like and come back with the same link."
+        sub="Photos upload and save straight away. For the typed details, press Save in each section — then you can close the page and come back with the same link."
       />
 
       {/* Deliberately no qualification score, coverage percentage, readiness
@@ -1122,7 +1206,7 @@ function DriverProfile({
                         kind="license"
                         token={token}
                         value={state.license_photo_url}
-                        onChange={(v) => update("license_photo_url", v)}
+                        onChange={(v) => persistUpload("license_photo_url", v)}
                       />
                       <YesNo
                         label="Is Your Licence Current And Valid?"
@@ -1146,6 +1230,7 @@ function DriverProfile({
                       token={token}
                       state={state}
                       update={update}
+                      persistUpload={persistUpload}
                       busy={savingSection === s.key}
                       onSave={() =>
                         saveSection(s.key, {
@@ -1168,7 +1253,7 @@ function DriverProfile({
                         kind="gig_profile"
                         token={token}
                         value={state.profile_screenshot_url}
-                        onChange={(v) => update("profile_screenshot_url", v)}
+                        onChange={(v) => persistUpload("profile_screenshot_url", v)}
                       />
                       <SectionSave
                         busy={savingSection === s.key}
@@ -1188,7 +1273,7 @@ function DriverProfile({
                         hint="A screenshot showing your lifetime trips or deliveries from any app. One per app is best."
                         token={token}
                         values={state.trip_screenshots}
-                        onChange={(v) => update("trip_screenshots", v)}
+                        onChange={(v) => persistUpload("trip_screenshots", v)}
                       />
                       <SectionSave
                         busy={savingSection === s.key}
@@ -1305,9 +1390,15 @@ function InsuranceSection({
   token,
   state,
   update,
+  persistUpload,
   busy,
   onSave,
-}: Omit<StepProps, "saving"> & { token: string; busy: boolean; onSave: () => void }) {
+}: Omit<StepProps, "saving"> & {
+  token: string;
+  persistUpload: (field: keyof WizardState, value: string | string[] | null) => void;
+  busy: boolean;
+  onSave: () => void;
+}) {
   return (
     <>
       <DocumentCapture
@@ -1317,7 +1408,7 @@ function InsuranceSection({
         kind="insurance"
         token={token}
         value={state.insurance_doc_url}
-        onChange={(v) => update("insurance_doc_url", v)}
+        onChange={(v) => persistUpload("insurance_doc_url", v)}
       />
       {state.insurance_doc_url && (
         <div className="space-y-4 rounded-xl border border-border bg-soft p-4">

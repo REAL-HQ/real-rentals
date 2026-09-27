@@ -14,11 +14,17 @@ const EXT_BY_MIME: Record<string, string> = {
   "application/pdf": "pdf",
 };
 
+/** Must stay a subset of the server's allowlist in requestUploadUrl. */
+const ALLOWED_EXT = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"]);
+
 export function extFor(file: File): string {
   const byMime = EXT_BY_MIME[(file.type || "").toLowerCase()];
   if (byMime) return byMime;
   const byName = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  return byName && byName.length <= 5 ? byName : "jpg";
+  // Anything we do not recognise is stored as a jpg rather than sent to the
+  // server to be refused: the optimizer has already re-encoded every image it
+  // could, so an unrecognised extension is almost always a camera quirk.
+  return ALLOWED_EXT.has(byName) ? byName : "jpg";
 }
 
 export class UploadTooLarge extends Error {

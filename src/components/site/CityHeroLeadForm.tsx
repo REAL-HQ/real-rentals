@@ -97,6 +97,14 @@ export function CityHeroLeadForm({
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("lead", { detail: { city: site.slug, applicationId: data.id } }));
       }
+      if (!data.token) {
+        // We matched an application that already exists. The link goes to the
+        // address on that record, not to whoever filled this form in.
+        toast.success(
+          "You already have an application with us — we've emailed you the link to finish it.",
+        );
+        return;
+      }
       navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (error: any) {
       toast.error(error?.message || "Could not submit your application. Please try again.");

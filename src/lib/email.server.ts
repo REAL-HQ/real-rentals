@@ -245,6 +245,35 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
   return issueResumeUrl(supabaseAdmin, applicationId);
 }
 
+/**
+ * "We already have your application — here's your link."
+ *
+ * Sent when somebody submits the lead form and we find a recent application
+ * with the same email or phone. The link goes to the address on the existing
+ * record, never back to whoever filled the form in: matching an email address
+ * is not proof of owning it, and the link is a credential.
+ */
+export async function sendApplicationResumeEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+}): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const resumeUrl = await applicantResumeUrl(args.applicationId);
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You Already Have An Application With Us, ${escapeHtml(name)}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Somebody just started a new one using your details, so rather than create a second record we've sent you the link to the one you already have. Pick up exactly where you left off.</p>
+      <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open My Application</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">If that wasn't you, you can ignore this email — nothing on your application has changed, and the link above is the only way in.</p>`);
+  await sendEmail({
+    to: args.to,
+    subject: "Your REAL RENTALS Application — Here's Your Link",
+    html,
+    replyTo: "hello@drivereal.com",
+  });
+}
+
 type RecoveryArgs = {
   to: string;
   firstName: string | null;

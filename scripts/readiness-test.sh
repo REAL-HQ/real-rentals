@@ -11,3 +11,4 @@ npx tsc -p scripts/readiness-tsconfig.json
 sed -i 's|"@/lib/readiness"|"./readiness.js"|g' .readiness-build/*.js
 node scripts/readiness.test.mjs
 node scripts/assessment-guard.test.mjs
+node scripts/applicant-security.test.mjs

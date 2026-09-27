@@ -1515,6 +1515,41 @@ function DriverDetail({
                     without both.
                   </p>
                 </Card>
+                <Card title="Driver address" icon={<MapPin className="w-4 h-4" />}>
+                  {/* The agreement names the driver's address, and Part 1 no
+                      longer asks for it — by design, it is contract
+                      information rather than lead capture. Part 2 collects it
+                      when the applicant gets that far; when they do not, this
+                      is where staff put what the driver confirms on the call.
+                      Without it the agreement will not generate, and before
+                      this card existed there was nowhere in the back office to
+                      enter it. */}
+                  <TxtField
+                    label="Street address"
+                    value={driver.address ?? null}
+                    onSave={(v) => onUpdate({ address: v } as any)}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                    <TxtField
+                      label="City"
+                      value={driver.city ?? null}
+                      onSave={(v) => onUpdate({ city: v } as any)}
+                    />
+                    <TxtField
+                      label="State"
+                      value={driver.state ?? null}
+                      onSave={(v) => onUpdate({ state: v } as any)}
+                    />
+                    <TxtField
+                      label="ZIP"
+                      value={driver.zip ?? null}
+                      onSave={(v) => onUpdate({ zip: v } as any)}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#9A9AA3] mt-2">
+                    Must match the address on their licence. Never fill this in from a guess.
+                  </p>
+                </Card>
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>
 
@@ -1897,6 +1932,28 @@ function NumField({
     </div>
   );
 }
+function TxtField({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (v: string | null) => void;
+}) {
+  return (
+    <div className="bg-soft rounded-md px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <input
+        type="text"
+        defaultValue={value ?? ""}
+        onBlur={(e) => onSave(e.target.value.trim() || null)}
+        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
+      />
+    </div>
+  );
+}
+
 function DateField({
   label,
   value,

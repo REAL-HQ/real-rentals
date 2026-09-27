@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { applicantPhone } from "@/lib/applicant-validation";
 import { z } from "zod";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
@@ -114,7 +115,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     z
       .object({
         full_name: z.string().trim().min(2).max(120),
-        phone: z.string().trim().min(7).max(30),
+        phone: applicantPhone,
         email: z.string().trim().email().max(160),
         sms_consent: z.boolean(),
         market_id: nullableUuid,
@@ -144,19 +145,69 @@ export const savePartialApplication = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     // ---- Duplicate detection: same phone OR email within the last 30 days ----
+    //
+    // Two queries, not one `.or()`.
+    //
+    // This used to be .or(`phone.eq.${data.phone},email.eq.${data.email}`) —
+    // the applicant's own phone number interpolated straight into a PostgREST
+    // filter expression, in which a comma separates conditions. A phone of
+    // "1234567,status.eq.new" therefore added a third condition of the
+    // caller's choosing, widening the match to somebody else's application.
+    // The handler then patches whatever it matches with the submitted name,
+    // phone and email and returns a resume token for it: an anonymous form
+    // post that overwrites a stranger's record and hands back a working link
+    // to it.
+    //
+    // The regex on `phone` above closes that, but a validator is one mistake
+    // away from being loosened again. Passing the values as arguments instead
+    // of splicing them into a query language removes the class of bug rather
+    // than this instance of it.
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: dupes } = await supabaseAdmin
-      .from("applications")
-      .select("id, primary_application_id, resubmission_count, resubmission_history, created_at")
-      .or(`phone.eq.${data.phone},email.eq.${data.email}`)
-      .gte("created_at", cutoff)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const existing = dupes?.[0];
+    const dupeCols =
+      "id, primary_application_id, resubmission_count, resubmission_history, created_at";
+    const [byPhone, byEmail] = await Promise.all([
+      supabaseAdmin
+        .from("applications")
+        .select(dupeCols)
+        .eq("phone", data.phone)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1),
+      supabaseAdmin
+        .from("applications")
+        .select(dupeCols)
+        .eq("email", data.email)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+    const existing = [...(byPhone.data ?? []), ...(byEmail.data ?? [])].sort((a, b) =>
+      String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+    )[0];
     if (existing) {
       const primaryId = existing.primary_application_id ?? existing.id;
+
+      /*
+       * A match is not an authentication.
+       *
+       * This endpoint is anonymous — it backs the public lead forms — and it
+       * matches on email or phone, neither of which is a secret. Returning a
+       * resume token here meant that submitting the form with somebody else's
+       * email handed the caller a 14-day credential for that person's
+       * application: their address, their insurance details, write access to
+       * their row, upload access to their folder. The whole premise of this
+       * change is that the token is the credential, so it cannot be given out
+       * on the strength of a guessable value.
+       *
+       * The identity fields go the same way. An unauthenticated request must
+       * not be able to overwrite the name, phone or email on a record that
+       * already exists — that is how a victim stops receiving their own mail.
+       * They are recorded in resubmission_history for staff to reconcile.
+       */
+      const IDENTITY = new Set(["full_name", "phone", "email"]);
       const patch: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(data)) {
+        if (IDENTITY.has(k)) continue;
         if (v !== undefined && v !== null && v !== "") patch[k] = v;
       }
       const history = Array.isArray(existing.resubmission_history)
@@ -167,6 +218,10 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         source: data.source,
         pickup_date: data.pickup_date ?? null,
         market_id: data.market_id ?? null,
+        // Submitted, not applied. Staff decide whether this is the same person.
+        submitted_full_name: data.full_name,
+        submitted_phone: data.phone,
+        submitted_email: data.email,
       });
       patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
       patch.resubmission_history = history;
@@ -176,11 +231,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .update(patch as any)
         .eq("id", primaryId);
       if (updErr) throw new Error(updErr.message);
-      // A returning applicant gets a token for the record they already have,
-      // not a second record. This is the only reason the dedupe path can hand
-      // the browser anything: the id it returns no longer opens the door.
-      const { issueResumeToken } = await import("@/lib/resume-tokens.server");
-      return { id: primaryId, token: await issueResumeToken(supabaseAdmin, primaryId) };
+      // The link goes to the address already on the record, never back to the
+      // caller. A genuine returning applicant finds it in the inbox they
+      // originally gave us; anybody else learns nothing.
+      try {
+        const { data: onFile } = await supabaseAdmin
+          .from("applications")
+          .select("email, full_name")
+          .eq("id", primaryId)
+          .maybeSingle();
+        if (onFile?.email) {
+          const { sendApplicationResumeEmail } = await import("@/lib/email.server");
+          await sendApplicationResumeEmail({
+            to: onFile.email,
+            firstName: onFile.full_name ?? null,
+            applicationId: primaryId,
+          });
+        }
+      } catch (e) {
+        console.error("[lead-email] returning-applicant link failed", primaryId, e);
+      }
+      return { id: primaryId, token: null as string | null, existing: true as const };
     }
 
     const { data: row, error } = await supabaseAdmin
@@ -224,7 +295,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
-    return { id: row.id, token };
+    return { id: row.id, token: token as string | null, existing: false as const };
   });
 
 export const updateApplicationStep = createServerFn({ method: "POST" })
@@ -247,7 +318,25 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // the applicant, decides what happens to a submitted application.
     const isSubmission = step === "submitted";
     patch.current_step = step;
-    if (isSubmission) patch.status = "new";
+
+    // One read of the row as it stands. Two later decisions need it: whether
+    // this write may promote the status, and what coverage answer is already
+    // on file.
+    const { data: before } = await supabaseAdmin
+      .from("applications")
+      .select("status, full_coverage_insurance")
+      .eq("id", id)
+      .maybeSingle();
+
+    // Promote to "new" on submission, and only out of "partial".
+    //
+    // This used to set status unconditionally, so any write carrying
+    // step:"submitted" over a still-live token would walk an approved, active
+    // or closed application back to new — a decided record reappearing in the
+    // team's queue because somebody reopened an old tab.
+    if (isSubmission && String(before?.status ?? "").toLowerCase() === "partial") {
+      patch.status = "new";
+    }
 
     // Three-state insurance. "Not sure" is an answer, and it is not "no".
     //
@@ -264,12 +353,20 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Derive a single qualify/disqualify signal from whatever insurance detail
     // we have, so the team can triage a new lead without opening the record.
     // Verification is a human step, so this never promotes to "verified".
+    //
+    // The coverage answer comes from Part 1 and the carrier, policy and expiry
+    // come from Part 2, so by the time the detail arrives the boolean is only
+    // on the row — not in this payload. Reading it from the patch alone made
+    // an applicant who answered "yes" and then uploaded their insurance card
+    // fall back from "declared" to "unknown": triage lost the signal at the
+    // exact moment the evidence got stronger.
     if (
       patch.full_coverage_insurance !== undefined ||
       fields.insurance_expires_on !== undefined ||
       fields.insurance_carrier !== undefined
     ) {
-      const hasCoverage = patch.full_coverage_insurance as boolean | null | undefined;
+      const hasCoverage = (patch.full_coverage_insurance ??
+        before?.full_coverage_insurance) as boolean | null | undefined;
       const expires = fields.insurance_expires_on ?? null;
       const expired = expires ? new Date(expires) < new Date(new Date().toDateString()) : false;
       patch.insurance_status =
@@ -306,6 +403,12 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       patch.rental_duration_days = band.days;
     }
 
+    // Promote to "new" on submission, and only out of "partial".
+    //
+    // This used to set status unconditionally, so any write carrying
+    // step:"submitted" over a still-live token would walk an approved, active
+    // or closed application back to new — a decided record reappearing in the
+    // team's queue because somebody reopened an old tab.
     const { data: row, error } = await supabaseAdmin
       .from("applications")
       .update(patch as any)
@@ -336,8 +439,10 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       console.error("[documents] application sync failed", e);
     }
 
-    // Wizard-complete alert email. Fire-and-forget.
-    if (isSubmission) {
+    // Wizard-complete alert email. Fire-and-forget. Gated on the promotion
+    // actually happening, so a replayed submission does not re-alert the team
+    // or re-enrol a decided applicant in the follow-up sequence.
+    if (isSubmission && patch.status === "new") {
       try {
         const { sendLeadAlertEmail } = await import("@/lib/email.server");
         let marketName: string | null = null;
@@ -441,10 +546,11 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
       .object({
         token: z.string().min(20).max(200),
         kind: z.enum(["license", "insurance", "gig_profile", "trip_history"]),
-        ext: z
-          .string()
-          .trim()
-          .regex(/^[a-z0-9]{1,5}$/),
+        // An allowlist, not a shape check. `[a-z0-9]{1,5}` would have accepted
+        // "html", "svg" or "js" — and while these buckets are private and the
+        // browser never picks the path, a file the server agreed to sign is a
+        // file somebody eventually opens.
+        ext: z.enum(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"]),
       })
       .parse(d),
   )
@@ -452,6 +558,23 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
     const id = await resolveResumeToken(supabaseAdmin, data.token);
+
+    // The storage policies used to carry this check and no longer can: these
+    // uploads are signed by the service role, which bypasses RLS entirely. The
+    // token's own expiry covers the 14-day window that application_accepts_
+    // uploads() enforced, but not the status half of it, so a decided
+    // application would have gone on accepting files. Same rule, moved.
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    const decided = ["approved", "rejected", "active", "complete", "completed"];
+    if (decided.includes(String(app?.status ?? "").toLowerCase())) {
+      throw new Error(
+        "This application has already been decided. Email team@drivereal.com and we'll add the document for you.",
+      );
+    }
 
     const bucket =
       data.kind === "license" || data.kind === "insurance"
