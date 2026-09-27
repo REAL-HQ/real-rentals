@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { sanitizeAssessment } from "@/lib/assessment-guard";
 import { z } from "zod";
 
 type ScoreResult = {
@@ -92,7 +93,9 @@ Tiers: 70+ hot, 40-69 warm, below 40 cold.
 
 A missing answer means we have not asked or they did not know. Score it as absent, never as a bad answer, and never describe it as one.
 
-Do NOT state or imply any eligibility threshold in your summary — no minimum trip count, no "below our minimum", no "does not meet requirements". There is no published trip requirement. Describe what this applicant has, not what they lack against a bar.
+Do NOT state or imply any eligibility threshold, in the summary OR in a flag — no minimum trip count, no "below our minimum", no "does not meet requirements", no flag like "insufficient_trips". There is no published trip requirement. Describe what this applicant has, not what they lack against a bar.
+
+Do NOT recommend approving, declining or rejecting anybody, in the summary or in a flag. You are describing an applicant, not deciding on one.
 
 Respond ONLY with strict JSON matching this shape (no prose, no markdown):
 { "score": <0-100 integer>, "tier": "hot"|"warm"|"cold", "flags": string[], "summary": "<2 sentence plain-english assessment>" }`;
@@ -177,14 +180,28 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
   }
 
   const rawScore = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
-  const flags: string[] = Array.isArray(parsed.flags)
+  const rawFlags: string[] = Array.isArray(parsed.flags)
     ? parsed.flags.filter((f: unknown) => typeof f === "string").slice(0, 12)
     : [];
-  const summary: string = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
+  const rawSummary: string = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
   const tier: "hot" | "warm" | "cold" =
     parsed.tier === "hot" || parsed.tier === "warm" || parsed.tier === "cold"
       ? parsed.tier
       : tierFromScore(rawScore);
+
+  // The rubric asks the model not to state a trip threshold and not to decide
+  // anything. This is where that stops being a request: both free-form fields
+  // are filtered before they can reach the application row, because a staff
+  // member reading "below our 200-trip minimum" off a record may well repeat
+  // it to the applicant, and we publish no such requirement.
+  const { summary, flags, removed } = sanitizeAssessment({
+    summary: rawSummary,
+    flags: rawFlags,
+  });
+  if (removed.length) {
+    console.warn("[ai-scoring] filtered threshold or verdict language:", removed);
+  }
+
   return { score: rawScore, tier, flags, summary };
 }
 
