@@ -24,7 +24,6 @@ export function HeroQuoteBar({
   );
   const [city, setCity] = useState(presetCitySlug ?? "");
   const [pickup, setPickup] = useState("");
-  const [returnDate, setReturnDate] = useState("");
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
@@ -50,7 +49,7 @@ export function HeroQuoteBar({
 
   function submit() {
     const target = city || presetCitySlug;
-    if (!target || !pickup || !returnDate) return;
+    if (!target || !pickup) return;
     if (presetCitySlug && target === presetCitySlug) {
       document.getElementById("quote-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
@@ -58,7 +57,6 @@ export function HeroQuoteBar({
     const qs = new URLSearchParams();
     qs.set("city", target);
     qs.set("pickup", pickup);
-    qs.set("return", returnDate);
     window.location.href = `/apply?${qs.toString()}#quote-form`;
   }
 
@@ -80,7 +78,7 @@ export function HeroQuoteBar({
 
       <FadeUp delay={80} className="mt-auto w-full">
         <div className="mt-10 md:mt-16 max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
-          <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-3 md:gap-4 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_auto] gap-3 md:gap-4 items-end">
             <SelectField
               label="City"
               value={city}
@@ -88,8 +86,8 @@ export function HeroQuoteBar({
               placeholder="Select Your City"
               options={cities.map((c) => ({ value: c.slug, label: c.label }))}
             />
-            <DateField label="Pick Up Date" min={today} value={pickup} onChange={setPickup} />
-            <DateField label="Return Date" min={pickup || today} value={returnDate} onChange={setReturnDate} />
+            {/* No return date. It is a contractual date and this is a lead bar. */}
+            <DateField label="Start Date" min={today} value={pickup} onChange={setPickup} />
             <button
               type="button"
               onClick={submit}

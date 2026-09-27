@@ -69,7 +69,7 @@ async function handle(request: Request): Promise<Response> {
   // Abandoned recovery: status='partial' created between 3h and 48h ago, single send.
   const { data: batchAbandoned } = await supabaseAdmin
     .from("applications")
-    .select("id, full_name, email, city, state, pickup_date, return_date, market_id, current_step, status")
+    .select("id, full_name, email, city, state, pickup_date, market_id, current_step, status")
     .eq("status", "partial")
     .lt("created_at", h3)
     .gte("created_at", h48)
@@ -77,7 +77,7 @@ async function handle(request: Request): Promise<Response> {
     .not("email", "is", null);
 
   for (const row of batchAbandoned ?? []) {
-    if (isWizardComplete(row.current_step, row.status)) continue;
+    if (hasApplied(row.current_step, row.status)) continue;
     try {
       let marketName: string | null = null;
       if (row.market_id) {
@@ -94,7 +94,6 @@ async function handle(request: Request): Promise<Response> {
         applicationId: row.id as string,
         market: marketName ?? (row.city as string | null),
         pickupDate: row.pickup_date as string | null,
-        returnDate: row.return_date as string | null,
       });
       await supabaseAdmin
         .from("applications")
@@ -107,8 +106,7 @@ async function handle(request: Request): Promise<Response> {
   }
 
   for (const row of batch24 ?? []) {
-    // Skip rows that already finished the wizard (confirmation is step >= 5)
-    if (isWizardComplete(row.current_step, row.status)) continue;
+    if (hasApplied(row.current_step, row.status)) continue;
     try {
       await sendWizardRecoveryEmail({
         to: row.email as string,
@@ -127,7 +125,7 @@ async function handle(request: Request): Promise<Response> {
   }
 
   for (const row of batch72 ?? []) {
-    if (isWizardComplete(row.current_step, row.status)) continue;
+    if (hasApplied(row.current_step, row.status)) continue;
     try {
       await sendWizardRecoveryEmail({
         to: row.email as string,
@@ -156,10 +154,23 @@ async function handle(request: Request): Promise<Response> {
   });
 }
 
-function isWizardComplete(step: unknown, status: unknown): boolean {
+/**
+ * Has this person actually applied?
+ *
+ * These emails say "you didn't finish". Sending one to somebody who submitted
+ * Part 1 and simply has not uploaded their licence yet is both false and
+ * insulting — Part 1 is the application, and an incomplete Part 2 is not an
+ * abandoned anything. So `submitted`, `documents` and `profile_complete` all
+ * count as applied and stop the nudges.
+ *
+ * The legacy steps stay in the list: applications from before the Part 1 /
+ * Part 2 split finished on `confirmation`.
+ */
+function hasApplied(step: unknown, status: unknown): boolean {
   const s = typeof step === "string" ? step.toLowerCase() : "";
   const st = typeof status === "string" ? status.toLowerCase() : "";
   if (st === "complete" || st === "completed" || st === "submitted") return true;
+  if (["submitted", "documents", "profile_complete"].includes(s)) return true;
   if (s === "confirmation" || s === "complete" || s === "done") return true;
   return false;
 }

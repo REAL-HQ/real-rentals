@@ -49,25 +49,104 @@ async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** What renderTemplate substitutes for a merge field it has no value for. */
+const BLANK = "__________";
+
 function money(v: unknown): string {
   const n = Number(v ?? 0);
   if (!n) return "";
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * What an agreement cannot be signed without.
+ *
+ * Kept as a list rather than a series of throws so the preview can show a
+ * staff member everything that is missing at once, instead of one item per
+ * attempt.
+ */
+export type AgreementBlocker = { field: string; label: string; why: string };
+
 async function buildMergeData(
   admin: any,
   applicationId: string,
-): Promise<{ data: MergeData; app: any; vehicle: any }> {
+): Promise<{ data: MergeData; app: any; vehicle: any; blockers: AgreementBlocker[] }> {
   const { data: app, error } = await admin
     .from("applications")
     .select(
-      "id,full_name,email,phone,address,city,state,zip,license_number,license_state,license_expiration,vehicle_id,weekly_rent,deposit_amount,pickup_date,return_date,market_id",
+      "id,full_name,email,phone,address,city,state,zip,license_number,license_state,license_expiration,vehicle_id,weekly_rent,deposit_amount,contract_start_date,contract_end_date,market_id",
     )
     .eq("id", applicationId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!app) throw new Error("Driver not found");
+
+  // A LIVE rental is the authority on its own dates once it exists; before
+  // activation the agreed contract dates on the application are.
+  //
+  // "Live" is doing real work here. endRental leaves the row in place with
+  // status 'closed' and rewrites end_date to the day it was closed, so taking
+  // the newest rental regardless of status meant a returning driver's second
+  // agreement was rendered with their first rental's dates — staff set new
+  // ones, pressed send, and the contract said something else. Both dates come
+  // from the same source, too: mixing a live rental's start with the
+  // application's end produces a pair nobody agreed together.
+  const { data: rental } = await admin
+    .from("rentals")
+    .select("start_date,end_date,status")
+    .eq("application_id", applicationId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // A live rental is authoritative for the dates it actually has. end_date is
+  // nullable and activation does not require one — "no end date" means the
+  // rental is open-ended, not that the agreed end date is unknown. Reading it
+  // as authoritative-and-null left the agreement permanently unissuable, with
+  // the only field staff could fill being the one the code had decided to
+  // ignore.
+  const fromRental = Boolean(rental?.start_date);
+  const startDate = fromRental ? rental.start_date : (app.contract_start_date ?? null);
+  const endDate = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
+
+  /*
+   * Application intent is NOT contract data.
+   *
+   * This used to read pickup_date and return_date straight off the
+   * application. Both were typed into a date picker on a marketing page by
+   * somebody who had not been quoted a rate or shown a car, and the return
+   * one in particular was routinely a placeholder — and both then appeared in
+   * a signed contract as the rental's dates. pickup_date is still collected
+   * and is still useful for scheduling the call; it is not a term of the
+   * agreement and does not appear below. Part 1 no longer collects a return
+   * date at all.
+   */
+  const blockers: AgreementBlocker[] = [];
+  if (!startDate)
+    blockers.push({
+      field: "contract_start_date",
+      label: "Contract start date",
+      why: "The applicant's desired start date is an estimate, not a term. Agree a start date with the driver and record it.",
+    });
+  if (!endDate)
+    blockers.push({
+      field: "contract_end_date",
+      label: "Scheduled end date",
+      why: "The applicant only told us roughly how long they expect to need the vehicle. That cannot become a contractual return date.",
+    });
+  if (startDate && endDate && endDate <= startDate)
+    blockers.push({
+      field: "contract_end_date",
+      label: "A scheduled end date after the start date",
+      why: `The agreement would run from ${startDate} to ${endDate}, which ends on or before it begins.`,
+    });
+  if (!app.address || !app.zip)
+    blockers.push({
+      field: "driver_address",
+      label: "Driver address",
+      why: "The agreement names the driver's address. Confirm it with the driver and enter it on the Payments tab, or ask them to add it in their driver profile — do not guess it.",
+    });
 
   let vehicle: any = null;
   if (app.vehicle_id) {
@@ -94,7 +173,10 @@ async function buildMergeData(
     driver_name: app.full_name ?? "",
     driver_email: app.email ?? "",
     driver_phone: app.phone ?? "",
-    driver_address: [app.address, app.city, app.state, app.zip].filter(Boolean).join(", "),
+    driver_address:
+      app.address && app.zip
+        ? [app.address, app.city, app.state, app.zip].filter(Boolean).join(", ")
+        : "",
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: app.license_expiration ?? "",
@@ -105,8 +187,8 @@ async function buildMergeData(
     vehicle_vin: vehicle?.id ? String(vehicle.id).slice(0, 8).toUpperCase() : "",
     weekly_rate: money(app.weekly_rent ?? vehicle?.weekly_rate),
     deposit_amount: money(app.deposit_amount ?? vehicle?.deposit),
-    start_date: app.pickup_date ?? "",
-    return_date: app.return_date ?? "",
+    start_date: startDate ?? "",
+    return_date: endDate ?? "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
     today: new Date().toLocaleDateString("en-US", {
       year: "numeric",
@@ -114,7 +196,7 @@ async function buildMergeData(
       day: "numeric",
     }),
   };
-  return { data, app, vehicle };
+  return { data, app, vehicle, blockers };
 }
 
 async function activeTemplateBody(admin: any): Promise<{ id: string | null; body: string }> {
@@ -180,15 +262,21 @@ export const previewAgreement = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: merge, app } = await buildMergeData(supabaseAdmin, data.applicationId);
+    const { data: merge, app, blockers } = await buildMergeData(supabaseAdmin, data.applicationId);
     const tpl = await activeTemplateBody(supabaseAdmin);
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
     return {
-      body: renderTemplate(tpl.body, merge),
+      // Withheld while anything blocks the send: a preview the staff member
+      // can edit and press Send on reads as permission to proceed, and the
+      // blanks in it are exactly what must not reach a signature.
+      body: blockers.length ? null : renderTemplate(tpl.body, merge),
       merge,
       missing,
+      // Everything in `missing` is worth a staff member's attention; these are
+      // the ones that stop the agreement being sent at all.
+      blockers,
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
     };
@@ -209,10 +297,29 @@ export async function issueAgreement(
   applicationId: string,
   opts: { body?: string; createdBy?: string | null } = {},
 ): Promise<{ id: string; url: string }> {
-  const { data: merge, app } = await buildMergeData(admin, applicationId);
+  const { data: merge, app, blockers } = await buildMergeData(admin, applicationId);
   if (!app.email) throw new Error("This driver has no email on file");
+  // A contract with a guessed start date or a blank address is not a contract
+  // worth sending, and an applicant who signs one has signed terms nobody
+  // agreed with them.
+  if (blockers.length)
+    throw new Error(
+      `This agreement is missing ${blockers.map((b) => b.label.toLowerCase()).join(" and ")}. ${blockers[0].why}`,
+    );
   const tpl = await activeTemplateBody(admin);
-  const body = opts.body ?? renderTemplate(tpl.body, merge);
+
+  /*
+   * The staff member's edited text is honoured — but not if it still carries
+   * the blanks renderTemplate leaves for missing merge fields.
+   *
+   * The guard above checks the row as it stands now; the body being stored is
+   * whatever the preview produced, possibly minutes earlier and before the
+   * missing dates were filled in. Those two can disagree, and when they do the
+   * applicant signs a contract whose start date, return date and address read
+   * "__________" while merge_data records the right ones. Re-render instead.
+   */
+  const rendered = renderTemplate(tpl.body, merge);
+  const body = opts.body && !opts.body.includes(BLANK) ? opts.body : rendered;
 
   const token = randomToken();
   const tokenHash = await hashToken(token);

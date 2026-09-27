@@ -104,6 +104,53 @@ eq(staleWithTiming.state, "positive", "  a stale date falls through to stated ti
 eq(staleWithTiming.evidence, "self_reported", "  and drops back to self-reported evidence");
 setClockForTests(() => Date.now());
 
+console.log("\nPART 1 ANSWERS FEED THE FACTORS THAT ALREADY EXISTED");
+setClockForTests(() => Date.parse("2026-09-26T00:00:00Z"));
+const factor = (key) => (app, scr) =>
+  computeReadiness(app, scr ?? {}).factors.find((f) => f.key === key);
+const timing2 = factor("timing");
+const commitment = factor("drive_type");
+const cover = factor("insurance_cover");
+
+// Timing: the applicant's own start date, now that start_timing is not asked.
+const wantsSoon = timing2({ pickup_date: "2026-10-01" });
+eq(wantsSoon.state, "positive", "a pickup date inside 14 days reads as urgency");
+eq(wantsSoon.evidence, "self_reported", "  as a self-reported signal, not a staff-established one");
+eq(wantsSoon.detail, "Wants to start within 5 days", "  and says how soon");
+const wantsLater = timing2({ pickup_date: "2027-02-01" });
+eq(wantsLater.state, "positive", "a distant pickup date still counts, partially");
+eq(wantsLater.earned < wantsLater.weight, true, "  at less than full weight");
+const staleDate = timing2({ pickup_date: "2026-01-01" });
+eq(staleDate.state, "unknown", "a pickup date long gone is stale, not urgent");
+eq(timing2({ pickup_date: "2026-10-01" }, { needed_by_date: "2026-09-28" }).evidence,
+   "staff_verified", "a staff needed-by date still outranks the applicant's own");
+eq(timing2({ start_timing: "Today" }).state, "positive",
+   "a historical start_timing still counts when there is no date");
+
+// Commitment: same factor and same weight, answered a step earlier.
+eq(commitment({ drive_type: "full_time" }).state, "positive", "the applicant can answer full-time");
+eq(commitment({ drive_type: "full_time" }).evidence, "self_reported", "  self-reported");
+eq(commitment({ drive_type: "full_time" }).earned, commitment({}, { drive_type: "full_time" }).earned,
+   "  and earns exactly what the staff answer earns");
+eq(commitment({ drive_type: "part_time" }).earned * 2,
+   commitment({ drive_type: "full_time" }).earned, "part-time is half of full-time, as before");
+eq(commitment({}, { drive_type: "part_time" }).evidence, "staff_verified",
+   "a staff answer outranks the applicant's");
+eq(commitment({ drive_type: "weekends" }).state, "unknown", "an unrecognised value establishes nothing");
+
+// Insurance: "not sure" is an answer, and it is not "no".
+const notSure = cover({ insurance_answer: "not_sure", full_coverage_insurance: null });
+eq(notSure.state, "unknown", "not sure leaves insurance unknown");
+eq(notSure.earned, 0, "  earning nothing");
+eq(cover({ insurance_answer: "no", full_coverage_insurance: false }).state, "attention",
+   "a plain no is a concern, as before");
+eq(notSure.detail !== cover({}).detail, true,
+   "  but reads differently from a question nobody asked");
+ok(computeReadiness({ insurance_answer: "not_sure" }, {}).coverage <
+   computeReadiness({ insurance_answer: "no", full_coverage_insurance: false }, {}).coverage,
+   "not sure does not count as known coverage the way no does");
+setClockForTests(() => Date.now());
+
 console.log("\nFOUR STATES, NO FIFTH, AND NO 'APPROVED'");
 const states = new Set();
 const mk = (o, sc) => { const r = computeReadiness(o, sc ?? {}); states.add(r.state); return r; };

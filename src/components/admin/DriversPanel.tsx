@@ -4,7 +4,11 @@ import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { mergeDuplicateApplications, approveApplication } from "@/lib/applications.functions";
+import {
+  mergeDuplicateApplications,
+  approveApplication,
+  reissueApplicantLink,
+} from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { DepositDialog } from "./DepositDialog";
 import { endRental } from "@/lib/rentals.functions";
@@ -57,6 +61,8 @@ import {
   Sparkles,
   AlertTriangle,
   Wallet,
+  CalendarDays,
+  Link2 as LinkIcon,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
@@ -712,7 +718,9 @@ function DriverDetail({
     .join("")
     .toUpperCase();
   const trips = Number(driver.trips_completed);
-  const tripsOk = !Number.isNaN(trips) && trips >= 200;
+  // The 200-trip threshold that used to sit beside this is gone with the
+  // submission gate. Trip volume is still a readiness factor and still shown
+  // to staff; it is no longer a pass/fail badge on the record.
   const { screening, setScreening } = useDriverScreening(driver.id);
 
   async function advanceStatus(next: import("./types").ScreeningStatus) {
@@ -972,6 +980,7 @@ function DriverDetail({
                   <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
                 </DropdownMenuItem>
                 <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                <ReissueLinkAction applicationId={driver.id} />
                 <CardOnFileActions driver={driver} onUpdate={onUpdate} />
                 <DropdownMenuItem
                   className="text-[#D03020] focus:text-[#D03020]"
@@ -1092,7 +1101,22 @@ function DriverDetail({
                 />
                 <Row2
                   label="Drive type"
-                  value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"}
+                  value={
+                    // Staff answer first, then the applicant's own, so the row
+                    // is not blank just because nobody has run an interview.
+                    ((screening as any)?.drive_type as string | undefined)?.replace("_", " ") ??
+                    ((driver as any).drive_type as string | null)?.replace("_", " ") ??
+                    "—"
+                  }
+                />
+                <Row2
+                  label="Expected duration"
+                  value={
+                    (driver as any).expected_duration
+                      ? (DURATION_LABEL[(driver as any).expected_duration as string] ??
+                        ((driver as any).expected_duration as string))
+                      : "—"
+                  }
                 />
                 <Row2
                   label="Current vehicle"
@@ -1325,7 +1349,7 @@ function DriverDetail({
                   }}
                   onRecordingChange={setHasRecording}
                 />
-                <AISnapshotCard driver={driver} onUpdate={onUpdate} />
+                <AISnapshotCard driver={driver} />
               </TabsContent>
 
               <TabsContent value="application" className="mt-4 space-y-4">
@@ -1458,6 +1482,73 @@ function DriverDetail({
                       onSave={(v) => onUpdate({ weekly_rent: v as any })}
                     />
                   </div>
+                </Card>
+                <Card title="Contract dates" icon={<CalendarDays className="w-4 h-4" />}>
+                  {/* These are the agreement's dates, and only these. What the
+                      applicant told us — their desired start and how long they
+                      expect to need the car — is shown alongside as context,
+                      never copied in. An estimate typed on a marketing page is
+                      not a term somebody should be asked to sign. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <DateField
+                      label="Contract start"
+                      value={(driver as any).contract_start_date ?? null}
+                      onSave={(v) => onUpdate({ contract_start_date: v } as any)}
+                    />
+                    <DateField
+                      label="Scheduled end"
+                      value={(driver as any).contract_end_date ?? null}
+                      onSave={(v) => onUpdate({ contract_end_date: v } as any)}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#9A9AA3] mt-2">
+                    They asked to start{" "}
+                    <span className="font-medium text-[#55555E]">
+                      {driver.pickup_date
+                        ? new Date(driver.pickup_date).toLocaleDateString()
+                        : "— no date given"}
+                    </span>
+                    {(driver as any).expected_duration
+                      ? ` and expect to need the vehicle for ${DURATION_LABEL[(driver as any).expected_duration as string] ?? (driver as any).expected_duration}`
+                      : ""}
+                    . Agree the real dates with them before sending an agreement — it will not send
+                    without both.
+                  </p>
+                </Card>
+                <Card title="Driver address" icon={<MapPin className="w-4 h-4" />}>
+                  {/* The agreement names the driver's address, and Part 1 no
+                      longer asks for it — by design, it is contract
+                      information rather than lead capture. Part 2 collects it
+                      when the applicant gets that far; when they do not, this
+                      is where staff put what the driver confirms on the call.
+                      Without it the agreement will not generate, and before
+                      this card existed there was nowhere in the back office to
+                      enter it. */}
+                  <TxtField
+                    label="Street address"
+                    value={driver.address ?? null}
+                    onSave={(v) => onUpdate({ address: v } as any)}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                    <TxtField
+                      label="City"
+                      value={driver.city ?? null}
+                      onSave={(v) => onUpdate({ city: v } as any)}
+                    />
+                    <TxtField
+                      label="State"
+                      value={driver.state ?? null}
+                      onSave={(v) => onUpdate({ state: v } as any)}
+                    />
+                    <TxtField
+                      label="ZIP"
+                      value={driver.zip ?? null}
+                      onSave={(v) => onUpdate({ zip: v } as any)}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#9A9AA3] mt-2">
+                    Must match the address on their licence. Never fill this in from a guess.
+                  </p>
                 </Card>
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>
@@ -1672,19 +1763,32 @@ function SidebarStat({
   );
 }
 
-function AISnapshotCard({
-  driver,
-  onUpdate,
-}: {
-  driver: Application;
-  onUpdate: (p: Partial<Application>) => void;
-}) {
+/**
+ * The AI second opinion, read-only.
+ *
+ * Re-scoring used to write ai_score, ai_tier, ai_flags and ai_summary back to
+ * the applications row from here, on the staff member's own session. It was a
+ * duplicate — runScoring has already persisted exactly those values server-side
+ * by the time the call returns — and it was a second write path into columns
+ * whose whole point is that nothing reaches them without passing the
+ * assessment guard. The fresh result is now held locally for display and the
+ * database copy is the server's alone.
+ */
+function AISnapshotCard({ driver }: { driver: Application }) {
   const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState<{
+    score: number;
+    tier: string;
+    flags: string[];
+    summary: string;
+  } | null>(null);
   const rescore = useServerFn(scoreApplication);
-  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
-  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
-  const score = typeof driver.ai_score === "number" ? driver.ai_score : null;
-  const tier = driver.ai_tier as string | null | undefined;
+  const storedFlags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const flags = fresh ? fresh.flags : storedFlags;
+  const summary = fresh ? fresh.summary : driver.ai_summary;
+  const scoredAt = fresh ? new Date() : driver.scored_at ? new Date(driver.scored_at) : null;
+  const score = fresh ? fresh.score : typeof driver.ai_score === "number" ? driver.ai_score : null;
+  const tier = fresh ? fresh.tier : (driver.ai_tier as string | null | undefined);
   const tierGrad =
     tier === "hot"
       ? "from-red-500 to-orange-500"
@@ -1699,13 +1803,12 @@ function AISnapshotCard({
       const res = await rescore({ data: { id: driver.id } });
       if (res && (res as any).ok !== false) {
         const r = res as any;
-        onUpdate({
-          ai_score: r.score,
-          ai_tier: r.tier,
-          ai_flags: r.flags,
-          ai_summary: r.summary,
-          scored_at: new Date().toISOString(),
-        } as any);
+        setFresh({
+          score: r.score,
+          tier: r.tier,
+          flags: Array.isArray(r.flags) ? r.flags : [],
+          summary: typeof r.summary === "string" ? r.summary : "",
+        });
         toast.success(`AI scored: ${r.tier} (${r.score})`);
       } else {
         toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
@@ -1736,7 +1839,7 @@ function AISnapshotCard({
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <Sparkles className="w-3.5 h-3.5 text-[#D03020] shrink-0" />
         <p className="text-[12px] text-[#55555E] leading-snug truncate">
-          {driver.ai_summary ||
+          {summary ||
             "Not yet scored. Run the AI review to grade trips, rating, license, and screenshots."}
         </p>
         {flags.length > 0 && (
@@ -1829,6 +1932,59 @@ function NumField({
     </div>
   );
 }
+function TxtField({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (v: string | null) => void;
+}) {
+  return (
+    <div className="bg-soft rounded-md px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <input
+        type="text"
+        defaultValue={value ?? ""}
+        onBlur={(e) => onSave(e.target.value.trim() || null)}
+        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
+      />
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (v: string | null) => void;
+}) {
+  return (
+    <div className="bg-soft rounded-md px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <input
+        type="date"
+        defaultValue={value ?? ""}
+        onBlur={(e) => onSave(e.target.value || null)}
+        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
+      />
+    </div>
+  );
+}
+
+/** How the applicant's duration band reads to a person. */
+const DURATION_LABEL: Record<string, string> = {
+  "1-2_weeks": "1–2 weeks",
+  "3-4_weeks": "3–4 weeks",
+  "1-2_months": "1–2 months",
+  "2plus_months": "2+ months",
+  ongoing: "an open-ended period",
+};
+
 function VehiclePicker({
   vehicles,
   value,
@@ -1975,6 +2131,42 @@ function FilterSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Kill every live application link and hand back a fresh one.
+ *
+ * Resume tokens are stored hashed, so nobody — us included — can recover a
+ * link once it has gone out. That makes "they lost the email" and "that link
+ * ended up somewhere it shouldn't" the same operation: revoke, mint, send.
+ */
+function ReissueLinkAction({ applicationId }: { applicationId: string }) {
+  const reissue = useServerFn(reissueApplicantLink);
+  const [busy, setBusy] = useState(false);
+  return (
+    <DropdownMenuItem
+      onSelect={async (e) => {
+        e.preventDefault();
+        if (busy) return;
+        setBusy(true);
+        try {
+          const res = await reissue({ data: { id: applicationId } });
+          await navigator.clipboard.writeText(res.url).catch(() => {});
+          toast.success(
+            res.revoked
+              ? `New link copied. ${res.revoked} older ${res.revoked === 1 ? "link" : "links"} revoked.`
+              : "New link copied.",
+          );
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Could not reissue the link");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy a fresh application link"}
+    </DropdownMenuItem>
   );
 }
 

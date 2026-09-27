@@ -8,25 +8,26 @@ import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWiz
 import { savePartialApplication } from "@/lib/applications.functions";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
+import { useResumeToken } from "@/lib/resume-token";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
     s: Record<string, unknown>,
   ): {
-    id?: string;
+    /** Resume token. Never an application id — see resume-tokens.server.ts. */
+    t?: string;
     city?: string;
     pickup?: string;
-    return?: string;
     vehicle?: string;
   } => {
     // Only keep params that actually have a value so the URL never ends up
-    // as /apply?id=&city=&pickup=&return=&vehicle=
+    // as /apply?t=&city=&pickup=&vehicle=
     const pick = (v: unknown) => {
       const str = typeof v === "string" ? v.trim() : "";
       return str ? str : undefined;
     };
     const out: Record<string, string> = {};
-    for (const key of ["id", "city", "pickup", "return", "vehicle"] as const) {
+    for (const key of ["t", "city", "pickup", "vehicle"] as const) {
       const value = pick(s[key]);
       if (value) out[key] = value;
     }
@@ -47,7 +48,10 @@ export const Route = createFileRoute("/apply")({
 });
 
 function ApplyPage() {
-  const { id, city: preCity, pickup: prePickup, return: preReturn } = Route.useSearch();
+  const { t, city: preCity, pickup: prePickup } = Route.useSearch();
+  // allowStashed: false — /apply starts a new application. A token stashed by
+  // the previous person on a shared or kiosk device must not open their form.
+  const token = useResumeToken(t, { allowStashed: false });
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -55,18 +59,18 @@ function ApplyPage() {
     // screen at once. A signup flow also converts better without the rest of
     // the site one click away.
     <div className="min-h-screen bg-background">
-      {id ? (
-        <ApplicationWizard id={id} />
+      {token === undefined ? null : token ? (
+        <ApplicationWizard token={token} />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
-          <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} preReturn={preReturn ?? ""} />
+          <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} />
         </main>
       )}
     </div>
   );
 }
 
-function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePickup: string; preReturn: string }) {
+function ContactStep({ preCity, prePickup }: { preCity: string; prePickup: string }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
   const [submitting, setSubmitting] = useState(false);
@@ -124,12 +128,21 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
           city: market?.name ?? preCity ?? null,
           state: market?.state ?? null,
           pickup_date: prePickup || null,
-          return_date: preReturn || null,
           source: "homepage",
           ...getAttribution(),
         },
       });
-      navigate({ to: "/thank-you", search: { id: data.id } });
+      // The token, not the id. It is minted server-side on this call and this
+      // is the only time it exists in plaintext.
+      if (!data.token) {
+        // We matched an application that already exists. The link goes to the
+        // address on that record, not to whoever filled this form in.
+        toast.success(
+          "You already have an application with us — we've emailed you the link to finish it.",
+        );
+        return;
+      }
+      navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (e: any) {
       toast.error(e?.message ?? "Could not save. Please try again.");
     } finally {
@@ -141,9 +154,9 @@ function ContactStep({ preCity, prePickup, preReturn }: { preCity: string; prePi
     <FadeUp>
       <div className="max-w-xl mx-auto">
         <ProgressBar current="your_info" source="homepage" />
-        <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 5</div>
+        <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
-        <p className="mt-3 text-muted-foreground">We'll save your spot and call you shortly.</p>
+        <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
 
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
           <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />

@@ -1,12 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { sanitizeAssessment } from "@/lib/assessment-guard";
 import { z } from "zod";
+
+import type { Removal } from "@/lib/assessment-guard";
 
 type ScoreResult = {
   score: number;
   tier: "hot" | "warm" | "cold";
   flags: string[];
   summary: string;
+  /** Non-verbatim record of anything the guard dropped. Never persisted. */
+  removed: Removal[];
 };
 
 const BUCKETS = {
@@ -56,17 +61,45 @@ async function callScoringModel(payload: {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("Missing ANTHROPIC_API_KEY");
 
-  const rubric = `You are scoring a rideshare/delivery driver application for a rental company.
+  /*
+   * Three things about this rubric were wrong, and two of them were doing
+   * real damage to real applicants.
+   *
+   * It scored trips as "<200 = 0" — a cliff worth a quarter of the total.
+   * 200 completed trips is an internal signal, not a requirement: REAL RENTALS
+   * may be flexible on it, and nobody should be pushed down a call list for
+   * falling one side of a number we do not publish. The bands below mirror the
+   * ones the approved readiness model already uses, which credit experience
+   * from 50 trips upward and have no cliff. No new policy is invented here.
+   *
+   * It also scored two questions that no longer exist. `start_timing` was
+   * replaced by an actual start date, and the wizard steps it prorated against
+   * (eligibility, driver, vehicle, review) were replaced by the Part 1 / Part 2
+   * split. Between them that was 35 of 100 points which every new applicant
+   * scored zero on automatically — so a good driver with 150 trips could not
+   * have cleared "cold" however strong the rest of their application was.
+   *
+   * This is a second opinion for staff, nothing more. src/lib/readiness.ts is
+   * the canonical signal, no workflow branches on the tier, and the model is
+   * told in as many words not to decide anything.
+   */
+  const rubric = `You are giving a rental company's staff a second opinion on a rideshare/delivery driver application. You are NOT deciding anything: a human reviews every applicant, and nothing is approved or declined on your output.
 
 Rubric (total 100 pts):
-- Trips completed: 25 pts (200–500 = 10, 500–1500 = 18, 1500+ = 25, <200 = 0)
-- Rating: 20 pts (4.85+ = 20, 4.7–4.85 = 14, 4.5–4.7 = 8, below 4.5 = 0)
-- Start timing: 20 pts (Today = 20, This week = 16, Within 2 weeks = 10, Just checking = 2)
-- Completion depth: 15 pts (full wizard status "complete" = 15, otherwise prorate by current_step: eligibility=3, driver=7, vehicle=11, review=13)
+- Trips completed: 25 pts (1500+ = 25, 500–1499 = 20, 200–499 = 15, 50–199 = 8, under 50 = 3, not provided = 0)
+- Rating: 20 pts (4.85+ = 20, 4.7–4.85 = 14, 4.5–4.7 = 8, below 4.5 = 0, not provided = 0)
+- Requested start date: 20 pts (within 7 days = 20, within 14 days = 16, within 30 days = 10, further out or not given = 4)
+- Application depth: 15 pts (driver profile finished, current_step "profile_complete" = 15; documents started, "documents" = 11; Part 1 submitted, "submitted" = 8; still in Part 1 = 3)
 - License valid + license photo uploaded: 10 pts (both true = 10, one = 5, none = 0)
-- Screenshot verification: 10 pts. Read profile/trip screenshots. Do the visible trip count and rating look consistent with the claimed numbers? Consistent = 10, minor discrepancy = 5, major mismatch or unreadable = 0 and add a flag like "screenshot_mismatch" or "screenshot_unreadable".
+- Screenshot verification: 10 pts. Read profile/trip screenshots. Do the visible trip count and rating look consistent with the claimed numbers? Consistent = 10, minor discrepancy = 5, major mismatch or unreadable = 0 and add a flag like "screenshot_mismatch" or "screenshot_unreadable". No screenshots supplied = 0, and that is a gap, not a concern — do not flag it as suspicious.
 
 Tiers: 70+ hot, 40-69 warm, below 40 cold.
+
+A missing answer means we have not asked or they did not know. Score it as absent, never as a bad answer, and never describe it as one.
+
+Do NOT state or imply any eligibility threshold, in the summary OR in a flag — no minimum trip count, no "below our minimum", no "does not meet requirements", no flag like "insufficient_trips". There is no published trip requirement. Describe what this applicant has, not what they lack against a bar.
+
+Do NOT recommend approving, declining or rejecting anybody, in the summary or in a flag. You are describing an applicant, not deciding on one.
 
 Respond ONLY with strict JSON matching this shape (no prose, no markdown):
 { "score": <0-100 integer>, "tier": "hot"|"warm"|"cold", "flags": string[], "summary": "<2 sentence plain-english assessment>" }`;
@@ -76,11 +109,13 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
     rating: payload.row.rating ?? null,
     license_valid: payload.row.license_valid ?? null,
     license_photo_uploaded: !!payload.row.license_photo_url,
+    // start_timing is the retired question; the requested start date replaced
+    // it. Historical rows still carry it, so both go over.
     start_timing: payload.row.start_timing ?? null,
     platforms: payload.row.platforms ?? null,
     market: payload.row.market ?? payload.row.city ?? null,
-    pickup_date: payload.row.pickup_date ?? null,
-    return_date: payload.row.return_date ?? null,
+    requested_start_date: payload.row.pickup_date ?? null,
+    expected_duration: payload.row.expected_duration ?? null,
     status: payload.row.status ?? null,
     current_step: payload.row.current_step ?? null,
   };
@@ -149,15 +184,26 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
   }
 
   const rawScore = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
-  const flags: string[] = Array.isArray(parsed.flags)
+  const rawFlags: string[] = Array.isArray(parsed.flags)
     ? parsed.flags.filter((f: unknown) => typeof f === "string").slice(0, 12)
     : [];
-  const summary: string = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
+  const rawSummary: string = typeof parsed.summary === "string" ? parsed.summary.slice(0, 600) : "";
   const tier: "hot" | "warm" | "cold" =
     parsed.tier === "hot" || parsed.tier === "warm" || parsed.tier === "cold"
       ? parsed.tier
       : tierFromScore(rawScore);
-  return { score: rawScore, tier, flags, summary };
+
+  // The rubric asks the model not to state a trip threshold and not to decide
+  // anything. This is where that stops being a request: both free-form fields
+  // are filtered before they can reach the application row, because a staff
+  // member reading "below our 200-trip minimum" off a record may well repeat
+  // it to the applicant, and we publish no such requirement.
+  const { summary, flags, removed } = sanitizeAssessment({
+    summary: rawSummary,
+    flags: rawFlags,
+  });
+
+  return { score: rawScore, tier, flags, summary, removed };
 }
 
 async function requireAdmin(context: {
@@ -223,6 +269,19 @@ export async function runScoring(supabaseAdmin: any, id: string) {
       images,
     });
 
+    // Say that filtering happened, and enough to debug the filter — the field,
+    // the reason, which pattern fired, and how much went. Deliberately not the
+    // text itself: it is prose a model wrote about a named applicant, logs are
+    // retained and read more widely than the database, and "we removed this
+    // because it should not be stored" is a poor reason to write it somewhere
+    // else. The application id is enough to find the stored row.
+    if (result.removed.length) {
+      console.warn(
+        "[ai-scoring] assessment guard removed content",
+        JSON.stringify({ applicationId: id, removals: result.removed }),
+      );
+    }
+
     await supabaseAdmin
       .from("applications")
       .update({
@@ -234,7 +293,9 @@ export async function runScoring(supabaseAdmin: any, id: string) {
       })
       .eq("id", id);
 
-    return { ok: true as const, ...result };
+    // `removed` is diagnostic only — it is logged above and goes no further.
+    const { removed: _removed, ...persisted } = result;
+    return { ok: true as const, ...persisted };
   } catch (e) {
     console.error("[ai-scoring] failed", id, e);
     await supabaseAdmin

@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager, type Actor } from "@/lib/roles.server";
-import { logAudit, diffFields } from "@/lib/audit.server";
+import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
 
 // The vehicle record: creation, identity lookup and the profile aggregate.

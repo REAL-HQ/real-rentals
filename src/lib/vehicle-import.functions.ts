@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager } from "@/lib/roles.server";
-import { logAudit } from "@/lib/audit.server";
+import { logAudit } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { BODY_TYPES } from "@/lib/vehicles.functions";
 

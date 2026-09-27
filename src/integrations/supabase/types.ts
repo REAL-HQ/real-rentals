@@ -179,8 +179,80 @@ export type Database = {
         }
         Relationships: []
       }
+      applicant_upload_grants: {
+        Row: {
+          application_id: string
+          created_at: string
+          id: string
+          kind: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          id?: string
+          kind: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applicant_upload_grants_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      application_resume_tokens: {
+        Row: {
+          application_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          last_used_at: string | null
+          revoked_at: string | null
+          token_hash: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_resume_tokens_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
+          contract_end_date: string | null
+          contract_start_date: string | null
+          drive_type: string | null
+          expected_duration: string | null
+          insurance_answer: string | null
           address: string | null
           ai_flags: Json | null
           ai_score: number | null
@@ -285,6 +357,11 @@ export type Database = {
           zip: string | null
         }
         Insert: {
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          drive_type?: string | null
+          expected_duration?: string | null
+          insurance_answer?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null
@@ -389,6 +466,11 @@ export type Database = {
           zip?: string | null
         }
         Update: {
+          contract_end_date?: string | null
+          contract_start_date?: string | null
+          drive_type?: string | null
+          expected_duration?: string | null
+          insurance_answer?: string | null
           address?: string | null
           ai_flags?: Json | null
           ai_score?: number | null

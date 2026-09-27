@@ -390,6 +390,11 @@ export const FACTORS: Factor[] = [
           a.insurance_doc_url ? "document" : "self_reported",
         );
       if (self === false) return attention("No full coverage", "self_reported");
+      // "Not sure" is an answered question with an unknown answer. It stays
+      // unknown — it must never be read as "no" — but saying so tells staff
+      // there is a card to ask about rather than a question to ask.
+      if (a.insurance_answer === "not_sure")
+        return unknown("Applicant unsure whether they have full coverage");
       return unknown("Insurance not provided");
     },
   },
@@ -503,10 +508,16 @@ export const FACTORS: Factor[] = [
     label: "Driving commitment",
     group: "Commitment",
     weight: 4,
-    evaluate: (_a, s) => {
+    evaluate: (a, s) => {
       const t = s.drive_type;
       if (t === "full_time") return positive("Full-time driver", "staff_verified");
       if (t === "part_time") return positive("Part-time driver", "staff_verified", 0.5);
+      // The applicant now answers this in Part 1, using the same vocabulary.
+      // Same factor, same weight, same partials — only the evidence is weaker,
+      // which is what verification coverage is for.
+      const self = a.drive_type;
+      if (self === "full_time") return positive("Full-time driver", "self_reported");
+      if (self === "part_time") return positive("Part-time driver", "self_reported", 0.5);
       return unknown("Full or part time not established");
     },
   },
@@ -526,6 +537,18 @@ export const FACTORS: Factor[] = [
         if (days >= 0 && days <= 14)
           return positive(`Needs a vehicle within ${days} days`, "staff_verified");
         if (days > 14) return positive("Has a target date", "staff_verified", 0.5);
+      }
+      // start_timing was a four-option question ("Today", "This week", …) that
+      // the Part 1 rewrite replaced with an actual start date, because asking
+      // both was asking the same thing twice. Historical rows still carry it,
+      // so it is still read — after the date, which is the better answer.
+      const wanted =
+        typeof a.pickup_date === "string" ? Date.parse(a.pickup_date as string) : NaN;
+      if (Number.isFinite(wanted)) {
+        const days = Math.ceil((wanted - now()) / 864e5);
+        if (days >= 0 && days <= 14)
+          return positive(`Wants to start within ${days} days`, "self_reported");
+        if (days > 14) return positive("Has a start date in mind", "self_reported", 0.5);
       }
       const t = a.start_timing;
       if (t === "Today" || t === "This week")

@@ -1,45 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Upload, Loader2, Check, RefreshCw, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
+import { maxMbFor } from "@/lib/image-optimize";
 
 // Photographing a document on a phone, without wondering whether it worked.
 //
 // Two things make this different from a file input with a label. The camera is
 // a first-class button rather than one option buried in the OS picker sheet —
 // on a phone it is what almost everyone wants and it was three taps away. And
-// the preview is the file the applicant just chose, held locally, because they
-// have INSERT-only access to these buckets and cannot read back so much as
-// their own licence. That restriction is correct and this works within it: a
-// local object URL shows instantly, costs no round trip, and proves the right
-// photo was picked.
-
-const MAX_MB = 10;
-
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/jpg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/heic": "heic",
-  "image/heif": "heic",
-  "application/pdf": "pdf",
-};
-
-function extFor(file: File): string {
-  const byMime = EXT_BY_MIME[(file.type || "").toLowerCase()];
-  if (byMime) return byMime;
-  const byName = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  return byName && byName.length <= 5 ? byName : "jpg";
-}
+// the preview is the file the applicant just chose, held locally, because an
+// applicant has no read access to these buckets at all and cannot fetch back
+// so much as their own licence. That restriction is correct and this works
+// within it: a local object URL shows instantly, costs no round trip, and
+// proves the right photo was picked.
 
 export function DocumentCapture({
   title,
   hint,
   tips,
-  bucket,
-  applicationId,
-  value,
+  kind,
+  token,
+  onFile,
   onChange,
   optional,
 }: {
@@ -48,9 +30,16 @@ export function DocumentCapture({
   hint: string;
   /** Short, concrete things that make a photo usable. Omit if obvious. */
   tips?: string[];
-  bucket: string;
-  applicationId: string;
-  value: string | null;
+  /** Which document this is. The server turns it into a bucket and a path. */
+  kind: UploadKind;
+  token: string;
+  /**
+   * Whether a file is already on the record. Deliberately a boolean: the
+   * server does not hand storage paths to a resume-token bearer, and this
+   * component only ever used the path for truthiness — the preview it shows
+   * is a local object URL of the file just chosen.
+   */
+  onFile: boolean;
   onChange: (path: string | null) => void;
   optional?: boolean;
 }) {
@@ -70,8 +59,10 @@ export function DocumentCapture({
 
   async function handle(file: File | undefined) {
     if (!file) return;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`That file is too big — please keep it under ${MAX_MB} MB.`);
+    // A generous first pass. The real ceiling is applied after optimization,
+    // because a phone photo that arrives at 9 MB usually leaves at under one.
+    if (file.size > 60 * 1024 * 1024) {
+      toast.error(`That file is too big — please keep it under ${maxMbFor(file)} MB.`);
       return;
     }
     const localUrl = URL.createObjectURL(file);
@@ -82,11 +73,8 @@ export function DocumentCapture({
     setIsPdf((file.type || "").includes("pdf"));
     setUploading(true);
     try {
-      const path = `${applicationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFor(file)}`;
-      const { error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file, { upsert: true, contentType: file.type || undefined });
-      if (error) throw error;
+      const { path } = await uploadApplicantFile({ token, kind, file });
+      setJustUploaded(true);
       onChange(path);
     } catch (e) {
       console.error("[upload] failed", e);
@@ -95,14 +83,17 @@ export function DocumentCapture({
         return null;
       });
       toast.error(
-        "We couldn't upload that. Try again — or email it to team@drivereal.com and we'll add it for you.",
+        e instanceof Error && e.name === "UploadTooLarge"
+          ? e.message
+          : "We couldn't upload that. Try again — or email it to team@drivereal.com and we'll add it for you.",
       );
     } finally {
       setUploading(false);
     }
   }
 
-  const done = Boolean(value) && !uploading;
+  const [justUploaded, setJustUploaded] = useState(false);
+  const done = (onFile || justUploaded) && !uploading;
 
   return (
     <div className="rounded-2xl border border-[#EDEDF0] bg-white overflow-hidden">

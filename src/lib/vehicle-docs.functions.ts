@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
-import { logAudit } from "@/lib/audit.server";
+import { logAudit } from "@/lib/audit";
 
 // Per-vehicle paperwork: registration card, insurance card, title, purchase
 // documents.
