@@ -1349,7 +1349,7 @@ function DriverDetail({
                   }}
                   onRecordingChange={setHasRecording}
                 />
-                <AISnapshotCard driver={driver} onUpdate={onUpdate} />
+                <AISnapshotCard driver={driver} />
               </TabsContent>
 
               <TabsContent value="application" className="mt-4 space-y-4">
@@ -1728,19 +1728,32 @@ function SidebarStat({
   );
 }
 
-function AISnapshotCard({
-  driver,
-  onUpdate,
-}: {
-  driver: Application;
-  onUpdate: (p: Partial<Application>) => void;
-}) {
+/**
+ * The AI second opinion, read-only.
+ *
+ * Re-scoring used to write ai_score, ai_tier, ai_flags and ai_summary back to
+ * the applications row from here, on the staff member's own session. It was a
+ * duplicate — runScoring has already persisted exactly those values server-side
+ * by the time the call returns — and it was a second write path into columns
+ * whose whole point is that nothing reaches them without passing the
+ * assessment guard. The fresh result is now held locally for display and the
+ * database copy is the server's alone.
+ */
+function AISnapshotCard({ driver }: { driver: Application }) {
   const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState<{
+    score: number;
+    tier: string;
+    flags: string[];
+    summary: string;
+  } | null>(null);
   const rescore = useServerFn(scoreApplication);
-  const flags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
-  const scoredAt = driver.scored_at ? new Date(driver.scored_at) : null;
-  const score = typeof driver.ai_score === "number" ? driver.ai_score : null;
-  const tier = driver.ai_tier as string | null | undefined;
+  const storedFlags = Array.isArray(driver.ai_flags) ? (driver.ai_flags as string[]) : [];
+  const flags = fresh ? fresh.flags : storedFlags;
+  const summary = fresh ? fresh.summary : driver.ai_summary;
+  const scoredAt = fresh ? new Date() : driver.scored_at ? new Date(driver.scored_at) : null;
+  const score = fresh ? fresh.score : typeof driver.ai_score === "number" ? driver.ai_score : null;
+  const tier = fresh ? fresh.tier : (driver.ai_tier as string | null | undefined);
   const tierGrad =
     tier === "hot"
       ? "from-red-500 to-orange-500"
@@ -1755,13 +1768,12 @@ function AISnapshotCard({
       const res = await rescore({ data: { id: driver.id } });
       if (res && (res as any).ok !== false) {
         const r = res as any;
-        onUpdate({
-          ai_score: r.score,
-          ai_tier: r.tier,
-          ai_flags: r.flags,
-          ai_summary: r.summary,
-          scored_at: new Date().toISOString(),
-        } as any);
+        setFresh({
+          score: r.score,
+          tier: r.tier,
+          flags: Array.isArray(r.flags) ? r.flags : [],
+          summary: typeof r.summary === "string" ? r.summary : "",
+        });
         toast.success(`AI scored: ${r.tier} (${r.score})`);
       } else {
         toast.error(`Scoring failed: ${(res as any)?.error ?? "unknown"}`);
@@ -1792,7 +1804,7 @@ function AISnapshotCard({
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <Sparkles className="w-3.5 h-3.5 text-[#D03020] shrink-0" />
         <p className="text-[12px] text-[#55555E] leading-snug truncate">
-          {driver.ai_summary ||
+          {summary ||
             "Not yet scored. Run the AI review to grade trips, rating, license, and screenshots."}
         </p>
         {flags.length > 0 && (

@@ -1,99 +1,154 @@
 /**
- * The AI second opinion must not be able to put an eligibility threshold or a
- * verdict into the application record, whatever the model decides to write.
+ * Adversarial tests against the real guard.
  *
- * These are adversarial: every input below is something a model plausibly
- * produces under the current rubric, and none of it may survive.
+ * Every string below is run through sanitizeAssessment itself — nothing here
+ * is asserted by reading the source. The blocked and surviving corpora are the
+ * ones specified in review; the rest covers each field independently, mixed
+ * content, the fallback, and what the diagnostics are allowed to carry.
  */
 import { sanitizeAssessment } from "../.readiness-build/assessment-guard.js";
 
 let fail = 0;
 const ok = (cond, label) => {
   if (!cond) fail++;
-  console.log(`  ${cond ? "ok  " : "FAIL"} ${label}`);
+  console.log(`  ${cond ? "PASS" : "BLOCKER"}  ${label}`);
 };
-const run = (summary, flags = []) => sanitizeAssessment({ summary, flags });
 
-console.log("A TRIP THRESHOLD CANNOT REACH THE RECORD");
-for (const line of [
-  "Strong rating but below our 200-trip minimum.",
-  "Applicant has 150 trips, short of the 200 trip requirement.",
-  "Does not meet the minimum trip count for priority review.",
-  "Insufficient trip history to qualify.",
-  "Fewer than 200 deliveries, so not eligible yet.",
-  "Trip count is under the threshold we look for.",
-  "At least 200 trips are required and this driver has 40.",
-]) {
-  const r = run(line);
-  ok(!r.summary.includes("200") && r.removed.length > 0, `removed: ${JSON.stringify(line)}`);
-}
-
-console.log("\nA VERDICT CANNOT REACH THE RECORD");
-for (const line of [
-  "Recommend declining this applicant.",
-  "Should be approved immediately.",
-  "I would reject this application.",
-  "Do not approve — too risky.",
-  "This driver is disqualified.",
-]) {
-  const r = run(line);
-  ok(
-    r.removed.some((x) => x.includes("verdict")),
-    `removed as a verdict: ${JSON.stringify(line)}`,
-  );
-}
-
-console.log("\nFLAGS ARE FILTERED TOO, SLUGS AND ALL");
-const f = run("Solid applicant.", [
+/** A prohibited string must be blocked in the summary AND as a flag. */
+const MUST_BLOCK = [
   "below_200_trips",
-  "insufficient_trips",
-  "trips-below-minimum",
-  "recommend_decline",
-  "does_not_meet_minimum",
-  "screenshot_mismatch",
-  "rating_unverified",
-]);
-ok(!f.flags.some((x) => /trip/i.test(x)), "no trip-threshold flag survives");
-ok(!f.flags.includes("recommend_decline"), "no verdict flag survives");
-ok(f.flags.includes("screenshot_mismatch"), "a legitimate evidence flag is kept");
-ok(f.flags.includes("rating_unverified"), "  and so is an unverified-claim flag");
-ok(f.summary === "Solid applicant.", "  while a clean summary is untouched");
+  "below 200 trips",
+  "fewer than 200 trips",
+  "does not meet the 200-trip minimum",
+  "below our 200-trip minimum",
+  "minimum of 200 trips",
+  "requires 200+ trips",
+  "not enough trips to qualify",
+  "should be rejected because of trip count",
+  "applicant does not qualify",
+  "decline this applicant",
+];
 
-console.log("\nHONEST DESCRIPTION IS NOT TOUCHED");
-for (const line of [
-  "1,200 trips completed with a 4.95 rating across three platforms.",
-  "Only 40 trips completed, and no screenshots were supplied.",
-  "Licence uploaded and readable; insurance card matches the claimed carrier.",
-  "Trip count not provided, so experience is unknown.",
-  "Claimed 800 trips but the screenshot shows 300 — major discrepancy.",
-  // Exceeding a number is praise, not a bar. The two are not symmetrical.
-  "Active on three platforms, over 2,000 deliveries.",
-  "Rating below 4.5 with 900 trips completed.",
-  "Insurance expires in under 30 days; 1,500 trips on file.",
-]) {
-  const r = run(line);
-  ok(r.summary === line && r.removed.length === 0, `kept: ${JSON.stringify(line)}`);
+/** Honest description. None of it may be touched, in either field. */
+const MUST_SURVIVE = [
+  "40 trips completed",
+  "only 40 trips completed",
+  "150 completed trips",
+  "over 2,000 deliveries",
+  "applicant reports 800 trips",
+  "screenshot appears to show 300 trips",
+  "applicant reported 800 trips but screenshot appears to show 300",
+  "rating below 4.5 with 900 trips",
+  "trip count could not be verified",
+];
+
+console.log("MUST BE BLOCKED — ai_summary");
+for (const text of MUST_BLOCK) {
+  const r = sanitizeAssessment({ summary: text, flags: [] });
+  ok(r.removed.length > 0 && !r.summary.includes(text), `summary blocked: ${JSON.stringify(text)}`);
 }
 
-console.log("\nFILTERING IS VISIBLE, NEVER SILENT OR INVENTED");
-const mixed = run(
-  "Experienced driver with 900 trips and a 4.9 rating. Below our 200-trip minimum for the premium tier.",
+console.log("\nMUST BE BLOCKED — each ai_flags entry, independently");
+for (const text of MUST_BLOCK) {
+  const asFlag = text.replace(/\s+/g, "_");
+  const r = sanitizeAssessment({ summary: "", flags: [asFlag] });
+  ok(r.flags.length === 0 && r.removed.length === 1, `flag blocked: ${JSON.stringify(asFlag)}`);
+}
+
+console.log("\nMUST SURVIVE — ai_summary");
+for (const text of MUST_SURVIVE) {
+  const r = sanitizeAssessment({ summary: text, flags: [] });
+  ok(r.summary === text && r.removed.length === 0, `summary kept: ${JSON.stringify(text)}`);
+}
+
+console.log("\nMUST SURVIVE — each ai_flags entry, independently");
+for (const text of MUST_SURVIVE) {
+  const asFlag = text.replace(/\s+/g, "_");
+  const r = sanitizeAssessment({ summary: "", flags: [asFlag] });
+  ok(r.flags.length === 1 && r.removed.length === 0, `flag kept: ${JSON.stringify(asFlag)}`);
+}
+
+console.log("\nMIXED CONTENT");
+const mixed = sanitizeAssessment({
+  summary:
+    "Applicant reports 800 trips across three platforms. Below our 200-trip minimum for priority. Licence photo is legible and current.",
+  flags: [],
+});
+ok(
+  mixed.summary ===
+    "Applicant reports 800 trips across three platforms. Licence photo is legible and current.",
+  "one prohibited sentence removed, the two legitimate ones preserved in order",
+);
+ok(mixed.removed.length === 1, "  exactly one removal reported");
+
+const oneFlag = sanitizeAssessment({
+  summary: "Solid applicant.",
+  flags: ["screenshot_mismatch", "below_200_trips", "rating_unverified"],
+});
+ok(
+  JSON.stringify(oneFlag.flags) === JSON.stringify(["screenshot_mismatch", "rating_unverified"]),
+  "only the prohibited flag is removed, the others keep their order",
+);
+ok(oneFlag.summary === "Solid applicant.", "  and a clean summary is untouched by flag filtering");
+
+const wiped = sanitizeAssessment({
+  summary: "Decline this applicant. Fewer than 200 trips.",
+  flags: [],
+});
+ok(
+  /^Assessment withheld:/.test(wiped.summary),
+  "an entirely prohibited summary returns the fallback",
+);
+ok(!/200|decline/i.test(wiped.summary), "  which repeats none of the prohibited text");
+ok(wiped.removed.length === 2, "  and reports both removals");
+
+const allFlags = sanitizeAssessment({
+  summary: "Clean.",
+  flags: ["below_200_trips", "recommend_decline"],
+});
+ok(
+  Array.isArray(allFlags.flags) && allFlags.flags.length === 0,
+  "an empty flags array is a valid result",
+);
+ok(allFlags.summary === "Clean.", "  and does not disturb the summary");
+
+console.log("\nDIAGNOSTICS CARRY NO PROHIBITED TEXT AND NO APPLICANT DATA");
+const sensitive = sanitizeAssessment({
+  summary:
+    "Karen Pantoja, DOB 1988-04-02, licence D123-456-78-900-0, policy GEICO-99887766. Below our 200-trip minimum.",
+  flags: ["below_200_trips"],
+});
+const asJson = JSON.stringify(sensitive.removed);
+ok(!/200-trip|Below our/i.test(asJson), "the raw prohibited sentence is not in the diagnostics");
+ok(!/Karen|Pantoja/i.test(asJson), "  no applicant name");
+ok(!/1988-04-02/.test(asJson), "  no date of birth");
+ok(!/D123-456/.test(asJson), "  no licence number");
+ok(!/GEICO-99887766/.test(asJson), "  no policy number");
+ok(!/below_200_trips/.test(asJson), "  not even the prohibited flag's own text");
+ok(
+  sensitive.removed.every((r) => r.field && r.reason && r.rule),
+  "  but every removal still names the field, the reason and the rule that fired",
 );
 ok(
-  mixed.summary === "Experienced driver with 900 trips and a 4.9 rating.",
-  "the clean sentence survives and the offending one does not",
+  sensitive.removed.some((r) => typeof r.length === "number" && r.length > 0),
+  "  and carries the shape of what was dropped, for correlation",
 );
-ok(mixed.removed.length === 1, "  and the removal is reported");
-
-const wiped = run("Recommend declining. Below the minimum trip count.");
+// The guard filters thresholds and verdicts, not personal data: the first
+// sentence is legitimate description and is kept as written. What matters is
+// that none of it reaches the log, which the assertions above cover.
 ok(
-  wiped.summary.startsWith("Assessment withheld:"),
-  "a fully filtered summary says so rather than going blank",
+  /Karen Pantoja/.test(sensitive.summary),
+  "a legitimate descriptive sentence is still kept intact",
 );
-ok(!/\d/.test(wiped.summary), "  and invents no assessment of its own");
 
-const clean = run("", []);
-ok(clean.summary === "" && clean.removed.length === 0, "an empty assessment stays empty");
+console.log("\nEDGE CASES");
+const empty = sanitizeAssessment({ summary: "", flags: [] });
+ok(
+  empty.summary === "" && empty.flags.length === 0 && empty.removed.length === 0,
+  "an empty assessment stays empty and reports nothing",
+);
+const spaced = sanitizeAssessment({ summary: "   ", flags: [] });
+ok(spaced.summary === "" && spaced.removed.length === 0, "whitespace-only is treated as empty");
 
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");
 process.exit(fail ? 1 : 0);

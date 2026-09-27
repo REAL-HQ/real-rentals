@@ -3,11 +3,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { sanitizeAssessment } from "@/lib/assessment-guard";
 import { z } from "zod";
 
+import type { Removal } from "@/lib/assessment-guard";
+
 type ScoreResult = {
   score: number;
   tier: "hot" | "warm" | "cold";
   flags: string[];
   summary: string;
+  /** Non-verbatim record of anything the guard dropped. Never persisted. */
+  removed: Removal[];
 };
 
 const BUCKETS = {
@@ -198,11 +202,8 @@ Respond ONLY with strict JSON matching this shape (no prose, no markdown):
     summary: rawSummary,
     flags: rawFlags,
   });
-  if (removed.length) {
-    console.warn("[ai-scoring] filtered threshold or verdict language:", removed);
-  }
 
-  return { score: rawScore, tier, flags, summary };
+  return { score: rawScore, tier, flags, summary, removed };
 }
 
 async function requireAdmin(context: {
@@ -268,6 +269,19 @@ export async function runScoring(supabaseAdmin: any, id: string) {
       images,
     });
 
+    // Say that filtering happened, and enough to debug the filter — the field,
+    // the reason, which pattern fired, and how much went. Deliberately not the
+    // text itself: it is prose a model wrote about a named applicant, logs are
+    // retained and read more widely than the database, and "we removed this
+    // because it should not be stored" is a poor reason to write it somewhere
+    // else. The application id is enough to find the stored row.
+    if (result.removed.length) {
+      console.warn(
+        "[ai-scoring] assessment guard removed content",
+        JSON.stringify({ applicationId: id, removals: result.removed }),
+      );
+    }
+
     await supabaseAdmin
       .from("applications")
       .update({
@@ -279,7 +293,9 @@ export async function runScoring(supabaseAdmin: any, id: string) {
       })
       .eq("id", id);
 
-    return { ok: true as const, ...result };
+    // `removed` is diagnostic only — it is logged above and goes no further.
+    const { removed: _removed, ...persisted } = result;
+    return { ok: true as const, ...persisted };
   } catch (e) {
     console.error("[ai-scoring] failed", id, e);
     await supabaseAdmin

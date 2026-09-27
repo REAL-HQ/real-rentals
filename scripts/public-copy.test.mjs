@@ -109,5 +109,64 @@ ok(
 );
 ok(/You are NOT deciding anything/.test(rubric), "  nor to decide anything");
 
+console.log("\nEVERY WRITE TO ai_summary / ai_flags GOES THROUGH THE GUARD");
+{
+  // Source-level, because a runtime test cannot enumerate write paths. The
+  // database backs this up: authenticated holds no UPDATE privilege on these
+  // columns at all (20260927010000_ai_columns_service_role_only.sql).
+  const writes = [];
+  // The generated schema file declares these columns as types; it contains no
+  // executable code and cannot write anything.
+  const GENERATED = "src/integrations/supabase/types.ts";
+  for (const file of walk("src").filter((f) => f !== GENERATED)) {
+    const src = readFileSync(file, "utf8");
+    src.split("\n").forEach((line, i) => {
+      if (/^\s*ai_(summary|flags)\s*:/.test(line))
+        writes.push({ file, line: i + 1, text: line.trim() });
+    });
+  }
+  const outside = writes.filter((w) => w.file !== "src/lib/scoring.functions.ts");
+  ok(
+    outside.length === 0,
+    `no ai_summary/ai_flags write outside scoring.functions.ts (found ${outside.length})`,
+  );
+  for (const w of outside) console.log(`       ${w.file}:${w.line} ${w.text}`);
+
+  const scoring = readFileSync("src/lib/scoring.functions.ts", "utf8");
+  ok(/sanitizeAssessment\(/.test(scoring), "the scorer calls the guard");
+  // The only persisted write of a non-null summary must come from the guarded
+  // result object, never from the raw parse.
+  ok(!/ai_summary:\s*(rawSummary|parsed)/.test(scoring), "no raw model text is persisted");
+  ok(!/ai_flags:\s*(rawFlags|parsed)/.test(scoring), "no raw model flags are persisted");
+  ok(
+    /ai_summary:\s*(result\.summary|null)/.test(scoring),
+    "ai_summary is written from the guarded result, or nulled",
+  );
+  ok(
+    /ai_flags:\s*(result\.flags|null|\[\])/.test(scoring),
+    "ai_flags is written from the guarded result, or emptied",
+  );
+}
+
+console.log("\nGUARD DIAGNOSTICS NEVER REACH THE DATABASE OR THE LOG VERBATIM");
+{
+  const scoring = readFileSync("src/lib/scoring.functions.ts", "utf8");
+  ok(
+    !/ai_removed|removed:\s*result\.removed/.test(scoring),
+    "removals are not persisted on the row",
+  );
+  ok(/removals: result\.removed/.test(scoring), "  they are logged as structured diagnostics");
+  const guard = readFileSync("src/lib/assessment-guard.ts", "utf8");
+  // A Removal may carry field/reason/rule/index/length and nothing textual.
+  const removalType = guard.slice(
+    guard.indexOf("export type Removal"),
+    guard.indexOf("export type SanitizedAssessment"),
+  );
+  ok(
+    !/:\s*string(?!\s*\|)/.test(removalType.replace(/"[^"]*"/g, "")),
+    "the Removal type carries no free-text field",
+  );
+}
+
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");
 process.exit(fail ? 1 : 0);

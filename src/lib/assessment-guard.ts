@@ -27,9 +27,33 @@
 
 export type Assessment = { summary: string; flags: string[] };
 
+/**
+ * What was dropped, described without quoting it.
+ *
+ * Deliberately carries no text. The whole point of a removal is that the
+ * string was not fit to keep, and a log line is not a safer place for it than
+ * the database — logs are retained, shipped and read by more people. The
+ * offending prose can also be about a named applicant, so quoting it would put
+ * their name, and whatever else the model chose to mention, into engineering
+ * logs for a filtering event.
+ *
+ * `rule` says which pattern fired, `index` and `length` say where and how much
+ * — enough to reproduce against the stored row and to tell a one-word flag
+ * from a paragraph, without the content itself.
+ */
+export type Removal = {
+  field: "summary" | "flag";
+  reason: "threshold" | "verdict";
+  rule: "numeric_bar" | "requirement_near_trips" | "verdict_language";
+  /** Sentence index within the summary, or position within the flags array. */
+  index: number;
+  /** Characters dropped. Shape, not content. */
+  length: number;
+};
+
 export type SanitizedAssessment = Assessment & {
-  /** Sentences and flags that were dropped, for the log. */
-  removed: string[];
+  /** Non-verbatim diagnostics for the log. Never contains the dropped text. */
+  removed: Removal[];
 };
 
 /** Shown when filtering leaves nothing behind. Says so, rather than inventing. */
@@ -57,45 +81,68 @@ const TRIPS = /\b(trips?|deliveries|delivery|ride[s]?|trip[- ]count)\b/i;
 const NUMERIC_BAR =
   /\b(below|under|fewer than|less than|at least|minimum of|min\.?)\s+(?:our\s+|the\s+)?[\d,]+\+?\s*[-\s]?\s*(trips?|deliveries|delivery|ride[s]?)\b/i;
 
-/** The model asserting an outcome rather than describing an applicant. */
-const VERDICT =
-  /\b(recommend\w*\s+(?:approv\w*|declin\w*|reject\w*|denial|denying)|should (?:be )?(?:approv\w*|declin\w*|reject\w*|denied)|(?:approve|decline|reject|deny)\s+(?:this|the)\s+(?:applicant|application|driver)|not (?:approved|eligible|a fit)|do not (?:approve|rent)|disqualif\w*)\b/i;
+/**
+ * The model asserting an outcome rather than describing an applicant.
+ *
+ * Covers the eligibility determinations too — "does not qualify", "not
+ * eligible" — because those are the same decision in a quieter voice, and they
+ * arrive without mentioning trips at all, so the threshold rule never sees
+ * them.
+ */
+const VERDICT = new RegExp(
+  [
+    "recommend\\w*\\s+(?:approv\\w*|declin\\w*|reject\\w*|denial|denying)",
+    "should (?:be )?(?:approv\\w*|declin\\w*|reject\\w*|denied)",
+    "(?:approve|decline|reject|deny)\\s+(?:this|the)\\s+(?:applicant|application|driver)",
+    "do(?:es)? ?n[o']?t\\s+(?:qualify|meet)",
+    "(?:is |are )?not (?:qualified|eligible|approved|a fit)",
+    "\\bineligible\\b",
+    "do not (?:approve|rent)",
+    "disqualif\\w*",
+  ].join("|"),
+  "i",
+);
 
-function offends(text: string): "threshold" | "verdict" | null {
-  if (VERDICT.test(text)) return "verdict";
-  if (NUMERIC_BAR.test(text)) return "threshold";
-  if (REQUIREMENT.test(text) && TRIPS.test(text)) return "threshold";
+/**
+ * `below_200_trips` has to read as words before any pattern can see it.
+ *
+ * Applied to summary sentences as well as flags. A flag is always a slug, but
+ * nothing stops a model dropping one into its prose, and the first version of
+ * this filter let exactly that through.
+ */
+function asProse(text: string): string {
+  return text.replace(/[_\-.]+/g, " ").trim();
+}
+
+function offends(text: string): { reason: Removal["reason"]; rule: Removal["rule"] } | null {
+  const prose = asProse(text);
+  if (VERDICT.test(prose)) return { reason: "verdict", rule: "verdict_language" };
+  if (NUMERIC_BAR.test(prose)) return { reason: "threshold", rule: "numeric_bar" };
+  if (REQUIREMENT.test(prose) && TRIPS.test(prose))
+    return { reason: "threshold", rule: "requirement_near_trips" };
   return null;
 }
 
-/**
- * A flag is a slug, so `below_200_trips` has to read as words before any of
- * the patterns above can see it.
- */
-function flagAsProse(flag: string): string {
-  return flag.replace(/[_\-.]+/g, " ").trim();
-}
-
 export function sanitizeAssessment(input: Assessment): SanitizedAssessment {
-  const removed: string[] = [];
+  const removed: Removal[] = [];
 
-  const flags = input.flags.filter((flag) => {
-    const why = offends(flagAsProse(flag));
-    if (why) removed.push(`flag:${flag} (${why})`);
+  const flags = (input.flags ?? []).filter((flag, index) => {
+    const why = offends(flag);
+    if (why) removed.push({ field: "flag", ...why, index, length: flag.length });
     return !why;
   });
 
-  // Keep the sentence boundaries so a kept sentence reads as it was written.
+  // Split on sentence boundaries so a kept sentence reads as it was written.
   const sentences = (input.summary ?? "").split(/(?<=[.!?])\s+/).filter((s) => s.trim());
-  const kept = sentences.filter((sentence) => {
+  const kept = sentences.filter((sentence, index) => {
     const why = offends(sentence);
-    if (why) removed.push(`summary:${sentence.trim()} (${why})`);
+    if (why) removed.push({ field: "summary", ...why, index, length: sentence.trim().length });
     return !why;
   });
 
   const summary = kept.join(" ").trim();
   return {
-    summary: summary || (removed.length ? EMPTY_SUMMARY : ""),
+    summary: summary || (removed.some((r) => r.field === "summary") ? EMPTY_SUMMARY : ""),
     flags,
     removed,
   };
