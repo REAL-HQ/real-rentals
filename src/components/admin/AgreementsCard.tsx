@@ -37,7 +37,13 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
 
   async function refresh() {
     try {
-      setRows(await load({ data: { applicationId } }));
+      const res = await load({ data: { applicationId } });
+      // Whatever comes back, this component renders rows.length. A transport
+      // that hands back null instead of a list would throw during render,
+      // and this card is the first child of the Documents tab — so the error
+      // boundary would replace the entire driver drawer with "This page
+      // didn't load", and the documents beneath it with nothing at all.
+      setRows(Array.isArray(res) ? res : []);
     } catch {
       /* ignore */
     } finally {

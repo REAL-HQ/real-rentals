@@ -51,6 +51,55 @@ console.log("A SESSION OF UPLOADS AND REMOVALS, IN ORDER");
   ok(show() === "BQ", `an idle re-save changes nothing -> ${show()}`);
 }
 
+console.log("\nA RETAKE IS JUST AN ADD AND A REMOVE, IN ONE SAVE");
+{
+  /*
+   * The sequence the retake control has to survive. Replacing a file is not a
+   * special path: it uploads through the same pipeline and then retires what
+   * it stands in for, expressed the same way a removal is — by NAME for a
+   * file already stored, by PATH for one uploaded in this session. If that
+   * ever goes back to positions, this is where it shows.
+   */
+  let db = ["a/A.jpg", "a/B.jpg"];
+  let keep = db.map(name);
+  let added = [];
+  const show = () => db.map((p) => name(p)[0]).join("");
+
+  added = [...added, "a/C.jpg"];
+  db = merge(db, keep, added);
+  ok(show() === "ABC", `add C -> ${show()}`);
+
+  // Replace B (stored, so retired by name) with E, in one save.
+  added = [...added, "a/E.jpg"];
+  keep = keep.filter((n) => n !== "B.jpg");
+  db = merge(db, keep, added);
+  ok(show() === "ACE", `replace B with E -> ${show()}`);
+
+  added = [...added, "a/D.jpg"];
+  db = merge(db, keep, added);
+  ok(show() === "ACED", `add D -> ${show()}`);
+
+  keep = keep.filter((n) => n !== "A.jpg");
+  db = merge(db, keep, added);
+  ok(show() === "CED", `remove A -> ${show()}`);
+
+  // Resume: a fresh session seeds keep from what the server returned and has
+  // nothing in `added` yet.
+  keep = db.map(name);
+  added = [];
+  db = merge(db, keep, added);
+  ok(show() === "CED", `resume -> ${show()} (nothing lost, nothing resurrected)`);
+
+  // And a retake of a file uploaded in THIS session, retired by path.
+  added = ["a/F.jpg"];
+  db = merge(db, keep, added);
+  ok(show() === "CEDF", `add F -> ${show()}`);
+  added = added.filter((p) => p !== "a/F.jpg").concat("a/G.jpg");
+  keep = keep.filter((n) => n !== "F.jpg");
+  db = merge(db, keep, added);
+  ok(show() === "CEDG", `retake F as G -> ${show()}`);
+}
+
 console.log("\nORDER OF OPERATIONS DOES NOT MATTER");
 {
   let db = ["a/A.jpg", "a/B.jpg", "a/C.jpg"];
@@ -87,6 +136,18 @@ console.log("\nTHE SOURCE AGREES WITH THE PROTOCOL TESTED HERE");
   const wiz = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8");
   ok(/trip_screenshots_keep: string\[\]/.test(wiz), "the client holds names too");
   ok(/\[\.\.\.row\.trip_screenshot_names\]/.test(wiz), "  seeded from what the server returned");
+
+  // A retake must be a normal upload. Not a second implementation, and not a
+  // path that skips the optimizer, the size ceiling or the MIME allowlist.
+  ok(/capture="environment"/.test(wiz),
+     "the trip step offers the camera, not just a file picker");
+  ok(/Retake Photo/.test(wiz) && /Choose Different File/.test(wiz),
+     "  and both are offered again when replacing");
+  const multi = wiz.slice(wiz.indexOf("function MultiFileUpload"));
+  ok((multi.match(/uploadApplicantFile\(/g) ?? []).length === 1,
+     "there is exactly one upload call — a retake reuses it rather than adding a second path");
+  ok(/async function receive\(files: FileList\)/.test(multi) && /return handleFiles\(files\)/.test(multi),
+     "  both inputs and both modes funnel through one handler");
 }
 
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");

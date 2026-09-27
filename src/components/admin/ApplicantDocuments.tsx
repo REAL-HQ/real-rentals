@@ -49,6 +49,7 @@ const ORDER: DocCategory[] = [
   "license_back",
   "insurance",
   "gig_profile",
+  "trip_history",
   "agreement",
   "other",
 ];
@@ -100,28 +101,31 @@ export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
 
 export function ApplicantDocuments({
   applicationId,
-  onRequiredCountChange,
-  onDocumentsChange,
+  docs,
+  loading,
+  onRefresh,
 }: {
   applicationId: string;
   /**
-   * How many required categories are on file. The screening pipeline gates
-   * "Docs Pending → Insurance Verified" on this, and it has to come from the
-   * same vault the tab renders or the two will disagree.
+   * The vault, owned by the drawer.
+   *
+   * This component used to fetch for itself, which read fine until you
+   * remember it lives inside a tab Radix unmounts when it is not the active
+   * one: on the Overview tab nothing had ever been fetched, so readiness
+   * computed with no documents and reported the applicant's uploaded licence
+   * as still needed. The drawer loads once and both surfaces read it.
    */
-  onRequiredCountChange?: (n: number) => void;
-  /** The current rows, so readiness reads the same vault the tab shows. */
-  onDocumentsChange?: (docs: VaultDocument[]) => void;
+  docs: VaultDocument[];
+  loading: boolean;
+  /** Re-read the vault after this component changes it. */
+  onRefresh: () => Promise<void> | void;
 }) {
-  const list = useServerFn(adminListDriverDocuments);
   const startUpload = useServerFn(createDocumentUploadUrl);
   const confirmUpload = useServerFn(confirmDocumentUpload);
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
   const review = useServerFn(setDocumentReview);
 
-  const [docs, setDocs] = useState<VaultDocument[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -129,18 +133,8 @@ export function ApplicantDocuments({
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
-    try {
-      setDocs(await list({ data: { applicationId } }));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load documents");
-    } finally {
-      setLoading(false);
-    }
-  }, [applicationId, list]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    await onRefresh();
+  }, [onRefresh]);
 
   // One pass, not one find() per category.
   const { current, history } = useMemo(() => {
@@ -158,13 +152,6 @@ export function ApplicantDocuments({
     }
     return { current: cur, history: past };
   }, [docs]);
-
-  useEffect(() => {
-    onRequiredCountChange?.(REQUIRED_VAULT_CATEGORIES.filter((c) => current.has(c)).length);
-    onDocumentsChange?.(docs);
-    // The callbacks are parent-owned; depending on them would loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, docs]);
 
   const extras = useMemo(
     () => docs.filter((d) => d.is_current && current.get(d.category)?.id !== d.id),

@@ -52,8 +52,23 @@ const stepUpdateSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable()
     .optional(),
+  // New applications send the month-scale values. The four week-scale ones
+  // and "ongoing" are still accepted so a half-finished application saved
+  // before this change can be resumed and saved again without being rejected
+  // for an answer it was legitimately given.
   expected_duration: z
-    .enum(["1-2_weeks", "3-4_weeks", "1-2_months", "2plus_months", "ongoing"])
+    .enum([
+      "1_month",
+      "2_months",
+      "3_months",
+      "4plus_months",
+      "not_sure",
+      "1-2_weeks",
+      "3-4_weeks",
+      "1-2_months",
+      "2plus_months",
+      "ongoing",
+    ])
     .nullable()
     .optional(),
   // Part 1 — driving
@@ -491,7 +506,18 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // rental_duration_days is still a number, but it is explicitly the
     // midpoint of the band they chose, not a date arithmetic result, and
     // nothing contractual reads it.
-    const DURATION_LABELS: Record<string, { label: string; days: number }> = {
+    // days is the midpoint of the band, for sorting and rough planning only.
+    // It is not a contractual term and nothing in the agreement reads it.
+    // "Not sure yet" gets no number at all: inventing 90 days for somebody who
+    // said they do not know is how an estimate turns into a plan.
+    const DURATION_LABELS: Record<string, { label: string; days: number | null }> = {
+      "1_month": { label: "1 month", days: 30 },
+      "2_months": { label: "2 months", days: 60 },
+      "3_months": { label: "3 months", days: 90 },
+      "4plus_months": { label: "4+ months", days: 120 },
+      not_sure: { label: "Not sure yet", days: null },
+      // Historical vocabulary. Preserved so an old application still reads
+      // correctly; no longer offered to anybody.
       "1-2_weeks": { label: "1-2 weeks", days: 10 },
       "3-4_weeks": { label: "3-4 weeks", days: 24 },
       "1-2_months": { label: "1-2 months", days: 45 },
@@ -501,7 +527,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     const band = fields.expected_duration ? DURATION_LABELS[fields.expected_duration] : null;
     if (band) {
       patch.rental_duration = band.label;
-      patch.rental_duration_days = band.days;
+      if (band.days !== null) patch.rental_duration_days = band.days;
     }
 
     // Promote to "new" on submission, and only out of "partial".
