@@ -125,6 +125,50 @@ console.log("\nTHE VAULT CANNOT BE TRAPPED BEHIND A TAB AGAIN");
   const fetchAt = panel.indexOf("const listVaultDocs");
   ok(fetchAt >= 0 && (tabStart < 0 || fetchAt < tabStart),
      "the fetch is declared above the tab content, not inside it");
+
+  // One fetch per applicant, not one per row and not one per tab switch.
+  ok((panel.match(/listVaultDocs\(\{ data: \{ applicationId/g) ?? []).length === 1,
+     "exactly one call site — no N+1 and no per-tab refetch");
+  ok(/}, \[driver\.id, listVaultDocs\]\)/.test(panel),
+     "  memoised on the applicant id, so editing a field does not refetch");
+
+  // Neither surface may paint documents it has not finished loading.
+  ok(/if \(loading\) \{/.test(docsCmp), "the tab shows a loading state rather than stale rows");
+  ok(/loading \?[\s\S]{0,120}Loading what they sent/.test(panel),
+     "  and so does the Overview strip");
+
+  // Switching applicants must not carry one person's vault onto the next.
+  ok(/key=\{open\.id\}/.test(panel),
+     "the drawer is keyed by applicant, so its document state cannot outlive the applicant");
+}
+
+console.log("\nTHE NEW SURFACES CANNOT LEAK A RESTRICTED DOCUMENT");
+{
+  const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+  const docsFn = readFileSync("src/lib/documents.functions.ts", "utf8");
+
+  // The strip reads the same payload the tab does, and that payload has
+  // already had restricted rows removed IN THE QUERY for anyone below Owner
+  // — not hidden client-side, where a network tab would still show them.
+  const strip = panel.slice(panel.indexOf("function DocumentsStrip"),
+                            panel.indexOf("const DRIVER_STATUSES"));
+  ok(!/verification_recording/.test(strip),
+     "the Documents strip never names the restricted category");
+  ok(/keys: \["license_front", "license_back"\]/.test(strip),
+     "  it groups only applicant document categories");
+  ok(!/storage_path|storage_bucket/.test(strip),
+     "  and renders no storage path or bucket");
+
+  ok(/if \(!owner\) q = q\.not\("category", "in", `\(\$\{RESTRICTED_CATEGORIES/.test(docsFn),
+     "the list query still excludes restricted rows for non-Owners");
+  ok(/export const ownerListVerificationRecordings[\s\S]{0,400}requireOwner/.test(docsFn),
+     "recordings remain behind their own Owner-only function");
+  ok(/await requireStaff\(context\.userId\)/.test(docsFn),
+     "and the list is still Coordinator-and-above only");
+
+  // The drawer must not have reached around the server function.
+  ok(!/from\("documents"\)/.test(panel.slice(panel.indexOf("function DriverDetail"))),
+     "the drawer reads the vault through the server function, not a direct table query");
 }
 
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");

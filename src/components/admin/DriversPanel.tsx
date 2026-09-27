@@ -506,6 +506,20 @@ export function DriversPanel({
   if (open) {
     return (
       <DriverDetail
+        /*
+         * Keyed by applicant, so switching applicants rebuilds the drawer
+         * rather than carrying one person's state onto the next.
+         *
+         * Today the list is unreachable while the drawer is open, so `open`
+         * always passes through null between two applicants and this never
+         * fires — but that is an accident of the current layout, not a
+         * guarantee. The drawer now holds the document vault, and readiness
+         * reads it without a loading guard, so the first "open the next
+         * applicant" control anybody adds would show A's documents against
+         * B's name until the fetch returned. An editing patch reuses the
+         * same id, so this does not remount on every field change.
+         */
+        key={open.id}
         driver={open}
         vehicles={vehicles}
         onBack={() => setOpen(null)}

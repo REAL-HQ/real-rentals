@@ -111,6 +111,65 @@ console.log("\nORDER OF OPERATIONS DOES NOT MATTER");
   ok(db.map(name).join(",") === "A.jpg,C.jpg,Z.jpg", "  and repeating it is idempotent");
 }
 
+console.log("\nHARDER REPLACEMENT SEQUENCES");
+{
+  const run = (start, steps) => {
+    let db = [...start];
+    let keep = db.map(name);
+    let added = [];
+    for (const step of steps) {
+      ({ keep, added } = step({ keep, added, db }));
+      db = merge(db, keep, added);
+    }
+    return db.map((p) => name(p)[0]).join("");
+  };
+  const addP = (f) => ({ keep, added }) => ({ keep, added: [...added, `a/${f}.jpg`] });
+  const dropStored = (f) => ({ keep, added }) => ({ keep: keep.filter((n) => n !== `${f}.jpg`), added });
+  const dropAdded = (f) => ({ keep, added }) => ({ keep, added: added.filter((p) => p !== `a/${f}.jpg`) });
+
+  ok(run(["a/A.jpg", "a/B.jpg"], [addP("C"), dropStored("A"), addP("D"), dropStored("B")]) === "CD",
+     "two replacements in one session");
+  ok(run(["a/A.jpg", "a/B.jpg"], [addP("C"), dropStored("A"), dropAdded("C")]) === "B",
+     "replace then remove the replacement");
+  ok(run(["a/A.jpg"], [dropStored("A"), addP("A")]) === "A",
+     "remove then re-add the same name");
+  // The same display name from a different upload: the server keys stored
+  // files by name and claimed files by path, so a re-upload of "A.jpg" is a
+  // different object and both can be present without either vanishing.
+  {
+    let db = ["a/A.jpg"];
+    let keep = ["A.jpg"];
+    let added = ["b/A.jpg"];
+    db = merge(db, keep, added);
+    ok(db.length === 2 && db.includes("a/A.jpg") && db.includes("b/A.jpg"),
+       `the same filename from two uploads coexists (${db.length})`);
+    // And dropping the stored one by name leaves the newly claimed path.
+    db = merge(db, [], added);
+    ok(db.length === 1 && db[0] === "b/A.jpg", "  removing the stored one keeps the new object");
+  }
+}
+
+console.log("\nPATHS THE SERVER GENERATES CANNOT BREAK ITS OWN FILTER");
+{
+  /*
+   * The retirement query builds a PostgREST list — not.in.("p1","p2") — out
+   * of the paths still named by the application. A path containing a quote,
+   * a comma or a space would break that expression, so the only thing
+   * keeping it safe is that paths are entirely server-generated.
+   */
+  const src = readFileSync("src/lib/applications.functions.ts", "utf8");
+  const gen = src.match(/const path = `\$\{id\}\/\$\{Date\.now\(\)\}-\$\{Math\.random\(\)[^`]*`/);
+  ok(Boolean(gen), "the upload path is built from an id, a timestamp and a random suffix");
+  ok(!/data\.(filename|name|path)/.test(src.slice(src.indexOf("export const requestUploadUrl"))),
+     "  nothing from the caller reaches it");
+  const sample = `59b62ce6-654e-4298-a6c3-ff5bb79f9d35/${Date.now()}-ab12cd.jpg`;
+  ok(!/["',\s]/.test(sample), `a generated path carries no quote, comma or space (${sample})`);
+
+  const docs = readFileSync("src/lib/documents.functions.ts", "utf8");
+  ok(/not\("storage_path", "in", `\(\$\{keep\.map/.test(docs),
+     "the retirement filter is the one that consumes those paths");
+}
+
 console.log("\nNOTHING IS DUPLICATED OR UNBOUNDED");
 {
   const db = merge(["a/A.jpg"], ["A.jpg"], ["a/A.jpg"]);
