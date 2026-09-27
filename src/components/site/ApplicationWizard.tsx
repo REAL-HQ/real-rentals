@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
+import { clearResumeToken } from "@/lib/resume-token";
 import { FadeUp } from "./FadeUp";
 
 /*
@@ -67,6 +68,11 @@ const LEGACY_PHASES: Record<string, Phase> = {
   rental: "rental",
   gig: "driving",
   driver: "driving",
+  // Real historical values too — they appear in application-stage.ts and the
+  // old scoring prompt. They sat after the gig step, so they resume there
+  // rather than restarting at question one.
+  vehicle: "driving",
+  review: "submitted",
   complete: "submitted",
   confirmation: "submitted",
   done: "submitted",
@@ -201,8 +207,8 @@ type WizardState = {
   profile_screenshot_on_file: boolean;
   /** Display names of the stored screenshots, in stored order. */
   trip_screenshot_names: string[];
-  /** Indices of the stored screenshots the applicant still wants. */
-  trip_screenshots_keep: number[];
+  /** Filenames of the stored screenshots the applicant still wants. */
+  trip_screenshots_keep: string[];
   /** Storage paths uploaded during this session only. */
   trip_screenshots_added: string[];
 
@@ -337,7 +343,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           insurance_doc_on_file: row.insurance_doc_on_file,
           profile_screenshot_on_file: row.profile_screenshot_on_file,
           trip_screenshot_names: row.trip_screenshot_names,
-          trip_screenshots_keep: row.trip_screenshot_names.map((_, i) => i),
+          trip_screenshots_keep: [...row.trip_screenshot_names],
           trip_screenshots_added: [],
           insurance_policy_on_file: row.insurance_policy_on_file,
           insurance_policy_last4: row.insurance_policy_last4,
@@ -443,7 +449,12 @@ export function ApplicationWizard({ token }: { token: string }) {
                 state={state}
                 update={update}
                 phase={phase}
-                onFinish={() => go("profile_complete", {})}
+                onFinish={async () => {
+                  await go("profile_complete", {});
+                  // Done for now: stop this tab holding a credential for a
+                  // flow nobody is in any more. The emailed link still works.
+                  clearResumeToken();
+                }}
                 saving={saving}
               />
             )}
@@ -1062,9 +1073,15 @@ function ApplicationReceived({
         <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
           Questions Now?
         </div>
+        {/*
+          py/-my rather than a taller row: this is the only way to reach a
+          human from the handover screen, and at 20px tall it sat under the
+          24px WCAG 2.5.8 floor, which only exempts targets inside a sentence.
+          The padding grows the touch area to 40px without moving anything.
+        */}
         <a
           href="mailto:team@drivereal.com"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-foreground hover:text-real-red break-all"
+          className="inline-flex items-center gap-2 py-2.5 -my-2.5 text-sm font-semibold text-foreground hover:text-real-red break-all"
         >
           <Mail className="h-4 w-4 text-real-red" /> team@drivereal.com
         </a>
@@ -1141,7 +1158,7 @@ function DriverProfile({
   };
 
   /** Trip screenshots: the session's new paths, plus which stored ones survive. */
-  const persistTripScreenshots = (added: string[], keep: number[]) => {
+  const persistTripScreenshots = (added: string[], keep: string[]) => {
     update("trip_screenshots_added", added);
     update("trip_screenshots_keep", keep);
     void saveSection(
@@ -1549,17 +1566,33 @@ function MultiFileUpload({
   hint?: string;
   token: string;
   storedNames: string[];
-  keep: number[];
+  /** Filenames, not positions. Positions drift when the array is rewritten. */
+  keep: string[];
   added: string[];
-  onChange: (added: string[], keep: number[]) => void;
+  onChange: (added: string[], keep: string[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
 
   async function handleFiles(files: FileList) {
+    // Only ten are kept, so only ten are uploaded. Slicing after the loop
+    // meant selecting thirty screenshots uploaded thirty files, threw away
+    // twenty, and spent thirty of the hour's forty signed-URL grants doing
+    // it — on the one screen where a slow connection already makes retries
+    // likely.
+    const room = Math.max(0, 10 - (keep.length + added.length));
+    const chosen = Array.from(files).slice(0, room);
+    if (files.length > chosen.length) {
+      toast.info(
+        room === 0
+          ? "You already have ten screenshots. Remove one to add another."
+          : `Taking the first ${room} — ten screenshots is the most we need.`,
+      );
+    }
+    if (!chosen.length) return;
     setUploading(true);
     const uploaded: string[] = [];
     try {
-      for (const file of Array.from(files)) {
+      for (const file of chosen) {
         try {
           const { path } = await uploadApplicantFile({ token, kind: "trip_history", file });
           uploaded.push(path);
@@ -1582,9 +1615,13 @@ function MultiFileUpload({
   }
 
   const rows = [
-    ...storedNames.map((name, i) => ({ name, stored: true as const, index: i })),
-    ...added.map((path) => ({ name: path.split("/").pop() ?? path, stored: false as const, index: -1, path })),
-  ].filter((r) => (r.stored ? keep.includes(r.index) : true));
+    ...storedNames.map((name) => ({ name, stored: true as const })),
+    ...added.map((path) => ({
+      name: path.split("/").pop() ?? path,
+      stored: false as const,
+      path,
+    })),
+  ].filter((r) => (r.stored ? keep.includes(r.name) : true));
 
   return (
     <div>
@@ -1616,7 +1653,7 @@ function MultiFileUpload({
         <ul className="mt-3 space-y-2">
           {rows.map((r) => (
             <li
-              key={`${r.stored ? "s" : "a"}-${r.stored ? r.index : (r as { path: string }).path}`}
+              key={`${r.stored ? "s" : "a"}-${r.stored ? r.name : (r as { path: string }).path}`}
               className="flex items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm"
             >
               <span className="truncate text-muted-foreground">
@@ -1631,7 +1668,7 @@ function MultiFileUpload({
                   r.stored
                     ? onChange(
                         added,
-                        keep.filter((i) => i !== r.index),
+                        keep.filter((n) => n !== r.name),
                       )
                     : onChange(
                         added.filter((p) => p !== (r as { path: string }).path),

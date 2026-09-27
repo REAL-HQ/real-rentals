@@ -69,6 +69,30 @@ ok(/state\.insurance_policy_number\s*\n?\s*\?\s*\{ insurance_policy_number/.test
    /\.\.\.\(state\.insurance_policy_number/.test(wiz),
    "  and only sends a policy number when one was typed");
 
+console.log("\nA NEW COLUMN CANNOT WANDER INTO THE PAYLOAD");
+{
+  /*
+   * The query names its columns. A column added to `applications` tomorrow —
+   * a staff note, a risk score, a partner's identifier — is not selected, so
+   * it cannot be returned by accident. The only way in is to write its name
+   * in RESUME_COLUMNS, which is a decision somebody has to make on purpose.
+   */
+  ok(/\.select\(RESUME_COLUMNS\.join\(","\)\)/.test(payload),
+     "the query selects an explicit column list");
+  ok(!/\.select\(\s*["'`]\*/.test(payload), "  and never select(*)");
+  const listed = (src.match(/const RESUME_COLUMNS = \[([\s\S]*?)\] as const;/) ?? [])[1] ?? "";
+  const names = [...listed.matchAll(/"([a-z_0-9]+)"/g)].map((m) => m[1]);
+  ok(names.length > 0 && names.length <= 30,
+     `RESUME_COLUMNS names ${names.length} columns, not a table`);
+  // Four of them are read only so they can be reduced to a flag, a last four
+  // or a filename. Those must not be returned under their own names, which
+  // the section above already asserts one by one.
+  for (const reduced of ["insurance_policy_number", "license_photo_url",
+                         "insurance_doc_url", "profile_screenshot_url", "trip_screenshots"]) {
+    ok(names.includes(reduced), `  ${reduced} is read (to be reduced, not returned)`);
+  }
+}
+
 console.log("\nAN ANONYMOUS DEDUPE MATCH YIELDS NO CREDENTIAL");
 const save = src.slice(src.indexOf("export const savePartialApplication"), src.indexOf("export const updateApplicationStep"));
 const dedupe = save.slice(save.indexOf("if (existing) {"), save.indexOf("const { data: row, error }"));
@@ -77,9 +101,17 @@ ok(/token: null/.test(dedupe), "  it returns a null token");
 ok(/sendApplicationResumeEmail/.test(dedupe), "  and mails the link instead");
 ok(/\.select\("email, full_name"\)[\s\S]{0,200}sendApplicationResumeEmail/.test(dedupe),
    "  to the address on the matched record, not the submitted one");
-ok(/IDENTITY = new Set\(\["full_name", "phone", "email"\]\)/.test(dedupe),
-   "identity fields are excluded from the patch");
-ok(/if \(IDENTITY\.has\(k\)\) continue;/.test(dedupe), "  and skipped when building it");
+// Stronger than excluding the identity fields, which is what this used to
+// check: nothing the caller submitted is applied to a record they merely
+// matched. sms_consent was the one that mattered — an anonymous POST could
+// flip a stranger's recorded consent — but city, state, pickup date, market
+// and the attribution set all went the same way.
+const patch = dedupe.slice(dedupe.indexOf(".update({"), dedupe.indexOf('.eq("id", primaryId)'));
+const written = [...patch.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]).sort();
+ok(String(written) === "resubmission_count,resubmission_history,updated_at",
+   `the patch writes only the counter and the history (writes: ${written.join(", ") || "nothing"})`);
+ok(!/data\.(full_name|phone|email|sms_consent|city|state|market_id|pickup_date|source|referrer|landing_page|gclid|utm_)/.test(patch),
+   "  no submitted field reaches the matched row");
 ok(/submitted_full_name|submitted_email/.test(dedupe), "  but recorded in resubmission_history");
 
 console.log("\nUPLOAD AUTHORIZATION");

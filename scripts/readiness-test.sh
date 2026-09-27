@@ -13,3 +13,5 @@ node scripts/readiness.test.mjs
 node scripts/assessment-guard.test.mjs
 node scripts/applicant-security.test.mjs
 node scripts/resume-payload.test.mjs
+node scripts/trip-screenshots.test.mjs
+node scripts/agreement-guard.test.mjs

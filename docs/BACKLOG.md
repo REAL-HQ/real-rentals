@@ -40,3 +40,43 @@ gets a second application row. The durable fix is generated normalized columns
 — last-ten digits of the phone, lowercased email — with indexes, matched on
 those instead. It is a migration with a backfill, which is why it is here and
 not inline.
+
+## The admin modals are not dialogs
+
+`AddVehicleDialog`, plus the inline modals in `TeamPanel`, `ShopsPanel`,
+`ExpensesPanel`, `MaintenancePanel`, `WebsitesPanel` and `VehicleProfile`.
+
+Pre-existing, untouched by the Part 1 / Part 2 change, and found by the
+dashboard probe when it tried to dismiss the Add Vehicle dialog.
+
+Each is a hand-rolled `<div className="fixed inset-0 bg-black/50 z-50 …">`
+with no `role="dialog"`, no `aria-modal`, no focus trap, no initial focus and
+no Escape handler. A screen reader announces the page behind it, Tab walks out
+of it into that page, and the only way out is the X button. `DocumentViewer`
+is the one that does it properly and can serve as the shape to copy.
+
+**The fix it needs.** One shared `<Modal>` — role, aria-modal, labelled by its
+own heading, focus moved in on open and restored on close, Escape and
+backdrop-click to dismiss, `inert` or `aria-hidden` on the page behind — and
+then the seven call sites moved onto it. Worth doing as one change rather than
+seven, which is why it is here.
+
+## Images between 15 and 25 MB reach the bucket
+
+`src/lib/image-optimize.ts` and the `license-uploads` /
+`profile-screenshots` buckets.
+
+A bucket has one `file_size_limit`, and PDFs need 25 MB, so that is what both
+buckets are set to. The 15 MB image ceiling is only the client-side check in
+`uploadApplicantFile`, which is honest about being a UX check — it gives a good
+message before a long upload rather than being the control. Anyone driving the
+signed URL directly can therefore store a 24 MB JPEG.
+
+Bounded, not free: the URL is one-time, issuance is capped at 40 per
+application per hour, and the MIME allowlist still applies — so the worst case
+is roughly a gigabyte an hour against one application's folder. Nothing here is
+a security boundary, only storage cost.
+
+**The fix it needs.** Separate buckets per document type so images can carry
+their own 15 MB ceiling, or a storage-side check on `metadata->>'size'`. Both
+are bucket surgery with a path migration, which is why it is not inline.

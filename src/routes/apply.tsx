@@ -49,7 +49,9 @@ export const Route = createFileRoute("/apply")({
 
 function ApplyPage() {
   const { t, city: preCity, pickup: prePickup } = Route.useSearch();
-  const token = useResumeToken(t);
+  // allowStashed: false — /apply starts a new application. A token stashed by
+  // the previous person on a shared or kiosk device must not open their form.
+  const token = useResumeToken(t, { allowStashed: false });
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -57,7 +59,7 @@ function ApplyPage() {
     // screen at once. A signup flow also converts better without the rest of
     // the site one click away.
     <div className="min-h-screen bg-background">
-      {token ? (
+      {token === undefined ? null : token ? (
         <ApplicationWizard token={token} />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">

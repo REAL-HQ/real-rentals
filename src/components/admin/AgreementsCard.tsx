@@ -30,6 +30,9 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
+  const [blockers, setBlockers] = useState<
+    { field: string; label: string; why: string }[]
+  >([]);
   const [busy, setBusy] = useState(false);
 
   async function refresh() {
@@ -51,8 +54,14 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
     setBusy(true);
     try {
       const res = await doPreview({ data: { applicationId } });
+      // The server withholds the body while anything blocks the send. Showing
+      // an editable draft with blanks in it and a Send button next to it read
+      // as permission to proceed, which is how a contract could be signed with
+      // "__________" where its dates belong.
       setPreview(res.body);
       setMissing(res.missing);
+      setBlockers((res as { blockers?: typeof blockers }).blockers ?? []);
+      if (!res.body) setPreview(null);
     } catch (e: any) {
       toast.error(e?.message || "Could not build the agreement");
     } finally {
@@ -67,6 +76,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
       toast.success("Agreement sent for signature");
       if (res.url) await navigator.clipboard?.writeText(res.url).catch(() => {});
       setPreview(null);
+      setBlockers([]);
       await refresh();
     } catch (e: any) {
       toast.error(e?.message || "Could not send the agreement");
@@ -91,6 +101,23 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
       }
     >
       <div className="p-5 space-y-4">
+        {blockers.length > 0 ? (
+          <div className="rounded-lg border border-[#F3C2BC] bg-[#FDF3F2] p-4">
+            <div className="text-[12px] font-semibold text-[#8A1F12]">
+              This agreement cannot be sent yet
+            </div>
+            <ul className="mt-2 space-y-2">
+              {blockers.map((b) => (
+                <li key={b.field} className="text-[12px] text-[#6B2A20]">
+                  <span className="font-semibold">{b.label}.</span> {b.why}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">
+              Fill these in on the Payments tab, then prepare the agreement again.
+            </p>
+          </div>
+        ) : null}
         {preview !== null ? (
           <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB]">
             <div className="px-4 py-2.5 border-b border-[#EDEDF0] flex items-center justify-between">

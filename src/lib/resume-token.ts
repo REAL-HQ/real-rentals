@@ -66,7 +66,11 @@ export function clearResumeToken() {
  * Resolve the token from the URL or this tab's stash, and strip it from the
  * address bar. Returns undefined while resolving on the very first render.
  */
-export function useResumeToken(fromUrl: string | undefined): string | null | undefined {
+export function useResumeToken(
+  fromUrl: string | undefined,
+  opts: { allowStashed?: boolean } = {},
+): string | null | undefined {
+  const allowStashed = opts.allowStashed !== false;
   // Always undefined on the first render, server and client alike.
   //
   // Seeding this from `fromUrl` on the client only looks like a harmless
@@ -97,8 +101,12 @@ export function useResumeToken(fromUrl: string | undefined): string | null | und
       }
       return;
     }
-    setToken(read());
-  }, [fromUrl]);
+    // On a page whose job is to START an application, a token left in this
+    // tab by whoever used the device last must not silently reopen their
+    // wizard — their name, city, address and insurer with it. Only pages that
+    // exist to resume read the stash.
+    setToken(allowStashed ? read() : null);
+  }, [fromUrl, allowStashed]);
 
   return token;
 }

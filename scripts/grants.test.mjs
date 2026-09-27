@@ -32,6 +32,34 @@ console.log("THE MIGRATION AND THE DECLARED INTENT AGREE");
   ok(/REVOKE UPDATE ON public\.applications FROM anon/.test(sql), "anon holds no UPDATE at all");
 }
 
+console.log("\nTHE COMPARISON ITSELF DISCRIMINATES");
+{
+  /*
+   * The live half below can only be trusted if its two comparisons actually
+   * fire. Both failure modes are exercised here against synthetic column
+   * sets, so this runs with or without a database — and without touching a
+   * real grant to prove it.
+   */
+  const compare = (all, granted) => ({
+    wronglyWritable: [...serverOwned].filter((c) => granted.has(c)),
+    missingGrant: all.filter((c) => !serverOwned.has(c) && !granted.has(c)),
+  });
+  const editable = ["full_name", "phone", "status"];
+  const healthy = compare([...editable, ...serverOwned], new Set(editable));
+  ok(healthy.wronglyWritable.length === 0 && healthy.missingGrant.length === 0,
+     "a correct grant set reports nothing");
+
+  // A. a server-owned column becomes browser-writable
+  const leaked = compare([...editable, ...serverOwned], new Set([...editable, "ai_score"]));
+  ok(leaked.wronglyWritable.join() === "ai_score",
+     "  A. a server-owned column granted to the browser is caught");
+
+  // B. a new editable column ships without its grant
+  const forgotten = compare([...editable, "referral_code", ...serverOwned], new Set(editable));
+  ok(forgotten.missingGrant.join() === "referral_code",
+     "  B. an intended-editable column with no grant is caught");
+}
+
 console.log("\nTHE LIVE DATABASE MATCHES THE INTENT");
 const url = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
 if (!url) {

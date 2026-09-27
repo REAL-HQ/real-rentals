@@ -49,6 +49,9 @@ async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** What renderTemplate substitutes for a merge field it has no value for. */
+const BLANK = "__________";
+
 function money(v: unknown): string {
   const n = Number(v ?? 0);
   if (!n) return "";
@@ -97,9 +100,15 @@ async function buildMergeData(
     .limit(1)
     .maybeSingle();
 
+  // A live rental is authoritative for the dates it actually has. end_date is
+  // nullable and activation does not require one — "no end date" means the
+  // rental is open-ended, not that the agreed end date is unknown. Reading it
+  // as authoritative-and-null left the agreement permanently unissuable, with
+  // the only field staff could fill being the one the code had decided to
+  // ignore.
   const fromRental = Boolean(rental?.start_date);
   const startDate = fromRental ? rental.start_date : (app.contract_start_date ?? null);
-  const endDate = fromRental ? (rental.end_date ?? null) : (app.contract_end_date ?? null);
+  const endDate = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
 
   /*
    * Application intent is NOT contract data.
@@ -259,7 +268,10 @@ export const previewAgreement = createServerFn({ method: "POST" })
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
     return {
-      body: renderTemplate(tpl.body, merge),
+      // Withheld while anything blocks the send: a preview the staff member
+      // can edit and press Send on reads as permission to proceed, and the
+      // blanks in it are exactly what must not reach a signature.
+      body: blockers.length ? null : renderTemplate(tpl.body, merge),
       merge,
       missing,
       // Everything in `missing` is worth a staff member's attention; these are
@@ -295,7 +307,19 @@ export async function issueAgreement(
       `This agreement is missing ${blockers.map((b) => b.label.toLowerCase()).join(" and ")}. ${blockers[0].why}`,
     );
   const tpl = await activeTemplateBody(admin);
-  const body = opts.body ?? renderTemplate(tpl.body, merge);
+
+  /*
+   * The staff member's edited text is honoured — but not if it still carries
+   * the blanks renderTemplate leaves for missing merge fields.
+   *
+   * The guard above checks the row as it stands now; the body being stored is
+   * whatever the preview produced, possibly minutes earlier and before the
+   * missing dates were filled in. Those two can disagree, and when they do the
+   * applicant signs a contract whose start date, return date and address read
+   * "__________" while merge_data records the right ones. Re-render instead.
+   */
+  const rendered = renderTemplate(tpl.body, merge);
+  const body = opts.body && !opts.body.includes(BLANK) ? opts.body : rendered;
 
   const token = randomToken();
   const tokenHash = await hashToken(token);

@@ -67,10 +67,21 @@ const stepUpdateSchema = z.object({
   profile_screenshot_url: z.string().trim().max(500).nullable().optional(),
   trips_completed: z.string().trim().max(40).nullable().optional(),
   trip_screenshots: z.array(z.string().trim().max(500)).max(10).nullable().optional(),
-  // Which of the stored trip screenshots to keep, by index. The browser never
-  // receives their storage paths, so it cannot send back a rewritten array —
-  // it says which ones to drop and the server does the rewriting.
-  trip_screenshots_keep: z.array(z.number().int().min(0).max(49)).max(50).nullable().optional(),
+  /*
+   * Which stored trip screenshots to keep, BY FILENAME.
+   *
+   * This was a list of positions, and positions drift. The client holds the
+   * indices it was given at load; the server rewrites the array on every
+   * save; so after the first upload the client's indices point at the wrong
+   * entries and the next save silently dropped files the applicant had just
+   * added. Executed, it went [A,B] -> [A,B,P] -> [A,B,Q] with P gone, while
+   * the screen still listed all four.
+   *
+   * Filenames are already what the browser is given (getApplicationForWizard
+   * returns basenames, never paths), they are unique — a timestamp plus six
+   * random characters — and they do not move when the array is rewritten.
+   */
+  trip_screenshots_keep: z.array(z.string().trim().max(200)).max(50).nullable().optional(),
   rating: z.number().min(1).max(5).nullable().optional(),
   // Part 2 — insurance and address
   license_photo_url: z.string().trim().max(500).nullable().optional(),
@@ -166,10 +177,20 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // away from being loosened again. Passing the values as arguments instead
     // of splicing them into a query language removes the class of bug rather
     // than this instance of it.
+    //
+    // The email comparison is case-insensitive, and that is a security
+    // property rather than a courtesy. Detection matched exactly while
+    // mergeDuplicateApplications groups on lower(trim(email)): submitting as
+    // Victim@example.com therefore missed the duplicate check, created a
+    // second row with a working token for the caller, and then the next time
+    // staff pressed Merge duplicates the newer row won and the victim's real
+    // application was marked `duplicate` and hidden.
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const dupeCols =
       "id, primary_application_id, resubmission_count, resubmission_history, created_at";
-    const [byPhone, byEmail] = await Promise.all([
+    const emailLower = data.email.trim().toLowerCase();
+    const emailVariants = Array.from(new Set([data.email, emailLower, data.email.trim()]));
+    const [byPhone, ...byEmailResults] = await Promise.all([
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
@@ -177,14 +198,17 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .gte("created_at", cutoff)
         .order("created_at", { ascending: false })
         .limit(1),
-      supabaseAdmin
-        .from("applications")
-        .select(dupeCols)
-        .eq("email", data.email)
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(1),
+      ...emailVariants.map((e) =>
+        supabaseAdmin
+          .from("applications")
+          .select(dupeCols)
+          .eq("email", e)
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ),
     ]);
+    const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
     const existing = [...(byPhone.data ?? []), ...(byEmail.data ?? [])].sort((a, b) =>
       String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
     )[0];
@@ -208,12 +232,20 @@ export const savePartialApplication = createServerFn({ method: "POST" })
        * already exists — that is how a victim stops receiving their own mail.
        * They are recorded in resubmission_history for staff to reconcile.
        */
-      const IDENTITY = new Set(["full_name", "phone", "email"]);
-      const patch: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(data)) {
-        if (IDENTITY.has(k)) continue;
-        if (v !== undefined && v !== null && v !== "") patch[k] = v;
-      }
+      /*
+       * An anonymous caller may not write to a record they merely matched.
+       *
+       * Excluding the identity fields was not enough: everything else in the
+       * payload still landed on the row, and one of those is sms_consent —
+       * an unauthenticated POST could flip a stranger's recorded consent to
+       * true and manufacture the record this business relies on, or to false
+       * and stop their messages. City, state, pickup date, market and the
+       * whole attribution set went the same way.
+       *
+       * So nothing from the submission is applied. What the caller sent is
+       * filed in the history for staff to look at, and the only columns that
+       * move are the counter and that history.
+       */
       const history = Array.isArray(existing.resubmission_history)
         ? (existing.resubmission_history as unknown[])
         : [];
@@ -227,40 +259,65 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         submitted_phone: data.phone,
         submitted_email: data.email,
       });
-      patch.resubmission_count = (existing.resubmission_count ?? 0) + 1;
-      patch.resubmission_history = history;
-      patch.updated_at = new Date().toISOString();
       const { error: updErr } = await supabaseAdmin
         .from("applications")
-        .update(patch as any)
+        .update({
+          resubmission_count: (existing.resubmission_count ?? 0) + 1,
+          // Bounded. An anonymous caller must not be able to grow a JSONB
+          // column without limit on a row of their choosing.
+          resubmission_history: history.slice(-25),
+          updated_at: new Date().toISOString(),
+        } as any)
         .eq("id", primaryId);
       if (updErr) throw new Error(updErr.message);
-      // The link goes to the address already on the record, never back to the
-      // caller. A genuine returning applicant finds it in the inbox they
-      // originally gave us; anybody else learns nothing.
+
+      /*
+       * One link per half hour, at most.
+       *
+       * Each send mints a token, and only five may be live at once — so six
+       * submissions with a stranger's email would revoke the link they are
+       * actually using, and mail them six times from our domain on the way.
+       * If a live token was issued recently, the applicant already has what
+       * this email would give them.
+       */
       try {
-        const { data: onFile } = await supabaseAdmin
-          .from("applications")
-          .select("email, full_name")
-          .eq("id", primaryId)
-          .maybeSingle();
-        if (onFile?.email) {
-          const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-          await sendApplicationResumeEmail({
-            to: onFile.email,
-            firstName: onFile.full_name ?? null,
-            applicationId: primaryId,
-          });
+        const recent = new Date(Date.now() - 30 * 60_000).toISOString();
+        const { count } = await supabaseAdmin
+          .from("application_resume_tokens")
+          .select("id", { count: "exact", head: true })
+          .eq("application_id", primaryId)
+          .is("revoked_at", null)
+          .gte("created_at", recent);
+        if (!count) {
+          const { data: onFile } = await supabaseAdmin
+            .from("applications")
+            .select("email, full_name")
+            .eq("id", primaryId)
+            .maybeSingle();
+          if (onFile?.email) {
+            const { sendApplicationResumeEmail } = await import("@/lib/email.server");
+            await sendApplicationResumeEmail({
+              to: onFile.email,
+              firstName: onFile.full_name ?? null,
+              applicationId: primaryId,
+            });
+          }
         }
       } catch (e) {
         console.error("[lead-email] returning-applicant link failed", primaryId, e);
       }
-      return { id: primaryId, token: null as string | null, existing: true as const };
+
+      // No id. It authorizes nothing today, but handing an anonymous caller
+      // the identifier of a record they guessed at is still telling them
+      // something, and the browser has no use for it.
+      return { id: null as string | null, token: null as string | null, existing: true as const };
     }
 
     const { data: row, error } = await supabaseAdmin
       .from("applications")
-      .insert({ ...data, status: "partial", current_step: "rental" })
+      // Stored lowercased so detection, merging and delivery all agree on
+      // what "the same address" means.
+      .insert({ ...data, email: emailLower, status: "partial", current_step: "rental" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
@@ -299,7 +356,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
-    return { id: row.id, token: token as string | null, existing: false as const };
+    return { id: row.id as string | null, token: token as string | null, existing: false as const };
   });
 
 export const updateApplicationStep = createServerFn({ method: "POST" })
@@ -317,6 +374,22 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       if (v !== undefined) patch[k] = v;
     }
 
+    // A document column may only name an object inside this application's own
+    // folder. requestUploadUrl already chooses the path, but nothing stopped
+    // the value coming back changed — and the vault registers whatever these
+    // columns say, then signs a download URL for it.
+    const ownPath = (v: unknown) =>
+      typeof v !== "string" || v === "" || v.startsWith(`${id}/`);
+    for (const col of ["license_photo_url", "insurance_doc_url", "profile_screenshot_url"]) {
+      if (patch[col] !== undefined && !ownPath(patch[col])) {
+        throw new Error("That file reference is not one we issued.");
+      }
+    }
+    if (Array.isArray(patch.trip_screenshots) &&
+        !(patch.trip_screenshots as unknown[]).every(ownPath)) {
+      throw new Error("That file reference is not one we issued.");
+    }
+
     // Part 1 landing on `submitted` is the conversion: this is a real
     // application from here on, and staff see it whether or not Part 2 is ever
     // touched. Part 2 finishing does not move the status again — the team, not
@@ -329,23 +402,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // already on file, and which stored trip screenshots survive a removal.
     const { data: before } = await supabaseAdmin
       .from("applications")
-      .select("status, full_coverage_insurance, trip_screenshots")
+      .select("status, full_coverage_insurance, insurance_expires_on, trip_screenshots")
       .eq("id", id)
       .maybeSingle();
 
-    // Removal by index, resolved against the stored array. An out-of-range
-    // index drops out rather than erroring: the worst it can do is keep a
-    // file the applicant wanted gone, which they can retry.
+    // Removal resolved by filename against the stored array, plus whatever
+    // the client is still claiming from this session. A name the client does
+    // not mention is dropped; a path it uploaded survives whether or not the
+    // previous save already stored it. An unrecognised name drops out rather
+    // than erroring: the worst that does is keep a file, which they can retry.
     if (Array.isArray(fields.trip_screenshots_keep)) {
       const stored = Array.isArray(before?.trip_screenshots)
         ? (before.trip_screenshots as string[])
         : [];
-      const keep = new Set(fields.trip_screenshots_keep);
-      const survivors = stored.filter((_, i) => keep.has(i));
-      const added = Array.isArray(patch.trip_screenshots)
-        ? (patch.trip_screenshots as string[]).filter((p) => !stored.includes(p))
-        : [];
-      patch.trip_screenshots = [...survivors, ...added].slice(0, 10);
+      const keepNames = new Set(fields.trip_screenshots_keep);
+      const claimed = new Set(
+        Array.isArray(patch.trip_screenshots) ? (patch.trip_screenshots as string[]) : [],
+      );
+      const nameOf = (path: string) => path.split("/").pop() ?? path;
+      const survivors = stored.filter((p) => keepNames.has(nameOf(p)) || claimed.has(p));
+      const appended = [...claimed].filter((p) => !stored.includes(p));
+      patch.trip_screenshots = [...survivors, ...appended].slice(0, 10);
     }
 
     // Promote to "new" on submission, and only out of "partial".
@@ -387,7 +464,11 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     ) {
       const hasCoverage = (patch.full_coverage_insurance ??
         before?.full_coverage_insurance) as boolean | null | undefined;
-      const expires = fields.insurance_expires_on ?? null;
+      // Falls back to the row for the same reason the coverage answer does:
+      // Part 1 carries the answer and Part 2 carries the expiry, so a write
+      // with one and not the other used to recompute from a null expiry and
+      // turn a stored "expired" back into "declared".
+      const expires = fields.insurance_expires_on ?? before?.insurance_expires_on ?? null;
       const expired = expires ? new Date(expires) < new Date(new Date().toDateString()) : false;
       patch.insurance_status =
         hasCoverage === false
@@ -700,7 +781,21 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
       .select("status")
       .eq("id", id)
       .maybeSingle();
-    const decided = ["approved", "rejected", "active", "complete", "completed"];
+    // The real vocabulary from applications_status_check, not a guess. The
+    // old list was copied from application_accepts_uploads() and carried its
+    // bug: it blocked "rejected", which is not a status this system has, and
+    // missed "declined", which is — so a declined applicant kept a working
+    // upload credential for the full life of their token.
+    const decided = [
+      "declined",
+      "closed",
+      "duplicate",
+      "approved",
+      "active",
+      "suspended",
+      "complete",
+      "completed",
+    ];
     if (decided.includes(String(app?.status ?? "").toLowerCase())) {
       throw new Error(
         "This application has already been decided. Email team@drivereal.com and we'll add the document for you.",

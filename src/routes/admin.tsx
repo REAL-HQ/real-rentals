@@ -86,7 +86,10 @@ export const Route = createFileRoute("/admin")({
     if (str(raw.tab)) out.tab = str(raw.tab);
     if (str(raw.id)) out.id = str(raw.id);
     if (str(raw.filter)) out.filter = str(raw.filter);
-    if (raw.add === "1" || raw.add === true) out.add = "1";
+    // The router JSON-parses search values, so its own links round-trip as
+    // the string "1" while a hand-typed or emailed ?add=1 arrives as the
+    // number 1 — and silently did nothing.
+    if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     return out;
   },
   head: () => ({

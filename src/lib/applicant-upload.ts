@@ -45,12 +45,39 @@ export class UploadTooLarge extends Error {
  * The size check runs after optimization, so a 9 MB camera photo that shrinks
  * to 600 KB is accepted rather than refused for being what a phone produces.
  */
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf: "application/pdf",
+};
+
+/**
+ * Give a file a type the storage bucket will accept.
+ *
+ * uploadToSignedUrl ignores its own contentType option for a File body — it
+ * builds a FormData and the part carries the File's own type. Android's Files
+ * picker and some HEIC sources hand over an empty type, which becomes
+ * application/octet-stream and is refused by the bucket's MIME allowlist, and
+ * all the applicant sees is "we couldn't upload that". Re-wrapped with the
+ * type its extension implies.
+ */
+function withKnownType(file: File): File {
+  const wanted = MIME_BY_EXT[extFor(file)];
+  if (!wanted || file.type === wanted) return file;
+  if (file.type && Object.values(MIME_BY_EXT).includes(file.type)) return file;
+  return new File([file], file.name, { type: wanted, lastModified: file.lastModified });
+}
+
 export async function uploadApplicantFile(args: {
   token: string;
   kind: UploadKind;
   file: File;
 }): Promise<{ path: string; file: File }> {
-  const file = await optimizeImage(args.file);
+  const file = withKnownType(await optimizeImage(args.file));
   const limit = maxMbFor(file);
   if (file.size > limit * 1024 * 1024) throw new UploadTooLarge(limit);
 

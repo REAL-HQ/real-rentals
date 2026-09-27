@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test:readiness": "bash scripts/readiness-test.sh",
     "test:public-copy": "node scripts/public-copy.test.mjs",
-    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs",
+    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs",
     "test:grants": "node scripts/grants.test.mjs"
   },
   "dependencies": {
