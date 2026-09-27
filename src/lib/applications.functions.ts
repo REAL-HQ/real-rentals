@@ -784,6 +784,14 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
 // ---------------- Admin: merge duplicate applications ----------------
 // One-time cleanup: groups existing applications by phone/email and links
 // older duplicates to the newest surviving record. Admin-only.
+//
+// KNOWN DEFECT, see docs/BACKLOG.md. Grouping by phone and by email
+// separately, with the primary chosen from a stale snapshot, can link A <- B
+// <- C instead of A <- B and A <- C. The middle row is then hidden by the
+// admin list's status filter and the tail renders as orphaned history. It
+// needs a union-find pass over the phone and email edges that picks one
+// canonical primary per connected component and flattens the chains already
+// in production. Left out of the Part 1 / Part 2 change on purpose.
 export const mergeDuplicateApplications = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
