@@ -1,10 +1,29 @@
 import { Link } from "@tanstack/react-router";
 
-export function Logo({ width = 120, offset = true }: { width?: number; offset?: boolean }) {
+export function Logo({
+  width = 120,
+  offset = true,
+  /**
+   * Whether the mark links home.
+   *
+   * Off inside the application wizard: an applicant half way through a form
+   * who taps the logo out of habit would lose the screen they were on, and
+   * the mark is there to say whose form this is, not to navigate. The
+   * treatment itself is identical either way — one logo, everywhere.
+   */
+  href = true,
+}: {
+  width?: number;
+  offset?: boolean;
+  href?: boolean;
+}) {
+  const Wrapper = href ? Link : ("div" as const);
+  const wrapperProps = href
+    ? ({ to: "/", "aria-label": "REAL RENTALS home" } as const)
+    : ({ role: "img", "aria-label": "REAL RENTALS" } as const);
   return (
-    <Link
-      to="/"
-      aria-label="REAL RENTALS home"
+    <Wrapper
+      {...(wrapperProps as any)}
       className={`${offset ? "relative top-[28px]" : ""} flex-shrink-0`}
       style={{
         display: "block",
@@ -53,6 +72,6 @@ export function Logo({ width = 120, offset = true }: { width?: number; offset?: 
           RENTALS
         </span>
       </div>
-    </Link>
+    </Wrapper>
   );
 }

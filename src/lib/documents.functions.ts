@@ -9,6 +9,13 @@ export const DOC_CATEGORIES = [
   { key: "license_back", label: "Driver's license (back)", expiring: true },
   { key: "insurance", label: "Insurance card", expiring: true },
   { key: "gig_profile", label: "Gig profile screenshot", expiring: false },
+  // Its own category, not a second gig_profile. Filing trip screenshots under
+  // gig_profile meant each one superseded the applicant's actual gig profile
+  // — and every trip screenshot before it — because registerDocument marks
+  // same-category currents as superseded. One applicant's four uploads showed
+  // up as one document with three "previous versions", none of them the file
+  // the label claimed.
+  { key: "trip_history", label: "Trip history screenshot", expiring: false },
   { key: "agreement", label: "Signed agreement", expiring: false },
   { key: "other", label: "Other document", expiring: false },
   // Owner-only. A recording of an insurance verification call carries a third
@@ -28,6 +35,15 @@ export const DOC_CATEGORIES = [
  * URLs with the service role and therefore bypass RLS entirely.
  */
 export const RESTRICTED_CATEGORIES: readonly string[] = ["verification_recording"];
+
+/**
+ * Categories where several files are current at once.
+ *
+ * A licence has one right answer, so a new one supersedes the old. Trip
+ * history is a set — an applicant sends four screenshots of four weeks — and
+ * superseding within it destroys the evidence it exists to hold.
+ */
+export const MULTI_FILE_CATEGORIES: readonly string[] = ["trip_history", "other"];
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number]["key"];
 
@@ -64,6 +80,7 @@ const CategoryEnum = z.enum([
   "license_back",
   "insurance",
   "gig_profile",
+  "trip_history",
   "agreement",
   "other",
   "verification_recording",
@@ -162,15 +179,46 @@ export async function registerDocument(
 ): Promise<{ id: string } | null> {
   const { data: seen } = await admin
     .from("documents")
-    .select("id,storage_bucket")
+    .select("id,storage_bucket,category,is_current,superseded_by")
     .eq("storage_path", args.path)
     .maybeSingle();
   if (seen) {
-    // Heal a row recorded against the wrong bucket. Rows written before the
-    // per-column bucket map above point gig screenshots at "license-uploads",
-    // where the object does not exist, so signing them returns nothing.
-    if (seen.storage_bucket !== args.bucket) {
-      await admin.from("documents").update({ storage_bucket: args.bucket }).eq("id", seen.id);
+    /*
+     * Heal what an earlier version of this function recorded wrongly. The
+     * application columns are the truth about which file is which — the path
+     * came from that column — so a row disagreeing with them is repaired
+     * rather than duplicated. Idempotent: after the first pass these are all
+     * no-ops.
+     *
+     *  - bucket: rows written before the per-column bucket map point gig
+     *    screenshots at "license-uploads", where the object does not exist,
+     *    so signing them returns nothing.
+     *  - category: trip screenshots were filed as "gig_profile", which made
+     *    each one supersede the applicant's real gig profile.
+     *  - is_current: a row demoted by that mis-filing is restored, since the
+     *    thing that superseded it was never a newer version of it.
+     */
+    const patch: Record<string, unknown> = {};
+    if (seen.storage_bucket !== args.bucket) patch.storage_bucket = args.bucket;
+    if (seen.category !== args.category) {
+      patch.category = args.category;
+      patch.kind = args.category;
+      if (args.label) patch.label = args.label;
+    }
+    if (seen.is_current === false) {
+      patch.is_current = true;
+      patch.superseded_by = null;
+    }
+    if (Object.keys(patch).length) {
+      await admin.from("documents").update(patch).eq("id", seen.id);
+    }
+    // Metadata the original registration could not know, filled in once.
+    if (args.mimeType || args.sizeBytes) {
+      await admin
+        .from("documents")
+        .update({ mime_type: args.mimeType ?? null, size_bytes: args.sizeBytes ?? null })
+        .eq("id", seen.id)
+        .is("size_bytes", null);
     }
     return { id: seen.id as string };
   }
@@ -200,13 +248,16 @@ export async function registerDocument(
     return null;
   }
 
-  await admin
-    .from("documents")
-    .update({ is_current: false, superseded_by: row.id })
-    .eq("driver_id", args.applicationId)
-    .eq("category", args.category)
-    .eq("is_current", true)
-    .neq("id", row.id);
+  // Single-slot categories only. See MULTI_FILE_CATEGORIES.
+  if (!MULTI_FILE_CATEGORIES.includes(args.category)) {
+    await admin
+      .from("documents")
+      .update({ is_current: false, superseded_by: row.id })
+      .eq("driver_id", args.applicationId)
+      .eq("category", args.category)
+      .eq("is_current", true)
+      .neq("id", row.id);
+  }
 
   return { id: row.id as string };
 }
@@ -252,6 +303,38 @@ export const APPLICATION_UPLOAD_FIELDS: Array<{
 const TRIP_SCREENSHOT_BUCKET = "profile-screenshots";
 
 /**
+ * Size and type, read from the object the applicant actually uploaded.
+ *
+ * The wizard uploads straight to storage with a signed URL, so the server
+ * never sees the bytes and had nothing to record: every row registered from
+ * an application carried mime_type and size_bytes NULL. The staff view then
+ * had to guess "is this an image?" from the filename, and could not show a
+ * size at all. Storage knows both; this asks it.
+ *
+ * Best-effort on purpose — a document that lists without its size is worth
+ * far more than one that fails to register because a metadata call hiccuped.
+ */
+async function objectMeta(
+  admin: any,
+  bucket: string,
+  path: string,
+): Promise<{ mimeType: string | null; sizeBytes: number | null }> {
+  try {
+    const slash = path.lastIndexOf("/");
+    const folder = slash > 0 ? path.slice(0, slash) : "";
+    const name = slash > 0 ? path.slice(slash + 1) : path;
+    const { data } = await admin.storage.from(bucket).list(folder, { search: name, limit: 100 });
+    const hit = (data ?? []).find((o: any) => o?.name === name);
+    return {
+      mimeType: hit?.metadata?.mimetype ?? null,
+      sizeBytes: typeof hit?.metadata?.size === "number" ? hit.metadata.size : null,
+    };
+  } catch {
+    return { mimeType: null, sizeBytes: null };
+  }
+}
+
+/**
  * Copy any files captured during the application into the document vault.
  * Safe to call on every wizard step — already-registered paths are skipped.
  */
@@ -278,6 +361,7 @@ export async function syncApplicationUploads(
         field.category === "license_front" ? (application.license_expiration ?? null) : null,
       uploadedBy: (application.user_id as string) ?? null,
       uploadedByRole: "driver",
+      ...(await objectMeta(admin, field.bucket, path)),
     });
     if (res) registered++;
   }
@@ -288,15 +372,39 @@ export async function syncApplicationUploads(
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
     const res = await registerDocument(admin, {
       applicationId: application.id as string,
-      category: "gig_profile",
+      category: "trip_history",
       bucket: TRIP_SCREENSHOT_BUCKET,
       path,
       fileName: path.split("/").pop() ?? null,
       label: "Trip screenshot (from application)",
       uploadedBy: (application.user_id as string) ?? null,
       uploadedByRole: "driver",
+      ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
     });
     if (res) registered++;
+  }
+
+  /*
+   * Retire trip screenshots the applicant has since removed.
+   *
+   * Single-slot categories retire themselves: registering a new licence
+   * supersedes the old one. Trip history is a set, so nothing demotes a
+   * member when it leaves — and the vault would go on showing a screenshot
+   * the applicant deliberately took down as current evidence.
+   *
+   * Retired, not deleted. The row and the object both stay; it moves to
+   * previous versions, where staff can still see what was once sent.
+   */
+  if (Array.isArray(application.trip_screenshots)) {
+    const keep = shots.filter((p: unknown) => typeof p === "string");
+    let q = admin
+      .from("documents")
+      .update({ is_current: false })
+      .eq("driver_id", application.id)
+      .eq("category", "trip_history")
+      .eq("is_current", true);
+    if (keep.length) q = q.not("storage_path", "in", `(${keep.map((p: string) => `"${p}"`).join(",")})`);
+    await q;
   }
 
   return registered;

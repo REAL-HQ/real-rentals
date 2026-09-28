@@ -103,6 +103,7 @@ const VAULT_TO_REQUIRED: Record<string, string> = {
 };
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
+import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
@@ -115,6 +116,90 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+
+/**
+ * What arrived, at a glance, above the tabs.
+ *
+ * The profile led with lifecycle, summary, rental need and readiness — four
+ * panels about what is outstanding — and the evidence the applicant had
+ * actually sent sat behind a tab nobody had reason to click. An operator
+ * looking at a driver who had uploaded a licence, an insurance PDF, a gig
+ * profile and a trip screenshot could not tell any of them existed.
+ */
+function DocumentsStrip({
+  docs,
+  loading,
+  onOpen,
+}: {
+  docs: VaultDocument[];
+  loading: boolean;
+  onOpen: () => void;
+}) {
+  const GROUPS: { keys: string[]; label: string }[] = [
+    { keys: ["license_front", "license_back"], label: "Driver's License" },
+    { keys: ["insurance"], label: "Insurance" },
+    { keys: ["gig_profile"], label: "Gig Profile" },
+    { keys: ["trip_history"], label: "Trip History" },
+  ];
+  const current = docs.filter((d) => d.is_current);
+  const total = current.length;
+
+  return (
+    <SectionCard
+      padded={false}
+      title="Documents"
+      right={
+        <button
+          onClick={onOpen}
+          className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] transition-colors"
+        >
+          {total > 0 ? `Open All ${total}` : "Open Documents"}
+        </button>
+      }
+    >
+      <div className="px-5 py-4">
+        {loading ? (
+          <p className="text-[12.5px] text-[#77777F]">Loading what they sent…</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {GROUPS.map((g) => {
+              const hits = current.filter((d) => g.keys.includes(d.category));
+              const verified = hits.length > 0 && hits.every((d) => d.review_status === "verified");
+              const rejected = hits.some((d) => d.review_status === "rejected");
+              const tone = !hits.length
+                ? "bg-[#F4F4F6] text-[#77777F] border-[#EDEDF0]"
+                : rejected
+                  ? "bg-red-50 text-red-700 border-red-200"
+                  : verified
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-sky-50 text-sky-700 border-sky-200";
+              return (
+                <button
+                  key={g.label}
+                  onClick={onOpen}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-opacity hover:opacity-80 ${tone}`}
+                >
+                  {g.label}
+                  <span className="tabular-nums font-normal">
+                    {!hits.length
+                      ? "Not Received"
+                      : rejected
+                        ? "Needs Replacement"
+                        : hits.length > 1
+                          ? `${hits.length} Files`
+                          : verified
+                            ? "Verified"
+                            : "Uploaded"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
 
 const DRIVER_STATUSES = [
   "new",
@@ -421,6 +506,20 @@ export function DriversPanel({
   if (open) {
     return (
       <DriverDetail
+        /*
+         * Keyed by applicant, so switching applicants rebuilds the drawer
+         * rather than carrying one person's state onto the next.
+         *
+         * Today the list is unreachable while the drawer is open, so `open`
+         * always passes through null between two applicants and this never
+         * fires — but that is an accident of the current layout, not a
+         * guarantee. The drawer now holds the document vault, and readiness
+         * reads it without a loading guard, so the first "open the next
+         * applicant" control anybody adds would show A's documents against
+         * B's name until the fetch returned. An editing patch reuses the
+         * same id, so this does not remount on every field change.
+         */
+        key={open.id}
         driver={open}
         vehicles={vehicles}
         onBack={() => setOpen(null)}
@@ -745,10 +844,50 @@ function DriverDetail({
   }
 
   const [interviewOpen, setInterviewOpen] = useState(false);
-  // Required documents on file, reported by the Documents tab so the screening
-  // pipeline gates on the same vault the operator is looking at.
-  const [vaultDocCount, setVaultDocCount] = useState(0);
-  const [vaultDocs, setVaultDocs] = useState<ReadinessDocument[]>([]);
+  // Controlled so the Documents strip and the readiness remedies can send the
+  // operator straight to the tab that answers them.
+  const [tab, setTab] = useState("overview");
+  /*
+   * The document vault for this applicant, loaded by the drawer itself.
+   *
+   * It used to be loaded by <ApplicantDocuments>, which lives inside the
+   * Documents tab — and Radix unmounts an inactive tab, so on the Overview
+   * tab the vault had never been fetched. Readiness therefore computed with
+   * zero documents and told the operator the licence and insurance were still
+   * needed, on the very screen they land on, for an applicant whose licence
+   * and insurance were sitting in the vault marked current. Nothing was
+   * missing; nothing had been asked for.
+   *
+   * One fetch, at the drawer, feeding both the readiness model and the tab.
+   * Still one vault and one server function — the tab renders what this holds
+   * instead of holding its own copy.
+   */
+  const listVaultDocs = useServerFn(adminListDriverDocuments);
+  const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
+  const [vaultLoading, setVaultLoading] = useState(true);
+  const refreshVault = useCallback(async () => {
+    try {
+      setVaultDocs(await listVaultDocs({ data: { applicationId: driver.id } }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load documents");
+    } finally {
+      setVaultLoading(false);
+    }
+  }, [driver.id, listVaultDocs]);
+  useEffect(() => {
+    setVaultLoading(true);
+    void refreshVault();
+  }, [refreshVault]);
+
+  const vaultDocCount = useMemo(() => {
+    const current = new Set(vaultDocs.filter((d) => d.is_current).map((d) => d.category));
+    return REQUIRED_VAULT_CATEGORIES.filter((c) => current.has(c)).length;
+  }, [vaultDocs]);
+  useEffect(() => {
+    if (!vaultLoading) onVaultChange?.(vaultDocCount);
+    // onVaultChange is parent-owned; depending on it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultDocCount, vaultLoading]);
   // Owner-only; for every other tier this stays false and the gate reads the
   // recording as outstanding. The database decides regardless.
   const [hasRecording, setHasRecording] = useState(false);
@@ -913,12 +1052,14 @@ function DriverDetail({
   // cannot act on is shown in Still Needed as text and nothing more, because a
   // button that does nothing is worse than no button.
   const readinessActions = useMemo(() => {
-    const open = (tab: string) => () => document.getElementById(tab)?.click();
+    // The tabs are controlled now, so a remedy selects one directly rather
+    // than synthesising a click on its trigger.
+    const open = (value: string) => () => setTab(value);
     const route: Partial<Record<Remedy, { label: string; onClick: () => void }>> = {
       interview: { label: "Complete Interview", onClick: () => setInterviewOpen(true) },
-      request_document: { label: "Review Documents", onClick: open("tab-documents") },
-      verify: { label: "Verify Insurance", onClick: open("tab-screening") },
-      applicant: { label: "Review Driver Information", onClick: open("tab-application") },
+      request_document: { label: "Review Documents", onClick: open("documents") },
+      verify: { label: "Verify Insurance", onClick: open("screening") },
+      applicant: { label: "Review Driver Information", onClick: open("application") },
     };
     return nextActions(readiness).flatMap((g) => {
       const r = route[g.remedy];
@@ -1218,7 +1359,18 @@ function DriverDetail({
               }
             />
 
-            <Tabs defaultValue="overview" className="w-full">
+            {/* What did this applicant send us? Answered before the operator
+                has to guess which tab to open. The readiness panel above says
+                what is still outstanding; this says what arrived, and goes
+                straight to it. One strip, no second document system — it
+                reads the same vault rows the Documents tab renders. */}
+            <DocumentsStrip
+              docs={vaultDocs}
+              loading={vaultLoading}
+              onOpen={() => setTab("documents")}
+            />
+
+            <Tabs value={tab} onValueChange={setTab} className="w-full">
               <TabsList className="bg-white border border-[#EDEDF0]">
                 <TabsTrigger value="overview" id="tab-overview">
                   Overview
@@ -1322,11 +1474,9 @@ function DriverDetail({
                         controls and the insurance document appeared nowhere. */}
                     <ApplicantDocuments
                       applicationId={driver.id}
-                      onRequiredCountChange={(n) => {
-                        setVaultDocCount(n);
-                        onVaultChange?.(n);
-                      }}
-                      onDocumentsChange={setVaultDocs}
+                      docs={vaultDocs}
+                      loading={vaultLoading}
+                      onRefresh={refreshVault}
                     />
                   </div>
                 </SectionCard>
@@ -1978,6 +2128,14 @@ function DateField({
 
 /** How the applicant's duration band reads to a person. */
 const DURATION_LABEL: Record<string, string> = {
+  // Current vocabulary.
+  "1_month": "1 month",
+  "2_months": "2 months",
+  "3_months": "3 months",
+  "4plus_months": "4+ months",
+  not_sure: "a period they weren't sure of yet",
+  // Historical. Applications answered before the options changed still read
+  // the way the applicant meant them; nothing was rewritten.
   "1-2_weeks": "1–2 weeks",
   "3-4_weeks": "3–4 weeks",
   "1-2_months": "1–2 months",

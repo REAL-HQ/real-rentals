@@ -34,12 +34,26 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
     { field: string; label: string; why: string }[]
   >([]);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function refresh() {
     try {
-      setRows(await load({ data: { applicationId } }));
-    } catch {
-      /* ignore */
+      const res = await load({ data: { applicationId } });
+      // Whatever comes back, this component renders rows.length. A transport
+      // that hands back null instead of a list would throw during render,
+      // and this card is the first child of the Documents tab — so the error
+      // boundary would replace the entire driver drawer with "This page
+      // didn't load", and the documents beneath it with nothing at all.
+      setRows(Array.isArray(res) ? res : []);
+      setLoadError(Array.isArray(res) ? null : "Agreements came back in a shape we didn't expect.");
+    } catch (e) {
+      // Not swallowed. "No agreement sent yet" is a fact about this
+      // applicant; a failed lookup is a fact about us, and showing the first
+      // in place of the second is how a permissions error reads as a clean
+      // record. The card says so and offers a retry; the rest of the tab,
+      // documents included, still renders.
+      setRows([]);
+      setLoadError(e instanceof Error ? e.message : "Could not load agreements.");
     } finally {
       setLoading(false);
     }
@@ -151,6 +165,23 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
 
         {loading ? (
           <p className="text-[13px] text-[#55555E]">Loading agreements…</p>
+        ) : loadError ? (
+          <div className="rounded-lg border border-[#F3C2BC] bg-[#FDF3F2] p-4">
+            <div className="text-[12px] font-semibold text-[#8A1F12]">
+              Couldn't load this applicant's agreements
+            </div>
+            <p className="mt-1 text-[12px] text-[#6B2A20]">{loadError}</p>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setLoadError(null);
+                void refresh();
+              }}
+              className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-[#F3C2BC] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#8A1F12]"
+            >
+              Try again
+            </button>
+          </div>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">
             No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle.

@@ -168,5 +168,44 @@ console.log("\nGUARD DIAGNOSTICS NEVER REACH THE DATABASE OR THE LOG VERBATIM");
   );
 }
 
+console.log("\nNO MINIMUM-RENTAL LANGUAGE ON ANY APPLICANT SURFACE");
+{
+  /*
+   * These rentals normally run a month or more, and the duration options say
+   * so by what they offer. That is a business shape, not a qualification
+   * rule: somebody who needs three weeks still applies, and the team decides.
+   * So the wording must never appear on a screen an applicant sees.
+   */
+  const PHRASES = [
+    /minimum month/i,
+    /\b(1|one) month minimum\b/i,
+    /minimum rental/i,
+    /at least (1|one) month/i,
+    /must rent for/i,
+    /minimum of (1|one) month/i,
+  ];
+  const offenders = [];
+  for (const file of walk("src")) {
+    if (/\/components\/admin\//.test(file) || /\/routes\/admin/.test(file)) continue;
+    const text = readFileSync(file, "utf8");
+    for (const re of PHRASES) {
+      const m = text.match(re);
+      if (m) offenders.push(`${file}: ${m[0]}`);
+    }
+  }
+  ok(offenders.length === 0, `no minimum-rental wording (${offenders.length} found)`);
+  for (const o of offenders) console.log(`       ${o}`);
+
+  // And the options themselves are the month scale, with no old value left.
+  const wiz = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8");
+  const opts = wiz.slice(wiz.indexOf("DURATION_OPTS"), wiz.indexOf("DURATION_OPTS") + 800);
+  for (const label of ["1 Month", "2 Months", "3 Months", "4+ Months", "Not Sure Yet"]) {
+    ok(opts.includes(label), `applicant is offered: ${label}`);
+  }
+  for (const gone of ["1–2 Weeks", "3–4 Weeks", "2+ Months", "Ongoing"]) {
+    ok(!opts.includes(gone), `  withdrawn from the form: ${gone}`);
+  }
+}
+
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");
 process.exit(fail ? 1 : 0);

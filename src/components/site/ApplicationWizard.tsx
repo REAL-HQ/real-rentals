@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
   Check,
   Loader2,
   Mail,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
+import { Logo } from "./Logo";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
@@ -128,11 +130,16 @@ const VEHICLE_OPTS = ["Sedan", "SUV", "XL"] as const;
  * never reinterpreted as one of these.
  */
 const DURATION_OPTS = [
-  { value: "1-2_weeks", label: "1–2 Weeks" },
-  { value: "3-4_weeks", label: "3–4 Weeks" },
-  { value: "1-2_months", label: "1–2 Months" },
-  { value: "2plus_months", label: "2+ Months" },
-  { value: "ongoing", label: "Ongoing — Not Sure Yet" },
+  // Months, because that is how these rentals actually run. Deliberately not
+  // phrased as a minimum anywhere an applicant can see: somebody who needs a
+  // car for three weeks still applies, and the team decides. The old
+  // week-scale values stay readable on historical applications — see
+  // DURATION_LABEL in DriversPanel — they are just no longer offered.
+  { value: "1_month", label: "1 Month" },
+  { value: "2_months", label: "2 Months" },
+  { value: "3_months", label: "3 Months" },
+  { value: "4plus_months", label: "4+ Months" },
+  { value: "not_sure", label: "Not Sure Yet" },
 ] as const;
 
 /**
@@ -403,13 +410,8 @@ export function ApplicationWizard({ token }: { token: string }) {
               carry no branding at all once the site nav was removed. One mark,
               either way — never both on screen at once. */}
             <div className="lg:hidden mb-6">
-              <div className="inline-flex items-center gap-2 mb-5">
-                <span className="inline-flex items-center justify-center h-7 px-2.5 rounded bg-real-red text-white text-[10px] font-black tracking-[0.18em]">
-                  REAL
-                </span>
-                <span className="text-[10px] tracking-[0.3em] font-semibold text-muted-foreground">
-                  RENTALS
-                </span>
+              <div className="mb-5">
+                <Logo width={84} offset={false} href={false} />
               </div>
               {inPart1 && (
                 <>
@@ -501,12 +503,13 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
   return (
     <aside className="hidden lg:flex flex-col bg-[#141416] text-white p-8">
       <div>
-        <div className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center justify-center h-8 px-2.5 rounded bg-real-red text-[11px] font-black tracking-[0.18em]">
-            REAL
-          </span>
-          <span className="text-[11px] tracking-[0.3em] font-semibold text-white/70">RENTALS</span>
-        </div>
+        {/* The same mark the rest of the site uses, not a second treatment of
+            it. This rail used to draw its own: a red "REAL" pill beside spaced
+            "RENTALS" text, which is not the logo — the logo is a red block
+            with a white inner rule and the two words stacked inside it. Not a
+            link, because an applicant mid-form should not lose their place by
+            tapping the branding. */}
+        <Logo width={104} offset={false} href={false} />
         <h2 className="mt-8 text-2xl font-semibold leading-snug">
           {inPart1 ? "Quick Application" : "Your Application Is In"}
         </h2>
@@ -1572,14 +1575,44 @@ function MultiFileUpload({
   onChange: (added: string[], keep: string[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  /** The screenshot a retake is about to stand in for, if any. */
+  const [replacing, setReplacing] = useState<
+    { name: string; stored: boolean; path?: string } | null
+  >(null);
 
-  async function handleFiles(files: FileList) {
+  /**
+   * One entry point for both inputs, and for both a fresh upload and a
+   * retake. A replacement runs the identical pipeline — optimize, size,
+   * MIME, signed upload — and only then retires the file it stands in for,
+   * so a failed retake leaves the original in place.
+   */
+  async function receive(files: FileList) {
+    const target = replacing;
+    if (!target) return handleFiles(files);
+    setReplacing(null);
+    const before = added;
+    await handleFiles(files, (uploaded) => {
+      if (!uploaded.length) return null;
+      const nextAdded = target.stored
+        ? [...before, ...uploaded]
+        : [...before.filter((p) => p !== target.path), ...uploaded];
+      const nextKeep = target.stored ? keep.filter((n) => n !== target.name) : keep;
+      return { added: nextAdded, keep: nextKeep };
+    });
+  }
+
+  async function handleFiles(
+    files: FileList,
+    resolve?: (uploaded: string[]) => { added: string[]; keep: string[] } | null,
+  ) {
     // Only ten are kept, so only ten are uploaded. Slicing after the loop
     // meant selecting thirty screenshots uploaded thirty files, threw away
     // twenty, and spent thirty of the hour's forty signed-URL grants doing
     // it — on the one screen where a slow connection already makes retries
     // likely.
-    const room = Math.max(0, 10 - (keep.length + added.length));
+    const room = resolve ? 1 : Math.max(0, 10 - (keep.length + added.length));
     const chosen = Array.from(files).slice(0, room);
     if (files.length > chosen.length) {
       toast.info(
@@ -1606,8 +1639,14 @@ function MultiFileUpload({
         }
       }
       if (uploaded.length) {
-        onChange([...added, ...uploaded].slice(0, 10), keep);
-        toast.success(`Uploaded ${uploaded.length}`);
+        const next = resolve?.(uploaded);
+        if (next) {
+          onChange(next.added.slice(0, 10), next.keep);
+          toast.success("Replaced");
+        } else {
+          onChange([...added, ...uploaded].slice(0, 10), keep);
+          toast.success(`Uploaded ${uploaded.length}`);
+        }
       }
     } finally {
       setUploading(false);
@@ -1629,26 +1668,75 @@ function MultiFileUpload({
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
-      <label className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-border bg-white p-3 cursor-pointer hover:border-real-red/60">
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length) void handleFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        {uploading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : (
-          <Upload className="h-5 w-5 text-muted-foreground" />
-        )}
-        <div className="text-sm text-muted-foreground">
-          Click to upload one or more files — photos or PDFs
+      {/* Take Photo and Choose File, on the first upload and on every retake.
+          This step used to offer a bare file input, so an applicant on a
+          phone who wanted to re-shoot a trip screenshot was sent to their
+          photo library instead of the camera — the one screen where the
+          thing they are photographing is on the device in their hand. Both
+          inputs feed the same handler, so orientation, optimization, size
+          and MIME validation and the signed upload are identical either
+          way. */}
+      <input
+        ref={cameraInput}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) void receive(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) void receive(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => cameraInput.current?.click()}
+          className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-[#111114] text-white text-[14px] font-semibold disabled:opacity-50 active:scale-[0.99] transition-transform"
+        >
+          {uploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Camera className="h-4 w-4" />
+          )}
+          {replacing ? "Retake Photo" : "Take Photo"}
+        </button>
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInput.current?.click()}
+          className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl border border-border bg-white text-[#111114] text-[14px] font-semibold disabled:opacity-50 active:scale-[0.99] transition-transform"
+        >
+          <Upload className="h-4 w-4" />
+          {replacing ? "Choose Different File" : "Choose File"}
+        </button>
+      </div>
+      {replacing && (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[#FFF8E5] border border-[#F6E7B8] px-3 py-2">
+          <span className="text-[12px] text-[#8A6A00] truncate">
+            Replacing {replacing.name}
+          </span>
+          <button
+            type="button"
+            onClick={() => setReplacing(null)}
+            className="shrink-0 text-[12px] font-semibold text-[#8A6A00] underline"
+          >
+            Cancel
+          </button>
         </div>
-      </label>
+      )}
       {rows.length > 0 && (
         <ul className="mt-3 space-y-2">
           {rows.map((r) => (
@@ -1662,23 +1750,42 @@ function MultiFileUpload({
                   <span className="ml-2 text-[11px] text-muted-foreground/70">On File</span>
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() =>
-                  r.stored
-                    ? onChange(
-                        added,
-                        keep.filter((n) => n !== r.name),
-                      )
-                    : onChange(
-                        added.filter((p) => p !== (r as { path: string }).path),
-                        keep,
-                      )
-                }
-                className="shrink-0 inline-flex items-center min-h-[44px] px-2 -mr-2 text-[11px] font-semibold text-real-red hover:underline"
-              >
-                Remove
-              </button>
+              <span className="shrink-0 flex items-center gap-1">
+                {/* Retake arms the replacement, then the same two buttons
+                    above do the capture — one implementation, whether this
+                    is the first screenshot or the third attempt at it. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplacing({
+                      name: r.name,
+                      stored: r.stored,
+                      path: r.stored ? undefined : (r as { path: string }).path,
+                    });
+                    cameraInput.current?.click();
+                  }}
+                  className="inline-flex items-center gap-1 min-h-[44px] px-2 text-[11px] font-semibold text-[#55555E] hover:underline"
+                >
+                  <Camera className="h-3 w-3" /> Retake
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    r.stored
+                      ? onChange(
+                          added,
+                          keep.filter((n) => n !== r.name),
+                        )
+                      : onChange(
+                          added.filter((p) => p !== (r as { path: string }).path),
+                          keep,
+                        )
+                  }
+                  className="inline-flex items-center min-h-[44px] px-2 -mr-2 text-[11px] font-semibold text-real-red hover:underline"
+                >
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ul>
