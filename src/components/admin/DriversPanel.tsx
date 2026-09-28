@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
@@ -289,7 +290,31 @@ export function DriversPanel({
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [open, setOpen] = useState<Application | null>(null);
+  /*
+   * Which applicant is open is a fact about the URL, not about this
+   * component.
+   *
+   * It used to be local state seeded once from `initialOpenId` behind a
+   * one-shot ref. That made the sidebar's "Drivers" unable to close the
+   * drawer — the tab was already "drivers", nothing re-rendered, and the
+   * selection lived somewhere the navigation could not reach. Derived from
+   * the id in the address bar, ?tab=drivers is the list and
+   * ?tab=drivers&id=… is that applicant, always, including on a refresh, a
+   * pasted link and the back button.
+   *
+   * An id naming nobody in the list resolves to null, so a stale or
+   * hand-edited link lands on the listing rather than a blank screen.
+   */
+  const navigate = useNavigate();
+  const openId = initialOpenId ?? null;
+  const setOpenId = useCallback(
+    (id: string | null) =>
+      void navigate({
+        to: "/admin",
+        search: id ? { tab: "drivers", id } : { tab: "drivers" },
+      }),
+    [navigate],
+  );
   const [filter, setFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
@@ -310,7 +335,7 @@ export function DriversPanel({
    */
   const openDriver = useCallback(
     (a: Application) => {
-      setOpen(a);
+      setOpenId(a.id);
       if (!(a as any).reviewed_at) {
         void acknowledge({ data: { id: a.id } })
           .then(() =>
@@ -325,21 +350,42 @@ export function DriversPanel({
           .catch(() => {});
       }
     },
-    [acknowledge],
+    [acknowledge, setOpenId],
   );
 
-  // A dashboard link names an applicant: ?tab=drivers&id=<uuid>. Before this
-  // the id was in the URL and nothing read it, so those links landed on the
-  // list and left the operator to find the person by hand.
-  const openedFromUrl = useRef(false);
+  /*
+   * The open applicant, resolved from the URL against the loaded list.
+   *
+   * A dashboard link names somebody: ?tab=drivers&id=<uuid>. An id that
+   * matches nobody — a deleted record, a vehicle id pasted by hand, a link
+   * from a filter that no longer includes them — resolves to null and the
+   * listing renders. No blank screen, and no need for a one-shot ref: there
+   * is nothing to seed, because there is no second copy of this fact.
+   */
+  const open = useMemo(
+    () => (openId ? (drivers.find((d) => d.id === openId) ?? null) : null),
+    [openId, drivers],
+  );
+
+  // Opening an applicant from a dashboard link should still clear their
+  // unacknowledged flag, exactly as clicking the row does.
+  const acknowledged = useRef<string | null>(null);
   useEffect(() => {
-    if (openedFromUrl.current || !initialOpenId || !drivers.length) return;
-    const match = drivers.find((d) => d.id === initialOpenId);
-    if (match) {
-      openedFromUrl.current = true;
-      openDriver(match);
-    }
-  }, [initialOpenId, drivers, openDriver]);
+    if (!open || acknowledged.current === open.id) return;
+    acknowledged.current = open.id;
+    if ((open as any).reviewed_at) return;
+    void acknowledge({ data: { id: open.id } })
+      .then(() =>
+        setDrivers((rows) =>
+          rows.map((r) =>
+            r.id === open.id
+              ? ({ ...r, reviewed_at: new Date().toISOString() } as Application)
+              : r,
+          ),
+        ),
+      )
+      .catch(() => {});
+  }, [open, acknowledge]);
 
   useEffect(() => {
     supabase
@@ -450,8 +496,9 @@ export function DriversPanel({
     }
     const { error } = await supabase.from("applications").update(patchWithStamp).eq("id", id);
     if (error) return toast.error(error.message);
+    // One list, one update. `open` is derived from this list, so patching it
+    // here is all that is needed — there is no second copy to keep in step.
     setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
-    if (open?.id === id) setOpen({ ...open, ...patchWithStamp } as Application);
   }
 
   async function markContacted(id: string) {
@@ -466,7 +513,7 @@ export function DriversPanel({
     const { error } = await supabase.from("applications").delete().eq("id", id);
     if (error) return toast.error(error.message);
     setDrivers((a) => a.filter((x) => x.id !== id));
-    setOpen(null);
+    setOpenId(null);
     toast.success("Deleted");
   }
 
@@ -522,7 +569,7 @@ export function DriversPanel({
         key={open.id}
         driver={open}
         vehicles={vehicles}
-        onBack={() => setOpen(null)}
+        onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
