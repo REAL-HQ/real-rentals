@@ -1088,7 +1088,7 @@ function DriverDetail({
             {driver.phone && (
               <a
                 href={`tel:${driver.phone}`}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
                 title="Call"
               >
                 <Phone className="w-3.5 h-3.5" />
@@ -1097,7 +1097,7 @@ function DriverDetail({
             {driver.phone && (
               <a
                 href={smsHref(driver.phone)}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
                 title="Text"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
@@ -1106,14 +1106,14 @@ function DriverDetail({
             {driver.email && (
               <a
                 href={`mailto:${driver.email}`}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
                 title="Email"
               >
                 <Mail className="w-3.5 h-3.5" />
               </a>
             )}
             <DropdownMenu>
-              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors">
+              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
                 <MoreVertical className="w-4 h-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -2371,8 +2371,8 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-          <CreditCard className="w-3.5 h-3.5" />
+        <DropdownMenuTrigger className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors cursor-pointer">
+          <CreditCard className="w-4 h-4 mr-2" />
           {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -2742,7 +2742,7 @@ function RequestDocumentsAction({
               ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
               : "Request missing documents"
         }
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <FileText className="w-3.5 h-3.5" />
         {sentAt ? "Re-request Docs" : "Request Documents"}
