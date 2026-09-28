@@ -2742,7 +2742,7 @@ function RequestDocumentsAction({
               ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
               : "Request missing documents"
         }
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <FileText className="w-3.5 h-3.5" />
         {sentAt ? "Re-request Docs" : "Request Documents"}
