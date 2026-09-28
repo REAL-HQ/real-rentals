@@ -2371,9 +2371,11 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-soft">
-          <CreditCard className="w-3.5 h-3.5" />
-          {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
+        <DropdownMenuTrigger asChild>
+          <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+            <CreditCard className="w-4 h-4 mr-2" />
+            {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
+          </DropdownMenuItem>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {hasCard && (
