@@ -3520,6 +3520,7 @@ export type Database = {
       }
       waitlist: {
         Row: {
+          city: string | null
           created_at: string
           driver_status: string | null
           email: string
@@ -3527,8 +3528,14 @@ export type Database = {
           gclid: string | null
           id: string
           market_id: string | null
+          notified_at: string | null
           phone: string | null
+          pickup_date: string | null
+          promoted_application_id: string | null
+          promoted_at: string | null
           source: string
+          state: string | null
+          status: string
           utm_campaign: string | null
           utm_content: string | null
           utm_medium: string | null
@@ -3536,6 +3543,7 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          city?: string | null
           created_at?: string
           driver_status?: string | null
           email: string
@@ -3543,8 +3551,14 @@ export type Database = {
           gclid?: string | null
           id?: string
           market_id?: string | null
+          notified_at?: string | null
           phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
           source?: string
+          state?: string | null
+          status?: string
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -3552,6 +3566,7 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          city?: string | null
           created_at?: string
           driver_status?: string | null
           email?: string
@@ -3559,8 +3574,14 @@ export type Database = {
           gclid?: string | null
           id?: string
           market_id?: string | null
+          notified_at?: string | null
           phone?: string | null
+          pickup_date?: string | null
+          promoted_application_id?: string | null
+          promoted_at?: string | null
           source?: string
+          state?: string | null
+          status?: string
           utm_campaign?: string | null
           utm_content?: string | null
           utm_medium?: string | null
@@ -3573,6 +3594,13 @@ export type Database = {
             columns: ["market_id"]
             isOneToOne: false
             referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_promoted_application_id_fkey"
+            columns: ["promoted_application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
             referencedColumns: ["id"]
           },
         ]
@@ -3651,6 +3679,7 @@ export type Database = {
         Args: { _application_id: string }
         Returns: boolean
       }
+      cars_available: { Args: never; Returns: number }
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       rental_at_time: {
