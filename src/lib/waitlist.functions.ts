@@ -352,8 +352,6 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
         utm_content: (entry as any).utm_content,
         utm_term: (entry as any).utm_term,
         gclid: (entry as any).gclid,
-        landing_page: (entry as any).landing_page,
-        referrer: (entry as any).referrer,
       })
       .select("id")
       .single();
