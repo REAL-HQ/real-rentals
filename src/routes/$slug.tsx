@@ -133,13 +133,13 @@ export const Route = createFileRoute("/$slug")({
       </section>
     </SiteLayout>
   ),
-  errorComponent: ({ error, reset }) => {
+  errorComponent: ({ error, reset }: { error: unknown; reset: () => void }) => {
     const navigate = useNavigate();
     return (
       <SiteLayout>
         <section className="container-real py-32 text-center">
           <h1 className="text-3xl font-semibold">Something Went Wrong</h1>
-          <p className="mt-3 text-muted-foreground">{error.message}</p>
+          <p className="mt-3 text-muted-foreground">{error instanceof Error ? error.message : "Please try again"}</p>
           <button onClick={() => { reset(); navigate({ to: "/" }); }} className="mt-6 rounded-lg bg-real-red px-6 py-3 text-sm font-medium text-white">Back Home</button>
         </section>
       </SiteLayout>

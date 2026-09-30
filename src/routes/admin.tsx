@@ -4,6 +4,7 @@ import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
 import { DriversPanel } from "@/components/admin/DriversPanel";
+import { WaitlistPanel } from "@/components/admin/WaitlistPanel";
 import { PartnersPanel } from "@/components/admin/PartnersPanel";
 import { PaymentsPanel } from "@/components/admin/PaymentsPanel";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
@@ -29,6 +30,7 @@ import {
   LayoutDashboard,
   Search,
   Bell,
+  Hourglass,
   Zap,
   ClipboardCheck,
   Truck,
@@ -114,6 +116,14 @@ const TABS = [
     icon: Users,
     group: "OPERATIONS",
     description: "Manage Applicants, Active Renters And Driver Lifecycle",
+  },
+  {
+    id: "waitlist",
+    minTier: "coordinator" as StaffTier,
+    label: "Waitlist",
+    icon: Hourglass,
+    group: "OPERATIONS",
+    description: "Drivers Waiting When No Cars Are Available",
   },
   {
     id: "payments",
@@ -670,6 +680,7 @@ function Admin() {
                   isOwner={tier === "owner"}
                 />
               )}
+              {tab === "waitlist" && <WaitlistPanel />}
               {tab === "vehicles" && (
                 <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} />
               )}
