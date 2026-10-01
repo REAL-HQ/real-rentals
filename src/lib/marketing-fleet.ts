@@ -44,9 +44,9 @@
  *   - No price is invented. See `weeklyRateFrom` below.
  */
 
-import corollaImg from "@/assets/cars/corolla.jpg.asset.json";
-import crvImg from "@/assets/cars/crv.jpg.asset.json";
-import odysseyImg from "@/assets/cars/odyssey.jpg.asset.json";
+import sedanImage from "@/assets/cars/sedan.jpg";
+import suvImage from "@/assets/cars/suv.jpg";
+import minivanImage from "@/assets/cars/minivan.jpg";
 
 /** The three vehicle types the public site merchandises. */
 export type MarketingCategory = "sedan" | "suv" | "xl";
@@ -126,7 +126,7 @@ export const MARKETING_FLEET: readonly MarketingVehicle[] = [
     category: "sedan",
     title: "Sedan",
     tagline: "Efficient daily drivers for rideshare and delivery work.",
-    image: corollaImg.url,
+    image: sedanImage,
     seats: 5,
     doors: 4,
     weeklyRateFrom: PUBLISHED_WEEKLY_RATES.sedan,
@@ -136,7 +136,7 @@ export const MARKETING_FLEET: readonly MarketingVehicle[] = [
     category: "suv",
     title: "SUV",
     tagline: "More room for passengers and flexible cargo space.",
-    image: crvImg.url,
+    image: suvImage,
     seats: 5,
     doors: 4,
     weeklyRateFrom: PUBLISHED_WEEKLY_RATES.suv,
@@ -146,7 +146,7 @@ export const MARKETING_FLEET: readonly MarketingVehicle[] = [
     category: "xl",
     title: "Minivan",
     tagline: "Seven seats for airport runs, groups, and higher-capacity trips.",
-    image: odysseyImg.url,
+    image: minivanImage,
     seats: 7,
     doors: 4,
     weeklyRateFrom: PUBLISHED_WEEKLY_RATES.xl,

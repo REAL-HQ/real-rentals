@@ -109,10 +109,12 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
         <div className="text-[12px] font-medium text-foreground mt-0.5">{model.greatFor}</div>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm text-muted-foreground">
-        <div className="flex items-center gap-2 min-w-0">
-          <Car className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="capitalize truncate">Type: {model.bodyTypeLabel}</span>
-        </div>
+        {model.kind === "inventory" && (
+          <div className="flex items-center gap-2 min-w-0">
+            <Car className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="capitalize truncate">Type: {model.bodyTypeLabel}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 min-w-0">
           <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
           <span className="truncate">Seats: {model.seatsLabel}</span>
