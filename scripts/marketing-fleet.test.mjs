@@ -83,9 +83,16 @@ ok(
 /* ------------------------------------------- never names a make or model -- */
 console.log("\nthe catalog advertises types, not specific vehicles");
 
+const catalogEntries = catalog.slice(
+  catalog.indexOf("export const MARKETING_FLEET"),
+  catalog.indexOf("export function marketingFleetByCategory"),
+);
+// Asset variable names (corollaImg, …) are internal identifiers, not copy.
+// The rule is about what a visitor can read, so only the string literals count.
+const visibleCopy = [...catalogEntries.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join(" ");
 ok(
   !/Toyota|Honda|Nissan|Hyundai|Kia|Ford|Chevrolet|Corolla|Civic|Accord|Camry|CR-V|RAV4|Odyssey|Sienna/i.test(
-    catalog.slice(catalog.indexOf("export const MARKETING_FLEET"), catalog.indexOf("export function marketingFleetByCategory")),
+    visibleCopy,
   ),
   "no catalog entry names a make or model — we carry multiple of both per type",
 );
