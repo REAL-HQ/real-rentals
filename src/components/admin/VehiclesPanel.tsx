@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import type { Vehicle } from "./types";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
@@ -61,11 +62,45 @@ function PartnerAssignSelect({
 export function VehiclesPanel({
   externalSearch = "",
   autoOpenAdd = false,
-}: { externalSearch?: string; autoOpenAdd?: boolean } = {}) {
+  openId = null,
+}: { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null } = {}) {
   const [rows, setRows] = useState<Vehicle[]>([]);
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
-  const [viewing, setViewing] = useState<string | null>(null);
-  const [adding, setAdding] = useState(autoOpenAdd);
+  /*
+   * The open vehicle lives in the URL, for the same reason the open applicant
+   * does: the sidebar's "Vehicles" means the vehicle LIST, and it cannot mean
+   * that while the selection is a local value no navigation can see. Before
+   * this, a vehicle profile had no URL at all — you could not link to one,
+   * refresh into one, or leave one by clicking Vehicles.
+   */
+  const navigate = useNavigate();
+  const viewing = openId;
+  const setViewing = useCallback(
+    (id: string | null) =>
+      void navigate({
+        to: "/admin",
+        search: id ? { tab: "vehicles", id } : { tab: "vehicles" },
+      }),
+    [navigate],
+  );
+  /*
+   * The creation flow, opened by ?add=1 and closed by clearing it.
+   *
+   * Local state alone meant closing the dialog left `add=1` in the address
+   * bar, so a refresh — or the back button — reopened it, and the URL went
+   * on describing a screen that was no longer there.
+   */
+  const [adding, setAddingLocal] = useState(autoOpenAdd);
+  const setAdding = useCallback(
+    (next: boolean) => {
+      setAddingLocal(next);
+      if (!next) void navigate({ to: "/admin", search: { tab: "vehicles" }, replace: true });
+    },
+    [navigate],
+  );
+  useEffect(() => {
+    if (autoOpenAdd) setAddingLocal(true);
+  }, [autoOpenAdd]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [bodyFilter, setBodyFilter] = useState<string>("all");
