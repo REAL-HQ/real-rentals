@@ -114,78 +114,42 @@ export const CATEGORY_LABEL: Record<MarketingCategory, string> = {
 };
 
 /**
- * The catalog. Six entries: two per category, which is what fills the
- * homepage grid at every breakpoint without a ragged last row.
+ * The catalog. Three entries — one per vehicle type we rent. We carry
+ * multiple makes and models within each type, so a card never names one.
  *
  * Copy and imagery are reused from what the site already ships. Nothing here
  * describes a vehicle REAL RENTALS does not rent.
  */
 export const MARKETING_FLEET: readonly MarketingVehicle[] = [
   {
-    slug: "compact-sedan",
+    slug: "type-sedan",
     category: "sedan",
-    title: "Compact Sedan",
-    subtitle: "Toyota Corolla, Honda Civic & similar",
-    tagline: "Efficient daily drivers. The lowest fuel cost per shift in the fleet.",
+    title: "Sedan",
+    tagline: "Efficient daily drivers for rideshare and delivery work.",
     image: corollaImg.url,
     seats: 5,
     doors: 4,
-    weeklyRateFrom: PUBLISHED_WEEKLY_FLOOR,
+    weeklyRateFrom: PUBLISHED_WEEKLY_RATES.sedan,
   },
   {
-    slug: "midsize-sedan",
-    category: "sedan",
-    title: "Midsize Sedan",
-    subtitle: "Honda Accord, Toyota Camry & similar",
-    tagline: "More legroom and trunk space for longer rides and bigger orders.",
-    image: accordImg.url,
-    seats: 5,
-    doors: 4,
-    weeklyRateFrom: PUBLISHED_WEEKLY_FLOOR,
-  },
-  {
-    slug: "compact-suv",
+    slug: "type-suv",
     category: "suv",
-    title: "Compact SUV",
-    subtitle: "Honda CR-V & similar",
-    tagline: "Cargo room for delivery work without a full-size fuel bill.",
+    title: "SUV",
+    tagline: "More room for passengers and flexible cargo space.",
     image: crvImg.url,
     seats: 5,
     doors: 4,
-    weeklyRateFrom: null,
+    weeklyRateFrom: PUBLISHED_WEEKLY_RATES.suv,
   },
   {
-    slug: "midsize-suv",
-    category: "suv",
-    title: "Midsize SUV",
-    subtitle: "Toyota RAV4 & similar",
-    tagline: "More room for drivers who need flexible cargo space.",
-    image: rav4Img.url,
-    seats: 5,
-    doors: 4,
-    weeklyRateFrom: null,
-  },
-  {
-    slug: "xl-minivan",
+    slug: "type-minivan",
     category: "xl",
-    title: "XL Minivan",
-    subtitle: "Honda Odyssey & similar",
+    title: "Minivan",
     tagline: "Seven seats for airport runs, groups, and higher-capacity trips.",
     image: odysseyImg.url,
     seats: 7,
     doors: 4,
-    weeklyRateFrom: null,
-  },
-  {
-    slug: "xl-passenger",
-    category: "xl",
-    title: "XL Passenger",
-    subtitle: "Toyota Sienna & similar",
-    tagline: "Maximum passenger and cargo capacity for XL platform work.",
-    image: siennaImg.url,
-    seats: 7,
-    doors: 4,
-    weeklyRateFrom: null,
+    weeklyRateFrom: PUBLISHED_WEEKLY_RATES.xl,
   },
 ];
 
@@ -252,7 +216,9 @@ export function catalogCardModel(
     key: `catalog:${v.slug}`,
     kind: "catalog",
     title: v.title,
-    subtitle: v.subtitle,
+    // No subtitle. The catalog advertises a type and deliberately never a
+    // make or model — we carry many of both.
+    subtitle: null,
     image: v.image,
     priceLabel:
       v.weeklyRateFrom === null ? "Rate confirmed on your call" : `From $${v.weeklyRateFrom}/week`,
