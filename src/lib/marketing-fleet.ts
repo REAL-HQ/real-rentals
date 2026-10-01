@@ -20,7 +20,7 @@
  * This module is the marketing half, and nothing else. It is deliberately a
  * typed static catalog rather than a table:
  *
- *   - It is six rarely-changing rows of merchandising copy, not operational
+ *   - It is three rarely-changing rows of merchandising copy, not operational
  *     data. A table would need RLS, grants, an admin editor, and a migration
  *     on a ledger that is already out of sync.
  *   - A catalog entry can never leak into Admin → Vehicles, the fleet
@@ -45,13 +45,10 @@
  */
 
 import corollaImg from "@/assets/cars/corolla.jpg.asset.json";
-import accordImg from "@/assets/cars/accord.jpg.asset.json";
 import crvImg from "@/assets/cars/crv.jpg.asset.json";
-import rav4Img from "@/assets/cars/rav4.jpg.asset.json";
 import odysseyImg from "@/assets/cars/odyssey.jpg.asset.json";
-import siennaImg from "@/assets/cars/sienna.jpg.asset.json";
 
-/** The three categories the public site has always merchandised. */
+/** The three vehicle types the public site merchandises. */
 export type MarketingCategory = "sedan" | "suv" | "xl";
 
 export const MARKETING_CATEGORIES: readonly MarketingCategory[] = ["sedan", "suv", "xl"];
@@ -61,15 +58,18 @@ export function isMarketingCategory(v: unknown): v is MarketingCategory {
 }
 
 /**
- * The lowest weekly rate REAL RENTALS publishes. This is not read off a live
- * vehicle — it is the figure the site already advertises in two places:
- * the /fleet meta description ("From $350/week.") and the partner page
- * ("A $350/week rental pays you $175/week."). The original seeded sedans
- * priced at 350 as well.
- *
- * It is used only as a floor, and only on categories where that floor is
- * actually established. See `weeklyRateFrom`.
+ * The published starting weekly rates, by vehicle type. These are the
+ * figures REAL RENTALS advertises: Sedan from $350/week (the same floor the
+ * /fleet meta description and the partner page publish), SUV from
+ * $375/week, Minivan from $400/week.
  */
+export const PUBLISHED_WEEKLY_RATES: Record<MarketingCategory, number> = {
+  sedan: 350,
+  suv: 375,
+  xl: 400,
+};
+
+/** The lowest published rate — the figure the site quotes as "from $350/week". */
 export const PUBLISHED_WEEKLY_FLOOR = 350;
 
 export type MarketingVehicle = {
@@ -79,13 +79,11 @@ export type MarketingVehicle = {
    */
   slug: string;
   category: MarketingCategory;
-  /** Short, distinct class name. The card headline. */
-  title: string;
   /**
-   * The representative models this class stands for. "& similar" is load
-   * bearing: the catalog advertises a type, not a specific unit on the lot.
+   * The vehicle type. The card headline. Deliberately never a make or
+   * model: we carry multiple of both within each type.
    */
-  subtitle: string;
+  title: string;
   /** One line of merchandising copy. */
   tagline: string;
   /** An approved image already in the repo. Nothing is generated here. */
@@ -93,15 +91,9 @@ export type MarketingVehicle = {
   seats: number;
   doors: number;
   /**
-   * Starting weekly rate, or null when REAL RENTALS has not published one for
-   * this category.
-   *
-   * $350 is the established, already-published floor for sedans (see
-   * PUBLISHED_WEEKLY_FLOOR). No comparable figure has ever been published for
-   * SUVs or XL vehicles anywhere in this repo — the original seed contained
-   * no SUV or XL rows at all — so those are null rather than guessed, and the
-   * card says the rate is confirmed on the qualification call. Fill these in
-   * when the real starting rates are decided; nothing else has to change.
+   * Starting weekly rate, read from the published rate card
+   * (PUBLISHED_WEEKLY_RATES). Nullable so an unpriced type could fall back
+   * to "Rate confirmed on your call" rather than a guessed number.
    */
   weeklyRateFrom: number | null;
 };
@@ -118,7 +110,7 @@ const GREAT_FOR: Record<MarketingCategory, string> = {
 export const CATEGORY_LABEL: Record<MarketingCategory, string> = {
   sedan: "Sedans",
   suv: "SUVs",
-  xl: "XL Vehicles",
+  xl: "Minivans",
 };
 
 /**
