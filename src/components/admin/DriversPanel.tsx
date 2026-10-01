@@ -64,6 +64,7 @@ import {
   Wallet,
   CalendarDays,
   Link2 as LinkIcon,
+  Loader2,
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
@@ -289,6 +290,9 @@ export function DriversPanel({
   isOwner?: boolean;
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
+  // Whether the applications fetch has come back, as distinct from having
+  // come back empty. A deep link needs to tell those apart.
+  const [driversLoaded, setDriversLoaded] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   /*
    * Which applicant is open is a fact about the URL, not about this
@@ -367,6 +371,18 @@ export function DriversPanel({
     [openId, drivers],
   );
 
+  /*
+   * A URL naming an applicant we have not loaded yet is not "no applicant".
+   *
+   * The list arrives asynchronously, so for the few hundred milliseconds
+   * before it does, a deep link resolves to nothing and the LIST renders —
+   * then the drawer replaces it. Measured on this branch and on main: the
+   * flash shows up in roughly half of cold loads either way, so it predates
+   * this change, but the derived selection makes it trivial to state
+   * properly. Pending, not absent.
+   */
+  const resolvingDeepLink = Boolean(openId) && !driversLoaded;
+
   // Opening an applicant from a dashboard link should still clear their
   // unacknowledged flag, exactly as clicking the row does.
   const acknowledged = useRef<string | null>(null);
@@ -393,7 +409,10 @@ export function DriversPanel({
       .select("*")
       .neq("status", "duplicate")
       .order("created_at", { ascending: false })
-      .then(({ data }) => setDrivers(data || []));
+      .then(({ data }) => {
+        setDrivers(data || []);
+        setDriversLoaded(true);
+      });
     supabase
       .from("vehicles")
       .select("*")
@@ -548,6 +567,16 @@ export function DriversPanel({
       else next.add(id);
       return next;
     });
+  }
+
+  // Resolving a deep link: say so, rather than showing the list we are about
+  // to replace.
+  if (resolvingDeepLink) {
+    return (
+      <div className="flex items-center gap-2 px-1 py-16 text-[13px] text-[#9A9AA3]">
+        <Loader2 className="w-4 h-4 animate-spin" /> Opening…
+      </div>
+    );
   }
 
   if (open) {

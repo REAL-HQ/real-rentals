@@ -209,6 +209,10 @@ console.log("\nEVERY LEFT-NAV DESTINATION, FROM A DRIVER DETAIL");
   const DESTS = [
     ["Overview", (v) => v.overview],
     ["Drivers", (v) => v.driversList],
+    // Added to main after this branch started. A new tab inherits the
+    // ownership model by default — nothing is mapped to it, so nothing
+    // follows it — which is the property worth pinning down.
+    ["Waitlist", (v) => /Waitlist/.test(v.h1)],
     ["Vehicles", (v) => /Vehicles/.test(v.h1)],
     ["Payments", (v) => /Payments/.test(v.h1)],
     ["Service", (v) => /Service|Maintenance/.test(v.h1)],
@@ -275,6 +279,9 @@ console.log("\nDEEP LINKS AND RUBBISH LAND SOMEWHERE SENSIBLE");
     [`/admin?tab=drivers&id=${APP_A}`, (v) => v.drawer, "that applicant"],
     ["/admin?tab=vehicles", (v) => /Vehicles/.test(v.h1), "Vehicles"],
     ["/admin?tab=payments", (v) => /Payments/.test(v.h1), "Payments"],
+    ["/admin?tab=waitlist", (v) => /Waitlist/.test(v.h1), "Waitlist"],
+    [`/admin?tab=waitlist&id=${APP_A}&add=%221%22`, (v) => /Waitlist/.test(v.h1),
+      "Waitlist with another tab's parameters stripped"],
     // An id that matches nobody must not blank the screen.
     ["/admin?tab=drivers&id=00000000-0000-4000-8000-000000000000", (v) => v.driversList,
       "the Drivers list (unknown id)"],
@@ -297,6 +304,141 @@ console.log("\nDEEP LINKS AND RUBBISH LAND SOMEWHERE SENSIBLE");
      `parameters belonging to other tabs are stripped (${stripped.url})`);
   await goto(`/admin?tab=vehicles&id=${APP_A}`);
   ok(!(await view()).drawer, "an applicant id on the vehicles tab opens no driver detail");
+}
+
+console.log("THE NORMALIZE EFFECT SETTLES RATHER THAN LOOPING");
+{
+  // Count how many times the URL changes after landing on a URL that needs
+  // normalizing. A normalize that re-triggers itself would spin forever.
+  await page.goto(`${BASE}/admin?tab=overview&filter=overdue&add=%221%22`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    window.__urls = [];
+    const push = history.pushState, rep = history.replaceState;
+    history.pushState = function (...a) { window.__urls.push("push:" + a[2]); return push.apply(this, a); };
+    history.replaceState = function (...a) { window.__urls.push("replace:" + a[2]); return rep.apply(this, a); };
+  });
+  await page.waitForTimeout(3500);
+  const urls = await page.evaluate(() => window.__urls);
+  ok(urls.length <= 1, `the URL settles rather than looping (${urls.length} further changes: ${urls.join(" | ") || "none"})`);
+  const v = await view();
+  ok(v.url === "/admin?tab=overview", `  and settles on the normalized form (${v.url})`);
+
+  // Same, landing somewhere already clean — must do nothing at all.
+  await page.goto(`${BASE}/admin?tab=drivers`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    window.__urls2 = [];
+    const rep = history.replaceState;
+    history.replaceState = function (...a) { window.__urls2.push(a[2]); return rep.apply(this, a); };
+  });
+  await page.waitForTimeout(3000);
+  const clean = await page.evaluate(() => window.__urls2);
+  ok(clean.length === 0, `a clean URL is left alone (${clean.length} rewrites)`);
+}
+
+console.log("\nA DEEP LINK DOES NOT FLASH THE LIST OR DROP THE DRAWER");
+{
+  // open is now derived from the loaded list. Before the list arrives there
+  // is no match, so the question is what renders in that window.
+  await page.goto(`${BASE}/admin?tab=drivers&id=${APP_A}`, { waitUntil: "domcontentloaded" });
+  const seen = [];
+  for (let i = 0; i < 24; i++) {
+    seen.push(await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent.trim());
+      return tabs.includes("Documents") ? "drawer" : document.querySelectorAll("tbody tr").length ? "list" : "empty";
+    }));
+    await page.waitForTimeout(220);
+  }
+  const firstDrawer = seen.indexOf("drawer");
+  const listBeforeDrawer = seen.slice(0, firstDrawer < 0 ? seen.length : firstDrawer).includes("list");
+  console.log(`       render sequence: ${[...new Set(seen)].join(" -> ")}`);
+  ok(firstDrawer >= 0, "the drawer does eventually render");
+  ok(!listBeforeDrawer, "the applicant list never flashes before it");
+  // And once open, it must stay open across a re-render.
+  const after = seen.slice(firstDrawer);
+  ok(!after.includes("list"), "and the drawer does not drop back to the list once shown");
+}
+
+console.log("\nEDITING IN THE DRAWER STILL UPDATES THE DRAWER");
+{
+  /*
+   * `update()` no longer patches a second copy of the record — the open
+   * applicant is derived from the list it already patches. If that derivation
+   * were wrong, an edit would save and the drawer would go on showing the old
+   * value, which is worse than failing outright. The status control lives on
+   * the Application tab.
+   */
+  await goto(`/admin?tab=drivers&id=${APP_A}`);
+  ok((await view()).drawer, "drawer open");
+  await page.locator('[role="tab"]', { hasText: /^Application$/ }).first().click();
+  await page.waitForTimeout(1200);
+  // SelField is a Radix Select, not a native <select>: a combobox trigger
+  // plus a portalled listbox.
+  const trigger = page.locator('[role="combobox"]').first();
+  ok(await trigger.count() > 0, "the Driver status control is on the Application tab");
+  if (await trigger.count()) {
+    const before = (await trigger.textContent())?.trim() ?? "";
+    await trigger.click();
+    await page.waitForTimeout(700);
+    const option = page.locator('[role="option"]').filter({ hasText: /reviewing|approved/i }).first();
+    const label = (await option.textContent())?.trim() ?? "";
+    await option.click();
+    await page.waitForTimeout(2500);
+
+    const v = await view();
+    ok(v.drawer, `the drawer stays open after the edit (${before} -> ${label})`);
+    const now = (await page.locator('[role="combobox"]').first().textContent())?.trim() ?? "";
+    ok(now.toLowerCase() === label.toLowerCase(),
+       `  the control shows the new value (${now})`);
+    // The derived record, not merely the control's own state: the drawer
+    // header renders the status pill from `driver`, which is now derived
+    // from the list rather than a second copy update() used to patch.
+    const header = await page.evaluate(() => document.body.innerText.slice(0, 1500).toLowerCase());
+    ok(header.includes(label.toLowerCase()),
+       `  and the drawer header re-renders from the updated record (${label})`);
+  }
+}
+
+console.log("\nCLOSING ADD VEHICLE MUST NOT WIPE AN UNRELATED SELECTION");
+{
+  await goto("/admin?tab=vehicles");
+  const addBtn = page.locator("button", { hasText: /Add Vehicle/i }).first();
+  if (await addBtn.count()) {
+    const urlBefore = (await view()).url;
+    await addBtn.click();
+    await page.waitForTimeout(1200);
+    ok(/Add a vehicle/i.test(await page.evaluate(() => document.body.innerText)),
+       "the Add dialog opens from the button");
+    await page.getByRole("button", { name: "Close" }).first().click();
+    await page.waitForTimeout(1200);
+    const v = await view();
+    ok(!/Add a vehicle/i.test(await page.evaluate(() => document.body.innerText)), "and closes");
+    ok(v.url === "/admin?tab=vehicles", `  landing on the vehicles root (${v.url}, was ${urlBefore})`);
+  } else ok(false, "no Add Vehicle button on the vehicles tab");
+}
+
+console.log("\nTHE SEARCH BOX MUST NOT LOSE FOCUS WHEN IT JUMPS TABS");
+{
+  // Typing on Overview navigates to Drivers. If that navigation remounts the
+  // header, the caret is gone and everything after the first character is
+  // typed into nothing.
+  await goto("/admin?tab=overview");
+  const box = page.locator('input[placeholder*="earch"], header input').first();
+  if (await box.count()) {
+    await box.click();
+    await page.keyboard.type("kar", { delay: 160 });
+    await page.waitForTimeout(1800);
+    const state = await page.evaluate(() => {
+      const el = document.activeElement;
+      return {
+        value: el && "value" in el ? el.value : "",
+        isInput: el?.tagName === "INPUT",
+        url: location.pathname + location.search,
+      };
+    });
+    console.log(`       after typing: focus=${state.isInput ? "input" : "LOST"} value="${state.value}" url=${state.url}`);
+    ok(state.isInput, "the search input still has focus after the tab jump");
+    ok(state.value === "kar", `  and kept every character (${state.value})`);
+  } else ok(false, "no search box found");
 }
 
 console.log("\nA TIER CANNOT REACH A TAB IT MAY NOT SEE");
