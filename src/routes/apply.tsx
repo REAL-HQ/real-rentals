@@ -18,7 +18,15 @@ export const Route = createFileRoute("/apply")({
     t?: string;
     city?: string;
     pickup?: string;
+    /** A real vehicles.id, from an inventory card. */
     vehicle?: string;
+    /**
+     * A marketing catalog category ("sedan" | "suv" | "xl"), from a catalog
+     * card. Deliberately a separate key from `vehicle`: a representative type
+     * is not a vehicle id and must never be mistaken for one downstream.
+     * Carried so the landing URL records which category converted.
+     */
+    vehicle_type?: string;
   } => {
     // Only keep params that actually have a value so the URL never ends up
     // as /apply?t=&city=&pickup=&vehicle=
@@ -27,7 +35,7 @@ export const Route = createFileRoute("/apply")({
       return str ? str : undefined;
     };
     const out: Record<string, string> = {};
-    for (const key of ["t", "city", "pickup", "vehicle"] as const) {
+    for (const key of ["t", "city", "pickup", "vehicle", "vehicle_type"] as const) {
       const value = pick(s[key]);
       if (value) out[key] = value;
     }
@@ -47,8 +55,19 @@ export const Route = createFileRoute("/apply")({
   component: ApplyPage,
 });
 
+/**
+ * A marketing catalog category as the application asks the question.
+ * Anything else — including a leftover `vehicle` UUID — maps to null, so no
+ * unrecognised value reaches the application.
+ */
+const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
+  sedan: "Sedan",
+  suv: "SUV",
+  xl: "XL",
+};
+
 function ApplyPage() {
-  const { t, city: preCity, pickup: prePickup } = Route.useSearch();
+  const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = Route.useSearch();
   // allowStashed: false — /apply starts a new application. A token stashed by
   // the previous person on a shared or kiosk device must not open their form.
   const token = useResumeToken(t, { allowStashed: false });
@@ -63,14 +82,27 @@ function ApplyPage() {
         <ApplicationWizard token={token} />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
-          <ContactStep preCity={preCity ?? ""} prePickup={prePickup ?? ""} />
+          <ContactStep
+            preCity={preCity ?? ""}
+            prePickup={prePickup ?? ""}
+            preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
+          />
         </main>
       )}
     </div>
   );
 }
 
-function ContactStep({ preCity, prePickup }: { preCity: string; prePickup: string }) {
+function ContactStep({
+  preCity,
+  prePickup,
+  preVehicleSize,
+}: {
+  preCity: string;
+  prePickup: string;
+  /** Carried from a catalog card. The applicant can still change it in Part 1. */
+  preVehicleSize: "Sedan" | "SUV" | "XL" | null;
+}) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
   const [submitting, setSubmitting] = useState(false);
@@ -128,6 +160,7 @@ function ContactStep({ preCity, prePickup }: { preCity: string; prePickup: strin
           city: market?.name ?? preCity ?? null,
           state: market?.state ?? null,
           pickup_date: prePickup || null,
+          vehicle_size: preVehicleSize,
           source: "homepage",
           ...getAttribution(),
         },

@@ -66,7 +66,13 @@ export const Route = createFileRoute("/fleet/$id")({
                   "@type": "Offer",
                   price: String(v.weekly_rate),
                   priceCurrency: "USD",
-                  availability: "https://schema.org/InStock",
+                  // InStock is a claim about one real unit, so it is made only
+                  // when the back office says that unit is actually available.
+                  // A rented, down, or retired vehicle advertises its price
+                  // and no availability at all rather than a false one.
+                  ...(v.status === "available"
+                    ? { availability: "https://schema.org/InStock" }
+                    : {}),
                   url,
                 },
               }

@@ -12,9 +12,11 @@
     "format": "prettier --write .",
     "test:readiness": "bash scripts/readiness-test.sh",
     "test:public-copy": "node scripts/public-copy.test.mjs",
-    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs",
+    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs && node scripts/marketing-fleet.test.mjs",
     "test:grants": "node scripts/grants.test.mjs",
-    "test:nav": "node scripts/admin-navigation.test.mjs"
+    "test:nav": "node scripts/admin-navigation.test.mjs",
+    "test:fleet": "node scripts/marketing-fleet.test.mjs",
+    "test:fleet-e2e": "node scripts/marketing-fleet-e2e.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
