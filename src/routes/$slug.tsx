@@ -30,8 +30,10 @@ import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import { StickyCallBar } from "@/components/site/StickyCallBar";
 import { CityHeroLeadForm } from "@/components/site/CityHeroLeadForm";
 import sedanImg from "@/assets/cars/accord.jpg.asset.json";
-import suvImg from "@/assets/cars/crv.jpg.asset.json";
-import xlImg from "@/assets/cars/odyssey.jpg.asset.json";
+import suvImage from "@/assets/cars/suv.jpg";
+const suvImg = { url: suvImage };
+import minivanImage from "@/assets/cars/minivan.jpg";
+const xlImg = { url: minivanImage };
 
 type Site = {
   id: string;
