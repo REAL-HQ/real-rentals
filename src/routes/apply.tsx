@@ -18,7 +18,15 @@ export const Route = createFileRoute("/apply")({
     t?: string;
     city?: string;
     pickup?: string;
+    /** A real vehicles.id, from an inventory card. */
     vehicle?: string;
+    /**
+     * A marketing catalog category ("sedan" | "suv" | "xl"), from a catalog
+     * card. Deliberately a separate key from `vehicle`: a representative type
+     * is not a vehicle id and must never be mistaken for one downstream.
+     * Carried so the landing URL records which category converted.
+     */
+    vehicle_type?: string;
   } => {
     // Only keep params that actually have a value so the URL never ends up
     // as /apply?t=&city=&pickup=&vehicle=
@@ -27,7 +35,7 @@ export const Route = createFileRoute("/apply")({
       return str ? str : undefined;
     };
     const out: Record<string, string> = {};
-    for (const key of ["t", "city", "pickup", "vehicle"] as const) {
+    for (const key of ["t", "city", "pickup", "vehicle", "vehicle_type"] as const) {
       const value = pick(s[key]);
       if (value) out[key] = value;
     }

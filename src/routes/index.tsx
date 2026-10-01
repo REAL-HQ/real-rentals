@@ -1,10 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
+import {
+  MARKETING_FLEET,
+  catalogCardModel,
+  liveAvailabilityNote,
+} from "@/lib/marketing-fleet";
 import { FadeUp } from "@/components/site/FadeUp";
 import { LocationsSection } from "@/components/site/LocationsSection";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
@@ -93,26 +97,31 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
+  // The fleet section is the marketing catalog, not live inventory. It used
+  // to query vehicles_public for status = 'available' and render whatever
+  // came back, which meant an empty operational table produced an empty grid
+  // — every paid click landing on nothing. The catalog is static and always
+  // renders; inventory is only allowed to add a line to it.
+  const cards = useMemo(() => MARKETING_FLEET.map((v) => catalogCardModel(v)), []);
+  const [availableNow, setAvailableNow] = useState<number | null>(null);
   useEffect(() => {
-    (async () => {
-      const fetchType = (type: string) =>
-        supabase
-          .from("vehicles_public")
-          .select("*")
-          .eq("status", "available")
-          .eq("body_type", type)
-          .order("weekly_rate", { ascending: true })
-          .limit(2)
-          .then(({ data }) => data || []);
-      const [sedans, suvs, xl] = await Promise.all([
-        fetchType("sedan"),
-        fetchType("suv"),
-        fetchType("xl"),
-      ]);
-      setVehicles([...sedans, ...suvs, ...xl]);
-    })();
+    let cancelled = false;
+    supabase
+      .from("vehicles_public")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "available")
+      .then(({ count, error }) => {
+        // A failure here is not a page failure. The grid has already
+        // rendered; we simply say nothing about availability.
+        if (cancelled || error) return;
+        setAvailableNow(count ?? 0);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+  const availabilityNote =
+    availableNow === null ? null : liveAvailabilityNote(availableNow);
 
   return (
     <SiteLayout>
@@ -148,14 +157,20 @@ function Index() {
           <FadeUp className="mb-6 flex items-end justify-between flex-wrap gap-4">
             <div>
               <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Featured Fleet</div>
-              <h2 className="mt-3 text-3xl md:text-5xl">Vehicles Available Now.</h2>
+              <h2 className="mt-3 text-3xl md:text-5xl">Vehicles Built For Gig Work.</h2>
+              <p className="mt-3 text-muted-foreground leading-relaxed max-w-xl">
+                Browse the types of vehicles we regularly offer. Availability changes daily.
+              </p>
+              {availabilityNote && (
+                <p className="mt-2 text-sm font-medium text-real-red">{availabilityNote}</p>
+              )}
             </div>
             <Link to="/fleet" className="text-sm underline-offset-4 hover:underline">View All →</Link>
           </FadeUp>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
-            {vehicles.map((v, i) => (
-              <FadeUp key={v.id} delay={i * 60}>
-                <VehicleCard vehicle={v} />
+            {cards.map((model, i) => (
+              <FadeUp key={model.key} delay={i * 60}>
+                <VehicleCard model={model} />
               </FadeUp>
             ))}
           </div>

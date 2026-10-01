@@ -4,11 +4,26 @@ import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headp
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
-import { VehicleCard } from "@/components/site/VehicleCard";
+import { InventoryVehicleCard, VehicleCard } from "@/components/site/VehicleCard";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  CATEGORY_LABEL,
+  MARKETING_CATEGORIES,
+  catalogCardModel,
+  isMarketingCategory,
+  marketingFleetByCategory,
+  type MarketingCategory,
+} from "@/lib/marketing-fleet";
 
 export const Route = createFileRoute("/fleet/")({
+  // `type` is an entry point, not a view state. A marketing catalog card
+  // links here with the category it merchandises so the link lands on
+  // something relevant instead of the unfiltered list. It seeds the filter on
+  // arrival and the chips take over from there — deliberately not two owners
+  // of one piece of state.
+  validateSearch: (s: Record<string, unknown>): { type?: MarketingCategory } =>
+    isMarketingCategory(s.type) ? { type: s.type } : {},
   head: () => ({
     meta: [
       { title: "The Fleet — REAL RENTALS" },
@@ -24,23 +39,51 @@ export const Route = createFileRoute("/fleet/")({
 });
 
 function FleetPage() {
+  const { type } = Route.useSearch();
   const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
   const [make, setMake] = useState("all");
-  const [categories, setCategories] = useState<Record<string, boolean>>({
-    sedan: true,
-    suv: true,
-    xl: true,
-  });
+  const [categories, setCategories] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      MARKETING_CATEGORIES.map((c) => [c, type ? c === type : true]),
+    ),
+  );
   const [onlyAvail, setOnlyAvail] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("vehicles_public")
-      .select("*")
-      .neq("status", "retired")
-      .order("weekly_rate", { ascending: true })
-      .then(({ data }) => setVehicles(data || []));
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("vehicles_public")
+          .select("*")
+          .neq("status", "retired")
+          .order("weekly_rate", { ascending: true });
+        if (!cancelled) setVehicles(data || []);
+      } catch {
+        // Unreachable backend. Not a page failure: the catalog below still
+        // has something to show, which is the entire point of having one.
+      } finally {
+        // Always, on every path. Gating the fallback on a promise that can
+        // reject is how the page ends up blank — the exact failure this work
+        // exists to remove.
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // A later /fleet?type=... navigation must move the chips even if the route
+  // component is still mounted from a previous visit — otherwise the link
+  // changes the URL and nothing on screen.
+  useEffect(() => {
+    if (!type) return;
+    setCategories(
+      Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, c === type])),
+    );
+  }, [type]);
 
   const makes = useMemo(
     () => Array.from(new Set(vehicles.map((v) => v.make).filter((m): m is string => !!m))).sort(),
@@ -58,6 +101,18 @@ function FleetPage() {
 
   const toggleCat = (k: string) =>
     setCategories((c) => ({ ...c, [k]: !c[k] }));
+
+  // Shown only when live inventory has nothing to show. The catalog never
+  // joins the inventory grid and never affects the count above it — it is a
+  // separate section with its own heading, so a visitor is never told a
+  // representative type is a car sitting on the lot.
+  const catalogFallback = useMemo(() => {
+    const picked = MARKETING_CATEGORIES.filter((c) => categories[c]);
+    const cats = picked.length > 0 ? picked : MARKETING_CATEGORIES;
+    // "apply", not "category": a category link from the fleet page points at
+    // the fleet page. See catalogCardModel.
+    return cats.flatMap((c) => marketingFleetByCategory(c)).map((v) => catalogCardModel(v, "apply"));
+  }, [categories]);
 
   return (
     <SiteLayout>
@@ -95,9 +150,9 @@ function FleetPage() {
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Category</label>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { k: "sedan", label: "Sedans", tagline: "Great MPG · Uber & Lyft" },
-                  { k: "suv", label: "SUVs", tagline: "More Room · Comfort Rides" },
-                  { k: "xl", label: "XL Vehicles", tagline: "6+ Seats · UberXL & Lyft XL" },
+                  { k: "sedan", label: CATEGORY_LABEL.sedan, tagline: "Great MPG · Uber & Lyft" },
+                  { k: "suv", label: CATEGORY_LABEL.suv, tagline: "More Room · Comfort Rides" },
+                  { k: "xl", label: CATEGORY_LABEL.xl, tagline: "6+ Seats · UberXL & Lyft XL" },
                 ].map((c) => (
                   <button
                     key={c.k}
@@ -132,12 +187,30 @@ function FleetPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
           {filtered.map((v, i) => (
             <FadeUp key={v.id} delay={i * 40}>
-              <VehicleCard vehicle={v} />
+              <InventoryVehicleCard vehicle={v} />
             </FadeUp>
           ))}
         </div>
-        {filtered.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground">No vehicles match these filters.</div>
+        {!loaded && filtered.length === 0 && (
+          <div className="text-center py-20 text-muted-foreground">Loading the fleet…</div>
+        )}
+        {loaded && filtered.length === 0 && (
+          <div className="mt-2">
+            <FadeUp className="text-center max-w-2xl mx-auto">
+              <h2 className="text-2xl md:text-3xl">Vehicles Built For Gig Work.</h2>
+              <p className="mt-3 text-muted-foreground leading-relaxed">
+                These are the types of vehicles we regularly offer. Availability changes
+                daily — start your application and we will confirm your car on a quick call.
+              </p>
+            </FadeUp>
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
+              {catalogFallback.map((model, i) => (
+                <FadeUp key={model.key} delay={i * 40}>
+                  <VehicleCard model={model} />
+                </FadeUp>
+              ))}
+            </div>
+          </div>
         )}
       </section>
     </SiteLayout>
