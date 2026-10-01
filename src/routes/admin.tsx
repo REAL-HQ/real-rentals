@@ -1,5 +1,5 @@
-import { createFileRoute, useSearch as useRouterSearch } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useSearch as useRouterSearch, useNavigate, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
@@ -68,6 +68,45 @@ type AdminSearch = {
   filter?: string;
   add?: "1";
 };
+
+/**
+ * Which tab each search parameter belongs to.
+ *
+ * `tab` is global — it names the destination. Everything else is the property
+ * of one tab, and carrying it anywhere else is how `/admin?tab=vehicles&id=<an
+ * applicant>` happens: a parameter that means nothing where it landed, quietly
+ * holding a child view open or filtering a list nobody asked to filter.
+ *
+ * Read by `rootSearch` below, which is what every root navigation goes
+ * through, and by the normalization effect that strips a stale parameter
+ * arriving from a hand-edited or forwarded URL.
+ */
+const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab">, readonly string[]> = {
+  // A selected record. Only tabs that can show one.
+  id: ["drivers", "vehicles"],
+  // Payments is the only list that takes a filter from a link today.
+  filter: ["payments"],
+  // The vehicle creation flow.
+  add: ["vehicles"],
+};
+
+/** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
+export function rootSearch(tab: string): AdminSearch {
+  return { tab };
+}
+
+/** Drop any parameter that does not belong to `tab`. */
+function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
+  const out: AdminSearch = { tab };
+  for (const key of ["id", "filter", "add"] as const) {
+    const value = search[key];
+    if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
+      // TypeScript cannot see that the key and value agree; they do.
+      (out as Record<string, unknown>)[key] = value;
+    }
+  }
+  return out;
+}
 
 export const Route = createFileRoute("/admin")({
   /**
@@ -273,24 +312,35 @@ function Admin() {
   // /admin?tab=..., which changes the URL without remounting this component —
   // so a one-shot useState left the page sitting on Overview and made every
   // one of those links look broken.
-  const search = useRouterSearch({ strict: false }) as Record<string, unknown>;
+  /*
+   * The URL is the only source of truth for where you are.
+   *
+   * `tab` used to be React state, seeded from the URL and re-synced by an
+   * effect that fired only when `urlTab` CHANGED VALUE — while the sidebar
+   * set that state without touching the URL at all. Two owners of one fact,
+   * and every reported symptom falls out of them disagreeing:
+   *
+   *  - Sidebar → Overview leaves the URL reading ?tab=drivers&id=A. Clicking
+   *    a different applicant then navigates to ?tab=drivers&id=B: `urlTab` is
+   *    "drivers" before and after, so it never changes, the effect never
+   *    fires, and the click does nothing you can see. That is the "names are
+   *    not clickable" report, and why it seemed intermittent — it worked from
+   *    a clean /admin and stopped once the URL had drifted.
+   *  - On a driver detail, "Drivers" called setTab("drivers") while the tab
+   *    was already "drivers": a no-op that left `id` in the URL and the
+   *    drawer open. Hence clicking it twice, and still not getting the list.
+   *
+   * Derived, not stored. Every navigation goes through the router, so back
+   * and forward work, a URL can be pasted to a colleague, and nothing can
+   * hold a view open that the address bar does not describe.
+   */
+  const search = useRouterSearch({ strict: false }) as AdminSearch;
+  const navigate = useNavigate();
   const urlTab = typeof search?.tab === "string" ? search.tab : null;
-  // Deep-link parameters the Overview cards and applicant rows send along, so
-  // a click lands on the thing it named rather than on the tab that holds it.
-  const urlDriverId = typeof search?.id === "string" ? search.id : null;
+  // `id` names the selected record on whichever tab owns it.
+  const urlRecordId = typeof search?.id === "string" ? search.id : null;
   const urlFilter = typeof search?.filter === "string" ? search.filter : null;
-  const urlAdd = search?.add === "1" || search?.add === true;
-  const initialTab: Tab =
-    urlTab && TABS.some((t) => t.id === urlTab) ? (urlTab as Tab) : "overview";
-  const [tab, setTab] = useState<Tab>(initialTab);
-
-  // Follow later URL changes too, not just the first one.
-  useEffect(() => {
-    if (urlTab && TABS.some((t) => t.id === urlTab) && urlTab !== tab) setTab(urlTab as Tab);
-    // `tab` is deliberately not a dependency: including it would fight the
-    // clamp below and the sidebar buttons, which set state without the URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlTab]);
+  const urlAdd = search?.add === "1";
   const [globalSearch, setGlobalSearch] = useState("");
   const [notifs, setNotifs] = useState<
     Array<{
@@ -305,16 +355,48 @@ function Admin() {
   const [tier, setTier] = useState<StaffTier | null>(null);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
-  // A deep link to a tab this tier may not open falls back to the overview.
-  // The URL is validated against every TAB above, because the tier is not
-  // known until the role lookup returns; this re-checks once it is, so
-  // ?tab=team cannot render the panel for a Manager or Coordinator. The
-  // server function behind the panel refuses them regardless — this is the
-  // presentation half of the same rule, not the enforcement.
+  /*
+   * Where we are, derived. An unknown tab renders the overview rather than a
+   * blank screen; a tab this tier may not open does the same, once the role
+   * lookup has returned. The server function behind each panel refuses an
+   * unauthorized caller regardless — this is the presentation half of that
+   * rule, not the enforcement, and it must never be the only lock.
+   */
+  const tab: Tab = useMemo(() => {
+    if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
+    if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
+    return urlTab as Tab;
+  }, [urlTab, tier, navTabs]);
+
+  /*
+   * Normalize the address bar to match what is on screen — replace, not
+   * push, so tidying up never becomes a history entry the back button has to
+   * climb through. Two jobs: a tab the URL named but we refused to render,
+   * and a parameter belonging to some other tab (an applicant id sitting on
+   * ?tab=vehicles, say) that would otherwise hold a child view open or
+   * filter a list nobody asked to filter.
+   */
+  /**
+   * Go to a tab's root, for the few controls that cannot be links — a select
+   * handler, a search box reacting as you type. Same destination the sidebar
+   * links produce, so there is one way to reach a root view and not two.
+   */
+  const goRoot = useCallback(
+    (next: string, opts?: { replace?: boolean }) =>
+      void navigate({ to: "/admin", search: rootSearch(next), replace: opts?.replace }),
+    [navigate],
+  );
+
   useEffect(() => {
-    if (!tier) return;
-    if (!navTabs.some((t) => t.id === tab)) setTab("overview");
-  }, [tier, navTabs, tab]);
+    const owned = ownedSearch(tab, search);
+    const same =
+      owned.tab === search.tab &&
+      owned.id === search.id &&
+      owned.filter === search.filter &&
+      owned.add === search.add;
+    if (same) return;
+    void navigate({ to: "/admin", search: owned, replace: true });
+  }, [tab, search, navigate]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;
@@ -457,9 +539,17 @@ function Admin() {
                       const Icon = t.icon;
                       const active = tab === t.id;
                       return (
-                        <button
+                        <Link
                           key={t.id}
-                          onClick={() => setTab(t.id)}
+                          to="/admin"
+                          /*
+                           * A root destination. "Drivers" means the drivers
+                           * LIST — so it carries the tab and nothing else,
+                           * which is what drops the selected applicant and
+                           * returns you to the listing on the first click
+                           * rather than the second.
+                           */
+                          search={rootSearch(t.id)}
                           title={collapsed ? t.label : undefined}
                           className={`relative w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
                             active
@@ -472,7 +562,7 @@ function Admin() {
                           )}
                           <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
                           {!collapsed && <span>{t.label}</span>}
-                        </button>
+                        </Link>
                       );
                     })}
                   </div>
@@ -491,13 +581,14 @@ function Admin() {
             </div>
             <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#EDEDF0]">
               {navTabs.map((t) => (
-                <button
+                <Link
                   key={t.id}
-                  onClick={() => setTab(t.id)}
+                  to="/admin"
+                  search={rootSearch(t.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium transition-colors duration-150 ${tab === t.id ? "bg-[rgba(208,48,32,0.08)] text-[#D03020]" : "bg-[#F4F4F6] text-[#55555E]"}`}
                 >
                   {t.label}
-                </button>
+                </Link>
               ))}
             </div>
           </div>
@@ -516,7 +607,10 @@ function Admin() {
                   onChange={(e) => {
                     const v = e.target.value;
                     setGlobalSearch(v);
-                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) setTab("drivers");
+                    // Typing jumps to the list being searched. `replace`, so
+                    // a search does not leave one history entry per keystroke.
+                    if (v && !["drivers", "vehicles", "partners"].includes(tab))
+                      goRoot("drivers", { replace: true });
                   }}
                   className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
                 />
@@ -526,7 +620,7 @@ function Admin() {
                 {/* Messages */}
                 <button
                   aria-label="Messages"
-                  onClick={() => setTab("messages")}
+                  onClick={() => goRoot("messages")}
                   className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
                 >
                   <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
@@ -569,7 +663,7 @@ function Admin() {
                         return (
                           <button
                             key={n.id}
-                            onClick={() => setTab("drivers")}
+                            onClick={() => goRoot("drivers")}
                             className="w-full text-left px-3 py-2.5 hover:bg-[#F4F4F6] transition-colors duration-150 border-b border-[#F4F4F6] last:border-0"
                           >
                             <div className="flex items-center gap-2">
@@ -631,7 +725,7 @@ function Admin() {
                         </div>
                       </div>
                       <button
-                        onClick={() => setTab("settings")}
+                        onClick={() => goRoot("settings")}
                         className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
                       >
                         <SettingsIcon
@@ -641,7 +735,7 @@ function Admin() {
                         <span>Settings</span>
                       </button>
                       <button
-                        onClick={() => setTab("team")}
+                        onClick={() => goRoot("team")}
                         className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
                       >
                         <UserCog
@@ -676,13 +770,17 @@ function Admin() {
               {tab === "drivers" && (
                 <DriversPanel
                   externalSearch={globalSearch}
-                  initialOpenId={urlDriverId ?? undefined}
+                  initialOpenId={urlRecordId ?? undefined}
                   isOwner={tier === "owner"}
                 />
               )}
               {tab === "waitlist" && <WaitlistPanel />}
               {tab === "vehicles" && (
-                <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} />
+                <VehiclesPanel
+                    externalSearch={globalSearch}
+                    autoOpenAdd={urlAdd}
+                    openId={urlRecordId}
+                  />
               )}
               {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
               {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} />}
