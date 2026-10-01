@@ -263,9 +263,7 @@ export function catalogCardModel(
     subtitle: v.subtitle,
     image: v.image,
     priceLabel:
-      v.weeklyRateFrom === null
-        ? "Rate confirmed on your call"
-        : `From $${v.weeklyRateFrom}/week`,
+      v.weeklyRateFrom === null ? "Rate confirmed on your call" : `From $${v.weeklyRateFrom}/week`,
     greatFor: GREAT_FOR[v.category],
     bodyTypeLabel: CATEGORY_LABEL[v.category],
     seatsLabel: String(v.seats),
@@ -287,17 +285,30 @@ export function catalogCardModel(
 }
 
 /**
- * The one place live inventory is allowed to speak on a marketing surface:
- * a section-level count, stated only when it is positive.
+ * The one place live inventory is allowed to speak on a marketing surface.
  *
- * Zero returns null rather than "0 available" or "none right now". The
- * catalog's whole job is to keep selling when the lot is empty, and an
- * availability line that only ever appears when something is on the lot can
- * neither manufacture scarcity nor advertise stock that is not there.
+ * Semantics, deliberately narrow:
+ *
+ *   - A category is named only when at least one REAL unit of that body type
+ *     is marked available by the back office. Nothing is inferred from the
+ *     catalog's existence.
+ *   - The claim is made about the CATEGORY, in category words ("Sedans"), and
+ *     it is rendered beside the section heading rather than on a card. Put a
+ *     count on the Compact Sedan card and it reads as a claim about compact
+ *     sedans — when the one free sedan is a midsize, that is a lie by
+ *     placement. Two cards share a category; a card cannot carry a category
+ *     claim honestly.
+ *   - Nothing is said about a category with zero available. No "0 available",
+ *     no "out of stock", no scarcity. Silence is the neutral state.
+ *   - Everything empty returns null and no line renders at all.
  */
-export function liveAvailabilityNote(total: number): string | null {
-  if (!Number.isFinite(total) || total <= 0) return null;
-  return total === 1
-    ? "1 vehicle available right now."
-    : `${total} vehicles available right now.`;
+export function liveAvailabilityNote(
+  counts: Partial<Record<MarketingCategory, number>>,
+): string | null {
+  const live = MARKETING_CATEGORIES.filter((c) => {
+    const n = counts[c];
+    return typeof n === "number" && Number.isFinite(n) && n > 0;
+  });
+  if (live.length === 0) return null;
+  return `Available now: ${live.map((c) => CATEGORY_LABEL[c]).join(" · ")}`;
 }

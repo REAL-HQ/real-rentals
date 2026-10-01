@@ -124,7 +124,10 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
         </FadeUp>
 
         <FadeUp delay={120}>
-          <p className="mt-6 text-xs text-muted-foreground text-center whitespace-nowrap">
+          {/* md: only. On one line this disclaimer is wider than a phone, which
+              made the whole homepage scroll sideways — same pre-existing cause
+              as the affiliation line above the fleet section. */}
+          <p className="mt-6 text-xs text-muted-foreground text-center md:whitespace-nowrap">
             {data.disclaimer} As of {data.as_of_date}.
           </p>
         </FadeUp>

@@ -43,15 +43,24 @@ function FleetPage() {
   const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
   const [make, setMake] = useState("all");
   const [categories, setCategories] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      MARKETING_CATEGORIES.map((c) => [c, type ? c === type : true]),
-    ),
+    Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, type ? c === type : true])),
   );
   const [onlyAvail, setOnlyAvail] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    // A hard cap on how long this page is allowed to show nothing.
+    //
+    // try/catch/finally covers a query that fails. It does not cover one that
+    // hangs — an unreachable or very slow backend leaves the fetch pending for
+    // tens of seconds, and gating the catalog on it meant a merchandising page
+    // with no merchandise for that whole time. That is the original conversion
+    // bug wearing a different hat, so the fallback is never gated on the
+    // network for longer than this.
+    const grace = setTimeout(() => {
+      if (!cancelled) setLoaded(true);
+    }, 2500);
     (async () => {
       try {
         const { data } = await supabase
@@ -72,6 +81,7 @@ function FleetPage() {
     })();
     return () => {
       cancelled = true;
+      clearTimeout(grace);
     };
   }, []);
 
@@ -80,9 +90,7 @@ function FleetPage() {
   // changes the URL and nothing on screen.
   useEffect(() => {
     if (!type) return;
-    setCategories(
-      Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, c === type])),
-    );
+    setCategories(Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, c === type])));
   }, [type]);
 
   const makes = useMemo(
@@ -111,7 +119,9 @@ function FleetPage() {
     const cats = picked.length > 0 ? picked : MARKETING_CATEGORIES;
     // "apply", not "category": a category link from the fleet page points at
     // the fleet page. See catalogCardModel.
-    return cats.flatMap((c) => marketingFleetByCategory(c)).map((v) => catalogCardModel(v, "apply"));
+    return cats
+      .flatMap((c) => marketingFleetByCategory(c))
+      .map((v) => catalogCardModel(v, "apply"));
   }, [categories]);
 
   return (
@@ -170,9 +180,18 @@ function FleetPage() {
                 ))}
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} className="accent-[#D03020]" />
-              Available Only
+            {/* Scopes the list of REAL cars; it can never empty the page,
+                because the catalog below is not inventory and is not filtered
+                by availability. Unchecking it widens what is shown — it is not
+                a way to make the marketing fleet disappear. */}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} className="accent-[#D03020]" />
+                Available Now Only
+              </span>
+              <span className="text-[10px] text-muted-foreground leading-tight">
+                Filters cars on the lot. Vehicle types below always show.
+              </span>
             </label>
           </div>
         </FadeUp>
@@ -181,7 +200,12 @@ function FleetPage() {
       <section className="container-real py-8 md:py-10">
         <FadeUp className="mb-6 flex items-end justify-between gap-4">
           <div className="text-sm md:text-base font-medium">
-            Showing <span className="font-semibold">{filtered.length}</span> Available {filtered.length === 1 ? "Vehicle" : "Vehicles"}
+            {/* "Available" only when the filter actually restricts to available
+                units. With the box unchecked this list includes rented and
+                down vehicles, and calling them available was a false claim. */}
+            Showing <span className="font-semibold">{filtered.length}</span>
+            {onlyAvail ? " Available " : " "}
+            {filtered.length === 1 ? "Vehicle" : "Vehicles"}
           </div>
         </FadeUp>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
@@ -199,8 +223,8 @@ function FleetPage() {
             <FadeUp className="text-center max-w-2xl mx-auto">
               <h2 className="text-2xl md:text-3xl">Vehicles Built For Gig Work.</h2>
               <p className="mt-3 text-muted-foreground leading-relaxed">
-                These are the types of vehicles we regularly offer. Availability changes
-                daily — start your application and we will confirm your car on a quick call.
+                These are the types of vehicles we regularly offer. Availability changes daily
+                — start your application and we will confirm your car on a quick call.
               </p>
             </FadeUp>
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">

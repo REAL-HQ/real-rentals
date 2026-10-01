@@ -4,11 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
-import {
-  MARKETING_FLEET,
-  catalogCardModel,
-  liveAvailabilityNote,
-} from "@/lib/marketing-fleet";
+import { MARKETING_FLEET, catalogCardModel, liveAvailabilityNote } from "@/lib/marketing-fleet";
 import { FadeUp } from "@/components/site/FadeUp";
 import { LocationsSection } from "@/components/site/LocationsSection";
 import { ComparisonSection } from "@/components/site/ComparisonSection";
@@ -103,25 +99,36 @@ function Index() {
   // — every paid click landing on nothing. The catalog is static and always
   // renders; inventory is only allowed to add a line to it.
   const cards = useMemo(() => MARKETING_FLEET.map((v) => catalogCardModel(v)), []);
-  const [availableNow, setAvailableNow] = useState<number | null>(null);
+  // Body types of the units the back office currently marks available, and
+  // nothing else. No row from this read reaches the grid; it can only add a
+  // line beside the heading naming which categories are genuinely in stock.
+  const [availableByCategory, setAvailableByCategory] = useState<Record<string, number>>({});
   useEffect(() => {
     let cancelled = false;
-    supabase
-      .from("vehicles_public")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "available")
-      .then(({ count, error }) => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("vehicles_public")
+          .select("body_type")
+          .eq("status", "available");
         // A failure here is not a page failure. The grid has already
         // rendered; we simply say nothing about availability.
-        if (cancelled || error) return;
-        setAvailableNow(count ?? 0);
-      });
+        if (cancelled || error || !data) return;
+        const tally: Record<string, number> = {};
+        for (const row of data) {
+          const key = row.body_type;
+          if (key) tally[key] = (tally[key] ?? 0) + 1;
+        }
+        setAvailableByCategory(tally);
+      } catch {
+        // Unreachable backend. Same answer: say nothing.
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
-  const availabilityNote =
-    availableNow === null ? null : liveAvailabilityNote(availableNow);
+  const availabilityNote = liveAvailabilityNote(availableByCategory);
 
   return (
     <SiteLayout>
@@ -146,7 +153,11 @@ function Index() {
         </div>
         <GigLogoMarquee items={["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"]} />
         <div className="container-real text-center">
-          <p className="mt-5 text-xs leading-relaxed text-muted-foreground whitespace-nowrap">
+          {/* Not whitespace-nowrap. This sentence is ~790px on one line, which
+              made the whole homepage scroll sideways at 375px — measured
+              identical on main, so pre-existing, but it is the page paid
+              traffic lands on and the fix is one class. */}
+          <p className="mt-5 text-xs leading-relaxed text-muted-foreground md:whitespace-nowrap">
             REAL RENTALS is not affiliated with Uber, Lyft, DoorDash, Instacart, or Amazon Flex. Platform eligibility may vary by location and platform rules.
           </p>
         </div>

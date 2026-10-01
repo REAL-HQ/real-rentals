@@ -139,7 +139,9 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
           e.stopPropagation();
           window.location.href = model.ctaHref;
         }}
-        className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-real-red text-white px-4 py-2.5 text-sm font-semibold hover:bg-real-red/90 transition active:scale-[0.98]"
+        // min-h-11 = 44px: the minimum comfortable touch target, and this is
+        // the one control the whole marketing surface exists to get pressed.
+        className="mt-4 w-full min-h-11 inline-flex items-center justify-center gap-2 rounded-lg bg-real-red text-white px-4 py-2.5 text-sm font-semibold hover:bg-real-red/90 transition active:scale-[0.98]"
       >
         Check Availability <ArrowRight className="w-4 h-4" />
       </button>

@@ -29,6 +29,11 @@ const DETAIL = "src/routes/fleet.$id.tsx";
 const APPLY = "src/routes/apply.tsx";
 
 const catalog = read(CATALOG);
+const entriesOrEmpty = () =>
+  catalog.slice(
+    catalog.indexOf("export const MARKETING_FLEET"),
+    catalog.indexOf("export function marketingFleetByCategory"),
+  );
 const adapter = read(ADAPTER);
 const card = read(CARD);
 const home = read(HOME);
@@ -135,6 +140,49 @@ ok(
   serverLeaked.length === 0,
   `no server function imports the catalog${serverLeaked.length ? ` (found: ${serverLeaked.join(", ")})` : ""}`,
 );
+
+/* ------------------------------- §16 structural admin separation --------- */
+console.log("\nthe catalog does not exist to the back office");
+
+// Not "the admin UI filters it out" — it is not in the database, so there is
+// nothing for an operational query to return.
+// walk() only yields .ts/.tsx; migrations need their own pass.
+const sqlFiles = (function walkSql(dir) {
+  const out = [];
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...walkSql(p));
+    else if (/\.sql$/.test(name)) out.push(p);
+  }
+  return out;
+})("supabase");
+const sql = sqlFiles.map(read).join("\n");
+ok(sqlFiles.length > 0, `found ${sqlFiles.length} migration files to check`);
+ok(
+  slugs.every((slug) => !sql.includes(slug)),
+  "no catalog slug appears anywhere in the schema or its migrations",
+);
+ok(
+  !/marketing_fleet|marketing_catalog|catalog_vehicles/i.test(sql),
+  "no marketing catalog table was created",
+);
+// A catalog entry has no `id`, so it cannot be passed where a vehicles.id goes.
+ok(
+  !/^\s*id:\s/m.test(entriesOrEmpty()),
+  "no catalog entry declares an `id` field",
+);
+const operationalSurfaces = adminFiles.filter((f) =>
+  /Vehicle|Fleet|Overview|Expense|Maintenance|Insurance|Registration|Finance|Rental/i.test(f),
+);
+ok(operationalSurfaces.length > 0, `found ${operationalSurfaces.length} operational admin surfaces`);
+for (const f of operationalSurfaces) {
+  const src = read(f);
+  const touches =
+    /marketing-fleet|MARKETING_FLEET|catalogCardModel/.test(src) ||
+    slugs.some((slug) => src.includes(slug));
+  ok(!touches, `${f.replace("src/components/admin/", "")} knows nothing of the catalog`);
+}
 
 /* -------------------------------------------------------- truthfulness --- */
 console.log("\nno invented availability or pricing");
@@ -243,12 +291,64 @@ ok(
   "the old per-body-type inventory query is gone",
 );
 ok(
-  /count: "exact", head: true/.test(home),
-  "inventory is read only as a count — no rows drive the grid",
+  /\.select\("body_type"\)[\s\S]{0,80}\.eq\("status", "available"\)/.test(home),
+  "inventory is read only for body types of genuinely available units",
 );
 ok(
-  /if \(cancelled \|\| error\) return;/.test(home),
+  !/setVehicles|vehicles\.map|data\.map/.test(home),
+  "no inventory row reaches the grid — the read can only add a line",
+);
+ok(
+  /if \(cancelled \|\| error \|\| !data\) return;/.test(home),
   "a failed availability read leaves the grid standing",
+);
+ok(
+  /\} catch \{/.test(home),
+  "a rejected availability read leaves the grid standing too",
+);
+
+/* ------------------------------------------------ §21 the business rule -- */
+console.log("\nthe rule: marketing must not depend on operational availability");
+
+// This is the regression that matters. If someone rewires the featured grid
+// back to "whatever vehicles_public returns for status = available", the
+// homepage goes blank again the next time the lot empties.
+const homeGrid = home.slice(home.indexOf("function Index()"));
+ok(
+  !/\{\s*vehicles\.map\(/.test(homeGrid),
+  "the featured grid does not map over an inventory array",
+);
+ok(
+  !/useState<Tables<"vehicles_public">\[\]>/.test(home),
+  "the homepage holds no list of inventory rows at all",
+);
+ok(
+  /const cards = useMemo\(\(\) => MARKETING_FLEET/.test(home),
+  "the cards come from the catalog constant, not from a query result",
+);
+// And the catalog can never become inventory.
+ok(
+  !/insert|upsert|\.from\(/.test(catalog),
+  "the catalog module performs no database writes or reads of any kind",
+);
+// The adapter may know the shared card TYPE and nothing else about the
+// catalog — no entries, no helper, no runtime import.
+ok(
+  /^import type \{ PublicVehicleCardModel \} from "@\/lib\/marketing-fleet";$/m.test(adapter),
+  "the adapter imports the shared card type",
+);
+ok(
+  !/^import \{[^}]*\} from "@\/lib\/marketing-fleet"/m.test(adapter) &&
+    !/MARKETING_FLEET|catalogCardModel/.test(adapter),
+  "and nothing else from the catalog — no entries, no helpers, no runtime import",
+);
+ok(
+  /npm run test:fleet-e2e|marketing-fleet-e2e/.test(readFileSync("package.json", "utf8")),
+  "the browser half of this rule is wired into package.json",
+);
+ok(
+  existsSync("scripts/marketing-fleet-e2e.test.mjs"),
+  "the browser half of this rule exists",
 );
 ok(
   /Vehicles Built For Gig Work\./.test(home),

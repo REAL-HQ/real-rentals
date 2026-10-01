@@ -151,6 +151,15 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         market_id: nullableUuid,
         city: nullableString,
         state: nullableString,
+        // Carried from a marketing catalog card, the same way pickup_date is
+        // carried from a lead form. An enum of exactly the three values the
+        // wizard offers, so an anonymous caller cannot write free text into
+        // the column and the applicant sees their own answer preselected
+        // rather than being asked the same question twice.
+        //
+        // Deliberately NOT vehicle_id. A catalog entry is a type, not a unit:
+        // nothing here reserves a car or creates an operational assignment.
+        vehicle_size: z.enum(["Sedan", "SUV", "XL"]).nullable().optional(),
         pickup_date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
