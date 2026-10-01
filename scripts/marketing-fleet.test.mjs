@@ -46,11 +46,11 @@ console.log("\ncatalog shape");
 
 const slugs = [...catalog.matchAll(/^\s*slug: "([^"]+)",$/gm)].map((m) => m[1]);
 const cats = [...catalog.matchAll(/^\s*category: "([^"]+)",$/gm)].map((m) => m[1]);
-ok(slugs.length === 6, `catalog has 6 entries (got ${slugs.length})`);
+ok(slugs.length === 3, `catalog has 3 entries (got ${slugs.length})`);
 ok(new Set(slugs).size === slugs.length, "every slug is unique");
 for (const c of ["sedan", "suv", "xl"]) {
   const n = cats.filter((x) => x === c).length;
-  ok(n === 2, `${c}: 2 entries (got ${n})`);
+  ok(n === 1, `${c}: 1 entry (got ${n})`);
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -67,7 +67,7 @@ ok(
 console.log("\nimagery");
 
 const imageImports = [...catalog.matchAll(/from "@\/assets\/(cars\/[^"]+)"/g)].map((m) => m[1]);
-ok(imageImports.length === 6, `6 images imported (got ${imageImports.length})`);
+ok(imageImports.length === 3, `3 images imported (got ${imageImports.length})`);
 for (const rel of imageImports) {
   ok(existsSync(join("src/assets", rel)), `${rel} exists in the repo`);
 }
@@ -78,6 +78,23 @@ ok(
 ok(
   !/placeholder|data:image|unsplash|picsum/i.test(catalog),
   "no placeholder, data-URI, or stock-photo URL — approved repo imagery only",
+);
+
+/* ------------------------------------------- never names a make or model -- */
+console.log("\nthe catalog advertises types, not specific vehicles");
+
+const catalogEntries = catalog.slice(
+  catalog.indexOf("export const MARKETING_FLEET"),
+  catalog.indexOf("export function marketingFleetByCategory"),
+);
+// Asset variable names (corollaImg, …) are internal identifiers, not copy.
+// The rule is about what a visitor can read, so only the string literals count.
+const visibleCopy = [...catalogEntries.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join(" ");
+ok(
+  !/Toyota|Honda|Nissan|Hyundai|Kia|Ford|Chevrolet|Corolla|Civic|Accord|Camry|CR-V|RAV4|Odyssey|Sienna/i.test(
+    visibleCopy,
+  ),
+  "no catalog entry names a make or model — we carry multiple of both per type",
 );
 
 /* ------------------------------------------------- operational leakage --- */
@@ -213,13 +230,20 @@ ok(
   "fleet/$id emits schema.org/InStock only when the unit is actually available",
 );
 
-const rates = [...catalog.matchAll(/weeklyRateFrom: (null|PUBLISHED_WEEKLY_FLOOR|\d+)/g)].map(
-  (m) => m[1],
-);
-ok(rates.length === 6, `every entry declares weeklyRateFrom (got ${rates.length})`);
+const rates = [
+  ...catalog.matchAll(/weeklyRateFrom: (null|PUBLISHED_WEEKLY_FLOOR|PUBLISHED_WEEKLY_RATES\.\w+)/g),
+].map((m) => m[1]);
+ok(rates.length === 3, `every entry declares weeklyRateFrom (got ${rates.length})`);
 ok(
-  rates.every((r) => r === "null" || r === "PUBLISHED_WEEKLY_FLOOR"),
-  "no catalog entry carries a hand-written rate — it is the published floor or nothing",
+  rates.every(
+    (r) =>
+      r === "null" || r === "PUBLISHED_WEEKLY_FLOOR" || r.startsWith("PUBLISHED_WEEKLY_RATES."),
+  ),
+  "no catalog entry carries a hand-written rate — it comes from the published rate card",
+);
+ok(
+  /PUBLISHED_WEEKLY_RATES[^}]*sedan: 350,[\s\S]*?suv: 375,[\s\S]*?xl: 400,/.test(catalog),
+  "the published rate card is Sedan $350, SUV $375, Minivan $400",
 );
 ok(
   /PUBLISHED_WEEKLY_FLOOR = 350/.test(catalog),

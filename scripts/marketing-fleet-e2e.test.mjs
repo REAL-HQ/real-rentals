@@ -97,9 +97,9 @@ for (const [name, scenario] of SCENARIOS) {
   const avail = (text.match(/Available now:[^\n]*/) || [null])[0];
 
   // THE RULE.
-  ok(cards === 6, `six catalog cards render regardless of inventory (got ${cards})`);
+  ok(cards === 3, `three catalog cards render regardless of inventory (got ${cards})`);
   ok(["sedan", "suv", "xl"].every((c) => hrefs.includes(`/fleet?type=${c}`)),
-     "sedan, SUV and XL are all represented");
+     "Sedan, SUV and Minivan are all represented");
   ok(/Vehicles Built For Gig Work\./.test(text), "heading: Vehicles Built For Gig Work.");
   ok(!/Vehicles Available Now\./.test(text), "the old availability claim is gone");
   ok(/Browse the types of vehicles we regularly offer\. Availability changes daily\./.test(text),
@@ -110,7 +110,7 @@ for (const [name, scenario] of SCENARIOS) {
   // Availability is a claim, so it is made only where inventory proves it,
   // per category, and never inferred from the catalog's own existence.
   if (partial) {
-    ok(avail === "Available now: Sedans · XL Vehicles",
+    ok(avail === "Available now: Sedans · Minivans",
        `names exactly the categories with a free unit (got ${JSON.stringify(avail)})`);
     ok(!/SUVs/.test(avail ?? ""), "the category with none free stays neutral, not 'none left'");
   } else {
@@ -250,7 +250,7 @@ for (const imagesWork of [true, false]) {
   );
   const label = imagesWork ? "images load" : "every image fails";
   ok(scrolled === 0, `${label}: no horizontal overflow (scrolled ${scrolled}px)`);
-  ok(boxes.length === 6, `${label}: six cards`);
+  ok(boxes.length === 3, `${label}: three cards`);
   ok(boxes.every((b) => !b.overlaps), `${label}: pricing never overlaps the title`);
   ok(boxes.every((b) => b.btnH >= 44), `${label}: CTA is a 44px target (min ${Math.min(...boxes.map((b) => b.btnH))})`);
   ok(new Set(boxes.map((b) => b.imgH)).size === 1,
@@ -258,11 +258,11 @@ for (const imagesWork of [true, false]) {
   ok(boxes.every((b) => b.w <= 359), `${label}: cards stay inside the gutter`);
   const imgs = await page.locator("a.car-card img").count();
   const tiles = await page.locator("a.car-card span.text-sm.font-medium").count();
-  ok(imgs + tiles === 6, `${label}: every card shows a photo or a labelled tile (${imgs} + ${tiles})`);
+  ok(imgs + tiles === 3, `${label}: every card shows a photo or a labelled tile (${imgs} + ${tiles})`);
   if (imagesWork) {
     const alts = await page.locator("a.car-card img").evaluateAll((e) => e.map((x) => x.getAttribute("alt")));
-    ok(alts.every((a) => a && a.includes("&")),
-       "alt text names the class and the models it represents");
+    ok(alts.every((a) => ["Sedan", "SUV", "Minivan"].includes(a ?? "")),
+       "alt text names the vehicle type and nothing more specific");
   }
   await page.close();
 }

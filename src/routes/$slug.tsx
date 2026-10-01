@@ -56,8 +56,8 @@ const defaultHowItWorks: Step[] = [
 
 const defaultVehicleTypes: VehicleType[] = [
   { name: "Sedans", tagline: "Efficient Daily Drivers For Rideshare And Delivery.", image: sedanImg.url },
-  { name: "SUVs", tagline: "More Room For Drivers Who Need Flexible Cargo Space.", image: suvImg.url },
-  { name: "XL Vehicles", tagline: "Larger Options For Airport Runs, Groups, And Higher-Capacity Trips.", image: xlImg.url },
+  { name: "SUVs", tagline: "More Room For Passengers And Flexible Cargo Space.", image: suvImg.url },
+  { name: "Minivans", tagline: "Seven Seats For Airport Runs, Groups, And Higher-Capacity Trips.", image: xlImg.url },
 ];
 
 const PLATFORM_STATUSES = ["Yes", "Pending", "Not Yet"] as const;
