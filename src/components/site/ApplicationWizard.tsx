@@ -806,7 +806,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         <Choice
           label="What Kind Of Vehicle Do You Want?"
           value={state.vehicle_size as (typeof VEHICLE_OPTS)[number] | null}
-          options={VEHICLE_OPTS.map((v) => ({ value: v, label: v }))}
+          options={VEHICLE_OPTS.map((v) => ({ value: v, label: v === "XL" ? "Minivan" : v }))}
           onChange={(v) => update("vehicle_size", v)}
         />
 
