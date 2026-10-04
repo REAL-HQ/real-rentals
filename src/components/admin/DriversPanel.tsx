@@ -1318,7 +1318,7 @@ function DriverDetail({
             <SectionCard title="Rental Need">
               <dl className="space-y-2.5 text-[12px]">
                 <Row2
-                  label="Needed by"
+                  label="Needed By"
                   value={
                     (screening as any)?.needed_by_date
                       ? new Date((screening as any).needed_by_date).toLocaleDateString()
@@ -1326,13 +1326,13 @@ function DriverDetail({
                   }
                 />
                 <Row2
-                  label="Weekly rate"
+                  label="Weekly Rate"
                   value={
                     driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "$350"
                   }
                 />
                 <Row2
-                  label="Drive type"
+                  label="Drive Type"
                   value={
                     // Staff answer first, then the applicant's own, so the row
                     // is not blank just because nobody has run an interview.
@@ -1342,7 +1342,7 @@ function DriverDetail({
                   }
                 />
                 <Row2
-                  label="Expected duration"
+                  label="Expected Duration"
                   value={
                     (driver as any).expected_duration
                       ? (DURATION_LABEL[(driver as any).expected_duration as string] ??
@@ -1351,11 +1351,11 @@ function DriverDetail({
                   }
                 />
                 <Row2
-                  label="Current vehicle"
+                  label="Current Vehicle"
                   value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
                 />
                 <Row2
-                  label="Card on file"
+                  label="Card On File"
                   value={driver.card_last4 ? `····${driver.card_last4}` : "Not saved"}
                 />
               </dl>
