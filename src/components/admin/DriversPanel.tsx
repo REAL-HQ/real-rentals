@@ -1087,9 +1087,11 @@ function DriverDetail({
           ? " Portal invite emailed."
           : res.portalAccount === "existing"
             ? " They already have a portal login."
-            : res.portalAccount === "failed"
-              ? " Portal login could not be created — it will retry on activation."
-              : "";
+            : res.portalAccount === "conflict"
+              ? " Portal login NOT linked: this application belongs to a different account. Check the email on file."
+              : res.portalAccount === "failed"
+                ? " Portal login could not be created — it will retry on activation."
+                : "";
       if (res.agreementSent) {
         toast.success(`Approved — rental agreement sent for signature.${portal}`);
       } else {

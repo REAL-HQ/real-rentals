@@ -116,6 +116,139 @@ ok(
   "the admin UI tells staff what happened to the login",
 );
 
+/* ---------------------------------- identity linking is never silent ----- */
+console.log("\nan application is never handed to a different identity");
+
+// Found in review: provisioning resolved an identity from the application's
+// email and wrote applications.user_id unconditionally. Change the email and
+// re-approve, and the original driver lost their documents, agreement and
+// payments to whatever account the new address resolved to — and if that
+// address had no account, one was created and sent a set-password email for
+// an application that person never filed.
+ok(
+  /\.select\("user_id"\)[\s\S]{0,120}\.eq\("id", args\.applicationId\)/.test(account),
+  "the current owner is read before anything is created",
+);
+ok(
+  account.indexOf('.select("user_id")') < account.indexOf("ensureAuthUser(admin"),
+  "and read BEFORE the auth user is found or created, so a conflict creates nothing",
+);
+ok(
+  /if \(ownerEmail && ownerEmail !== target\)[\s\S]{0,260}return \{[\s\S]{0,120}conflict: true/.test(account),
+  "a mismatch returns a conflict instead of relinking",
+);
+ok(
+  /conflict: true[\s\S]{0,80}inviteUrl: null/.test(account),
+  "and mints no set-password link for the new address",
+);
+ok(
+  /portalAccount = account\.conflict/.test(apps),
+  "approval reports the conflict rather than claiming a login was made",
+);
+ok(
+  /"conflict"/.test(read("src/components/admin/DriversPanel.tsx")),
+  "and staff are told, in the approval toast",
+);
+ok(
+  /code: "account_conflict"/.test(rentals) && !/overrideBlockers[\s\S]{0,200}account_conflict/.test(rentals),
+  "activation returns account_conflict directly, outside the overridable path",
+);
+ok(
+  /if \(portalAccount === "conflict"\)[\s\S]{0,420}agreementSent: false/.test(apps),
+  "a conflicted identity is never issued a signable agreement",
+);
+
+// Anyone can register an account for any address through the public sign-up
+// forms. Adopting one on trust hands the applicant's documents, agreement and
+// vehicle to whoever got there first.
+ok(
+  /if \(!created && !ownerId\)[\s\S]{0,700}conflict: true/.test(account),
+  "a pre-existing account with no application of its own is not adopted",
+);
+ok(
+  /\.eq\("user_id", userId\)[\s\S]{0,60}\.limit\(1\)/.test(account),
+  "adoption requires that account to already own an application",
+);
+
+// Reporting success for a login that cannot open the portal sends somebody a
+// set-password email for a dead end.
+ok(
+  /throw new Error\(`Driver role could not be granted/.test(account),
+  "a failed role grant fails the call instead of logging and returning success",
+);
+ok(
+  /throw new Error\(`Application could not be linked/.test(account),
+  "so does a failed application link",
+);
+
+// The driver-editable half of the same hole.
+const portalFnsSrc = read("src/lib/portal.functions.ts");
+const updateBody = portalFnsSrc.slice(
+  portalFnsSrc.indexOf("export const updateDriverProfile"),
+  portalFnsSrc.indexOf("export const", portalFnsSrc.indexOf("export const updateDriverProfile") + 10),
+);
+ok(updateBody.length > 400, "found updateDriverProfile");
+ok(
+  !/out\.email\s*=/.test(updateBody),
+  "a driver cannot change the email their account identity resolves from",
+);
+ok(
+  !/email\?: string;/.test(updateBody),
+  "the field is not even accepted, so a crafted request cannot set it",
+);
+
+/* ------------------------------- the profile write must actually write --- */
+console.log("\nSettings saves what it says it saved");
+
+// public.applications has exactly one UPDATE policy and it is is_staff(), so
+// this statement through the caller's own session matched zero rows, returned
+// no error, and the UI reported success.
+ok(
+  /supabaseAdmin[\s\S]{0,200}\.from\("applications"\)[\s\S]{0,120}\.update\(patch as any\)/.test(updateBody),
+  "the update runs with the service role, after ownership is proved through RLS",
+);
+ok(
+  /\.eq\("id", app\.id\)[\s\S]{0,40}\.select\("id"\)/.test(updateBody),
+  "scoped to the one application, and the write is read back",
+);
+ok(
+  /if \(!updated \|\| updated\.length === 0\) return \{ error:/.test(updateBody),
+  "a write that changed nothing is reported as a failure, not as success",
+);
+const migrationSql = (function walkSqlFiles(dir) {
+  const out = [];
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir)) {
+    const f = join(dir, name);
+    if (statSync(f).isDirectory()) out.push(...walkSqlFiles(f));
+    else if (/\.sql$/.test(name)) out.push(f);
+  }
+  return out;
+})("supabase");
+const appUpdatePolicies = migrationSql
+  .map(read)
+  .filter((sql) => /CREATE POLICY[^;]{0,200}ON public\.applications[\s\S]{0,200}FOR UPDATE/i.test(sql));
+ok(
+  appUpdatePolicies.every((sql) => !/FOR UPDATE[\s\S]{0,160}user_id = auth\.uid\(\)/i.test(sql)),
+  "no self-update policy was added to applications — the allow-list stays in code",
+);
+
+/* ------------------------------------- the panel claims only what it knows */
+console.log("\nthe pre-rental panel does not invent a status");
+
+ok(
+  /applicationStatus/.test(portalFnsSrc),
+  "the dashboard returns the application status",
+);
+ok(
+  /const approved = status === "approved" \|\| status === "active"/.test(portal),
+  "the panel decides from that status, not from the absence of a rental",
+);
+ok(
+  /\{approved \? "You're Approved" : "Your Application"\}/.test(portal),
+  "a rejected or finished applicant is not told they are approved",
+);
+
 /* --------------------------------------- nothing driver-facing needs a car */
 console.log("\nan approved applicant can use the portal before a vehicle exists");
 

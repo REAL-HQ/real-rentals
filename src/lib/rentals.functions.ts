@@ -34,7 +34,9 @@ export type ActivationBlocker = {
     | "no_passed_inspection"
     | "no_email"
     | "not_approved"
-    | "already_active";
+    | "already_active"
+    /** The application's login belongs to a different identity. Never overridable. */
+    | "account_conflict";
   message: string;
 };
 
@@ -236,6 +238,9 @@ export const activateRental = createServerFn({ method: "POST" })
     // Double-booking and missing-email are never overridable: the first would
     // hand one car to two drivers, the second cannot produce a working login.
     const hardBlockers = readiness.blockers.filter(
+      // account_conflict is not in this list on purpose: evaluateReadiness
+      // cannot know about it, so it is returned directly from the handler
+      // below rather than filtered out of a readiness result.
       (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active",
     );
     if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
@@ -259,11 +264,27 @@ export const activateRental = createServerFn({ method: "POST" })
       userId,
       created,
       inviteUrl: freshInviteUrl,
+      conflict,
     } = await provisionDriverAccount(supabaseAdmin, {
       applicationId: data.applicationId,
       email: app.email as string,
       fullName: (app.full_name as string | null) ?? null,
     });
+    // Never overridable. Handing somebody a car under an application whose
+    // login belongs to a different person produces a rental the driver cannot
+    // see and a portal showing somebody else's paperwork.
+    if (conflict) {
+      return {
+        ok: false,
+        blockers: [
+          {
+            code: "account_conflict",
+            message:
+              "This application is linked to a login whose email no longer matches the one on file. Resolve the identity before activating.",
+          },
+        ],
+      };
+    }
 
     // 4. The rental itself.
     const { data: rental, error: rentalErr } = await supabaseAdmin

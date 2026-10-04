@@ -545,9 +545,9 @@ export async function sendPortalInviteEmail(args: {
   firstName: string | null;
   inviteUrl: string | null;
 }): Promise<void> {
-  const name = args.firstName || "there";
+  const name = escapeHtml(args.firstName || "there");
   const site = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
-  const url = args.inviteUrl || `${site}/login`;
+  const url = escapeHtml(args.inviteUrl || `${site}/login`);
   await sendEmail({
     to: args.to,
     subject: "You're approved — set up your driver portal",

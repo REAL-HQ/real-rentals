@@ -33,6 +33,12 @@ type AdminClient = SupabaseClient<Database>;
 
 export type DriverAccount = {
   userId: string;
+  /**
+   * True when the application is already owned by a different account than the
+   * email on file resolves to. Nothing is created, nothing is relinked, and
+   * nothing is emailed — a human has to decide which identity is right.
+   */
+  conflict: boolean;
   /** True only on the call that actually created the auth user. */
   created: boolean;
   /**
@@ -89,15 +95,96 @@ export async function provisionDriverAccount(
   admin: AdminClient,
   args: { applicationId: string; email: string; fullName: string | null },
 ): Promise<DriverAccount> {
-  const { userId, created } = await ensureAuthUser(admin, args.email, args.fullName);
+  const target = args.email.trim().toLowerCase();
+
+  /*
+   * An application that already belongs to somebody is never handed to
+   * somebody else.
+   *
+   * This function resolves an identity from the email on the application, and
+   * that email is editable — by staff, and by the driver themselves in
+   * Settings. Without this check, changing it and re-approving would relink
+   * the application to whatever account the new address resolves to: the
+   * original driver silently loses their documents, agreement and payment
+   * history, and the new address gains them. If the new address had no
+   * account, one would be created and sent a "you're approved, set your
+   * password" email for an application that person never filed.
+   *
+   * So a mismatch stops here, before anything is created, granted, linked or
+   * mailed. It is reported to the operator instead, because deciding which
+   * identity is the real one is a human judgement, not a default.
+   */
+  const { data: existing } = await admin
+    .from("applications")
+    .select("user_id")
+    .eq("id", args.applicationId)
+    .maybeSingle();
+
+  const ownerId = (existing?.user_id as string | null) ?? null;
+  if (ownerId) {
+    const { data: owner } = await admin.auth.admin.getUserById(ownerId);
+    const ownerEmail = String(owner?.user?.email ?? "")
+      .trim()
+      .toLowerCase();
+    if (ownerEmail && ownerEmail !== target) {
+      console.error(
+        "[driver-account] refusing to relink application",
+        args.applicationId,
+        "— owned by an account whose email differs from the one on file",
+      );
+      return { userId: ownerId, conflict: true, created: false, inviteUrl: null };
+    }
+    // Same person. Fall through: the role grant below is still worth
+    // re-running, and nothing is created because the user already exists.
+  }
+
+  const { userId, created } = await ensureAuthUser(admin, target, args.fullName);
+
+  /*
+   * A pre-existing account is only adopted when it is plausibly the same
+   * person.
+   *
+   * ensureAuthUser matches on the email string alone, and anyone can create an
+   * account for any address through the public sign-up forms. Without this,
+   * registering with a pending applicant's email before we approve them meant
+   * the approval granted THAT account the driver role and pointed the
+   * application at it — handing over the applicant's licence, insurance,
+   * agreement (which signMyAgreement would then let them execute in the
+   * applicant's name), payments and, later, the vehicle.
+   *
+   * An account this call just created is safe by construction. An account that
+   * already owns an application under the same address is the returning-driver
+   * case and is also safe. Anything else is a stranger holding the address, so
+   * nothing is granted, linked or emailed and a human is told.
+   */
+  if (!created && !ownerId) {
+    const { data: owned } = await admin
+      .from("applications")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+    if (!owned || owned.length === 0) {
+      console.error(
+        "[driver-account] refusing to adopt pre-existing account for application",
+        args.applicationId,
+        "— the account holds the address but no application of its own",
+      );
+      return { userId, conflict: true, created: false, inviteUrl: null };
+    }
+  }
 
   // Ignore a duplicate — the role may already be granted, and this function
   // is expected to run more than once for the same person.
   const { error: roleErr } = await admin
     .from("user_roles")
     .insert({ user_id: userId, role: "driver" });
+  // A duplicate is the expected outcome on a repeat call. Anything else means
+  // the account exists but cannot open the portal, so it is a failure of this
+  // function rather than a line in a log: reporting success here sends somebody
+  // a set-password email for an account that lands on "No Driver Access".
   if (roleErr && !String(roleErr.message).includes("duplicate key")) {
     console.error("[driver-account] role grant failed", roleErr.message);
+    throw new Error(`Driver role could not be granted: ${roleErr.message}`);
   }
 
   // Link the application to the account. Without this the portal has nothing
@@ -106,14 +193,19 @@ export async function provisionDriverAccount(
     .from("applications")
     .update({ user_id: userId })
     .eq("id", args.applicationId);
-  if (linkErr) console.error("[driver-account] application link failed", linkErr.message);
+  // Same reasoning: without the link the portal has no application to read, so
+  // the driver signs in to an empty shell. Fail loudly instead.
+  if (linkErr) {
+    console.error("[driver-account] application link failed", linkErr.message);
+    throw new Error(`Application could not be linked to the login: ${linkErr.message}`);
+  }
 
   let inviteUrl: string | null = null;
   if (created) {
     try {
       const { data: link } = await admin.auth.admin.generateLink({
         type: "recovery",
-        email: args.email,
+        email: target,
       });
       inviteUrl = (link?.properties?.action_link as string) ?? null;
     } catch (e) {
@@ -123,5 +215,5 @@ export async function provisionDriverAccount(
     }
   }
 
-  return { userId, created, inviteUrl };
+  return { userId, conflict: false, created, inviteUrl };
 }

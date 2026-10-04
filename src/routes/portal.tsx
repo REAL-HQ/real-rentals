@@ -82,8 +82,13 @@ type Tab = (typeof TABS)[number]["id"];
  * An approved applicant has an account from the moment we approve them, which
  * is well before they have a car. Showing them a Deposit tab reading $0 and a
  * Maintenance tab listing nothing is worse than not showing it: it reads like
- * something is broken. They see the three that are genuinely theirs now —
- * Dashboard, Documents, Settings — and the rest appear with the vehicle.
+ * something is broken.
+ *
+ * What is left — Dashboard, Documents, Payments, Report Issue, Referrals,
+ * Settings — all render truthfully with no rental: Payments shows outstanding
+ * tolls and citations from any earlier rental and nothing at all otherwise,
+ * Report Issue files against a null rental by design, and Referrals needs no
+ * vehicle. The four below are the ones that cannot mean anything yet.
  */
 const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
 
@@ -533,7 +538,22 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {field("full_name", "Full name")}
         {field("phone", "Phone", "tel")}
-        <div className="sm:col-span-2">{field("email", "Email", "email")}</div>
+        {/* Read-only. The address is the account identity and the one every
+            agreement, receipt and password reset goes to, so it changes through
+            the request box below rather than in place. */}
+        <div className="sm:col-span-2">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Email
+            </span>
+            <div className="mt-1 w-full rounded-lg bg-soft px-4 py-2.5 text-sm text-muted-foreground">
+              {f.email || "—"}
+            </div>
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Ask us below to change this — it's how you sign in.
+            </span>
+          </label>
+        </div>
         <div className="sm:col-span-2">{field("address", "Street address")}</div>
         {field("city", "City")}
         <div className="grid grid-cols-2 gap-3">
@@ -1255,16 +1275,31 @@ function ReferralsView() {
  * It deliberately claims nothing about where they are in the queue or how long
  * a vehicle will take. We would be making that up.
  */
-function PreRentalPanel({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+function PreRentalPanel({
+  onNavigate,
+  status,
+}: {
+  onNavigate: (t: Tab) => void;
+  status: string | null;
+}) {
+  // Having no active rental is not the same as being approved. Nothing revokes
+  // the driver role when an application is rejected or a rental ends, so this
+  // panel is reached in those states too — and telling somebody who was turned
+  // down that they are approved and we are lining up their vehicle is a lie
+  // the old copy did not tell.
+  const approved = status === "approved" || status === "active";
   return (
     <div className="rounded-2xl border border-border bg-white p-6 md:p-8">
       <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">
-        You're Approved
+        {approved ? "You're Approved" : "Your Application"}
       </div>
-      <h2 className="mt-3 text-2xl font-semibold">Let's Get You On The Road.</h2>
+      <h2 className="mt-3 text-2xl font-semibold">
+        {approved ? "Let's Get You On The Road." : "Everything In One Place."}
+      </h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-xl">
-        Two things to finish while we line up your vehicle. We'll email you as soon as one is
-        assigned, and it'll appear here.
+        {approved
+          ? "Two things to finish while we line up your vehicle. We'll email you as soon as one is assigned, and it'll appear here."
+          : "Your documents and details are here whenever you need them. Our team will be in touch about next steps."}
       </p>
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1334,7 +1369,7 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} />
+        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">

@@ -1020,7 +1020,7 @@ export const approveApplication = createServerFn({ method: "POST" })
        * emailed a set-password link; "existing" means they already had one.
        * "failed" is reported rather than thrown — see below.
        */
-      portalAccount: "created" | "existing" | "failed" | "no email";
+      portalAccount: "created" | "existing" | "failed" | "conflict" | "no email";
       error?: string;
     }> => {
       // Manager, not staff. A Coordinator may read and work an application —
@@ -1078,7 +1078,7 @@ export const approveApplication = createServerFn({ method: "POST" })
        * is reported instead, and activateRental provisions again anyway, so a
        * failure here self-repairs at the next step.
        */
-      let portalAccount: "created" | "existing" | "failed" | "no email" = "no email";
+      let portalAccount: "created" | "existing" | "failed" | "conflict" | "no email" = "no email";
       let inviteUrl: string | null = null;
       if (app.email) {
         try {
@@ -1088,7 +1088,7 @@ export const approveApplication = createServerFn({ method: "POST" })
             email: app.email as string,
             fullName: (app.full_name as string | null) ?? null,
           });
-          portalAccount = account.created ? "created" : "existing";
+          portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
           inviteUrl = account.inviteUrl;
         } catch (e) {
           console.error("[approve] driver account provisioning failed", e);
@@ -1113,6 +1113,26 @@ export const approveApplication = createServerFn({ method: "POST" })
         } catch (e) {
           console.error("[approve] portal invite email failed", e);
         }
+      }
+
+      /*
+       * A conflicted identity does not get a contract.
+       *
+       * The approval itself stands — it is written and audited above, and it
+       * was a legitimate decision. But issuing the agreement now would put a
+       * signable contract on an application whose portal is reachable by the
+       * wrong account, and signMyAgreement derives ownership from exactly that
+       * link. Staff resolve the identity, then approve again; this function is
+       * safe to re-run and will send the agreement once the conflict is gone.
+       */
+      if (portalAccount === "conflict") {
+        return {
+          ok: true,
+          agreementSent: false,
+          agreementSkippedReason:
+            "the portal login for this application is in conflict — resolve it, then approve again",
+          portalAccount,
+        };
       }
 
       if (data.sendAgreement === false) {

@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type DriverDashboard = {
+  /** The newest linked application's status, or null if there is none. */
+  applicationStatus: string | null;
   rental: {
     id: string;
     weekly_rate: number;
@@ -150,7 +152,19 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       weeks = Math.max(0, Math.floor((Date.now() - start) / (7 * 24 * 60 * 60 * 1000)));
     }
 
+    // The pre-rental panel cannot tell an approved applicant from a rejected
+    // one without this, and guessing "approved" from the absence of a rental
+    // tells a rejected person they are approved.
+    const { data: statusRow } = await supabase
+      .from("applications")
+      .select("status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     return {
+      applicationStatus: (statusRow?.status as string | null) ?? null,
       rental: rental
         ? {
             id: rental.id,
@@ -357,7 +371,6 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
     (d: {
       full_name?: string;
       phone?: string;
-      email?: string;
       address?: string;
       city?: string;
       state?: string;
@@ -374,12 +387,22 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
         if (phone.replace(/\D/g, "").length < 10) throw new Error("Enter a valid phone number.");
         out.phone = phone.slice(0, 40);
       }
-      const email = (d?.email ?? "").trim().toLowerCase();
-      if (email) {
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
-          throw new Error("Enter a valid email address.");
-        out.email = email;
-      }
+      /*
+       * Email is deliberately NOT self-editable, and is dropped rather than
+       * rejected so an older client posting it still saves the rest.
+       *
+       * applications.email is now load-bearing for identity: approval resolves
+       * the driver's login from it. A driver who could change it to somebody
+       * else's address could, at the next approval, point their application at
+       * that person's account — or cause a "you're approved, set your
+       * password" email to be sent to a stranger for an application they never
+       * filed. provisionDriverAccount refuses the relink, but the right place
+       * to stop this is before the value moves at all.
+       *
+       * It is also the address every agreement, receipt and reset goes to.
+       * Settings already has a staff-mediated request box for exactly this
+       * kind of change.
+       */
       for (const k of ["address", "city", "state", "zip"] as const) {
         const v = (d?.[k] ?? "").trim();
         if (v) out[k] = v.slice(0, 200);
@@ -411,11 +434,31 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
       patch.sms_opt_out_at = null;
     }
 
-    const { error } = await supabase
+    /*
+     * Written with the service role, deliberately.
+     *
+     * The only UPDATE policy on public.applications is private.is_staff(), so
+     * this same statement through the caller's own session matches zero rows,
+     * returns no error, and reports success — the driver sees "Details
+     * updated" and nothing is saved. (Confirmed against every policy in the
+     * migration history.)
+     *
+     * Ownership is established above by reading the application through the
+     * caller's RLS session, so the id below is one this user provably owns,
+     * and `patch` is built from a closed allow-list in the validator — name,
+     * phone, address, city, state, zip. Not email, not status, not user_id.
+     *
+     * .select() so a write that matches nothing is reported as a failure
+     * rather than silently claimed.
+     */
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: updated, error } = await supabaseAdmin
       .from("applications")
       .update(patch as any)
-      .eq("id", app.id);
+      .eq("id", app.id)
+      .select("id");
     if (error) return { error: error.message };
+    if (!updated || updated.length === 0) return { error: "Could not save your details." };
     return { ok: true };
   });
 
