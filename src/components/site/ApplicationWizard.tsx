@@ -1005,7 +1005,7 @@ function ApplicationReceived({
   const chips = [
     state.city ? { icon: <MapPin className="h-3.5 w-3.5" />, label: state.city } : null,
     state.vehicle_size
-      ? { icon: <Car className="h-3.5 w-3.5" />, label: state.vehicle_size }
+      ? { icon: <Car className="h-3.5 w-3.5" />, label: state.vehicle_size === "XL" ? "Minivan" : state.vehicle_size }
       : null,
     state.pickup_date
       ? { icon: <CalendarCheck className="h-3.5 w-3.5" />, label: fmtDate(state.pickup_date) }
