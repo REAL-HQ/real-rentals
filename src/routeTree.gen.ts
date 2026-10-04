@@ -13,10 +13,12 @@ import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PartnersRouteImport } from './routes/partners'
 import { Route as PartnerRouteImport } from './routes/partner'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as InviteRouteImport } from './routes/invite'
 import { Route as InvestorsRouteImport } from './routes/investors'
 import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
@@ -58,6 +60,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -76,6 +83,11 @@ const PartnersRoute = PartnersRouteImport.update({
 const PartnerRoute = PartnerRouteImport.update({
   id: '/partner',
   path: '/partner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InviteRoute = InviteRouteImport.update({
@@ -194,10 +206,12 @@ export interface FileRoutesByFullPath {
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
   '/invite': typeof InviteRoute
+  '/login': typeof LoginRoute
   '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
@@ -224,10 +238,12 @@ export interface FileRoutesByTo {
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
   '/invite': typeof InviteRoute
+  '/login': typeof LoginRoute
   '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
@@ -255,10 +271,12 @@ export interface FileRoutesById {
   '/investor-faq': typeof InvestorFaqRoute
   '/investors': typeof InvestorsRoute
   '/invite': typeof InviteRoute
+  '/login': typeof LoginRoute
   '/partner': typeof PartnerRoute
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
@@ -287,10 +305,12 @@ export interface FileRouteTypes {
     | '/investor-faq'
     | '/investors'
     | '/invite'
+    | '/login'
     | '/partner'
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
@@ -317,10 +337,12 @@ export interface FileRouteTypes {
     | '/investor-faq'
     | '/investors'
     | '/invite'
+    | '/login'
     | '/partner'
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
@@ -347,10 +369,12 @@ export interface FileRouteTypes {
     | '/investor-faq'
     | '/investors'
     | '/invite'
+    | '/login'
     | '/partner'
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
     | '/terms'
@@ -378,10 +402,12 @@ export interface RootRouteChildren {
   InvestorFaqRoute: typeof InvestorFaqRoute
   InvestorsRoute: typeof InvestorsRoute
   InviteRoute: typeof InviteRoute
+  LoginRoute: typeof LoginRoute
   PartnerRoute: typeof PartnerRoute
   PartnersRoute: typeof PartnersRoute
   PortalRoute: typeof PortalRoute
   PrivacyRoute: typeof PrivacyRoute
+  SetPasswordRoute: typeof SetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
@@ -428,6 +454,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
@@ -454,6 +487,13 @@ declare module '@tanstack/react-router' {
       path: '/partner'
       fullPath: '/partner'
       preLoaderRoute: typeof PartnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite': {
@@ -610,10 +650,12 @@ const rootRouteChildren: RootRouteChildren = {
   InvestorFaqRoute: InvestorFaqRoute,
   InvestorsRoute: InvestorsRoute,
   InviteRoute: InviteRoute,
+  LoginRoute: LoginRoute,
   PartnerRoute: PartnerRoute,
   PartnersRoute: PartnersRoute,
   PortalRoute: PortalRoute,
   PrivacyRoute: PrivacyRoute,
+  SetPasswordRoute: SetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,

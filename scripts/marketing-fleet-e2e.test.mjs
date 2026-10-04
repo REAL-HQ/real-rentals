@@ -189,7 +189,14 @@ console.log("\n── a catalog card's category reaches the application");
   });
   await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
-  await page.locator("a.car-card").nth(2).locator("button:has-text('Check Availability')").click();
+  // Selected by the category it links to, not by position. The catalog is
+  // meant to change size — it already went from six cards to three — and an
+  // index silently starts testing a different card when it does.
+  await page
+    .locator('a.car-card[href="/fleet?type=suv"]')
+    .first()
+    .locator("button:has-text('Check Availability')")
+    .click();
   await page.waitForTimeout(3000);
   ok(/\/apply\?vehicle_type=suv$/.test(page.url()),
      `the CTA carries a category, never a vehicle id (${page.url()})`);

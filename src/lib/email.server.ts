@@ -528,6 +528,50 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
 
 type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
 
+/**
+ * "You're approved — set up your portal."
+ *
+ * Sent once, on the approval that creates the account. A returning driver
+ * never gets it: they already have a password, and a second set-password link
+ * in their inbox is how somebody ends up resetting an account they were
+ * already signed into.
+ *
+ * inviteUrl is a one-time Supabase recovery link. When it could not be minted
+ * the mail still goes out pointing at the portal, where Forgot Password gets
+ * them the same place.
+ */
+export async function sendPortalInviteEmail(args: {
+  to: string;
+  firstName: string | null;
+  inviteUrl: string | null;
+}): Promise<void> {
+  const name = args.firstName || "there";
+  const site = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
+  const url = args.inviteUrl || `${site}/login`;
+  await sendEmail({
+    to: args.to,
+    subject: "You're approved — set up your driver portal",
+    html: `
+      <p>Hi ${name},</p>
+      <p>Good news — you're approved. Your driver portal is ready, and it is where
+         you finish everything before you pick up a vehicle.</p>
+      <p style="margin:26px 0">
+        <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
+          ${args.inviteUrl ? "Set Your Password" : "Open Your Portal"}
+        </a>
+      </p>
+      <p>Once you're in you can:</p>
+      <ul>
+        <li>upload or replace your licence, insurance and other documents</li>
+        <li>keep your contact details up to date</li>
+        <li>read and sign your rental agreement</li>
+      </ul>
+      <p>We'll let you know as soon as a vehicle is assigned to you.</p>
+      <p>— REAL RENTALS</p>
+    `,
+  });
+}
+
 export async function sendAgreementEmail(args: AgreementSendArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const vehicleLine = args.vehicle

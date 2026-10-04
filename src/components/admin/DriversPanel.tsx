@@ -1079,10 +1079,23 @@ function DriverDetail({
     try {
       const res = await approve({ data: { id: driver.id } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
+      // Say what happened to the portal login too. Approval now creates the
+      // driver's account, and whether they were emailed a set-password link is
+      // the first thing anybody asks when the applicant says they can't get in.
+      const portal =
+        res.portalAccount === "created"
+          ? " Portal invite emailed."
+          : res.portalAccount === "existing"
+            ? " They already have a portal login."
+            : res.portalAccount === "failed"
+              ? " Portal login could not be created — it will retry on activation."
+              : "";
       if (res.agreementSent) {
-        toast.success("Approved — rental agreement sent for signature");
+        toast.success(`Approved — rental agreement sent for signature.${portal}`);
       } else {
-        toast.success(`Approved. Agreement not sent: ${res.agreementSkippedReason ?? "unknown"}`);
+        toast.success(
+          `Approved. Agreement not sent: ${res.agreementSkippedReason ?? "unknown"}.${portal}`,
+        );
       }
       onUpdate({ status: "approved" });
     } catch (e) {

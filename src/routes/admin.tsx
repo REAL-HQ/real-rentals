@@ -821,6 +821,7 @@ function SignIn() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -839,6 +840,22 @@ function SignIn() {
     if (error) return setErr(error.message);
     if (mode === "signup")
       toast.success("Account created. Check your email if confirmation is required, then sign in.");
+  }
+
+  // The app had no password recovery at all. Staff lose passwords like
+  // everybody else, and without this the only fix was somebody with service
+  // role access doing it by hand.
+  async function sendReset() {
+    if (!email.trim()) return setErr("Enter your email first.");
+    setErr(null);
+    setLoading(true);
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/set-password`,
+    });
+    setLoading(false);
+    // Same answer whether or not the address exists — this box must not
+    // confirm who has a back-office account.
+    setResetSent(true);
   }
 
   return (
@@ -900,6 +917,21 @@ function SignIn() {
               {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
             </button>
           </form>
+          {mode === "signin" &&
+            (resetSent ? (
+              <p className="mt-4 text-xs text-muted-foreground">
+                If that address has an account, a reset link is on its way.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={sendReset}
+                disabled={loading}
+                className="mt-4 text-xs text-real-red hover:underline font-medium disabled:opacity-50"
+              >
+                Forgot your password?
+              </button>
+            ))}
           <p className="mt-4 text-xs text-muted-foreground">
             {mode === "signin" ? "Need An Account? " : "Already Have An Account? "}
             <button

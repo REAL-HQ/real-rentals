@@ -76,6 +76,17 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
+/**
+ * Tabs that only make sense once a vehicle is actually assigned.
+ *
+ * An approved applicant has an account from the moment we approve them, which
+ * is well before they have a car. Showing them a Deposit tab reading $0 and a
+ * Maintenance tab listing nothing is worse than not showing it: it reads like
+ * something is broken. They see the three that are genuinely theirs now —
+ * Dashboard, Documents, Settings — and the rest appear with the vehicle.
+ */
+const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
+
 function Portal() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
@@ -105,6 +116,26 @@ function Portal() {
       .then(({ data }) => setIsDriver(!!data));
   }, [session]);
 
+  // Shares PortalBody's query key, so this costs no extra request — it only
+  // lets the shell know whether there is a rental before it draws the nav.
+  const fetchDashboard = useServerFn(getDriverDashboard);
+  const { data: dash } = useQuery({
+    queryKey: ["driver-dashboard"],
+    queryFn: () => fetchDashboard(),
+    enabled: isDriver,
+  });
+  const hasRental = Boolean(dash?.rental);
+  const visibleTabs = useMemo(
+    () => TABS.filter((t) => hasRental || !RENTAL_TABS.has(t.id)),
+    [hasRental],
+  );
+
+  // A rental ending while someone is sitting on My Vehicle must not leave them
+  // staring at a tab that is no longer in the nav.
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === tab)) setTab("dashboard");
+  }, [visibleTabs, tab]);
+
   if (checking) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -123,8 +154,8 @@ function Portal() {
             Please sign in to access your driver portal.
           </p>
           <Link
-            to="/admin"
-            className="mt-6 inline-flex rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
+            to="/login"
+            className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
           >
             Sign In
           </Link>
@@ -139,10 +170,26 @@ function Portal() {
         <div className="container-real py-32 text-center max-w-lg">
           <h1 className="text-2xl font-semibold">No Driver Access</h1>
           <p className="mt-3 text-muted-foreground text-sm">
-            This account isn't linked to an active rental yet.
+            This account isn't linked to an application yet. Your portal opens as soon as your
+            application is approved — we'll email you the moment it is.
           </p>
-          <p className="mt-2 text-muted-foreground text-sm">
-            Your account ID:
+          <div className="mt-6 flex flex-wrap gap-3 justify-center">
+            <Link
+              to="/apply"
+              className="inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
+            >
+              Start An Application
+            </Link>
+            <button
+              type="button"
+              onClick={() => supabase.auth.signOut()}
+              className="inline-flex min-h-11 items-center rounded-lg border border-border px-6 py-2.5 text-sm font-medium"
+            >
+              Sign Out
+            </button>
+          </div>
+          <p className="mt-6 text-xs text-muted-foreground">
+            Already approved and still seeing this? Send support your account ID:
             <br />
             <code className="text-xs">{session.user.id}</code>
           </p>
@@ -161,7 +208,7 @@ function Portal() {
             <Logo offset={false} />
           </div>
           <nav className="flex-1 px-3 py-4 space-y-1">
-            {TABS.map((t) => {
+            {visibleTabs.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
               return (
@@ -185,7 +232,7 @@ function Portal() {
           <Nav />
           <div className="md:hidden bg-[#0b0b0d] text-white">
             <div className="flex overflow-x-auto px-2 py-2 gap-1">
-              {TABS.map((t) => (
+              {visibleTabs.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
@@ -1197,6 +1244,64 @@ function ReferralsView() {
   );
 }
 
+/**
+ * What an approved applicant sees before a vehicle is assigned.
+ *
+ * This space used to read "No Active Rental" and stop there, which was both
+ * accurate and useless. The time between approval and pickup is when the two
+ * things that actually hold a rental up — documents and a signed agreement —
+ * need doing, so the panel points at them instead of reporting an absence.
+ *
+ * It deliberately claims nothing about where they are in the queue or how long
+ * a vehicle will take. We would be making that up.
+ */
+function PreRentalPanel({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-6 md:p-8">
+      <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">
+        You're Approved
+      </div>
+      <h2 className="mt-3 text-2xl font-semibold">Let's Get You On The Road.</h2>
+      <p className="mt-2 text-sm text-muted-foreground max-w-xl">
+        Two things to finish while we line up your vehicle. We'll email you as soon as one is
+        assigned, and it'll appear here.
+      </p>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          type="button"
+          onClick={() => onNavigate("documents")}
+          className="text-left rounded-xl border border-border p-5 hover:border-real-red/50 transition min-h-11"
+        >
+          <FileText className="w-5 h-5 text-real-red" strokeWidth={1.75} />
+          <div className="mt-3 font-semibold">Your Documents</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Upload or replace your licence and insurance, and read your rental agreement.
+          </div>
+          <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
+            Open Documents <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate("settings")}
+          className="text-left rounded-xl border border-border p-5 hover:border-real-red/50 transition min-h-11"
+        >
+          <SettingsIcon className="w-5 h-5 text-real-red" strokeWidth={1.75} />
+          <div className="mt-3 font-semibold">Your Details</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Check your phone, email and address are right — that's where we send everything.
+          </div>
+          <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
+            Open Settings <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1229,13 +1334,7 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <div className="rounded-2xl border border-border p-10 text-center">
-          <h2 className="text-lg font-semibold">No Active Rental</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Once your application is approved and a vehicle is assigned, your rental details show
-            here.
-          </p>
-        </div>
+        <PreRentalPanel onNavigate={onNavigate} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
