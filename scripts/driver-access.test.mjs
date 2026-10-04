@@ -349,5 +349,49 @@ ok(
   "there is no self-signup — an account comes from being approved",
 );
 
+/* --------------------------------------------- session isolation --------- */
+console.log("\nnothing cached survives a change of identity");
+
+const isolation = existsSync("src/lib/session-isolation.ts") ? read("src/lib/session-isolation.ts") : "";
+const root = read("src/routes/__root.tsx");
+ok(isolation.length > 0, "the isolation module exists");
+ok(
+  /useSessionIsolation\(queryClient\)/.test(root) &&
+    /from "@\/lib\/session-isolation"/.test(root),
+  "and is wired in at the root, above every route",
+);
+ok(
+  /queryClient\.clear\(\)/.test(isolation),
+  "an identity change empties the query cache",
+);
+ok(
+  /previous === undefined \|\| previous === userId/.test(isolation),
+  "keyed on the user id, so a token refresh does not throw away a working cache",
+);
+ok(
+  /if \(userId === null\) clearResumeToken\(\)/.test(isolation),
+  "the applicant resume token — a bearer credential — is cleared on the way out",
+);
+ok(
+  !/admin-sidebar-collapsed|rr_attribution/.test(isolation),
+  "harmless preferences are left alone",
+);
+
+/* ------------------------------------- account creation is not public ---- */
+console.log("\nno uncontrolled public account creation");
+
+const adminSrc = read("src/routes/admin.tsx");
+ok(!/auth\.signUp/.test(adminSrc), "the back-office form offers no Create Account");
+ok(/signInWithPassword/.test(adminSrc), "but still signs people in");
+ok(/resetPasswordForEmail/.test(adminSrc), "and still resets passwords");
+ok(
+  /auth\.signUp/.test(read("src/routes/invite.tsx")),
+  "team members still create their account from an invitation",
+);
+ok(
+  /auth\.signUp/.test(read("src/routes/partner.tsx")),
+  "partner onboarding keeps its sign-up — staff link the partner record afterwards",
+);
+
 console.log(`\n${fail === 0 ? "PASS" : `FAIL — ${fail} assertion(s)`}`);
 process.exit(fail === 0 ? 0 : 1);

@@ -17,7 +17,8 @@
     "test:nav": "node scripts/admin-navigation.test.mjs",
     "test:fleet": "node scripts/marketing-fleet.test.mjs",
     "test:fleet-e2e": "node scripts/marketing-fleet-e2e.test.mjs",
-    "test:driver": "node scripts/driver-access.test.mjs"
+    "test:driver": "node scripts/driver-access.test.mjs",
+    "test:session": "node scripts/session-isolation.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

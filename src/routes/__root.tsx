@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSessionIsolation } from "@/lib/session-isolation";
 import {
   Outlet,
   Link,
@@ -164,6 +165,10 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Nothing cached for one signed-in person survives into the next one's
+  // session on this browser. See session-isolation.ts.
+  useSessionIsolation(queryClient);
 
   // Capture gclid / utm_* / landing_page / referrer on first client render so
   // they survive navigation through the marketing site into /apply and the
