@@ -814,31 +814,53 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Back-office sign-in. Sign-in only.
+ *
+ * This used to offer a public "Create Account" toggle, which let anyone mint
+ * an auth account for any address. The account itself was inert — no trigger
+ * grants a role, and NoAccess below is what an unroled account sees — but it
+ * was still an uncontrolled way to occupy an email address, and it fed the
+ * squat against driver provisioning: register with a pending applicant's
+ * address, and approval would resolve their identity to your account.
+ * provisionDriverAccount refuses that now; this removes the surface as well.
+ *
+ * Nothing legitimate depended on it. A new teammate gets an invitation and
+ * creates their account at /invite, which is bound to the invited address.
+ * A partner signs up at /partner, which is a deliberate step of that
+ * onboarding handshake. A driver's account is made for them at approval.
+ */
 function SignIn() {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
-    const fn =
-      mode === "signin"
-        ? supabase.auth.signInWithPassword({ email, password: pw })
-        : supabase.auth.signUp({
-            email,
-            password: pw,
-            options: { emailRedirectTo: `${window.location.origin}/admin` },
-          });
-    const { error } = await fn;
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
     setLoading(false);
     if (error) return setErr(error.message);
-    if (mode === "signup")
-      toast.success("Account created. Check your email if confirmation is required, then sign in.");
+  }
+
+  // The app had no password recovery at all. Staff lose passwords like
+  // everybody else, and without this the only fix was somebody with service
+  // role access doing it by hand.
+  async function sendReset() {
+    if (!email.trim()) return setErr("Enter your email first.");
+    setErr(null);
+    setLoading(true);
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/set-password`,
+    });
+    setLoading(false);
+    // Same answer whether or not the address exists — this box must not
+    // confirm who has a back-office account.
+    setResetSent(true);
   }
 
   return (
@@ -858,9 +880,7 @@ function SignIn() {
           <div className="lg:hidden mb-8 flex justify-center">
             <Logo offset={false} />
           </div>
-          <h1 className="text-3xl font-semibold">
-            {mode === "signin" ? "Welcome Back" : "Create Account"}
-          </h1>
+          <h1 className="text-3xl font-semibold">Welcome Back</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Restricted To Authorized Team Members.
           </p>
@@ -897,18 +917,26 @@ function SignIn() {
               disabled={loading}
               className="w-full rounded-lg bg-real-red text-white py-3 text-sm font-medium hover:bg-red-700 transition disabled:opacity-50"
             >
-              {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
+              {loading ? "…" : "Sign In"}
             </button>
           </form>
-          <p className="mt-4 text-xs text-muted-foreground">
-            {mode === "signin" ? "Need An Account? " : "Already Have An Account? "}
+          {resetSent ? (
+            <p className="mt-4 text-xs text-muted-foreground">
+              If that address has an account, a reset link is on its way.
+            </p>
+          ) : (
             <button
               type="button"
-              onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-              className="text-real-red hover:underline font-medium"
+              onClick={sendReset}
+              disabled={loading}
+              className="mt-4 text-xs text-real-red hover:underline font-medium disabled:opacity-50"
             >
-              {mode === "signin" ? "Create Account" : "Sign In"}
+              Forgot your password?
             </button>
+          )}
+          {/* No Create Account. Team access arrives by invitation. */}
+          <p className="mt-4 text-xs text-muted-foreground">
+            Team members join by invitation. Ask an owner to send you one.
           </p>
         </div>
       </div>

@@ -34,7 +34,9 @@ export type ActivationBlocker = {
     | "no_passed_inspection"
     | "no_email"
     | "not_approved"
-    | "already_active";
+    | "already_active"
+    /** The application's login belongs to a different identity. Never overridable. */
+    | "account_conflict";
   message: string;
 };
 
@@ -198,41 +200,6 @@ export const getActivationReadiness = createServerFn({ method: "POST" })
     return evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId ?? undefined);
   });
 
-/**
- * Find this applicant's auth user, or create one.
- *
- * Matching is by email because an applicant may already have signed up (e.g.
- * they created a login to check their status). Creating a duplicate auth user
- * would orphan their existing documents, so we always look first.
- */
-async function ensureDriverAccount(
-  admin: any,
-  email: string,
-  fullName: string | null,
-): Promise<{ userId: string; created: boolean }> {
-  const target = email.trim().toLowerCase();
-
-  // listUsers is paginated and has no server-side email filter, so page until
-  // we find them. Small user base; bounded to avoid an unbounded loop.
-  for (let page = 1; page <= 20; page++) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw new Error(error.message);
-    const users = data?.users ?? [];
-    const hit = users.find((u: any) => String(u.email ?? "").toLowerCase() === target);
-    if (hit) return { userId: hit.id as string, created: false };
-    if (users.length < 200) break;
-  }
-
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email: target,
-    email_confirm: true,
-    user_metadata: { full_name: fullName ?? null },
-  });
-  if (createErr || !created?.user)
-    throw new Error(createErr?.message || "Could not create driver login");
-  return { userId: created.user.id as string, created: true };
-}
-
 export type ActivateResult = {
   ok: boolean;
   rentalId?: string;
@@ -271,6 +238,9 @@ export const activateRental = createServerFn({ method: "POST" })
     // Double-booking and missing-email are never overridable: the first would
     // hand one car to two drivers, the second cannot produce a working login.
     const hardBlockers = readiness.blockers.filter(
+      // account_conflict is not in this list on purpose: evaluateReadiness
+      // cannot know about it, so it is returned directly from the handler
+      // below rather than filtered out of a readiness result.
       (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active",
     );
     if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
@@ -286,26 +256,35 @@ export const activateRental = createServerFn({ method: "POST" })
     if (!app?.email)
       return { ok: false, blockers: [{ code: "no_email", message: "No email on file." }] };
 
-    // 1. Auth account
-    const { userId, created } = await ensureDriverAccount(
-      supabaseAdmin,
-      app.email as string,
-      (app.full_name as string | null) ?? null,
-    );
-
-    // 2. Driver role. Ignore a duplicate — the role may already be granted.
-    const { error: roleErr } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: userId, role: "driver" });
-    if (roleErr && !String(roleErr.message).includes("duplicate key")) {
-      console.error("[activate] role grant failed", roleErr.message);
+    // 1. Auth account, driver role, application link. Normally already done
+    //    at approval — this is the repair path for an application approved
+    //    before that existed, or one whose provisioning failed at the time.
+    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
+    const {
+      userId,
+      created,
+      inviteUrl: freshInviteUrl,
+      conflict,
+    } = await provisionDriverAccount(supabaseAdmin, {
+      applicationId: data.applicationId,
+      email: app.email as string,
+      fullName: (app.full_name as string | null) ?? null,
+    });
+    // Never overridable. Handing somebody a car under an application whose
+    // login belongs to a different person produces a rental the driver cannot
+    // see and a portal showing somebody else's paperwork.
+    if (conflict) {
+      return {
+        ok: false,
+        blockers: [
+          {
+            code: "account_conflict",
+            message:
+              "This application is linked to a login whose email no longer matches the one on file. Resolve the identity before activating.",
+          },
+        ],
+      };
     }
-
-    // 3. Link the application to the account so the portal can find it.
-    await supabaseAdmin
-      .from("applications")
-      .update({ user_id: userId })
-      .eq("id", data.applicationId);
 
     // 4. The rental itself.
     const { data: rental, error: rentalErr } = await supabaseAdmin
@@ -365,20 +344,11 @@ export const activateRental = createServerFn({ method: "POST" })
       .eq("application_id", data.applicationId)
       .is("rental_id", null);
 
-    // 7. Welcome the driver. A brand-new account gets a set-password link;
-    //    an existing one just gets the portal URL.
-    let inviteUrl: string | null = null;
-    if (created) {
-      try {
-        const { data: link } = await supabaseAdmin.auth.admin.generateLink({
-          type: "recovery",
-          email: app.email as string,
-        });
-        inviteUrl = (link?.properties?.action_link as string) ?? null;
-      } catch (e) {
-        console.error("[activate] invite link failed", e);
-      }
-    }
+    // 7. Welcome the driver. A brand-new account gets the set-password link
+    //    minted during provisioning; an existing one — which is now the normal
+    //    case, because approval already made the account — just gets the
+    //    portal URL, since they already have a password.
+    const inviteUrl = freshInviteUrl;
 
     const { data: vehicle } = await supabaseAdmin
       .from("vehicles")
