@@ -465,6 +465,13 @@ export const sendAgreement = createServerFn({ method: "POST" })
     });
   });
 
+/**
+ * Retry Delivery and Resend are the same operation, on purpose. Only a hash of
+ * the signing token is stored, so the current link can't be re-sent; every
+ * delivery retry rotates the token: the old link dies immediately, the new one
+ * becomes canonical on the same agreement row (no duplicate document), and the
+ * audit history is kept. The company signer snapshot is not touched.
+ */
 export const resendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
