@@ -62,14 +62,23 @@ export const getEmailDiagnostics = createServerFn({ method: "POST" })
     };
   });
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const sendTestAlert = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ ok: boolean; sentTo: string[]; error?: string }> => {
+  .inputValidator((d: { to?: string } | undefined) => d ?? {})
+  .handler(async ({ data, context }): Promise<{ ok: boolean; sentTo: string[]; error?: string; deliveryId?: string }> => {
     const actor = await requireOwner(context.userId);
     const { sendEmail, getLeadAlertPrefs } = await import("@/lib/email.server");
 
+    // A controlled recipient the Owner types in, or the configured alert list.
+    const override = (data?.to ?? "").trim().toLowerCase();
+    if (override && !EMAIL_RE.test(override)) {
+      return { ok: false, sentTo: [], error: "That doesn't look like a valid email address." };
+    }
     const prefs = await getLeadAlertPrefs();
-    if (!prefs.recipients.length) {
+    const recipients = override ? [override] : prefs.recipients;
+    if (!recipients.length) {
       return { ok: false, sentTo: [], error: "No recipient address is configured." };
     }
 
