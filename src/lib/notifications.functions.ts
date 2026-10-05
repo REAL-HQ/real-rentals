@@ -130,11 +130,15 @@ export const getEmailDeliveryStatus = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }): Promise<EmailDeliveryStatus | null> => {
     await requireOwner(context.userId);
-    const { data: row } = await context.supabase
+    // Caller is verified as Owner above; read with the server client so the
+    // status poll never silently returns nothing.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
       .from("email_deliveries")
       .select("state, provider_reason, accepted_at, delivered_at, bounced_at, complained_at, failed_at")
       .eq("id", data.id)
       .maybeSingle();
+    if (error) throw new Error(error.message);
     if (!row) return null;
     return {
       state: row.state as EmailDeliveryStatus["state"],

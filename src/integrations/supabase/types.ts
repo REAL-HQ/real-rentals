@@ -3862,6 +3862,20 @@ export type Database = {
         Returns: boolean
       }
       cars_available: { Args: never; Returns: number }
+      email_delivery_attach: {
+        Args: { _id: string; _resend_id: string }
+        Returns: undefined
+      }
+      email_delivery_event: {
+        Args: {
+          _reason: string
+          _recipient: string
+          _resend_id: string
+          _state: string
+        }
+        Returns: string
+      }
+      email_state_rank: { Args: { _s: string }; Returns: number }
       esign_claim: {
         Args: { _id: string; _token_hash: string }
         Returns: string

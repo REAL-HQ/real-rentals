@@ -203,7 +203,7 @@ function EmailDeliveryStatus() {
       } catch {
         /* keep polling; a transient read failure is not a delivery state */
       }
-      if (!cancelled && attempts < 15) timer = setTimeout(tick, 4000);
+      if (!cancelled && attempts < 30) timer = setTimeout(tick, 4000);
     };
     let timer = setTimeout(tick, 4000);
     return () => {

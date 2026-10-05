@@ -32,43 +32,56 @@ export type SendResult = { ok: boolean; error?: string; id?: string; deliveryId?
  * "accepted" here means the Resend API accepted the request — only the signed
  * webhook can move the row to delivered/bounced/complained.
  */
-async function recordEmailDelivery(
-  track: { workflow: string },
-  recipient: string,
-  result: { ok: boolean; error?: string; id?: string },
-): Promise<string | undefined> {
+// Create the tracking row BEFORE calling Resend, so a webhook can never race
+// ahead of persistence. The row starts as "sending" with no provider id.
+async function beginEmailDelivery(track: { workflow: string }, recipient: string): Promise<string | undefined> {
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const now = new Date().toISOString();
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("email_deliveries")
-      .insert({
-        workflow: track.workflow,
-        recipient,
-        resend_message_id: result.id ?? null,
-        state: result.ok ? "accepted" : "failed",
-        accepted_at: result.ok ? now : null,
-        failed_at: result.ok ? null : now,
-        provider_reason: result.ok ? null : (result.error ?? "").slice(0, 500),
-      })
+      .insert({ workflow: track.workflow, recipient, state: "sending" })
       .select("id")
       .single();
+    if (error) throw error;
     return data?.id;
   } catch (err) {
-    console.error("[email] could not record delivery", err);
+    console.error("[email] could not create delivery record", err);
     return undefined;
+  }
+}
+
+// Finish the row: attach the exact Resend email id (atomically folding in any
+// placeholder an early webhook created), or mark it failed.
+async function finishEmailDelivery(
+  deliveryId: string,
+  result: { ok: boolean; error?: string; id?: string },
+): Promise<void> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (result.ok && result.id) {
+      const { error } = await supabaseAdmin.rpc("email_delivery_attach", { _id: deliveryId, _resend_id: result.id });
+      if (error) throw error;
+    } else {
+      const now = new Date().toISOString();
+      await supabaseAdmin
+        .from("email_deliveries")
+        .update({
+          state: result.ok ? "accepted" : "failed",
+          accepted_at: result.ok ? now : null,
+          failed_at: result.ok ? null : now,
+          provider_reason: result.ok ? null : (result.error ?? "").slice(0, 500),
+          updated_at: now,
+        })
+        .eq("id", deliveryId);
+    }
+  } catch (err) {
+    console.error("[email] could not finish delivery record", err);
   }
 }
 
 /**
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
- *
- * The return value is new; every existing caller ignores it and keeps the
- * fire-and-forget behaviour it had. It exists so the settings screen can run a
- * test send and say what actually happened — before this, a missing API key
- * and a delivered email were indistinguishable from the outside, which is
- * exactly how alerts can look configured while silently going nowhere.
  */
 export async function sendEmail({ to, subject, html, from, replyTo, track }: SendArgs): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -77,6 +90,14 @@ export async function sendEmail({ to, subject, html, from, replyTo, track }: Sen
     return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
   const recipient = Array.isArray(to) ? (to[0] ?? "") : to;
+  const deliveryId = track ? await beginEmailDelivery(track, recipient) : undefined;
+  const done = async (result: SendResult): Promise<SendResult> => {
+    if (deliveryId) {
+      await finishEmailDelivery(deliveryId, result);
+      result.deliveryId = deliveryId;
+    }
+    return result;
+  };
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -95,15 +116,13 @@ export async function sendEmail({ to, subject, html, from, replyTo, track }: Sen
     if (!res.ok) {
       const body = await res.text();
       console.error(`[email] Resend send failed [${res.status}]`, body, { subject });
-      return { ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` };
+      return done({ ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` });
     }
     const json = (await res.json().catch(() => ({}))) as { id?: string };
-    const result: SendResult = { ok: true, id: json.id };
-    if (track) result.deliveryId = await recordEmailDelivery(track, recipient, result);
-    return result;
+    return done({ ok: true, id: json.id });
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
-    return { ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." };
+    return done({ ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." });
   }
 }
 
