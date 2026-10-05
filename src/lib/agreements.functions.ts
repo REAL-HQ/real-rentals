@@ -24,18 +24,18 @@ export type AgreementRow = {
   signer_email: string | null;
   created_at: string;
   document_id: string | null;
+  archive_status: string;
+  archive_error: string | null;
+  sha256: string | null;
 };
 
 const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
 
-async function assertAdmin(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (!data) throw new Error("Forbidden");
+type Tier = "owner" | "manager" | "coordinator";
+/** Server-side tier check (Owner > Manager > Coordinator). */
+async function requireTierFor(userId: string, t: Tier) {
+  const m = await import("@/lib/roles.server");
+  return m.requireTier(userId, t);
 }
 
 function randomToken(): string {
@@ -43,6 +43,8 @@ function randomToken(): string {
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
+// Generic engine helpers live in esign.server.ts; these two stay inline
+// because this module is client-reachable and must not import it statically.
 
 async function hashToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
@@ -215,7 +217,8 @@ async function activeTemplateBody(admin: any): Promise<{ id: string | null; body
 export const getAgreementTemplate = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const t = await activeTemplateBody(supabaseAdmin);
     return t;
@@ -225,7 +228,8 @@ export const saveAgreementTemplate = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ body: z.string().min(50).max(60000) }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "owner");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin
       .from("agreement_templates")
@@ -237,6 +241,8 @@ export const saveAgreementTemplate = createServerFn({ method: "POST" })
       .select("id,body")
       .single();
     if (error) throw new Error(error.message);
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, { action: "template.updated", summary: "Rental agreement template updated", entityType: "agreement_template", entityId: row.id as string });
     return row;
   });
 
@@ -244,12 +250,13 @@ export const listAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<AgreementRow[]> => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "coordinator");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id",
+        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256",
       )
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
@@ -260,7 +267,8 @@ export const previewAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: merge, app, blockers } = await buildMergeData(supabaseAdmin, data.applicationId);
     const tpl = await activeTemplateBody(supabaseAdmin);
@@ -325,9 +333,14 @@ export async function issueAgreement(
   const tokenHash = await hashToken(token);
   const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
 
+  const { getCompanySigner } = await import("@/lib/esign.server");
+  const company = await getCompanySigner(admin);
   const { data: row, error } = await admin
     .from("agreements")
     .insert({
+      source: "rental",
+      company_signer_name: company.name,
+      company_signer_title: company.title,
       application_id: applicationId,
       vehicle_id: app.vehicle_id ?? null,
       template_id: tpl.id,
@@ -343,6 +356,24 @@ export async function issueAgreement(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+
+  await admin.from("esign_recipients").insert({
+    document_id: row.id,
+    name: (app.full_name as string | null) ?? null,
+    email: app.email,
+    phone: (app.phone as string | null) ?? null,
+    role: "signer",
+    status: "sent",
+    sent_at: new Date().toISOString(),
+    token_hash: tokenHash,
+    token_expires_at: expires,
+  });
+  {
+    const { logAudit } = await import("@/lib/audit.server");
+    const actor = opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null;
+    await logAudit(actor, { action: "document.created", summary: "Rental agreement created", entityType: "esign_document", entityId: row.id as string });
+    await logAudit(actor, { action: "document.sent", summary: "Rental agreement sent for signature", entityType: "esign_document", entityId: row.id as string });
+  }
 
   const url = `${SITE_URL()}/sign/${token}`;
   try {
@@ -402,7 +433,8 @@ export const sendAgreement = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     return issueAgreement(supabaseAdmin, data.applicationId, {
       body: data.body,
@@ -414,7 +446,8 @@ export const resendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: ag } = await supabaseAdmin
       .from("agreements")
@@ -427,15 +460,23 @@ export const resendAgreement = createServerFn({ method: "POST" })
 
     const token = randomToken();
     const tokenHash = await hashToken(token);
-    await supabaseAdmin
+    const exp = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    // Conditional: never resurrect a signing/signed/voided document. The new
+    // hash replaces the old one, so the prior link stops working.
+    const { data: upd } = await supabaseAdmin
       .from("agreements")
-      .update({
-        token_hash: tokenHash,
-        token_expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-        sent_at: new Date().toISOString(),
-        status: "sent",
-      })
-      .eq("id", ag.id);
+      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
+      .eq("id", ag.id)
+      .in("status", ["draft", "sent", "viewed"])
+      .select("id");
+    if (!upd?.length) throw new Error("This agreement can no longer be sent");
+    await supabaseAdmin
+      .from("esign_recipients")
+      .update({ token_hash: tokenHash, token_expires_at: exp, sent_at: new Date().toISOString(), status: "sent" })
+      .eq("document_id", ag.id)
+      .eq("role", "signer");
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, { action: "document.resent", summary: "Signing link reissued", entityType: "esign_document", entityId: ag.id as string });
 
     const url = `${SITE_URL()}/sign/${token}`;
     const merge = (ag.merge_data ?? {}) as MergeData;
@@ -459,15 +500,52 @@ export const voidAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
+    const actor = await requireTierFor(context.userId, "manager");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("agreements")
-      .update({ status: "voided", voided_at: new Date().toISOString(), token_hash: null })
-      .eq("id", data.agreementId)
-      .neq("status", "signed");
-    if (error) throw new Error(error.message);
+    const { voidDocument } = await import("@/lib/esign.server");
+    const res = await voidDocument(supabaseAdmin, data.agreementId, actor);
+    if (res === "signed" || res === "signing")
+      throw new Error("This agreement has already been signed and cannot be voided");
+    if (res === "invalid") throw new Error("Agreement not found");
     return { ok: true };
+  });
+
+export const retryAgreementArchive = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireTierFor(context.userId, "manager");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { retryArchive } = await import("@/lib/esign.server");
+    const ok = await retryArchive(supabaseAdmin, data.agreementId, actor);
+    if (!ok) throw new Error("Archiving failed again. The error is recorded on the agreement.");
+    return { ok: true };
+  });
+
+/** Short-lived download link for the completed PDF. Staff, or the renter it belongs to. */
+export const getAgreementPdfUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    // RLS decides: staff policy or the driver-owns-application policy.
+    const { data: ag } = await context.supabase
+      .from("agreements")
+      .select("id,status,document_id")
+      .eq("id", data.agreementId)
+      .maybeSingle();
+    if (!ag || ag.status !== "signed" || !ag.document_id) throw new Error("No completed document yet");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: doc } = await supabaseAdmin
+      .from("documents")
+      .select("storage_bucket,storage_path")
+      .eq("id", ag.document_id)
+      .maybeSingle();
+    if (!doc) throw new Error("Document not found");
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from(doc.storage_bucket as string)
+      .createSignedUrl(doc.storage_path as string, 300);
+    if (error || !signed) throw new Error("Could not create download link");
+    return { url: signed.signedUrl };
   });
 
 // ------------------------------------------------------------- public signing
@@ -481,6 +559,7 @@ export type SigningView = {
   signed_at: string | null;
   driver_name: string | null;
   company_signer_name: string;
+  expired?: boolean;
 } | null;
 
 export const getAgreementByToken = createServerFn({ method: "POST" })
@@ -496,59 +575,74 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) return null;
-    if (
-      ag.token_expires_at &&
-      new Date(ag.token_expires_at as string).getTime() < Date.now() &&
-      ag.status !== "signed"
-    ) {
-      return null;
-    }
-    if (ag.status === "sent" && !ag.viewed_at) {
-      await supabaseAdmin
-        .from("agreements")
-        .update({ status: "viewed", viewed_at: new Date().toISOString() })
-        .eq("id", ag.id);
-    }
     const merge = (ag.merge_data ?? {}) as MergeData;
-    return {
+    const base = {
       id: ag.id as string,
       title: ag.title as string,
-      body: ag.body as string,
-      status: ag.status === "sent" ? "viewed" : (ag.status as string),
+      body: "",
+      status: ag.status as string,
       signer_name: ag.signer_name as string | null,
       signed_at: ag.signed_at as string | null,
       driver_name: merge.driver_name ?? null,
       company_signer_name: ag.company_signer_name as string,
     };
+    if (ag.status === "voided") return null;
+    if (ag.token_expires_at && new Date(ag.token_expires_at as string).getTime() < Date.now()) {
+      return { ...base, expired: true };
+    }
+    if (ag.status === "sent" && !ag.viewed_at) {
+      const now = new Date().toISOString();
+      const { data: upd } = await supabaseAdmin
+        .from("agreements")
+        .update({ status: "viewed", viewed_at: now })
+        .eq("id", ag.id)
+        .eq("status", "sent")
+        .select("id");
+      if (upd?.length) {
+        await supabaseAdmin.from("esign_recipients").update({ status: "viewed", viewed_at: now }).eq("document_id", ag.id).eq("role", "signer");
+        const { logAudit } = await import("@/lib/audit.server");
+        await logAudit(null, { action: "document.viewed", summary: "Signer opened the document", entityType: "esign_document", entityId: ag.id as string });
+      }
+    }
+    return {
+      ...base,
+      body: ag.body as string,
+      status: ag.status === "sent" ? "viewed" : (ag.status as string),
+    };
   });
 
-function signedHtml(args: {
-  title: string;
-  body: string;
-  signerName: string;
-  signedAt: string;
-  companySigner: string;
-  ip: string | null;
-  agent: string | null;
-  id: string;
-}): string {
-  const esc = (v: unknown) =>
-    String(v ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(args.title)}</title>
-<style>body{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:820px;margin:40px auto;padding:0 24px;color:#111;line-height:1.6}
-pre{white-space:pre-wrap;font-family:inherit;font-size:14px}
-.sig{margin-top:32px;border-top:2px solid #111;padding-top:18px;font-size:13px}
-.meta{margin-top:22px;color:#777;font-size:11px}</style></head>
-<body><pre>${esc(args.body)}</pre>
-<div class="sig">
-<p><strong>Renter signature:</strong> /s/ ${esc(args.signerName)}<br>Signed electronically on ${esc(args.signedAt)}</p>
-<p><strong>Company signature:</strong> /s/ ${esc(args.companySigner)}</p>
-</div>
-<div class="meta">Agreement ID ${esc(args.id)} · IP ${esc(args.ip ?? "n/a")} · ${esc(args.agent ?? "n/a")}</div>
-</body></html>`;
+async function sendSignedEmails(admin: any, id: string, signerName: string) {
+  const { data: ag } = await admin
+    .from("agreements")
+    .select("application_id,signer_email,merge_data")
+    .eq("id", id)
+    .maybeSingle();
+  if (!ag) return;
+  const merge = (ag.merge_data ?? {}) as MergeData;
+  try {
+    const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
+    if (ag.signer_email) {
+      await sendAgreementSignedEmail({
+        to: ag.signer_email as string,
+        firstName: merge.driver_name ?? signerName,
+        vehicle: merge.vehicle || null,
+      });
+    }
+    await sendAgreementSignedOpsEmail({
+      driverName: signerName,
+      applicationId: ag.application_id as string,
+      vehicle: merge.vehicle || null,
+    });
+  } catch (e) {
+    console.error("[agreement] signed emails failed", e);
+  }
+}
+
+function claimError(result: string): never {
+  if (result === "voided") throw new Error("This agreement was cancelled");
+  if (result === "expired") throw new Error("This signing link has expired — please ask us to resend it");
+  if (result === "in_progress") throw new Error("Your signature is being recorded — refresh in a moment");
+  throw new Error("This signing link is no longer valid");
 }
 
 export const signAgreement = createServerFn({ method: "POST" })
@@ -563,104 +657,26 @@ export const signAgreement = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { completeSigning, requestMeta } = await import("@/lib/esign.server");
     const hash = await hashToken(data.token);
     const { data: ag } = await supabaseAdmin
       .from("agreements")
-      .select(
-        "id,application_id,title,body,status,company_signer_name,signer_email,merge_data,token_expires_at",
-      )
+      .select("id")
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) throw new Error("This signing link is no longer valid");
-    if (ag.status === "signed") return { ok: true, alreadySigned: true };
-    if (ag.status === "voided") throw new Error("This agreement was cancelled");
-    if (ag.token_expires_at && new Date(ag.token_expires_at as string).getTime() < Date.now()) {
-      throw new Error("This signing link has expired — please ask us to resend it");
-    }
-
-    const req = getRequest();
-    const ip =
-      req?.headers.get("cf-connecting-ip") ||
-      req?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      null;
-    const agent = req?.headers.get("user-agent") ?? null;
-    const signedAt = new Date().toISOString();
-
-    const html = signedHtml({
-      title: ag.title as string,
-      body: ag.body as string,
-      signerName: data.signerName,
-      signedAt: new Date(signedAt).toLocaleString("en-US"),
-      companySigner: (ag.company_signer_name as string) || "REAL RENTALS",
-      ip,
-      agent,
+    const meta = requestMeta(getRequest());
+    const { result } = await completeSigning(supabaseAdmin, {
       id: ag.id as string,
+      tokenHash: hash,
+      signerName: data.signerName,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      authMethod: "email_link",
     });
-
-    const path = `${ag.application_id}/agreement-${ag.id}.html`;
-    let documentId: string | null = null;
-    const up = await supabaseAdmin.storage
-      .from("rental-agreements")
-      .upload(path, new Blob([html], { type: "text/html" }), {
-        contentType: "text/html",
-        upsert: true,
-      });
-    if (up.error) {
-      console.error("[agreement] archive upload failed", up.error);
-    } else {
-      const { data: doc, error: docErr } = await supabaseAdmin
-        .from("documents")
-        .insert({
-          driver_id: ag.application_id,
-          kind: "rental_agreement",
-          category: "agreement",
-          label: "Signed rental agreement",
-          storage_bucket: "rental-agreements",
-          storage_path: path,
-          visibility: ["driver", "admin"],
-          file_name: `signed-agreement-${(ag.id as string).slice(0, 8)}.html`,
-          mime_type: "text/html",
-          uploaded_by_role: "system",
-        })
-        .select("id")
-        .single();
-      if (docErr) console.error("[agreement] archive doc row failed", docErr);
-      documentId = (doc?.id as string) ?? null;
-    }
-
-    await supabaseAdmin
-      .from("agreements")
-      .update({
-        status: "signed",
-        signed_at: signedAt,
-        signer_name: data.signerName,
-        signer_ip: ip,
-        signer_user_agent: agent,
-        token_hash: null,
-        document_id: documentId,
-      })
-      .eq("id", ag.id);
-
-    const merge = (ag.merge_data ?? {}) as MergeData;
-    try {
-      const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } =
-        await import("@/lib/email.server");
-      if (ag.signer_email) {
-        await sendAgreementSignedEmail({
-          to: ag.signer_email as string,
-          firstName: merge.driver_name ?? data.signerName,
-          vehicle: merge.vehicle || null,
-        });
-      }
-      await sendAgreementSignedOpsEmail({
-        driverName: data.signerName,
-        applicationId: ag.application_id as string,
-        vehicle: merge.vehicle || null,
-      });
-    } catch (e) {
-      console.error("[agreement] signed emails failed", e);
-    }
-
+    if (result === "already_signed") return { ok: true, alreadySigned: true };
+    if (result !== "won") claimError(result);
+    await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
     return { ok: true, alreadySigned: false };
   });
 
@@ -669,33 +685,27 @@ export const signAgreement = createServerFn({ method: "POST" })
 export const getMyAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: apps } = await context.supabase
-      .from("applications")
-      .select("id")
-      .eq("user_id", context.userId);
-    const ids = (apps ?? []).map((a: any) => a.id);
-    if (!ids.length)
-      return [] as Array<{
-        id: string;
-        title: string;
-        status: string;
-        signed_at: string | null;
-        sent_at: string | null;
-        body: string;
-      }>;
-    const { data } = await context.supabase
-      .from("agreements")
-      .select("id,title,status,signed_at,sent_at,body")
-      .in("application_id", ids)
-      .order("created_at", { ascending: false });
-    return (data ?? []) as Array<{
+    type Mine = {
       id: string;
       title: string;
       status: string;
       signed_at: string | null;
       sent_at: string | null;
       body: string;
-    }>;
+      document_id: string | null;
+    };
+    const { data: apps } = await context.supabase
+      .from("applications")
+      .select("id")
+      .eq("user_id", context.userId);
+    const ids = (apps ?? []).map((a: any) => a.id);
+    if (!ids.length) return [] as Mine[];
+    const { data } = await context.supabase
+      .from("agreements")
+      .select("id,title,status,signed_at,sent_at,body,document_id")
+      .in("application_id", ids)
+      .order("created_at", { ascending: false });
+    return (data ?? []) as Mine[];
   });
 
 export const signMyAgreement = createServerFn({ method: "POST" })
@@ -710,24 +720,34 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    // Confirm ownership through RLS before using the privileged path.
+    // Ownership through the driver's own RLS-scoped client — an id belonging
+    // to someone else simply isn't found. The emailed link is left intact.
     const { data: own } = await context.supabase
       .from("agreements")
-      .select("id,status")
+      .select("id,status,application_id")
       .eq("id", data.agreementId)
       .maybeSingle();
     if (!own) throw new Error("Agreement not found");
-    if (own.status === "signed") return { ok: true, alreadySigned: true };
-
+    const { data: mine } = await context.supabase
+      .from("applications")
+      .select("id")
+      .eq("id", own.application_id as string)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (!mine) throw new Error("Agreement not found");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const token = randomToken();
-    const hash = await hashToken(token);
-    await supabaseAdmin
-      .from("agreements")
-      .update({
-        token_hash: hash,
-        token_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      })
-      .eq("id", data.agreementId);
-    return signAgreement({ data: { token, signerName: data.signerName, agree: true } });
+    const { completeSigning, requestMeta } = await import("@/lib/esign.server");
+    const meta = requestMeta(getRequest());
+    const { result } = await completeSigning(supabaseAdmin, {
+      id: data.agreementId,
+      tokenHash: null,
+      signerName: data.signerName,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      authMethod: "portal",
+    });
+    if (result === "already_signed") return { ok: true, alreadySigned: true };
+    if (result !== "won") claimError(result);
+    await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName);
+    return { ok: true, alreadySigned: false };
   });
