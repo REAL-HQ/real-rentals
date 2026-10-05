@@ -555,30 +555,43 @@ export const retryAgreementArchive = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Short-lived download link for the completed PDF. Staff, or the renter it belongs to. */
-export const getAgreementPdfUrl = createServerFn({ method: "POST" })
+/**
+ * The completed PDF itself, served through our own server. The browser never
+ * sees a storage hostname or path. Staff, or the renter it belongs to — RLS
+ * on the caller's own client decides; an id they can't read is "not found".
+ */
+export const getAgreementPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    // RLS decides: staff policy or the driver-owns-application policy.
     const { data: ag } = await context.supabase
       .from("agreements")
-      .select("id,status,document_id")
+      .select("id,status,document_id,archive_status")
       .eq("id", data.agreementId)
       .maybeSingle();
-    if (!ag || ag.status !== "signed" || !ag.document_id) throw new Error("No completed document yet");
+    if (!ag) throw new Error("Agreement not found");
+    if (ag.status !== "signed") throw new Error("This agreement hasn't been signed yet");
+    if (!ag.document_id || ag.archive_status !== "archived")
+      throw new Error("The signed PDF hasn't been saved yet — use Retry to save it");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc } = await supabaseAdmin
       .from("documents")
       .select("storage_bucket,storage_path")
       .eq("id", ag.document_id)
       .maybeSingle();
-    if (!doc) throw new Error("Document not found");
-    const { data: signed, error } = await supabaseAdmin.storage
+    if (!doc) throw new Error("The signed PDF record is missing");
+    const { data: file, error } = await supabaseAdmin.storage
       .from(doc.storage_bucket as string)
-      .createSignedUrl(doc.storage_path as string, 300);
-    if (error || !signed) throw new Error("Could not create download link");
-    return { url: signed.signedUrl };
+      .download(doc.storage_path as string);
+    if (error || !file) throw new Error("The signed PDF could not be loaded from storage");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return {
+      base64: btoa(bin),
+      contentType: "application/pdf" as const,
+      fileName: `REAL-RENTALS-Rental-Agreement-${String(ag.id).slice(0, 8)}.pdf`,
+    };
   });
 
 // ------------------------------------------------------------- public signing

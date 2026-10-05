@@ -264,8 +264,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                       title="Download signed PDF"
                       onClick={async () => {
                         try {
-                          const r = await doPdf({ data: { agreementId: a.id } });
-                          window.open(r.url, "_blank", "noopener");
+                          saveAgreementPdf(await doPdf({ data: { agreementId: a.id } }));
                         } catch (e: any) {
                           toast.error(e?.message || "Could not open the PDF");
                         }
