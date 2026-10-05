@@ -183,18 +183,20 @@ export async function retryArchive(admin: any, id: string, actor: Actor | null):
   const staleBefore = new Date(now.getTime() - ARCHIVE_LOCK_MS).toISOString();
   const { data: claimed } = await admin
     .from("agreements")
-    .update({ archive_last_attempt_at: now.toISOString() })
+    // failed -> pending claims immediately; a pending row is only re-claimed
+    // once its in-flight attempt is stale.
+    .update({ archive_status: "pending", archive_last_attempt_at: now.toISOString() })
     .eq("id", id)
     .eq("status", "signed")
-    .in("archive_status", ["failed", "pending"])
-    .or(`archive_last_attempt_at.is.null,archive_last_attempt_at.lt.${staleBefore}`)
+    .or(`archive_status.eq.failed,and(archive_status.eq.pending,or(archive_last_attempt_at.is.null,archive_last_attempt_at.lt.${staleBefore}))`)
     .select(DOC_COLS + ",archive_status")
     .maybeSingle();
   if (!claimed) {
     const { data: again } = await admin.from("agreements").select("archive_status").eq("id", id).maybeSingle();
     return again?.archive_status === "archived";
   }
-  return archiveDocument(admin, claimed, actor);
+  // archiveDocument logs recovery when it started from a failure.
+  return archiveDocument(admin, { ...claimed, archive_status: cur.archive_status }, actor);
 }
 
 export type ChannelStatus = "sent" | "failed" | "not_attempted";
