@@ -92,13 +92,28 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
           if (!row) return Response.json({ ignored: true });
 
           const now = new Date().toISOString();
-          const patch: Record<string, string> = { updated_at: now };
+          const TS_FIELD = {
+            accepted: "accepted_at",
+            delivered: "delivered_at",
+            bounced: "bounced_at",
+            complained: "complained_at",
+            failed: "failed_at",
+          } as const;
+          type DeliveryUpdate = {
+            updated_at: string;
+            state?: "accepted" | "delivered" | "bounced" | "complained" | "failed";
+            accepted_at?: string;
+            delivered_at?: string;
+            bounced_at?: string;
+            complained_at?: string;
+            failed_at?: string;
+            provider_reason?: string;
+          };
+          const patch: DeliveryUpdate = { updated_at: now };
           // First terminal state wins; a late "sent" never downgrades it.
-          if (!TERMINAL.has(row.state) || !TERMINAL.has(state)) {
-            if (!(TERMINAL.has(row.state) && !TERMINAL.has(state))) patch.state = state;
-          }
-          const tsField = `${state}_at`;
-          if (!(row as Record<string, unknown>)[tsField]) patch[tsField] = now;
+          if (!(TERMINAL.has(row.state) && !TERMINAL.has(state))) patch.state = state;
+          const tsField = TS_FIELD[state];
+          if (!row[tsField]) patch[tsField] = now;
           if (event.data?.reason) patch.provider_reason = String(event.data.reason).slice(0, 500);
 
           await supabaseAdmin.from("email_deliveries").update(patch).eq("id", row.id);

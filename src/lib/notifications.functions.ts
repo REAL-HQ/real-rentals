@@ -137,7 +137,7 @@ export const getEmailDeliveryStatus = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!row) return null;
     return {
-      state: row.state,
+      state: row.state as EmailDeliveryStatus["state"],
       providerReason: row.provider_reason,
       acceptedAt: row.accepted_at,
       deliveredAt: row.delivered_at,
