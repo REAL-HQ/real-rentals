@@ -102,7 +102,9 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   write(`Renter: /s/ ${d.signerName}`, 12, bold);
   write(`Signed electronically ${fmt(d.signedAt)}`, 9.5, font, muted);
   y -= 6;
-  write(`Company: /s/ ${d.companySignerName}${d.companySignerTitle ? `, ${d.companySignerTitle}` : ""}`, 12, bold);
+  write(`Company: /s/ ${d.companySignerName}`, 12, bold);
+  if (d.companySignerTitle) write(d.companySignerTitle, 10.5);
+  if (d.companySignerName.trim().toUpperCase() !== "REAL RENTALS") write("REAL RENTALS", 10.5);
   write("Pre-applied company countersignature", 9.5, font, muted);
 
   // Certificate of completion
