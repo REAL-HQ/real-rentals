@@ -14,9 +14,51 @@ type SendArgs = {
   html: string;
   from?: string;
   replyTo?: string;
+  /**
+   * Name the workflow sending this email (esign_signing_request,
+   * portal_invite, staff_invite, application_resume, test_email, ...).
+   * When present, the send is recorded in email_deliveries so the signed
+   * Resend webhook can later mark it delivered/bounced/complained. Without
+   * it the send is untracked and "accepted" is all anyone will ever know.
+   */
+  track?: { workflow: string };
 };
 
-export type SendResult = { ok: boolean; error?: string; id?: string };
+export type SendResult = { ok: boolean; error?: string; id?: string; deliveryId?: string };
+
+/**
+ * Record one send attempt in email_deliveries. Never throws, never delays the
+ * caller's outcome: a tracking failure must not make a sent email look unsent.
+ * "accepted" here means the Resend API accepted the request — only the signed
+ * webhook can move the row to delivered/bounced/complained.
+ */
+async function recordEmailDelivery(
+  track: { workflow: string },
+  recipient: string,
+  result: { ok: boolean; error?: string; id?: string },
+): Promise<string | undefined> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const now = new Date().toISOString();
+    const { data } = await supabaseAdmin
+      .from("email_deliveries")
+      .insert({
+        workflow: track.workflow,
+        recipient,
+        resend_message_id: result.id ?? null,
+        state: result.ok ? "accepted" : "failed",
+        accepted_at: result.ok ? now : null,
+        failed_at: result.ok ? null : now,
+        provider_reason: result.ok ? null : (result.error ?? "").slice(0, 500),
+      })
+      .select("id")
+      .single();
+    return data?.id;
+  } catch (err) {
+    console.error("[email] could not record delivery", err);
+    return undefined;
+  }
+}
 
 /**
  * Send one email. Returns a result rather than throwing, so a failed send can
@@ -28,12 +70,13 @@ export type SendResult = { ok: boolean; error?: string; id?: string };
  * and a delivered email were indistinguishable from the outside, which is
  * exactly how alerts can look configured while silently going nowhere.
  */
-export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html, from, replyTo, track }: SendArgs): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
     return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
+  const recipient = Array.isArray(to) ? (to[0] ?? "") : to;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -55,7 +98,9 @@ export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs):
       return { ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` };
     }
     const json = (await res.json().catch(() => ({}))) as { id?: string };
-    return { ok: true, id: json.id };
+    const result: SendResult = { ok: true, id: json.id };
+    if (track) result.deliveryId = await recordEmailDelivery(track, recipient, result);
+    return result;
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
     return { ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." };
@@ -232,7 +277,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
   }
-  await sendEmail({ to: prefs.recipients, subject, html });
+  await sendEmail({ to: prefs.recipients, subject, html, track: { workflow: "lead_alert" } });
 }
 
 /**
@@ -277,6 +322,7 @@ export async function sendApplicationResumeEmail(args: {
     subject: "Your REAL RENTALS Application — Here's Your Link",
     html,
     replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "application_resume" },
   });
 }
 
@@ -315,7 +361,7 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
   </div>
 </body></html>`;
 
-  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -365,7 +411,7 @@ export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> 
       <div style="margin-top:20px">
         <a href="${args.portalUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Payment History</a>
       </div>`);
-  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
 }
 
 type FailedArgs = {
@@ -386,7 +432,7 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 type CardExpiringArgs = {
@@ -414,7 +460,7 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void>
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
-  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
 type LicenseExpiryArgs = {
@@ -432,7 +478,7 @@ export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
-  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
 }
 
 type ServiceDigestArgs = {
@@ -451,7 +497,7 @@ export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<v
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Service Due — ${args.items.length} Vehicle${args.items.length === 1 ? "" : "s"}</h1>
       <table style="width:100%;border-collapse:collapse;margin-top:8px">${rows}</table>
       <a href="https://drivereal.com/admin" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Service Board</a>`);
-  await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html });
+  await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html, track: { workflow: "service_digest" } });
 }
 
 export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
@@ -462,7 +508,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -499,7 +545,7 @@ export async function sendDocumentRequestEmail(args: DocRequestArgs): Promise<vo
         <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload Your Documents</a>
       </div>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
-  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "document_request" } });
 }
 
 // Abandoned-application recovery (3–48h partial applications, one-shot).
@@ -526,7 +572,7 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
-  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 // -----------------------------------------------------------------------------
 // Rental agreements (e-signature)
@@ -575,6 +621,7 @@ export async function sendPortalInviteEmail(args: {
       <p>We'll let you know as soon as a vehicle is assigned to you.</p>
       <p>— REAL RENTALS</p>
     `,
+    track: { workflow: "portal_invite" },
   });
 }
 
@@ -589,7 +636,7 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
       ${vehicleLine}
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
-  return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: EMAIL_REPLY_TO });
+  return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
 }
 
 export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null }): Promise<void> {
@@ -598,7 +645,7 @@ export async function sendAgreementSignedEmail(args: { to: string; firstName: st
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Agreement Signed — You're All Set</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is fully executed and saved to your account.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`);
-  await sendEmail({ to: args.to, subject: "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
 }
 
 export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null }): Promise<void> {
@@ -607,5 +654,5 @@ export async function sendAgreementSignedOpsEmail(args: { driverName: string; ap
       <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Rental Agreement Signed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their rental agreement${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
-  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `Signed Agreement — ${args.driverName}`, html });
+  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `Signed Agreement — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
 }

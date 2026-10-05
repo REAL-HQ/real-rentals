@@ -62,22 +62,32 @@ export const getEmailDiagnostics = createServerFn({ method: "POST" })
     };
   });
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const sendTestAlert = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ ok: boolean; sentTo: string[]; error?: string }> => {
+  .inputValidator((d: { to?: string } | undefined) => d ?? {})
+  .handler(async ({ data, context }): Promise<{ ok: boolean; sentTo: string[]; error?: string; deliveryId?: string }> => {
     const actor = await requireOwner(context.userId);
     const { sendEmail, getLeadAlertPrefs } = await import("@/lib/email.server");
 
+    // A controlled recipient the Owner types in, or the configured alert list.
+    const override = (data?.to ?? "").trim().toLowerCase();
+    if (override && !EMAIL_RE.test(override)) {
+      return { ok: false, sentTo: [], error: "That doesn't look like a valid email address." };
+    }
     const prefs = await getLeadAlertPrefs();
-    if (!prefs.recipients.length) {
+    const recipients = override ? [override] : prefs.recipients;
+    if (!recipients.length) {
       return { ok: false, sentTo: [], error: "No recipient address is configured." };
     }
 
     // Deliberately shaped like a real alert, so a test that lands in spam
     // tells you the real one would too.
     const result = await sendEmail({
-      to: prefs.recipients,
+      to: recipients,
       subject: "Test: REAL RENTALS applicant alerts are working",
+      track: { workflow: "test_email" },
       html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
         <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">REAL RENTALS</div>
         <h1 style="margin:12px 0 8px;font-size:20px">Applicant alerts are working</h1>
@@ -94,7 +104,47 @@ export const sendTestAlert = createServerFn({ method: "POST" })
       </div>`,
     });
 
-    return { ok: result.ok, sentTo: prefs.recipients, error: result.error };
+    return { ok: result.ok, sentTo: recipients, error: result.error, deliveryId: result.deliveryId };
+  });
+
+export type EmailDeliveryStatus = {
+  state: "sending" | "accepted" | "delivered" | "bounced" | "complained" | "failed";
+  providerReason: string | null;
+  acceptedAt: string | null;
+  deliveredAt: string | null;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+  failedAt: string | null;
+};
+
+/**
+ * Read back one tracked send. Owner-only; the row exists only for sends that
+ * passed `track`, and its state changes only when the signed Resend webhook
+ * confirms an event — "accepted" is never dressed up as "delivered".
+ */
+export const getEmailDeliveryStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id?: string }) => {
+    if (!d?.id) throw new Error("A delivery id is required.");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<EmailDeliveryStatus | null> => {
+    await requireOwner(context.userId);
+    const { data: row } = await context.supabase
+      .from("email_deliveries")
+      .select("state, provider_reason, accepted_at, delivered_at, bounced_at, complained_at, failed_at")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!row) return null;
+    return {
+      state: row.state as EmailDeliveryStatus["state"],
+      providerReason: row.provider_reason,
+      acceptedAt: row.accepted_at,
+      deliveredAt: row.delivered_at,
+      bouncedAt: row.bounced_at,
+      complainedAt: row.complained_at,
+      failedAt: row.failed_at,
+    };
   });
 
 function escapeHtml(v: unknown): string {

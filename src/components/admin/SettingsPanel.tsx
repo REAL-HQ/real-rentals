@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { getEmailDiagnostics, sendTestAlert, type EmailDiagnostics } from "@/lib/notifications.functions";
+import { getEmailDiagnostics, sendTestAlert, getEmailDeliveryStatus, type EmailDiagnostics, type EmailDeliveryStatus } from "@/lib/notifications.functions";
 import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X } from "lucide-react";
 
 type SettingsMap = Record<string, any>;
@@ -164,6 +164,10 @@ function EmailDeliveryStatus() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [delivery, setDelivery] = useState<EmailDeliveryStatus | null>(null);
+  const [deliveryId, setDeliveryId] = useState<string | null>(null);
+  const statusFn = useServerFn(getEmailDeliveryStatus);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -182,12 +186,45 @@ function EmailDeliveryStatus() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Poll the delivery record after a test send. "Accepted" is shown as
+  // accepted — only the signed webhook can upgrade it to Delivered.
+  useEffect(() => {
+    if (!deliveryId) return;
+    if (delivery && delivery.state !== "accepted" && delivery.state !== "sending") return;
+    let cancelled = false;
+    let attempts = 0;
+    const tick = async () => {
+      attempts += 1;
+      try {
+        const s = await statusFn({ data: { id: deliveryId } });
+        if (cancelled || !s) return;
+        setDelivery(s);
+        if (s.state !== "accepted" && s.state !== "sending") return;
+      } catch {
+        /* keep polling; a transient read failure is not a delivery state */
+      }
+      if (!cancelled && attempts < 15) timer = setTimeout(tick, 4000);
+    };
+    let timer = setTimeout(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [deliveryId, delivery, statusFn]);
+
   async function runTest() {
     setSending(true);
+    setDelivery(null);
+    setDeliveryId(null);
     try {
-      const res = await test({ data: undefined });
-      if (res.ok) toast.success(`Test email sent to ${res.sentTo.join(", ")}`);
-      else toast.error(res.error ?? "The test email could not be sent.");
+      const to = testTo.trim();
+      const res = await test({ data: to ? { to } : {} });
+      if (res.ok) {
+        toast.success(`Test email accepted by the provider — sent to ${res.sentTo.join(", ")}`);
+        if (res.deliveryId) setDeliveryId(res.deliveryId);
+      } else {
+        toast.error(res.error ?? "The test email could not be sent.");
+      }
     } catch (e: any) {
       toast.error(String(e?.message ?? "Could not run the test."));
     } finally {
@@ -239,7 +276,14 @@ function EmailDeliveryStatus() {
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="email"
+          value={testTo}
+          onChange={(e) => setTestTo(e.target.value)}
+          placeholder="Test recipient (blank = alert list)"
+          className="w-56 rounded-md border border-border px-2.5 py-1.5 text-xs bg-white"
+        />
         <button
           type="button"
           onClick={runTest}
@@ -255,6 +299,25 @@ function EmailDeliveryStatus() {
           </button>
         )}
       </div>
+
+      {deliveryId && (
+        <p className="text-xs text-muted-foreground">
+          Delivery status:{" "}
+          {!delivery || delivery.state === "sending" ? (
+            <span>Sending…</span>
+          ) : delivery.state === "accepted" ? (
+            <span>Accepted by the provider — awaiting delivery confirmation.</span>
+          ) : delivery.state === "delivered" ? (
+            <span className="text-[#16A34A] font-medium">Delivered.</span>
+          ) : delivery.state === "bounced" ? (
+            <span className="text-[#D03020] font-medium">Bounced{delivery.providerReason ? `: ${delivery.providerReason}` : "."}</span>
+          ) : delivery.state === "complained" ? (
+            <span className="text-[#D03020] font-medium">Marked as spam by the recipient.</span>
+          ) : (
+            <span className="text-[#D03020] font-medium">Failed{delivery.providerReason ? `: ${delivery.providerReason}` : "."}</span>
+          )}
+        </p>
+      )}
     </div>
   );
 }
