@@ -46,21 +46,34 @@ export type Database = {
       }
       agreements: {
         Row: {
-          application_id: string
+          application_id: string | null
+          archive_attempts: number
+          archive_error: string | null
+          archive_status: string
+          auth_method: string | null
           body: string
+          body_sha256: string | null
           company_signer_name: string
+          company_signer_title: string | null
+          completed_at: string | null
+          completed_document_id: string | null
           created_at: string
           created_by: string | null
           document_id: string | null
+          expires_at: string | null
           id: string
           merge_data: Json
+          metadata: Json
           rental_id: string | null
           sent_at: string | null
+          sha256: string | null
           signed_at: string | null
           signer_email: string | null
           signer_ip: string | null
           signer_name: string | null
           signer_user_agent: string | null
+          signing_started_at: string | null
+          source: string
           status: string
           template_id: string | null
           title: string
@@ -72,21 +85,34 @@ export type Database = {
           voided_at: string | null
         }
         Insert: {
-          application_id: string
+          application_id?: string | null
+          archive_attempts?: number
+          archive_error?: string | null
+          archive_status?: string
+          auth_method?: string | null
           body: string
+          body_sha256?: string | null
           company_signer_name?: string
+          company_signer_title?: string | null
+          completed_at?: string | null
+          completed_document_id?: string | null
           created_at?: string
           created_by?: string | null
           document_id?: string | null
+          expires_at?: string | null
           id?: string
           merge_data?: Json
+          metadata?: Json
           rental_id?: string | null
           sent_at?: string | null
+          sha256?: string | null
           signed_at?: string | null
           signer_email?: string | null
           signer_ip?: string | null
           signer_name?: string | null
           signer_user_agent?: string | null
+          signing_started_at?: string | null
+          source?: string
           status?: string
           template_id?: string | null
           title?: string
@@ -98,21 +124,34 @@ export type Database = {
           voided_at?: string | null
         }
         Update: {
-          application_id?: string
+          application_id?: string | null
+          archive_attempts?: number
+          archive_error?: string | null
+          archive_status?: string
+          auth_method?: string | null
           body?: string
+          body_sha256?: string | null
           company_signer_name?: string
+          company_signer_title?: string | null
+          completed_at?: string | null
+          completed_document_id?: string | null
           created_at?: string
           created_by?: string | null
           document_id?: string | null
+          expires_at?: string | null
           id?: string
           merge_data?: Json
+          metadata?: Json
           rental_id?: string | null
           sent_at?: string | null
+          sha256?: string | null
           signed_at?: string | null
           signer_email?: string | null
           signer_ip?: string | null
           signer_name?: string | null
           signer_user_agent?: string | null
+          signing_started_at?: string | null
+          source?: string
           status?: string
           template_id?: string | null
           title?: string
@@ -1260,6 +1299,80 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: true
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      esign_recipients: {
+        Row: {
+          auth_method: string | null
+          created_at: string
+          document_id: string
+          email: string | null
+          id: string
+          ip: string | null
+          name: string | null
+          phone: string | null
+          role: string
+          sent_at: string | null
+          signed_at: string | null
+          signing_order: number
+          status: string
+          token_expires_at: string | null
+          token_hash: string | null
+          token_revoked_at: string | null
+          updated_at: string
+          user_agent: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          auth_method?: string | null
+          created_at?: string
+          document_id: string
+          email?: string | null
+          id?: string
+          ip?: string | null
+          name?: string | null
+          phone?: string | null
+          role?: string
+          sent_at?: string | null
+          signed_at?: string | null
+          signing_order?: number
+          status?: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          token_revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          auth_method?: string | null
+          created_at?: string
+          document_id?: string
+          email?: string | null
+          id?: string
+          ip?: string | null
+          name?: string | null
+          phone?: string | null
+          role?: string
+          sent_at?: string | null
+          signed_at?: string | null
+          signing_order?: number
+          status?: string
+          token_expires_at?: string | null
+          token_hash?: string | null
+          token_revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_recipients_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
             referencedColumns: ["id"]
           },
         ]
@@ -3680,6 +3793,11 @@ export type Database = {
         Returns: boolean
       }
       cars_available: { Args: never; Returns: number }
+      esign_claim: {
+        Args: { _id: string; _token_hash: string }
+        Returns: string
+      }
+      esign_void: { Args: { _id: string }; Returns: string }
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       rental_at_time: {
