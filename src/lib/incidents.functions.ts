@@ -501,7 +501,6 @@ export const settleDeposit = createServerFn({ method: "POST" })
               ${data.notes ? `<p style="font-size:14px;color:#555">${escapeHtml(data.notes)}</p>` : ""}
               <p style="color:#888;font-size:12px;margin-top:18px">Questions about a deduction? Reply to this email and we'll walk you through it.</p>
             </div>`,
-            replyTo: "team@drivereal.com",
           });
         }
       } catch (e) {
