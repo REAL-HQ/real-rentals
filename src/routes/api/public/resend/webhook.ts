@@ -53,6 +53,7 @@ async function verifySignature(body: string, headers: Headers, secret: string): 
 export const Route = createFileRoute("/api/public/resend/webhook")({
   server: {
     handlers: {
+      GET: async () => Response.json({ error: "Method not allowed." }, { status: 405 }),
       POST: async ({ request }) => {
         const secret = process.env.RESEND_WEBHOOK_SECRET;
         if (!secret) {
