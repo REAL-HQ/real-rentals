@@ -49,6 +49,7 @@ export async function completeSigning(
       auth_method: args.authMethod,
       token_hash: null,
       archive_status: "pending",
+      archive_last_attempt_at: signedAt,
     })
     .eq("id", args.id)
     .eq("status", "signing")
@@ -143,6 +144,7 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
         archive_status: "archived",
         archive_error: null,
         archive_attempts: (ag.archive_attempts ?? 0) + 1,
+        archive_last_attempt_at: new Date().toISOString(),
         document_id: documentId,
         completed_document_id: documentId,
         sha256: fileSha,
@@ -158,18 +160,114 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
     console.error("[esign] archive failed", ag.id, msg);
     await admin
       .from("agreements")
-      .update({ archive_status: "failed", archive_error: msg.slice(0, 500), archive_attempts: (ag.archive_attempts ?? 0) + 1 })
+      .update({ archive_status: "failed", archive_error: msg.slice(0, 500), archive_attempts: (ag.archive_attempts ?? 0) + 1, archive_last_attempt_at: new Date().toISOString() })
       .eq("id", ag.id);
     await logAudit(actor, { action: "document.archive_failed", summary: "Signed document could not be archived", entityType: "esign_document", entityId: ag.id, metadata: { error: msg.slice(0, 200) } });
     return false;
   }
 }
 
+/** An attempt younger than this is treated as still running. */
+const ARCHIVE_LOCK_MS = 60_000;
+
+/**
+ * Idempotent retry. A conditional update claims the row first, so two
+ * concurrent callers (cron + staff button, or a double click) cannot both
+ * render, upload and insert — the loser sees the claim and backs off.
+ */
 export async function retryArchive(admin: any, id: string, actor: Actor | null): Promise<boolean> {
-  const { data: ag } = await admin.from("agreements").select(DOC_COLS + ",archive_status").eq("id", id).maybeSingle();
-  if (!ag || ag.status !== "signed") throw new Error("Only signed documents can be archived");
-  if (ag.archive_status === "archived") return true;
-  return archiveDocument(admin, ag, actor);
+  const { data: cur } = await admin.from("agreements").select("id,status,archive_status").eq("id", id).maybeSingle();
+  if (!cur || cur.status !== "signed") throw new Error("Only signed documents can be archived");
+  if (cur.archive_status === "archived") return true;
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - ARCHIVE_LOCK_MS).toISOString();
+  const { data: claimed } = await admin
+    .from("agreements")
+    .update({ archive_last_attempt_at: now.toISOString() })
+    .eq("id", id)
+    .eq("status", "signed")
+    .in("archive_status", ["failed", "pending"])
+    .or(`archive_last_attempt_at.is.null,archive_last_attempt_at.lt.${staleBefore}`)
+    .select(DOC_COLS + ",archive_status")
+    .maybeSingle();
+  if (!claimed) {
+    const { data: again } = await admin.from("agreements").select("archive_status").eq("id", id).maybeSingle();
+    return again?.archive_status === "archived";
+  }
+  return archiveDocument(admin, claimed, actor);
+}
+
+export type ChannelStatus = "sent" | "failed" | "not_attempted";
+
+/**
+ * Deliver a signing link over email and SMS and record each channel's real
+ * outcome on the document. Delivery never changes the document lifecycle: a
+ * failed channel leaves the link valid. The raw link is never logged.
+ */
+export async function deliverSigningLink(
+  admin: any,
+  args: {
+    id: string;
+    url: string;
+    email: string | null;
+    phone: string | null;
+    name: string | null;
+    vehicle: string | null;
+    applicationId: string | null;
+    actor: Actor | null;
+  },
+): Promise<{ email: ChannelStatus; sms: ChannelStatus; delivered: boolean }> {
+  const at = new Date().toISOString();
+  let email: ChannelStatus = "not_attempted";
+  let emailError: string | null = "No email on file";
+  if (args.email) {
+    try {
+      const { sendAgreementEmail } = await import("@/lib/email.server");
+      const r = await sendAgreementEmail({ to: args.email, firstName: args.name, url: args.url, vehicle: args.vehicle });
+      email = r.ok ? "sent" : "failed";
+      emailError = r.ok ? null : (r.error ?? "Email send failed").slice(0, 300);
+    } catch (e) {
+      email = "failed";
+      emailError = (e instanceof Error ? e.message : "Email send failed").slice(0, 300);
+    }
+  }
+
+  let sms: ChannelStatus = "not_attempted";
+  let smsError: string | null = "No phone on file";
+  if (args.phone) {
+    try {
+      const { sendSms } = await import("@/lib/sms.server");
+      const r: any = await sendSms({
+        to: args.phone,
+        body: `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`,
+        kind: "agreement_sent",
+        applicationId: args.applicationId ?? undefined,
+      });
+      if (r.ok) { sms = "sent"; smsError = null; }
+      else if (r.skipped) { sms = "not_attempted"; smsError = String(r.reason ?? "skipped").replace(/_/g, " "); }
+      else { sms = "failed"; smsError = String(r.error ?? "SMS send failed").slice(0, 300); }
+    } catch (e) {
+      sms = "failed";
+      smsError = (e instanceof Error ? e.message : "SMS send failed").slice(0, 300);
+    }
+  }
+
+  await admin.from("agreements").update({
+    email_status: email, email_error: emailError, email_attempted_at: email === "not_attempted" ? null : at,
+    sms_status: sms, sms_error: smsError, sms_attempted_at: sms === "not_attempted" ? null : at,
+  }).eq("id", args.id);
+
+  const delivered = email === "sent" || sms === "sent";
+  if (!delivered) {
+    await logAudit(args.actor, {
+      action: "document.delivery_failed",
+      summary: "Signing link wasn't delivered",
+      entityType: "esign_document",
+      entityId: args.id,
+      metadata: { email, sms },
+    });
+  }
+  return { email, sms, delivered };
 }
 
 export async function voidDocument(admin: any, id: string, actor: Actor | null): Promise<string> {
