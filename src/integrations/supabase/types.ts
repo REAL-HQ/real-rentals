@@ -49,6 +49,7 @@ export type Database = {
           application_id: string | null
           archive_attempts: number
           archive_error: string | null
+          archive_last_attempt_at: string | null
           archive_status: string
           auth_method: string | null
           body: string
@@ -60,6 +61,9 @@ export type Database = {
           created_at: string
           created_by: string | null
           document_id: string | null
+          email_attempted_at: string | null
+          email_error: string | null
+          email_status: string
           expires_at: string | null
           id: string
           merge_data: Json
@@ -73,6 +77,9 @@ export type Database = {
           signer_name: string | null
           signer_user_agent: string | null
           signing_started_at: string | null
+          sms_attempted_at: string | null
+          sms_error: string | null
+          sms_status: string
           source: string
           status: string
           template_id: string | null
@@ -88,6 +95,7 @@ export type Database = {
           application_id?: string | null
           archive_attempts?: number
           archive_error?: string | null
+          archive_last_attempt_at?: string | null
           archive_status?: string
           auth_method?: string | null
           body: string
@@ -99,6 +107,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           document_id?: string | null
+          email_attempted_at?: string | null
+          email_error?: string | null
+          email_status?: string
           expires_at?: string | null
           id?: string
           merge_data?: Json
@@ -112,6 +123,9 @@ export type Database = {
           signer_name?: string | null
           signer_user_agent?: string | null
           signing_started_at?: string | null
+          sms_attempted_at?: string | null
+          sms_error?: string | null
+          sms_status?: string
           source?: string
           status?: string
           template_id?: string | null
@@ -127,6 +141,7 @@ export type Database = {
           application_id?: string | null
           archive_attempts?: number
           archive_error?: string | null
+          archive_last_attempt_at?: string | null
           archive_status?: string
           auth_method?: string | null
           body?: string
@@ -138,6 +153,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           document_id?: string | null
+          email_attempted_at?: string | null
+          email_error?: string | null
+          email_status?: string
           expires_at?: string | null
           id?: string
           merge_data?: Json
@@ -151,6 +169,9 @@ export type Database = {
           signer_name?: string | null
           signer_user_agent?: string | null
           signing_started_at?: string | null
+          sms_attempted_at?: string | null
+          sms_error?: string | null
+          sms_status?: string
           source?: string
           status?: string
           template_id?: string | null
