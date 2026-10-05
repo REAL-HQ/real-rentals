@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { FileSignature, Send, Copy, Ban, RefreshCw, Loader2 } from "lucide-react";
-import { SectionCard, StatusPill } from "./ui";
+import { FileSignature, Send, Ban, RefreshCw, Loader2, Download } from "lucide-react";
+import { SectionCard } from "./ui";
 import {
   listAgreements,
   previewAgreement,
   sendAgreement,
   resendAgreement,
   voidAgreement,
+  retryAgreementArchive,
+  getAgreementPdfUrl,
   type AgreementRow,
 } from "@/lib/agreements.functions";
 
@@ -25,6 +27,8 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   const doSend = useServerFn(sendAgreement);
   const doResend = useServerFn(resendAgreement);
   const doVoid = useServerFn(voidAgreement);
+  const doRetry = useServerFn(retryAgreementArchive);
+  const doPdf = useServerFn(getAgreementPdfUrl);
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,9 +208,53 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                         ? `Sent ${new Date(a.sent_at).toLocaleString()}`
                         : `Created ${new Date(a.created_at).toLocaleString()}`}
                   </div>
+                  {a.status === "signed" && a.archive_status !== "archived" ? (
+                    <div className="mt-1 text-[11.5px] font-medium text-[#8A1F12]">
+                      {a.archive_status === "failed"
+                        ? "Signed, but the PDF copy failed to save."
+                        : "Signed — saving the PDF copy…"}
+                    </div>
+                  ) : null}
+                  {a.sha256 ? (
+                    <div className="mt-0.5 text-[10.5px] font-mono text-[#9A9AA2] truncate" title={a.sha256}>
+                      SHA-256 {a.sha256.slice(0, 16)}…
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {a.status !== "signed" && a.status !== "voided" ? (
+                  {a.status === "signed" && a.archive_status === "archived" ? (
+                    <button
+                      title="Download signed PDF"
+                      onClick={async () => {
+                        try {
+                          const r = await doPdf({ data: { agreementId: a.id } });
+                          window.open(r.url, "_blank", "noopener");
+                        } catch (e: any) {
+                          toast.error(e?.message || "Could not open the PDF");
+                        }
+                      }}
+                      className="p-1.5 rounded-md hover:bg-[#F4F4F6] text-[#55555E]"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
+                  {a.status === "signed" && a.archive_status !== "archived" ? (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await doRetry({ data: { agreementId: a.id } });
+                          toast.success("Signed PDF saved");
+                          await refresh();
+                        } catch (e: any) {
+                          toast.error(e?.message || "Retry failed");
+                        }
+                      }}
+                      className="text-[11px] font-semibold text-[#8A1F12] border border-[#F3C2BC] rounded-md px-2 py-1"
+                    >
+                      Retry save
+                    </button>
+                  ) : null}
+                  {a.status !== "signed" && a.status !== "voided" && a.status !== "signing" ? (
                     <>
                       <button
                         title="Resend link"

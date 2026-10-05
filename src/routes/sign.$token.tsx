@@ -88,6 +88,14 @@ function SignPage() {
               <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a new one.
             </p>
           </div>
+        ) : agreement.expired && !done ? (
+          <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
+            <h1 className="text-xl font-semibold text-[#111114]">This signing link has expired</h1>
+            <p className="mt-2 text-sm text-[#55555E]">
+              For your security, signing links expire. Email{" "}
+              <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a fresh one.
+            </p>
+          </div>
         ) : done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
