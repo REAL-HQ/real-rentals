@@ -92,8 +92,8 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
         const { data, error } = await supabaseAdmin.rpc("email_delivery_event", {
           _resend_id: messageId,
           _state: state,
-          _reason: reason ? String(reason).slice(0, 500) : null,
-          _recipient: recipient ?? null,
+          _reason: (reason ? String(reason).slice(0, 500) : null) as unknown as string,
+          _recipient: (recipient ?? null) as unknown as string,
         });
         if (error) {
           // Non-2xx so Resend retries; nothing is lost.
