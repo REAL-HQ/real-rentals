@@ -85,8 +85,9 @@ export const sendTestAlert = createServerFn({ method: "POST" })
     // Deliberately shaped like a real alert, so a test that lands in spam
     // tells you the real one would too.
     const result = await sendEmail({
-      to: prefs.recipients,
+      to: recipients,
       subject: "Test: REAL RENTALS applicant alerts are working",
+      track: { workflow: "test_email" },
       html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
         <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">REAL RENTALS</div>
         <h1 style="margin:12px 0 8px;font-size:20px">Applicant alerts are working</h1>
@@ -103,7 +104,47 @@ export const sendTestAlert = createServerFn({ method: "POST" })
       </div>`,
     });
 
-    return { ok: result.ok, sentTo: prefs.recipients, error: result.error };
+    return { ok: result.ok, sentTo: recipients, error: result.error, deliveryId: result.deliveryId };
+  });
+
+export type EmailDeliveryStatus = {
+  state: "sending" | "accepted" | "delivered" | "bounced" | "complained" | "failed";
+  providerReason: string | null;
+  acceptedAt: string | null;
+  deliveredAt: string | null;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+  failedAt: string | null;
+};
+
+/**
+ * Read back one tracked send. Owner-only; the row exists only for sends that
+ * passed `track`, and its state changes only when the signed Resend webhook
+ * confirms an event — "accepted" is never dressed up as "delivered".
+ */
+export const getEmailDeliveryStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id?: string }) => {
+    if (!d?.id) throw new Error("A delivery id is required.");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }): Promise<EmailDeliveryStatus | null> => {
+    await requireOwner(context.userId);
+    const { data: row } = await context.supabase
+      .from("email_deliveries")
+      .select("state, provider_reason, accepted_at, delivered_at, bounced_at, complained_at, failed_at")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!row) return null;
+    return {
+      state: row.state,
+      providerReason: row.provider_reason,
+      acceptedAt: row.accepted_at,
+      deliveredAt: row.delivered_at,
+      bouncedAt: row.bounced_at,
+      complainedAt: row.complained_at,
+      failedAt: row.failed_at,
+    };
   });
 
 function escapeHtml(v: unknown): string {
