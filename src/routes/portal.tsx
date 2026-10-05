@@ -20,7 +20,8 @@ import {
   payRentalBalance,
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
-import { getMyAgreements, signMyAgreement } from "@/lib/agreements.functions";
+import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
@@ -380,6 +381,7 @@ function DocumentsView() {
 function AgreementsView() {
   const fetchAgreements = useServerFn(getMyAgreements);
   const sign = useServerFn(signMyAgreement);
+  const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
     queryFn: () => fetchAgreements(),
@@ -408,16 +410,32 @@ function AgreementsView() {
                     : "Awaiting your signature"}
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setOpenId(openId === a.id ? null : a.id);
-                  setName("");
-                  setAgree(false);
-                }}
-                className="text-xs font-semibold text-real-red shrink-0"
-              >
-                {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
-              </button>
+              <div className="flex items-center gap-3 shrink-0">
+                {a.status === "signed" && a.document_id ? (
+                  <button
+                    onClick={async () => {
+                      try {
+                        saveAgreementPdf(await getPdf({ data: { agreementId: a.id } }));
+                      } catch (e: any) {
+                        toast.error(e?.message || "Could not download the PDF");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-real-red"
+                  >
+                    <Download className="w-3.5 h-3.5" /> PDF
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => {
+                    setOpenId(openId === a.id ? null : a.id);
+                    setName("");
+                    setAgree(false);
+                  }}
+                  className="text-xs font-semibold text-real-red"
+                >
+                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
+                </button>
+              </div>
             </div>
 
             {openId === a.id ? (
