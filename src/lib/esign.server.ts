@@ -107,7 +107,7 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
     const path = `${folder}/agreement-${ag.id}.pdf`;
     const up = await admin.storage
       .from("rental-agreements")
-      .upload(path, new Blob([pdf], { type: "application/pdf" }), { contentType: "application/pdf", upsert: true });
+      .upload(path, new Blob([pdf as BlobPart], { type: "application/pdf" }), { contentType: "application/pdf", upsert: true });
     if (up.error) throw new Error(`upload: ${up.error.message}`);
 
     let documentId: string | null = ag.document_id ?? null;
