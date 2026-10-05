@@ -644,6 +644,13 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
     };
   });
 
+/** Server-side truth: the agreement's application is linked to a sign-in account. */
+async function agreementPortalAccess(admin: any, applicationId: string | null): Promise<boolean> {
+  if (!applicationId) return false;
+  const { data } = await admin.from("applications").select("user_id").eq("id", applicationId).maybeSingle();
+  return !!data?.user_id;
+}
+
 async function sendSignedEmails(admin: any, id: string, signerName: string) {
   const { data: ag } = await admin
     .from("agreements")
@@ -659,6 +666,7 @@ async function sendSignedEmails(admin: any, id: string, signerName: string) {
         to: ag.signer_email as string,
         firstName: merge.driver_name ?? signerName,
         vehicle: merge.vehicle || null,
+        portalAccess: await agreementPortalAccess(admin, ag.application_id as string | null),
       });
     }
     await sendAgreementSignedOpsEmail({
@@ -694,7 +702,7 @@ export const signAgreement = createServerFn({ method: "POST" })
     const hash = await hashToken(data.token);
     const { data: ag } = await supabaseAdmin
       .from("agreements")
-      .select("id")
+      .select("id,application_id")
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) throw new Error("This signing link is no longer valid");
@@ -707,10 +715,11 @@ export const signAgreement = createServerFn({ method: "POST" })
       userAgent: meta.userAgent,
       authMethod: "email_link",
     });
-    if (result === "already_signed") return { ok: true, alreadySigned: true };
+    const portalAccess = await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null);
+    if (result === "already_signed") return { ok: true, alreadySigned: true, portalAccess };
     if (result !== "won") claimError(result);
     await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
-    return { ok: true, alreadySigned: false };
+    return { ok: true, alreadySigned: false, portalAccess };
   });
 
 // ------------------------------------------------------------- driver portal

@@ -31,6 +31,8 @@ function SignPage() {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // Set only from the server's answer after signing; never from the URL.
+  const [portalAccess, setPortalAccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +56,8 @@ function SignPage() {
     setError(null);
     setBusy(true);
     try {
-      await submitSign({ data: { token, signerName: name.trim(), agree: true } });
+      const res = await submitSign({ data: { token, signerName: name.trim(), agree: true } });
+      setPortalAccess(res?.portalAccess === true);
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -100,15 +103,28 @@ function SignPage() {
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
             <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement signed</h1>
-            <p className="mt-2 text-sm text-[#55555E]">
-              Thank you{agreement.signer_name ? `, ${agreement.signer_name}` : ""}. Your signed copy is saved to your driver file and available in your portal.
-            </p>
-            <a
-              href="/portal"
-              className="inline-block mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-5 py-2.5"
-            >
-              Go to your portal
-            </a>
+            {portalAccess ? (
+              <>
+                <p className="mt-2 text-sm text-[#55555E]">
+                  Thank you. Your signed copy is saved to your driver file and available in your portal.
+                </p>
+                <a
+                  href="/portal"
+                  className="inline-block mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-5 py-2.5"
+                >
+                  Go to Your Portal
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-[#55555E]">
+                  Thank you. Your signed copy has been securely saved to your driver file.
+                </p>
+                <p className="mt-1 text-sm text-[#55555E]">
+                  We'll send you access to your driver portal when your account is ready.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <>

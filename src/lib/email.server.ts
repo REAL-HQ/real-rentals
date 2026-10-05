@@ -658,12 +658,16 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
   return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
 }
 
-export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null }): Promise<void> {
+export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null; portalAccess: boolean }): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const tail = args.portalAccess
+    ? `is fully executed and saved to your driver file. It's available in your portal.</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`
+    : `is fully executed and securely saved to your driver file.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0">We'll send you access to your driver portal when your account is ready.</p>`;
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Agreement Signed — You're All Set</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is fully executed and saved to your account.</p>
-      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`);
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}`);
   await sendEmail({ to: args.to, subject: "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
 }
 
