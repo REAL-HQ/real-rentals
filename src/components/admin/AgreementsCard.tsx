@@ -1,3 +1,4 @@
+import { saveAgreementPdf } from "@/lib/agreement-download";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -10,7 +11,7 @@ import {
   resendAgreement,
   voidAgreement,
   retryAgreementArchive,
-  getAgreementPdfUrl,
+  getAgreementPdf,
   type AgreementRow,
 } from "@/lib/agreements.functions";
 
@@ -32,7 +33,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   const doResend = useServerFn(resendAgreement);
   const doVoid = useServerFn(voidAgreement);
   const doRetry = useServerFn(retryAgreementArchive);
-  const doPdf = useServerFn(getAgreementPdfUrl);
+  const doPdf = useServerFn(getAgreementPdf);
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,8 +265,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                       title="Download signed PDF"
                       onClick={async () => {
                         try {
-                          const r = await doPdf({ data: { agreementId: a.id } });
-                          window.open(r.url, "_blank", "noopener");
+                          saveAgreementPdf(await doPdf({ data: { agreementId: a.id } }));
                         } catch (e: any) {
                           toast.error(e?.message || "Could not open the PDF");
                         }
