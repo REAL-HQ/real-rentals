@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { getEmailDiagnostics, sendTestAlert, type EmailDiagnostics } from "@/lib/notifications.functions";
+import { getEmailDiagnostics, sendTestAlert, getEmailDeliveryStatus, type EmailDiagnostics, type EmailDeliveryStatus } from "@/lib/notifications.functions";
 import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X } from "lucide-react";
 
 type SettingsMap = Record<string, any>;
@@ -164,6 +164,10 @@ function EmailDeliveryStatus() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [delivery, setDelivery] = useState<EmailDeliveryStatus | null>(null);
+  const [deliveryId, setDeliveryId] = useState<string | null>(null);
+  const statusFn = useServerFn(getEmailDeliveryStatus);
 
   const refresh = useCallback(() => {
     setLoading(true);
