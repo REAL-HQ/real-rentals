@@ -186,12 +186,45 @@ function EmailDeliveryStatus() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Poll the delivery record after a test send. "Accepted" is shown as
+  // accepted — only the signed webhook can upgrade it to Delivered.
+  useEffect(() => {
+    if (!deliveryId) return;
+    if (delivery && delivery.state !== "accepted" && delivery.state !== "sending") return;
+    let cancelled = false;
+    let attempts = 0;
+    const tick = async () => {
+      attempts += 1;
+      try {
+        const s = await statusFn({ data: { id: deliveryId } });
+        if (cancelled || !s) return;
+        setDelivery(s);
+        if (s.state !== "accepted" && s.state !== "sending") return;
+      } catch {
+        /* keep polling; a transient read failure is not a delivery state */
+      }
+      if (!cancelled && attempts < 15) timer = setTimeout(tick, 4000);
+    };
+    let timer = setTimeout(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [deliveryId, delivery, statusFn]);
+
   async function runTest() {
     setSending(true);
+    setDelivery(null);
+    setDeliveryId(null);
     try {
-      const res = await test({ data: undefined });
-      if (res.ok) toast.success(`Test email sent to ${res.sentTo.join(", ")}`);
-      else toast.error(res.error ?? "The test email could not be sent.");
+      const to = testTo.trim();
+      const res = await test({ data: to ? { to } : {} });
+      if (res.ok) {
+        toast.success(`Test email accepted by the provider — sent to ${res.sentTo.join(", ")}`);
+        if (res.deliveryId) setDeliveryId(res.deliveryId);
+      } else {
+        toast.error(res.error ?? "The test email could not be sent.");
+      }
     } catch (e: any) {
       toast.error(String(e?.message ?? "Could not run the test."));
     } finally {
