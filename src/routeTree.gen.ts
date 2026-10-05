@@ -9,127 +9,42 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ThankYouRouteImport } from './routes/thank-you'
-import { Route as TermsRouteImport } from './routes/terms'
-import { Route as SmsConsentRouteImport } from './routes/sms-consent'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as SetPasswordRouteImport } from './routes/set-password'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as PortalRouteImport } from './routes/portal'
-import { Route as PartnersRouteImport } from './routes/partners'
-import { Route as PartnerRouteImport } from './routes/partner'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as InviteRouteImport } from './routes/invite'
-import { Route as InvestorsRouteImport } from './routes/investors'
-import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
-import { Route as HowItWorksRouteImport } from './routes/how-it-works'
-import { Route as FaqRouteImport } from './routes/faq'
-import { Route as ContactRouteImport } from './routes/contact'
-import { Route as ApplyRouteImport } from './routes/apply'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as SlugRouteImport } from './routes/$slug'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as FleetIndexRouteImport } from './routes/fleet.index'
-import { Route as SignTokenRouteImport } from './routes/sign.$token'
-import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as SlugRouteImport } from './routes/$slug'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ApplyRouteImport } from './routes/apply'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as FaqRouteImport } from './routes/faq'
+import { Route as HowItWorksRouteImport } from './routes/how-it-works'
+import { Route as InvestorFaqRouteImport } from './routes/investor-faq'
+import { Route as InvestorsRouteImport } from './routes/investors'
+import { Route as InviteRouteImport } from './routes/invite'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PartnerRouteImport } from './routes/partner'
+import { Route as PartnersRouteImport } from './routes/partners'
+import { Route as PortalRouteImport } from './routes/portal'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SmsConsentRouteImport } from './routes/sms-consent'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
-import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
-import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
-import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
-import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
-import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
-import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
-import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
+import { Route as FleetIndexRouteImport } from './routes/fleet.index'
+import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
+import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
+import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
+import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
+import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
+import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
+import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
 
-const ThankYouRoute = ThankYouRouteImport.update({
-  id: '/thank-you',
-  path: '/thank-you',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SmsConsentRoute = SmsConsentRouteImport.update({
-  id: '/sms-consent',
-  path: '/sms-consent',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SetPasswordRoute = SetPasswordRouteImport.update({
-  id: '/set-password',
-  path: '/set-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PortalRoute = PortalRouteImport.update({
-  id: '/portal',
-  path: '/portal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PartnersRoute = PartnersRouteImport.update({
-  id: '/partners',
-  path: '/partners',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PartnerRoute = PartnerRouteImport.update({
-  id: '/partner',
-  path: '/partner',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InviteRoute = InviteRouteImport.update({
-  id: '/invite',
-  path: '/invite',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InvestorsRoute = InvestorsRouteImport.update({
-  id: '/investors',
-  path: '/investors',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InvestorFaqRoute = InvestorFaqRouteImport.update({
-  id: '/investor-faq',
-  path: '/investor-faq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HowItWorksRoute = HowItWorksRouteImport.update({
-  id: '/how-it-works',
-  path: '/how-it-works',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FaqRoute = FaqRouteImport.update({
-  id: '/faq',
-  path: '/faq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApplyRoute = ApplyRouteImport.update({
-  id: '/apply',
-  path: '/apply',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SlugRoute = SlugRouteImport.update({
@@ -137,24 +52,94 @@ const SlugRoute = SlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FleetIndexRoute = FleetIndexRouteImport.update({
-  id: '/fleet/',
-  path: '/fleet/',
+const ApplyRoute = ApplyRouteImport.update({
+  id: '/apply',
+  path: '/apply',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SignTokenRoute = SignTokenRouteImport.update({
-  id: '/sign/$token',
-  path: '/sign/$token',
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FleetIdRoute = FleetIdRouteImport.update({
-  id: '/fleet/$id',
-  path: '/fleet/$id',
+const FaqRoute = FaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowItWorksRoute = HowItWorksRouteImport.update({
+  id: '/how-it-works',
+  path: '/how-it-works',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvestorFaqRoute = InvestorFaqRouteImport.update({
+  id: '/investor-faq',
+  path: '/investor-faq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvestorsRoute = InvestorsRouteImport.update({
+  id: '/investors',
+  path: '/investors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteRoute = InviteRouteImport.update({
+  id: '/invite',
+  path: '/invite',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnerRoute = PartnerRouteImport.update({
+  id: '/partner',
+  path: '/partner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartnersRoute = PartnersRouteImport.update({
+  id: '/partners',
+  path: '/partners',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SmsConsentRoute = SmsConsentRouteImport.update({
+  id: '/sms-consent',
+  path: '/sms-consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThankYouRoute = ThankYouRouteImport.update({
+  id: '/thank-you',
+  path: '/thank-you',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
@@ -162,20 +147,42 @@ const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   path: '/card/$applicationId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
-  id: '/api/public/sms/inbound',
-  path: '/api/public/sms/inbound',
+const FleetIndexRoute = FleetIndexRouteImport.update({
+  id: '/fleet/',
+  path: '/fleet/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicResendWebhookRoute = ApiPublicResendWebhookRouteImport.update({
-  id: '/api/public/resend/webhook',
-  path: '/api/public/resend/webhook',
+const FleetIdRoute = FleetIdRouteImport.update({
+  id: '/fleet/$id',
+  path: '/fleet/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicPaymentsWebhookRoute =
-  ApiPublicPaymentsWebhookRouteImport.update({
-    id: '/api/public/payments/webhook',
-    path: '/api/public/payments/webhook',
+const SignTokenRoute = SignTokenRouteImport.update({
+  id: '/sign/$token',
+  path: '/sign/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicCronAutomationsRoute =
+  ApiPublicCronAutomationsRouteImport.update({
+    id: '/api/public/cron/automations',
+    path: '/api/public/cron/automations',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicCronEsignArchiveRetryRoute =
+  ApiPublicCronEsignArchiveRetryRouteImport.update({
+    id: '/api/public/cron/esign-archive-retry',
+    path: '/api/public/cron/esign-archive-retry',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicCronLateFeesRoute = ApiPublicCronLateFeesRouteImport.update({
+  id: '/api/public/cron/late-fees',
+  path: '/api/public/cron/late-fees',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicCronOpsRemindersRoute =
+  ApiPublicCronOpsRemindersRouteImport.update({
+    id: '/api/public/cron/ops-reminders',
+    path: '/api/public/cron/ops-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicCronWizardRecoveryRoute =
@@ -184,29 +191,22 @@ const ApiPublicCronWizardRecoveryRoute =
     path: '/api/public/cron/wizard-recovery',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicCronOpsRemindersRoute =
-  ApiPublicCronOpsRemindersRouteImport.update({
-    id: '/api/public/cron/ops-reminders',
-    path: '/api/public/cron/ops-reminders',
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicCronLateFeesRoute = ApiPublicCronLateFeesRouteImport.update({
-  id: '/api/public/cron/late-fees',
-  path: '/api/public/cron/late-fees',
+const ApiPublicResendWebhookRoute = ApiPublicResendWebhookRouteImport.update({
+  id: '/api/public/resend/webhook',
+  path: '/api/public/resend/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicCronEsignArchiveRetryRoute =
-  ApiPublicCronEsignArchiveRetryRouteImport.update({
-    id: '/api/public/cron/esign-archive-retry',
-    path: '/api/public/cron/esign-archive-retry',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicCronAutomationsRoute =
-  ApiPublicCronAutomationsRouteImport.update({
-    id: '/api/public/cron/automations',
-    path: '/api/public/cron/automations',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
+  id: '/api/public/sms/inbound',
+  path: '/api/public/sms/inbound',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -453,130 +453,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/thank-you': {
-      id: '/thank-you'
-      path: '/thank-you'
-      fullPath: '/thank-you'
-      preLoaderRoute: typeof ThankYouRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sms-consent': {
-      id: '/sms-consent'
-      path: '/sms-consent'
-      fullPath: '/sms-consent'
-      preLoaderRoute: typeof SmsConsentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/set-password': {
-      id: '/set-password'
-      path: '/set-password'
-      fullPath: '/set-password'
-      preLoaderRoute: typeof SetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/portal': {
-      id: '/portal'
-      path: '/portal'
-      fullPath: '/portal'
-      preLoaderRoute: typeof PortalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/partners': {
-      id: '/partners'
-      path: '/partners'
-      fullPath: '/partners'
-      preLoaderRoute: typeof PartnersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/partner': {
-      id: '/partner'
-      path: '/partner'
-      fullPath: '/partner'
-      preLoaderRoute: typeof PartnerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invite': {
-      id: '/invite'
-      path: '/invite'
-      fullPath: '/invite'
-      preLoaderRoute: typeof InviteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/investors': {
-      id: '/investors'
-      path: '/investors'
-      fullPath: '/investors'
-      preLoaderRoute: typeof InvestorsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/investor-faq': {
-      id: '/investor-faq'
-      path: '/investor-faq'
-      fullPath: '/investor-faq'
-      preLoaderRoute: typeof InvestorFaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/how-it-works': {
-      id: '/how-it-works'
-      path: '/how-it-works'
-      fullPath: '/how-it-works'
-      preLoaderRoute: typeof HowItWorksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/faq': {
-      id: '/faq'
-      path: '/faq'
-      fullPath: '/faq'
-      preLoaderRoute: typeof FaqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/apply': {
-      id: '/apply'
-      path: '/apply'
-      fullPath: '/apply'
-      preLoaderRoute: typeof ApplyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$slug': {
@@ -586,32 +467,130 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/fleet/': {
-      id: '/fleet/'
-      path: '/fleet'
-      fullPath: '/fleet/'
-      preLoaderRoute: typeof FleetIndexRouteImport
+    '/apply': {
+      id: '/apply'
+      path: '/apply'
+      fullPath: '/apply'
+      preLoaderRoute: typeof ApplyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sign/$token': {
-      id: '/sign/$token'
-      path: '/sign/$token'
-      fullPath: '/sign/$token'
-      preLoaderRoute: typeof SignTokenRouteImport
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/fleet/$id': {
-      id: '/fleet/$id'
-      path: '/fleet/$id'
-      fullPath: '/fleet/$id'
-      preLoaderRoute: typeof FleetIdRouteImport
+    '/faq': {
+      id: '/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof FaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-it-works': {
+      id: '/how-it-works'
+      path: '/how-it-works'
+      fullPath: '/how-it-works'
+      preLoaderRoute: typeof HowItWorksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/investor-faq': {
+      id: '/investor-faq'
+      path: '/investor-faq'
+      fullPath: '/investor-faq'
+      preLoaderRoute: typeof InvestorFaqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/investors': {
+      id: '/investors'
+      path: '/investors'
+      fullPath: '/investors'
+      preLoaderRoute: typeof InvestorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite': {
+      id: '/invite'
+      path: '/invite'
+      fullPath: '/invite'
+      preLoaderRoute: typeof InviteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partner': {
+      id: '/partner'
+      path: '/partner'
+      fullPath: '/partner'
+      preLoaderRoute: typeof PartnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partners': {
+      id: '/partners'
+      path: '/partners'
+      fullPath: '/partners'
+      preLoaderRoute: typeof PartnersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sms-consent': {
+      id: '/sms-consent'
+      path: '/sms-consent'
+      fullPath: '/sms-consent'
+      preLoaderRoute: typeof SmsConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/thank-you': {
+      id: '/thank-you'
+      path: '/thank-you'
+      fullPath: '/thank-you'
+      preLoaderRoute: typeof ThankYouRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/card/$applicationId': {
@@ -621,46 +600,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CardApplicationIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/sms/inbound': {
-      id: '/api/public/sms/inbound'
-      path: '/api/public/sms/inbound'
-      fullPath: '/api/public/sms/inbound'
-      preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
+    '/fleet/': {
+      id: '/fleet/'
+      path: '/fleet'
+      fullPath: '/fleet/'
+      preLoaderRoute: typeof FleetIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/resend/webhook': {
-      id: '/api/public/resend/webhook'
-      path: '/api/public/resend/webhook'
-      fullPath: '/api/public/resend/webhook'
-      preLoaderRoute: typeof ApiPublicResendWebhookRouteImport
+    '/fleet/$id': {
+      id: '/fleet/$id'
+      path: '/fleet/$id'
+      fullPath: '/fleet/$id'
+      preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/payments/webhook': {
-      id: '/api/public/payments/webhook'
-      path: '/api/public/payments/webhook'
-      fullPath: '/api/public/payments/webhook'
-      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+    '/sign/$token': {
+      id: '/sign/$token'
+      path: '/sign/$token'
+      fullPath: '/sign/$token'
+      preLoaderRoute: typeof SignTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/cron/wizard-recovery': {
-      id: '/api/public/cron/wizard-recovery'
-      path: '/api/public/cron/wizard-recovery'
-      fullPath: '/api/public/cron/wizard-recovery'
-      preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/cron/ops-reminders': {
-      id: '/api/public/cron/ops-reminders'
-      path: '/api/public/cron/ops-reminders'
-      fullPath: '/api/public/cron/ops-reminders'
-      preLoaderRoute: typeof ApiPublicCronOpsRemindersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/cron/late-fees': {
-      id: '/api/public/cron/late-fees'
-      path: '/api/public/cron/late-fees'
-      fullPath: '/api/public/cron/late-fees'
-      preLoaderRoute: typeof ApiPublicCronLateFeesRouteImport
+    '/api/public/cron/automations': {
+      id: '/api/public/cron/automations'
+      path: '/api/public/cron/automations'
+      fullPath: '/api/public/cron/automations'
+      preLoaderRoute: typeof ApiPublicCronAutomationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/cron/esign-archive-retry': {
@@ -670,11 +635,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronEsignArchiveRetryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/cron/automations': {
-      id: '/api/public/cron/automations'
-      path: '/api/public/cron/automations'
-      fullPath: '/api/public/cron/automations'
-      preLoaderRoute: typeof ApiPublicCronAutomationsRouteImport
+    '/api/public/cron/late-fees': {
+      id: '/api/public/cron/late-fees'
+      path: '/api/public/cron/late-fees'
+      fullPath: '/api/public/cron/late-fees'
+      preLoaderRoute: typeof ApiPublicCronLateFeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/ops-reminders': {
+      id: '/api/public/cron/ops-reminders'
+      path: '/api/public/cron/ops-reminders'
+      fullPath: '/api/public/cron/ops-reminders'
+      preLoaderRoute: typeof ApiPublicCronOpsRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/wizard-recovery': {
+      id: '/api/public/cron/wizard-recovery'
+      path: '/api/public/cron/wizard-recovery'
+      fullPath: '/api/public/cron/wizard-recovery'
+      preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/resend/webhook': {
+      id: '/api/public/resend/webhook'
+      path: '/api/public/resend/webhook'
+      fullPath: '/api/public/resend/webhook'
+      preLoaderRoute: typeof ApiPublicResendWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/sms/inbound': {
+      id: '/api/public/sms/inbound'
+      path: '/api/public/sms/inbound'
+      fullPath: '/api/public/sms/inbound'
+      preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
