@@ -379,7 +379,6 @@ export const activateRental = createServerFn({ method: "POST" })
           </a>
           <p style="color:#888;font-size:12px;margin-top:20px">Take photos of the car at pickup in the portal — it protects you if there's ever a question about damage.</p>
         </div>`,
-        replyTo: "team@drivereal.com",
       });
     } catch (e) {
       console.error("[activate] welcome email failed", e);

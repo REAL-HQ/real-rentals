@@ -181,7 +181,6 @@ async function handle(request: Request): Promise<Response> {
           <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Review &amp; Sign</a>
           <p style="color:#888;font-size:12px;margin-top:20px">Need a fresh link? Reply to this email and our team will send one.</p>
         </div>`,
-        replyTo: "team@drivereal.com",
       });
       await logNotification(
         supabaseAdmin,

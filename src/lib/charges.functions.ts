@@ -496,7 +496,6 @@ export const rebillCharges = createServerFn({ method: "POST" })
               <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:600">View In Portal</a>
               <p style="color:#888;font-size:12px;margin-top:18px">Think one of these is not yours? Reply to this email and we'll look into it.</p>
             </div>`,
-            replyTo: "team@drivereal.com",
           });
         }
       } catch (e) {

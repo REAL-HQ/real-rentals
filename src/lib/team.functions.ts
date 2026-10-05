@@ -251,7 +251,7 @@ export const inviteTeammate = createServerFn({ method: "POST" })
         </p>
         <p style="color:#888;font-size:12px;margin-top:24px">If you were not expecting this, you can ignore it. REAL RENTALS</p>
       </div>`,
-      replyTo: actor.email ?? "team@drivereal.com",
+      replyTo: actor.email ?? undefined,
     });
 
     await logAudit(actor, {

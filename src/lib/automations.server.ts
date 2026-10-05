@@ -285,7 +285,6 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
               <p style="font-size:15px;line-height:1.6;white-space:pre-wrap">${escapeHtml(body)}</p>
               <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · Reply to this email and our team will pick it up.</p>
             </div>`,
-            replyTo: "team@drivereal.com",
           });
           await supabaseAdmin.from("outbound_messages").insert({
             channel: "email",
