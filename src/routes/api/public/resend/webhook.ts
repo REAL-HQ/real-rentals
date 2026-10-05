@@ -67,7 +67,10 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
           return Response.json({ error: "Invalid signature." }, { status: 401 });
         }
 
-        let event: { type?: string; data?: { email_id?: string; reason?: string } };
+        let event: {
+          type?: string;
+          data?: { email_id?: string; to?: string[] | string; bounce?: { message?: string }; reason?: string };
+        };
         try {
           event = JSON.parse(body);
         } catch {
@@ -75,55 +78,30 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
         }
 
         const state = event.type ? EVENT_STATE[event.type] : undefined;
+        // Correlate ONLY on Resend's data.email_id (the id returned by the send call).
         const messageId = event.data?.email_id;
         if (!state || !messageId) {
-          // Event types we don't track (opens, clicks, delays) and malformed
-          // payloads are acknowledged so Resend does not retry them.
           return Response.json({ ignored: true });
         }
+        const to = event.data?.to;
+        const recipient = Array.isArray(to) ? to[0] : to;
+        const reason = event.data?.bounce?.message ?? event.data?.reason ?? null;
 
-        try {
-          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          const { data: row } = await supabaseAdmin
-            .from("email_deliveries")
-            .select("id, state, accepted_at, delivered_at, bounced_at, complained_at, failed_at")
-            .eq("resend_message_id", messageId)
-            .maybeSingle();
-
-          if (!row) return Response.json({ ignored: true });
-
-          const now = new Date().toISOString();
-          const TS_FIELD = {
-            accepted: "accepted_at",
-            delivered: "delivered_at",
-            bounced: "bounced_at",
-            complained: "complained_at",
-            failed: "failed_at",
-          } as const;
-          type DeliveryUpdate = {
-            updated_at: string;
-            state?: "accepted" | "delivered" | "bounced" | "complained" | "failed";
-            accepted_at?: string;
-            delivered_at?: string;
-            bounced_at?: string;
-            complained_at?: string;
-            failed_at?: string;
-            provider_reason?: string;
-          };
-          const patch: DeliveryUpdate = { updated_at: now };
-          // First terminal state wins; a late "sent" never downgrades it.
-          if (!(TERMINAL.has(row.state) && !TERMINAL.has(state))) patch.state = state;
-          const tsField = TS_FIELD[state];
-          if (!row[tsField]) patch[tsField] = now;
-          if (event.data?.reason) patch.provider_reason = String(event.data.reason).slice(0, 500);
-
-          await supabaseAdmin.from("email_deliveries").update(patch).eq("id", row.id);
-        } catch (err) {
-          // A bad row must not fail the endpoint; log without the payload.
-          console.error("[resend-webhook] failed to record event", event.type, err);
+        // Atomic, order-independent update. If the app hasn't attached this id
+        // yet, a placeholder is stored and merged in when the send finishes.
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data, error } = await supabaseAdmin.rpc("email_delivery_event", {
+          _resend_id: messageId,
+          _state: state,
+          _reason: reason ? String(reason).slice(0, 500) : null,
+          _recipient: recipient ?? null,
+        });
+        if (error) {
+          // Non-2xx so Resend retries; nothing is lost.
+          console.error("[resend-webhook] failed to record event", event.type, error.message);
+          return Response.json({ error: "Could not record event." }, { status: 500 });
         }
-
-        return Response.json({ ok: true });
+        return Response.json({ ok: true, correlation: data });
       },
     },
   },
