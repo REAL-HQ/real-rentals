@@ -277,7 +277,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
   }
-  await sendEmail({ to: prefs.recipients, subject, html });
+  await sendEmail({ to: prefs.recipients, subject, html, track: { workflow: "lead_alert" } });
 }
 
 /**
@@ -322,6 +322,7 @@ export async function sendApplicationResumeEmail(args: {
     subject: "Your REAL RENTALS Application — Here's Your Link",
     html,
     replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "application_resume" },
   });
 }
 
@@ -360,7 +361,7 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
   </div>
 </body></html>`;
 
-  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -410,7 +411,7 @@ export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> 
       <div style="margin-top:20px">
         <a href="${args.portalUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Payment History</a>
       </div>`);
-  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
 }
 
 type FailedArgs = {
@@ -431,7 +432,7 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 type CardExpiringArgs = {
@@ -459,7 +460,7 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void>
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
-  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
 type LicenseExpiryArgs = {
@@ -477,7 +478,7 @@ export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
-  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
 }
 
 type ServiceDigestArgs = {
@@ -496,7 +497,7 @@ export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<v
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Service Due — ${args.items.length} Vehicle${args.items.length === 1 ? "" : "s"}</h1>
       <table style="width:100%;border-collapse:collapse;margin-top:8px">${rows}</table>
       <a href="https://drivereal.com/admin" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Service Board</a>`);
-  await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html });
+  await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html, track: { workflow: "service_digest" } });
 }
 
 export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
@@ -507,7 +508,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO });
+  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
 }
 
 // -----------------------------------------------------------------------------
