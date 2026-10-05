@@ -58,7 +58,7 @@ export const getEmailDiagnostics = createServerFn({ method: "POST" })
       source,
       onNew: prefs.onNew,
       onComplete: prefs.onComplete,
-      fromAddress: "team@drivereal.com",
+      fromAddress: (await import("@/lib/email.server")).EMAIL_FROM,
     };
   });
 

@@ -607,5 +607,5 @@ export async function sendAgreementSignedOpsEmail(args: { driverName: string; ap
       <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Rental Agreement Signed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their rental agreement${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
-  await sendEmail({ to: "go@drivereal.com", subject: `Signed Agreement — ${args.driverName}`, html });
+  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `Signed Agreement — ${args.driverName}`, html });
 }
