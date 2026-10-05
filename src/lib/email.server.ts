@@ -14,9 +14,51 @@ type SendArgs = {
   html: string;
   from?: string;
   replyTo?: string;
+  /**
+   * Name the workflow sending this email (esign_signing_request,
+   * portal_invite, staff_invite, application_resume, test_email, ...).
+   * When present, the send is recorded in email_deliveries so the signed
+   * Resend webhook can later mark it delivered/bounced/complained. Without
+   * it the send is untracked and "accepted" is all anyone will ever know.
+   */
+  track?: { workflow: string };
 };
 
-export type SendResult = { ok: boolean; error?: string; id?: string };
+export type SendResult = { ok: boolean; error?: string; id?: string; deliveryId?: string };
+
+/**
+ * Record one send attempt in email_deliveries. Never throws, never delays the
+ * caller's outcome: a tracking failure must not make a sent email look unsent.
+ * "accepted" here means the Resend API accepted the request — only the signed
+ * webhook can move the row to delivered/bounced/complained.
+ */
+async function recordEmailDelivery(
+  track: { workflow: string },
+  recipient: string,
+  result: { ok: boolean; error?: string; id?: string },
+): Promise<string | undefined> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const now = new Date().toISOString();
+    const { data } = await supabaseAdmin
+      .from("email_deliveries")
+      .insert({
+        workflow: track.workflow,
+        recipient,
+        resend_message_id: result.id ?? null,
+        state: result.ok ? "accepted" : "failed",
+        accepted_at: result.ok ? now : null,
+        failed_at: result.ok ? null : now,
+        provider_reason: result.ok ? null : (result.error ?? "").slice(0, 500),
+      })
+      .select("id")
+      .single();
+    return data?.id;
+  } catch (err) {
+    console.error("[email] could not record delivery", err);
+    return undefined;
+  }
+}
 
 /**
  * Send one email. Returns a result rather than throwing, so a failed send can
