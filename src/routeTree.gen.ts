@@ -34,6 +34,7 @@ import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
+import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
@@ -166,6 +167,11 @@ const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
   path: '/api/public/sms/inbound',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicResendWebhookRoute = ApiPublicResendWebhookRouteImport.update({
+  id: '/api/public/resend/webhook',
+  path: '/api/public/resend/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRoutesByTo {
@@ -266,6 +273,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRoutesById {
@@ -300,6 +308,7 @@ export interface FileRoutesById {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
 }
 export interface FileRouteTypes {
@@ -335,6 +344,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -368,6 +378,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
   id:
     | '__root__'
@@ -401,6 +412,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/payments/webhook'
+    | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
   fileRoutesById: FileRoutesById
 }
@@ -435,6 +447,7 @@ export interface RootRouteChildren {
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
+  ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
   ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
 }
 
@@ -615,6 +628,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/resend/webhook': {
+      id: '/api/public/resend/webhook'
+      path: '/api/public/resend/webhook'
+      fullPath: '/api/public/resend/webhook'
+      preLoaderRoute: typeof ApiPublicResendWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/payments/webhook': {
       id: '/api/public/payments/webhook'
       path: '/api/public/payments/webhook'
@@ -691,6 +711,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
+  ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
   ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
 }
 export const routeTree = rootRouteImport
