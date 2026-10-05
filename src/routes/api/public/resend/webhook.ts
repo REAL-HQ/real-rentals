@@ -22,7 +22,6 @@ const EVENT_STATE: Record<string, "accepted" | "delivered" | "bounced" | "compla
   "email.failed": "failed",
 };
 
-const TERMINAL = new Set(["delivered", "bounced", "complained", "failed"]);
 
 async function verifySignature(body: string, headers: Headers, secret: string): Promise<boolean> {
   const id = headers.get("svix-id");
