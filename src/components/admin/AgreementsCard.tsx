@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { FileSignature, Send, Ban, RefreshCw, Loader2, Download } from "lucide-react";
+import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle } from "lucide-react";
 import { SectionCard } from "./ui";
 import {
   listAgreements,
@@ -13,6 +13,10 @@ import {
   getAgreementPdfUrl,
   type AgreementRow,
 } from "@/lib/agreements.functions";
+
+const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
+const chTone = (v: string) =>
+  v === "sent" ? "text-[#1E7A32]" : v === "failed" ? "text-[#8A1F12] font-semibold" : "text-[#77777F]";
 
 function toneFor(status: string) {
   if (status === "signed") return "bg-[#E9F9EC] text-[#1E7A32] border-[#CDEFD6]";
@@ -39,6 +43,14 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   >([]);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Latest signing link per agreement, held only in memory for Copy.
+  const [links, setLinks] = useState<Record<string, string>>({});
+
+  function reportDelivery(d: { email: string; sms: string; delivered: boolean } | undefined, okMsg: string) {
+    if (!d) return toast.success(okMsg);
+    if (!d.delivered) toast.error("Signing link wasn't delivered — use Retry Delivery or Copy Signing Link.");
+    else toast.success(`${okMsg} · Email ${CH[d.email] ?? d.email} · SMS ${CH[d.sms] ?? d.sms}`);
+  }
 
   async function refresh() {
     try {
@@ -91,8 +103,8 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
     setBusy(true);
     try {
       const res = await doSend({ data: { applicationId, body: preview ?? undefined } });
-      toast.success("Agreement sent for signature");
-      if (res.url) await navigator.clipboard?.writeText(res.url).catch(() => {});
+      reportDelivery(res.delivery, "Agreement sent for signature");
+      if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
       setPreview(null);
       setBlockers([]);
       await refresh();
@@ -215,6 +227,31 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                         : "Signed — saving the PDF copy…"}
                     </div>
                   ) : null}
+                  {a.status !== "voided" && a.status !== "draft" && !a.signed_at ? (
+                    <div className="mt-1 text-[11px] text-[#55555E]">
+                      Email: <span className={chTone(a.email_status)} title={a.email_error ?? ""}>{CH[a.email_status] ?? a.email_status}</span>
+                      {"  ·  "}SMS: <span className={chTone(a.sms_status)} title={a.sms_error ?? ""}>{CH[a.sms_status] ?? a.sms_status}</span>
+                    </div>
+                  ) : null}
+                  {!a.signed_at && a.status !== "voided" && a.email_status !== "sent" && a.sms_status !== "sent" ? (
+                    <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-[#8A1F12]">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Signing link wasn't delivered
+                    </div>
+                  ) : null}
+                  {a.company_signer_name ? (
+                    <div className="mt-0.5 text-[10.5px] text-[#9A9AA2]">
+                      Company signer: {a.company_signer_name}{a.company_signer_title ? `, ${a.company_signer_title}` : ""}
+                    </div>
+                  ) : null}
+                  {a.timeline?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10.5px] text-[#77777F]">
+                      {a.timeline.map((t, i) => (
+                        <span key={i} title={new Date(t.at).toLocaleString()} className={/failed/i.test(t.label) ? "text-[#8A1F12]" : ""}>
+                          {i ? "→ " : ""}{t.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {a.sha256 ? (
                     <div className="mt-0.5 text-[10.5px] font-mono text-[#9A9AA2] truncate" title={a.sha256}>
                       SHA-256 {a.sha256.slice(0, 16)}…
@@ -256,21 +293,33 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                   ) : null}
                   {a.status !== "signed" && a.status !== "voided" && a.status !== "signing" ? (
                     <>
+                      {links[a.id] ? (
+                        <button
+                          title="Copy Signing Link"
+                          onClick={async () => {
+                            await navigator.clipboard?.writeText(links[a.id]).catch(() => {});
+                            toast.success("Signing link copied");
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#55555E] border border-[#E6E6EA] rounded-md px-2 py-1"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy Signing Link
+                        </button>
+                      ) : null}
                       <button
-                        title="Resend link"
+                        title="Retry Delivery (issues a new link; the old one stops working)"
                         onClick={async () => {
                           try {
                             const r = await doResend({ data: { agreementId: a.id } });
-                            if (r.url) await navigator.clipboard?.writeText(r.url).catch(() => {});
-                            toast.success("New signing link sent");
+                            if (r.url) setLinks((l) => ({ ...l, [a.id]: r.url }));
+                            reportDelivery(r.delivery, "New signing link sent");
                             await refresh();
                           } catch (e: any) {
                             toast.error(e?.message || "Could not resend");
                           }
                         }}
-                        className="p-1.5 rounded-md hover:bg-[#F4F4F6] text-[#55555E]"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#55555E] border border-[#E6E6EA] rounded-md px-2 py-1"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
+                        <RefreshCw className="w-3.5 h-3.5" /> Retry Delivery
                       </button>
                       <button
                         title="Void"

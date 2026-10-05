@@ -13,6 +13,12 @@ const SECTIONS: {
   hint?: string;
   fields: { key: string; label: string; type: "text" | "number" | "textarea" | "boolean" | "emails"; hint?: string }[];
 }[] = [
+  { key: "esign_company_signer", title: "Company eSign Signer",
+    hint: "Countersigns every agreement as /s/ Name, Title, REAL RENTALS. Captured when a document is sent — changing it never alters documents already sent or signed. Owners only.",
+    fields: [
+    { key: "name", label: "Company Signer Name", type: "text" },
+    { key: "title", label: "Title", type: "text" },
+  ]},
   { key: "rental_terms", title: "Rental Terms", fields: [
     { key: "min_term_weeks", label: "Minimum term (weeks)", type: "number" },
     { key: "notice_days", label: "Notice to return (days)", type: "number" },

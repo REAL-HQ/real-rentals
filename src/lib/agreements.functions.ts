@@ -27,6 +27,25 @@ export type AgreementRow = {
   archive_status: string;
   archive_error: string | null;
   sha256: string | null;
+  email_status: "sent" | "failed" | "not_attempted";
+  email_error: string | null;
+  sms_status: "sent" | "failed" | "not_attempted";
+  sms_error: string | null;
+  company_signer_name: string | null;
+  company_signer_title: string | null;
+  timeline: { at: string; label: string }[];
+};
+
+const TIMELINE_LABELS: Record<string, string> = {
+  "document.created": "Created",
+  "document.sent": "Sent",
+  "document.resent": "Link reissued",
+  "document.delivery_failed": "Delivery failed",
+  "document.viewed": "Viewed",
+  "document.signed": "Signed",
+  "document.archive_failed": "PDF save failed",
+  "document.archive_recovered": "PDF recovered",
+  "document.voided": "Voided",
 };
 
 const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
@@ -256,11 +275,29 @@ export const listAgreements = createServerFn({ method: "GET" })
     const { data: rows } = await supabaseAdmin
       .from("agreements")
       .select(
-        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256",
+        "id,application_id,vehicle_id,title,body,status,sent_at,viewed_at,signed_at,voided_at,signer_name,signer_email,created_at,document_id,archive_status,archive_error,sha256,email_status,email_error,sms_status,sms_error,company_signer_name,company_signer_title",
       )
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
-    return (rows ?? []) as AgreementRow[];
+    const list = (rows ?? []) as any[];
+    const ids = list.map((r) => r.id);
+    const byId = new Map<string, { at: string; label: string }[]>();
+    if (ids.length) {
+      const { data: events } = await supabaseAdmin
+        .from("audit_log")
+        .select("entity_id,action,created_at")
+        .eq("entity_type", "esign_document")
+        .in("entity_id", ids)
+        .order("created_at", { ascending: true });
+      for (const e of events ?? []) {
+        const label = TIMELINE_LABELS[e.action as string];
+        if (!label) continue;
+        const arr = byId.get(e.entity_id as string) ?? [];
+        arr.push({ at: e.created_at as string, label });
+        byId.set(e.entity_id as string, arr);
+      }
+    }
+    return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [] })) as AgreementRow[];
   });
 
 export const previewAgreement = createServerFn({ method: "POST" })
@@ -304,7 +341,7 @@ export async function issueAgreement(
   admin: any,
   applicationId: string,
   opts: { body?: string; createdBy?: string | null } = {},
-): Promise<{ id: string; url: string }> {
+): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   const { data: merge, app, blockers } = await buildMergeData(admin, applicationId);
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -376,33 +413,19 @@ export async function issueAgreement(
   }
 
   const url = `${SITE_URL()}/sign/${token}`;
-  try {
-    const { sendAgreementEmail } = await import("@/lib/email.server");
-    await sendAgreementEmail({
-      to: app.email as string,
-      firstName: (app.full_name as string | null) ?? null,
-      url,
-      vehicle: merge.vehicle || null,
-    });
-  } catch (e) {
-    console.error("[agreement] email failed", e);
-  }
+  const { deliverSigningLink } = await import("@/lib/esign.server");
+  const delivery = await deliverSigningLink(admin, {
+    id: row.id as string,
+    url,
+    email: app.email as string,
+    phone: (app.phone as string | null) ?? null,
+    name: (app.full_name as string | null) ?? null,
+    vehicle: merge.vehicle || null,
+    applicationId,
+    actor: opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null,
+  });
 
-  // Text the link too when they opted in — signature turnaround is the
-  // slowest step between approval and handing over keys.
-  try {
-    const { sendSms } = await import("@/lib/sms.server");
-    await sendSms({
-      to: (app.phone as string) ?? "",
-      body: `REAL RENTALS: Your rental agreement is ready to sign: ${url} Reply STOP to opt out.`,
-      kind: "agreement_sent",
-      applicationId,
-    });
-  } catch (e) {
-    console.error("[agreement] sms failed", e);
-  }
-
-  return { id: row.id as string, url };
+  return { id: row.id as string, url, delivery };
 }
 
 /**
@@ -442,6 +465,13 @@ export const sendAgreement = createServerFn({ method: "POST" })
     });
   });
 
+/**
+ * Retry Delivery and Resend are the same operation, on purpose. Only a hash of
+ * the signing token is stored, so the current link can't be re-sent; every
+ * delivery retry rotates the token: the old link dies immediately, the new one
+ * becomes canonical on the same agreement row (no duplicate document), and the
+ * audit history is kept. The company signer snapshot is not touched.
+ */
 export const resendAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
@@ -480,20 +510,23 @@ export const resendAgreement = createServerFn({ method: "POST" })
 
     const url = `${SITE_URL()}/sign/${token}`;
     const merge = (ag.merge_data ?? {}) as MergeData;
-    if (ag.signer_email) {
-      try {
-        const { sendAgreementEmail } = await import("@/lib/email.server");
-        await sendAgreementEmail({
-          to: ag.signer_email as string,
-          firstName: merge.driver_name ?? null,
-          url,
-          vehicle: merge.vehicle || null,
-        });
-      } catch (e) {
-        console.error("[agreement] resend email failed", e);
-      }
+    let phone: string | null = null;
+    if (ag.application_id) {
+      const { data: app } = await supabaseAdmin.from("applications").select("phone").eq("id", ag.application_id).maybeSingle();
+      phone = (app?.phone as string | null) ?? null;
     }
-    return { ok: true, url };
+    const { deliverSigningLink } = await import("@/lib/esign.server");
+    const delivery = await deliverSigningLink(supabaseAdmin, {
+      id: ag.id as string,
+      url,
+      email: (ag.signer_email as string | null) ?? null,
+      phone,
+      name: merge.driver_name ?? null,
+      vehicle: merge.vehicle || null,
+      applicationId: (ag.application_id as string | null) ?? null,
+      actor,
+    });
+    return { ok: true, url, delivery };
   });
 
 export const voidAgreement = createServerFn({ method: "POST" })

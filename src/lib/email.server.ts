@@ -572,7 +572,7 @@ export async function sendPortalInviteEmail(args: {
   });
 }
 
-export async function sendAgreementEmail(args: AgreementSendArgs): Promise<void> {
+export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const vehicleLine = args.vehicle
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Vehicle: <strong>${escapeHtml(args.vehicle)}</strong></p>`
@@ -583,7 +583,7 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<void>
       ${vehicleLine}
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
-  await sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: "team@drivereal.com" });
+  return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: "team@drivereal.com" });
 }
 
 export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null }): Promise<void> {

@@ -4,7 +4,7 @@
  * Run: bun scripts/esign-engine.test.ts
  */
 import { supabaseAdmin as admin } from "../src/integrations/supabase/client.server";
-import { completeSigning, voidDocument, hashToken, randomToken, retryArchive } from "../src/lib/esign.server";
+import { completeSigning, voidDocument, hashToken, randomToken, retryArchive, deliverSigningLink } from "../src/lib/esign.server";
 
 let fail = 0;
 const ok = (c: boolean, l: string) => { if (!c) fail++; console.log(`  ${c ? "PASS" : "FAIL"}  ${l}`); };
@@ -84,6 +84,43 @@ try {
   ok(await retryArchive(admin, f.id, null), "retry succeeds");
   const { data: fRow2 } = await admin.from("agreements").select("archive_status,document_id").eq("id", f.id).single();
   ok(fRow2!.archive_status === "archived" && !!fRow2!.document_id, "recovered to archived");
+  const { count: fDocs } = await admin.from("documents").select("id", { count: "exact", head: true }).eq("storage_path", `${app!.id}/agreement-${f.id}.pdf`);
+  ok(fDocs === 1, `one vault document after recovery (${fDocs})`);
+  const { data: rec } = await admin.from("audit_log").select("id").eq("entity_id", f.id).eq("action", "document.archive_recovered");
+  ok((rec?.length ?? 0) === 1, "recovery audit event recorded");
+
+  console.log("K. ARCHIVE RETRY CALLED TWICE (concurrent)");
+  const g = await mk({ appId: app!.id });
+  (admin.storage as any).from = () => ({ upload: async () => ({ error: { message: "simulated outage" } }) });
+  await sign(g.id, g.hash);
+  (admin.storage as any).from = realFrom;
+  const both = await Promise.all([retryArchive(admin, g.id, null), retryArchive(admin, g.id, null)]);
+  const { count: gDocs } = await admin.from("documents").select("id", { count: "exact", head: true }).eq("storage_path", `${app!.id}/agreement-${g.id}.pdf`);
+  ok(both.includes(true) && gDocs === 1, `exactly one documents row (${gDocs}, results ${both})`);
+  ok(await retryArchive(admin, g.id, null), "retry after archived is a no-op true");
+
+  console.log("L. PERSISTENT FAILURE STAYS VISIBLE");
+  const h = await mk({ appId: app!.id });
+  (admin.storage as any).from = () => ({ upload: async () => ({ error: { message: "simulated outage" } }) });
+  await sign(h.id, h.hash);
+  const again = await retryArchive(admin, h.id, null);
+  (admin.storage as any).from = realFrom;
+  const { data: hRow } = await admin.from("agreements").select("archive_status,archive_attempts").eq("id", h.id).single();
+  ok(!again && hRow!.archive_status === "failed" && hRow!.archive_attempts === 2, `still failed, attempts=${hRow!.archive_attempts}`);
+
+  console.log("M. DELIVERY STATE IS TRUTHFUL");
+  const m = await mk({ appId: app!.id });
+  const savedKey = process.env.RESEND_API_KEY;
+  delete process.env.RESEND_API_KEY; // force an email failure
+  const del = await deliverSigningLink(admin, { id: m.id, url: "https://example.invalid/sign/x", email: "esign-test@drivereal.com", phone: null, name: "T", vehicle: null, applicationId: null, actor: null });
+  if (savedKey) process.env.RESEND_API_KEY = savedKey;
+  const { data: mRow } = await admin.from("agreements").select("status,email_status,sms_status,email_error").eq("id", m.id).single();
+  ok(del.email === "failed" && mRow!.email_status === "failed" && !!mRow!.email_error, "email failure recorded");
+  ok(mRow!.sms_status === "not_attempted", "sms not attempted without phone");
+  ok(mRow!.status === "sent", "document stays valid (sent)");
+  const { data: df } = await admin.from("audit_log").select("id,metadata").eq("entity_id", m.id).eq("action", "document.delivery_failed");
+  ok((df?.length ?? 0) === 1 && !JSON.stringify(df).includes("example.invalid"), "delivery_failed audited without the link");
+  ok((await sign(m.id, m.hash)) === "won", "link still signable after delivery failure");
 } finally {
   for (const id of created) {
     const { data: r } = await admin.from("agreements").select("document_id,application_id").eq("id", id).single();
