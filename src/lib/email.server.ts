@@ -70,12 +70,13 @@ async function recordEmailDelivery(
  * and a delivered email were indistinguishable from the outside, which is
  * exactly how alerts can look configured while silently going nowhere.
  */
-export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html, from, replyTo, track }: SendArgs): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
     return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
+  const recipient = Array.isArray(to) ? (to[0] ?? "") : to;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -97,7 +98,9 @@ export async function sendEmail({ to, subject, html, from, replyTo }: SendArgs):
       return { ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` };
     }
     const json = (await res.json().catch(() => ({}))) as { id?: string };
-    return { ok: true, id: json.id };
+    const result: SendResult = { ok: true, id: json.id };
+    if (track) result.deliveryId = await recordEmailDelivery(track, recipient, result);
+    return result;
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
     return { ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." };
