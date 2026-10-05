@@ -101,7 +101,7 @@ function SignPage() {
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
             <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement signed</h1>
             <p className="mt-2 text-sm text-[#55555E]">
-              Thank you{agreement.signer_name ? `, ${agreement.signer_name}` : ""}. A copy has been emailed to you and saved to your driver file.
+              Thank you{agreement.signer_name ? `, ${agreement.signer_name}` : ""}. Your signed copy is saved to your driver file and available in your portal.
             </p>
             <a
               href="/portal"
