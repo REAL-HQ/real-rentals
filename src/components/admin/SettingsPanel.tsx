@@ -276,7 +276,14 @@ function EmailDeliveryStatus() {
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="email"
+          value={testTo}
+          onChange={(e) => setTestTo(e.target.value)}
+          placeholder="Test recipient (blank = alert list)"
+          className="w-56 rounded-md border border-border px-2.5 py-1.5 text-xs bg-white"
+        />
         <button
           type="button"
           onClick={runTest}
@@ -292,6 +299,25 @@ function EmailDeliveryStatus() {
           </button>
         )}
       </div>
+
+      {deliveryId && (
+        <p className="text-xs text-muted-foreground">
+          Delivery status:{" "}
+          {!delivery || delivery.state === "sending" ? (
+            <span>Sending…</span>
+          ) : delivery.state === "accepted" ? (
+            <span>Accepted by the provider — awaiting delivery confirmation.</span>
+          ) : delivery.state === "delivered" ? (
+            <span className="text-[#16A34A] font-medium">Delivered.</span>
+          ) : delivery.state === "bounced" ? (
+            <span className="text-[#D03020] font-medium">Bounced{delivery.providerReason ? `: ${delivery.providerReason}` : "."}</span>
+          ) : delivery.state === "complained" ? (
+            <span className="text-[#D03020] font-medium">Marked as spam by the recipient.</span>
+          ) : (
+            <span className="text-[#D03020] font-medium">Failed{delivery.providerReason ? `: ${delivery.providerReason}` : "."}</span>
+          )}
+        </p>
+      )}
     </div>
   );
 }
