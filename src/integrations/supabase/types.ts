@@ -1324,6 +1324,54 @@ export type Database = {
           },
         ]
       }
+      email_deliveries: {
+        Row: {
+          accepted_at: string | null
+          bounced_at: string | null
+          complained_at: string | null
+          created_at: string
+          delivered_at: string | null
+          failed_at: string | null
+          id: string
+          provider_reason: string | null
+          recipient: string
+          resend_message_id: string | null
+          state: string
+          updated_at: string
+          workflow: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failed_at?: string | null
+          id?: string
+          provider_reason?: string | null
+          recipient: string
+          resend_message_id?: string | null
+          state?: string
+          updated_at?: string
+          workflow: string
+        }
+        Update: {
+          accepted_at?: string | null
+          bounced_at?: string | null
+          complained_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failed_at?: string | null
+          id?: string
+          provider_reason?: string | null
+          recipient?: string
+          resend_message_id?: string | null
+          state?: string
+          updated_at?: string
+          workflow?: string
+        }
+        Relationships: []
+      }
       esign_recipients: {
         Row: {
           auth_method: string | null
