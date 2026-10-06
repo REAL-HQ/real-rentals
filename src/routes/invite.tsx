@@ -131,7 +131,7 @@ function InvitePage() {
                 }}
                 className="mt-6 text-sm underline text-muted-foreground"
               >
-                Sign in as somebody else
+                Sign In as Somebody Else
               </button>
             )}
           </div>
@@ -179,7 +179,7 @@ function AuthStep() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-center">
-        {mode === "signup" ? "Create Your Account" : "Sign in"}
+        {mode === "signup" ? "Create Your Account" : "Sign In"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground text-center">
         Use the email address the invitation was sent to — it only works for that address.
