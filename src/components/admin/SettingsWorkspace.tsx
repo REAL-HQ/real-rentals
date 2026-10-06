@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
