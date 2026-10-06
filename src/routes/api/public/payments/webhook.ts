@@ -91,41 +91,78 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   }).select().maybeSingle().then(() => {}, () => {});
 }
 
+// Payment invariants (see src/lib/payment-collection.server.ts):
+//  - A payments row is a charge. Failure leaves it owed (status 'failed'); it
+//    is never deleted and never counted as revenue (only 'paid' is).
+//  - Nothing moves a row out of 'paid' except a refund.
+//  - Duplicate or out-of-order events are no-ops: every write is guarded, and
+//    receipts/notifications only fire when a row actually changed.
+//  - DB write errors throw → 400 → Stripe retries, rather than being swallowed.
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function must(res: { error: any }) {
+  if (res.error && res.error.code !== '23505') throw new Error(res.error.message);
+  return res;
+}
+
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
   const rentalId = pi.metadata?.rentalId as string | undefined;
   const reason = (pi.metadata?.reason as string | undefined) ?? 'other';
   const amount = Number(pi.amount ?? 0) / 100;
+  const failure = (pi.last_payment_error?.message as string | undefined)?.slice(0, 500) ?? 'Payment failed';
+  const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s));
 
-  // Try update existing row keyed by intent id first
-  const { data: existing } = await admin
-    .from('payments')
-    .select('id')
-    .eq('stripe_payment_intent_id', pi.id)
-    .maybeSingle();
-
-  const patch: any = {
-    status,
-    paid_date: status === 'paid' ? new Date().toISOString().slice(0, 10) : null,
-  };
-  if (existing) {
-    await admin.from('payments').update(patch).eq('id', existing.id);
-  } else if (rentalId) {
-    const { data: r } = await admin.from('rentals').select('application_id').eq('id', rentalId).maybeSingle();
-    await admin.from('payments').insert({
-      rental_id: rentalId,
-      driver_id: r?.application_id ?? null,
-      amount,
-      type: reason === 'rent' ? 'rent' : 'other',
-      reason,
-      status,
-      stripe_payment_intent_id: pi.id,
-      paid_date: patch.paid_date,
-    });
+  let changed = 0;
+  if (ids.length) {
+    // Charges created by our own collection flow. The rows already exist.
+    if (status === 'paid') {
+      const r = must(await admin.from('payments')
+        .update({ status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null, ...(ids.length === 1 ? { stripe_payment_intent_id: pi.id } : {}) })
+        .in('id', ids).neq('status', 'paid').neq('status', 'refunded').select('id'));
+      changed = r.data?.length ?? 0;
+    } else {
+      // Stale guard: a single charge that has since been retried points at a
+      // newer intent; a late failure for the old one must not touch it.
+      let q = admin.from('payments').update({ status: 'failed', failure_reason: failure })
+        .in('id', ids).neq('status', 'paid').neq('status', 'refunded');
+      if (ids.length === 1) q = q.or(`stripe_payment_intent_id.is.null,stripe_payment_intent_id.eq.${pi.id}`);
+      const r = must(await q.select('id'));
+      changed = r.data?.length ?? 0;
+    }
+  } else {
+    // Intents created elsewhere (legacy): keyed by intent id, inserted once.
+    const { data: existing } = await admin.from('payments').select('id').eq('stripe_payment_intent_id', pi.id).maybeSingle();
+    if (existing) {
+      let q = admin.from('payments').update(status === 'paid'
+        ? { status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null }
+        : { status: 'failed', failure_reason: failure }).eq('id', existing.id).neq('status', 'paid').neq('status', 'refunded');
+      const r = must(await q.select('id'));
+      changed = r.data?.length ?? 0;
+    } else if (rentalId) {
+      const { data: r } = await admin.from('rentals').select('application_id, vehicle_id').eq('id', rentalId).maybeSingle();
+      const ins = must(await admin.from('payments').insert({
+        rental_id: rentalId,
+        driver_id: r?.application_id ?? null,
+        vehicle_id: r?.vehicle_id ?? null,
+        amount,
+        balance_due: status === 'paid' ? 0 : amount,
+        type: reason === 'rent' ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
+        reason,
+        status,
+        failure_reason: status === 'failed' ? failure : null,
+        stripe_payment_intent_id: pi.id,
+        paid_date: status === 'paid' ? today() : null,
+      }).select('id'));
+      changed = ins.data?.length ?? 0; // 0 when a duplicate event lost the insert race
+    }
   }
 
+  if (!changed) return; // duplicate / stale event — no second receipt
+
   if (status === 'failed' && rentalId) {
-    await admin.from('rentals').update({ payment_status: 'past_due' }).eq('id', rentalId);
+    must(await admin.from('rentals').update({ payment_status: 'past_due' }).eq('id', rentalId));
   }
 
   await admin.from('notifications').insert({
@@ -160,48 +197,51 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
-  const subId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+  const subId = typeof invoice.subscription === 'string' ? invoice.subscription
+    : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
   if (!subId) return;
   const { data: rental } = await admin
     .from('rentals')
-    .select('id, application_id')
+    .select('id, application_id, vehicle_id')
     .eq('stripe_subscription_id', subId)
     .maybeSingle();
   if (!rental) return;
 
-  const amount = Number(invoice.amount_paid ?? invoice.amount_due ?? 0) / 100;
-  const { data: existing } = await admin
-    .from('payments')
-    .select('id')
+  // The week's rent is owed whether or not the card worked.
+  const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
+  const amount = status === 'paid' ? Number(invoice.amount_paid ?? invoice.amount_due ?? 0) / 100 : owed;
+  const failure = 'Weekly rent charge failed';
+
+  // One row per invoice (unique index). A duplicate insert is ignored.
+  must(await admin.from('payments').insert({
+    rental_id: rental.id,
+    driver_id: rental.application_id,
+    vehicle_id: rental.vehicle_id ?? null,
+    amount,
+    balance_due: status === 'paid' ? 0 : owed,
+    type: 'rent',
+    reason: 'rent',
+    status: 'pending',
+    due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
+    stripe_invoice_id: invoice.id,
+    stripe_subscription_id: subId,
+  }));
+
+  const patch = status === 'paid'
+    ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
+    : { status: 'failed', failure_reason: failure, attempt_count: Number(invoice.attempt_count ?? 1) };
+  const r = must(await admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
-    .maybeSingle();
+    .neq('status', 'paid').neq('status', 'refunded')
+    .select('id'));
+  if (!(r.data?.length)) return; // duplicate / out-of-order event
 
-  const patch: any = {
-    status,
-    paid_date: status === 'paid' ? new Date().toISOString().slice(0, 10) : null,
-  };
-  if (existing) {
-    await admin.from('payments').update(patch).eq('id', existing.id);
-  } else {
-    await admin.from('payments').insert({
-      rental_id: rental.id,
-      driver_id: rental.application_id,
-      amount,
-      type: 'rent',
-      reason: 'rent',
-      status,
-      stripe_invoice_id: invoice.id,
-      stripe_subscription_id: subId,
-      paid_date: patch.paid_date,
-    });
-  }
-
-  await admin.from('rentals').update({
+  must(await admin.from('rentals').update({
     payment_status: status === 'paid' ? 'current' : 'past_due',
     ...(status === 'paid' && invoice.period_end
       ? { next_payment_due: new Date((invoice.period_end + 7 * 24 * 60 * 60) * 1000).toISOString().slice(0, 10) }
       : {}),
-  }).eq('id', rental.id);
+  }).eq('id', rental.id));
 
   await admin.from('notifications').insert({
     title: status === 'paid' ? 'Weekly Rent Paid' : 'Weekly Rent Failed',
@@ -231,6 +271,18 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
       });
     }
   }
+}
+
+/** Money returned. Full refund → 'refunded' (drops out of revenue); partial → amount recorded. */
+async function handleChargeRefunded(charge: any) {
+  const admin: any = getSupabase();
+  const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+  if (!piId) return;
+  const refunded = Number(charge.amount_refunded ?? 0) / 100;
+  const full = charge.refunded === true || Number(charge.amount_refunded ?? 0) >= Number(charge.amount ?? Infinity);
+  must(await admin.from('payments')
+    .update({ refunded_amount: refunded, refunded_at: new Date().toISOString(), ...(full ? { status: 'refunded' } : {}) })
+    .eq('stripe_payment_intent_id', piId));
 }
 
 async function handleSubscriptionUpdated(sub: any) {
