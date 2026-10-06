@@ -14,30 +14,32 @@ import adminHero from "@/assets/admin-hero.jpg";
 import {
   Eye,
   EyeOff,
-  Users,
-  Car,
-  Handshake,
-  CreditCard,
-  Settings as SettingsIcon,
   LogOut,
-  Wrench,
-  Store,
-  MessageSquare,
-  Globe,
-  UserCog,
-  PanelLeftClose,
-  PanelLeftOpen,
-  LayoutDashboard,
   Search,
   Bell,
-  Hourglass,
-  Zap,
-  ClipboardCheck,
-  Truck,
-  Receipt,
-  History,
-  ShieldAlert,
+  Menu,
+  Plus,
+  Settings as SettingsIcon,
+  UserCog,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  TABS,
+  GROUP_ORDER,
+  ADD_TABS,
+  visibleTabs,
+  visibleApps,
+  visibleCreateActions,
+  appOf,
+  navOwner,
+  type TabDef,
+} from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -51,7 +53,7 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
-import { tierAllows, tierFromRoles, TIER_LABELS, TIER_SUMMARY, type StaffTier } from "@/lib/roles";
+import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,8 +88,8 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab">, readonly string[]> 
   id: ["drivers", "vehicles"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments"],
-  // The vehicle creation flow.
-  add: ["vehicles"],
+  // A creation flow opened from "+ Create".
+  add: [...ADD_TABS],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -139,169 +141,7 @@ export const Route = createFileRoute("/admin")({
   component: Admin,
 });
 
-const TABS = [
-  {
-    id: "overview",
-    minTier: "coordinator" as StaffTier,
-    label: "Overview",
-    icon: LayoutDashboard,
-    group: "OPERATIONS",
-    description: "Pipeline, Fleet And Revenue At A Glance",
-  },
-  {
-    id: "drivers",
-    minTier: "coordinator" as StaffTier,
-    label: "Drivers",
-    icon: Users,
-    group: "OPERATIONS",
-    description: "Manage Applicants, Active Renters And Driver Lifecycle",
-  },
-  {
-    id: "waitlist",
-    minTier: "coordinator" as StaffTier,
-    label: "Waitlist",
-    icon: Hourglass,
-    group: "OPERATIONS",
-    description: "Drivers Waiting When No Cars Are Available",
-  },
-  {
-    id: "payments",
-    minTier: "manager" as StaffTier,
-    label: "Payments",
-    icon: CreditCard,
-    group: "OPERATIONS",
-    description: "Rent, Deposits And Balances",
-  },
-  {
-    id: "messages",
-    minTier: "coordinator" as StaffTier,
-    label: "Messages",
-    icon: MessageSquare,
-    group: "OPERATIONS",
-    description: "Inbound Driver & Partner Conversations",
-  },
-  {
-    id: "automations",
-    minTier: "manager" as StaffTier,
-    label: "Automations",
-    icon: Zap,
-    group: "OPERATIONS",
-    description: "Automatic SMS And Email Follow-Up Sequences",
-  },
-  {
-    id: "charges",
-    minTier: "manager" as StaffTier,
-    label: "Charges",
-    icon: Receipt,
-    group: "OPERATIONS",
-    description: "Tolls And Violations, Matched To The Renter Who Had The Car",
-  },
-  {
-    id: "vehicles",
-    minTier: "coordinator" as StaffTier,
-    label: "Vehicles",
-    icon: Car,
-    group: "FLEET",
-    description: "Fleet Inventory & Vehicle Status",
-  },
-  {
-    id: "maintenance",
-    minTier: "manager" as StaffTier,
-    label: "Service",
-    icon: Wrench,
-    group: "FLEET",
-    description: "Vehicles Down, Due, Scheduled And In Shop",
-  },
-  {
-    id: "inspections",
-    minTier: "coordinator" as StaffTier,
-    label: "Inspections",
-    icon: ClipboardCheck,
-    group: "FLEET",
-    description: "Pre-Delivery And Return Checklists With Photo Proof",
-  },
-  {
-    id: "shops",
-    minTier: "manager" as StaffTier,
-    label: "Shops",
-    icon: Store,
-    group: "FLEET",
-    description: "Preferred Maintenance Providers By Market",
-  },
-  {
-    id: "vendors",
-    minTier: "coordinator" as StaffTier,
-    label: "Vendors",
-    icon: Truck,
-    group: "FLEET",
-    description: "Every Vendor We Work With — Service, Towing, GPS, Insurance",
-  },
-  {
-    id: "incidents",
-    minTier: "manager" as StaffTier,
-    label: "Incidents",
-    icon: ShieldAlert,
-    group: "FLEET",
-    description: "Accidents, Damage And Insurance Claims",
-  },
-  {
-    id: "partners",
-    minTier: "manager" as StaffTier,
-    label: "Partners",
-    icon: Handshake,
-    group: "GROWTH",
-    description: "Vehicle Owners, Capital Partners And Lenders",
-  },
-  {
-    id: "websites",
-    minTier: "manager" as StaffTier,
-    label: "Websites",
-    icon: Globe,
-    group: "GROWTH",
-    description: "Market-Specific Marketing Sites",
-  },
-  {
-    id: "expenses",
-    minTier: "manager" as StaffTier,
-    label: "Expenses",
-    icon: Receipt,
-    group: "FLEET",
-    description: "Every Cost Against Every Car, And What Each One Earns",
-  },
-  {
-    id: "activity",
-    minTier: "manager" as StaffTier,
-    label: "Activity",
-    icon: History,
-    group: "SYSTEM",
-    description: "Who Did What, And What Is About To Expire",
-  },
-  {
-    id: "team",
-    minTier: "owner" as StaffTier,
-    label: "Team",
-    icon: UserCog,
-    group: "SYSTEM",
-    description: "Internal Roles & Access Control",
-  },
-  {
-    id: "settings",
-    minTier: "owner" as StaffTier,
-    label: "Settings",
-    icon: SettingsIcon,
-    group: "SYSTEM",
-    description: "Rental Terms, Payments, Admin Users And Preferences",
-  },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
-type TabDef = (typeof TABS)[number];
-
-/** Tabs this tier may open. The database refuses the rest anyway; this
- *  keeps a Coordinator from being shown doors that open onto an error. */
-function visibleTabs(tier: StaffTier | null): TabDef[] {
-  return TABS.filter((t) => tierAllows(tier, t.minTier));
-}
-const GROUP_ORDER = ["OPERATIONS", "FLEET", "GROWTH", "SYSTEM"] as const;
+type Tab = string;
 
 function Admin() {
   const [session, setSession] = useState<any>(null);
@@ -402,14 +242,9 @@ function Admin() {
     if (typeof window === "undefined") return 0;
     return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
   });
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("admin-sidebar-collapsed") === "1";
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined")
-      window.localStorage.setItem("admin-sidebar-collapsed", collapsed ? "1" : "0");
-  }, [collapsed]);
+  const [mobileNav, setMobileNav] = useState(false);
+
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -503,305 +338,336 @@ function Admin() {
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
   const initials = displayName.slice(0, 2).toUpperCase();
 
+  const app = appOf(tab);
+  const apps = visibleApps(tier);
+  const createActions = visibleCreateActions(tier);
+  const ownerTab = navOwner(tab);
+  const appTabs = navTabs.filter((t) => t.app === app && t.group);
+  const showContextNav = app === "operations";
+  const canTeam = tierAllows(tier, "owner");
+  const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
+
+  const navLink = (t: TabDef, onClick?: () => void) => {
+    const Icon = t.icon;
+    const active = ownerTab === t.id;
+    return (
+      <Link
+        key={t.id}
+        to="/admin"
+        // A root destination: the tab and nothing else, so "Drivers" always
+        // lands on the list and drops any selected record.
+        search={rootSearch(t.id)}
+        onClick={onClick}
+        aria-current={active ? "page" : undefined}
+        className={`relative w-full flex items-center gap-3 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
+          active ? "bg-[#1F1F23] text-white" : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
+        }`}
+      >
+        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r bg-[#D03020]" />}
+        <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} />
+        <span>{t.label}</span>
+      </Link>
+    );
+  };
+
+  const groupedNav = (onClick?: () => void) =>
+    GROUP_ORDER.map((group) => {
+      const items = appTabs.filter((t) => t.group === group);
+      if (!items.length) return null;
+      return (
+        <div key={group} className="mb-4 last:mb-0">
+          <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
+          <div className="space-y-0.5">{items.map((t) => navLink(t, onClick))}</div>
+        </div>
+      );
+    });
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAFAFB] text-[#111114]">
-      <div className="flex flex-1 min-h-0">
-        {/* Sidebar — dark shell, grouped */}
-        <aside
-          className={`hidden md:flex ${collapsed ? "w-[68px]" : "w-[248px]"} transition-[width] duration-200 flex-col bg-[#141416] sticky top-0 h-screen`}
-        >
-          <div className="relative px-4 pt-8 pb-6 flex items-start justify-center">
-            {!collapsed && <Logo offset={false} />}
-            <button
-              onClick={() => setCollapsed((v) => !v)}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className={`p-1.5 rounded-md hover:bg-white/10 text-[#8E8E96] hover:text-white transition-colors duration-150 ${collapsed ? "" : "absolute right-2 top-4"}`}
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.75} />
-              ) : (
-                <PanelLeftClose className="w-[18px] h-[18px]" strokeWidth={1.75} />
-              )}
-            </button>
-          </div>
-          <nav className="flex-1 px-3 pt-4 pb-4 overflow-y-auto">
-            {GROUP_ORDER.map((group) => {
-              const items = navTabs.filter((t) => t.group === group);
-              return (
-                <div key={group} className="mb-5 last:mb-0">
-                  {!collapsed && (
-                    <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">
-                      {group}
-                    </div>
-                  )}
-                  <div className="space-y-0.5">
-                    {items.map((t) => {
-                      const Icon = t.icon;
-                      const active = tab === t.id;
-                      return (
-                        <Link
-                          key={t.id}
-                          to="/admin"
-                          /*
-                           * A root destination. "Drivers" means the drivers
-                           * LIST — so it carries the tab and nothing else,
-                           * which is what drops the selected applicant and
-                           * returns you to the listing on the first click
-                           * rather than the second.
-                           */
-                          search={rootSearch(t.id)}
-                          title={collapsed ? t.label : undefined}
-                          className={`relative w-full flex items-center gap-3 ${collapsed ? "justify-center px-2" : "px-3"} py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
-                            active
-                              ? "bg-[#1F1F23] text-white"
-                              : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
-                          }`}
-                        >
-                          {active && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#D03020]" />
-                          )}
-                          <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
-                          {!collapsed && <span>{t.label}</span>}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </nav>
+    <TooltipProvider delayDuration={150}>
+      <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
+        {/* App Dock — business apps, not a second copy of the menu */}
+        <aside aria-label="Apps" className="hidden md:flex w-[60px] shrink-0 flex-col items-center gap-1 bg-[#0B0B0D] sticky top-0 h-screen py-4 border-r border-white/5">
+          <Link
+            to="/admin"
+            search={rootSearch("overview")}
+            aria-label="REAL RENTALS home"
+            className="mb-4 w-9 h-9 rounded-md bg-[#D03020] text-white grid place-items-center text-[15px] font-black tracking-tight"
+          >
+            R
+          </Link>
+          {apps.map((a) => {
+            const Icon = a.icon;
+            const active = app === a.id;
+            return (
+              <Tooltip key={a.id}>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/admin"
+                    search={rootSearch(a.home)}
+                    aria-label={a.label}
+                    aria-current={active ? "page" : undefined}
+                    className={`relative w-10 h-10 rounded-lg grid place-items-center transition-colors duration-150 ${
+                      active ? "bg-[#1F1F23] text-white" : "text-[#77777F] hover:bg-[#18181B] hover:text-white"
+                    }`}
+                  >
+                    {active && <span className="absolute -left-[10px] top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#D03020]" />}
+                    <Icon className="w-[19px] h-[19px]" strokeWidth={1.75} />
+                    {a.id === "messages" && unreadMsgs > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D03020]" />
+                    )}
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">{a.label}</TooltipContent>
+              </Tooltip>
+            );
+          })}
         </aside>
 
-        {/* Main column */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Mobile tab pills */}
-          <div className="md:hidden bg-white border-b border-[#EDEDF0]">
-            <div className="flex items-center h-14 px-3">
+        {/* Contextual navigation for the selected app */}
+        {showContextNav && (
+          <aside aria-label="Operations navigation" className="hidden md:flex w-[212px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
+            <div className="px-5 pt-6 pb-4">
               <Logo offset={false} />
             </div>
-            <div className="flex overflow-x-auto px-2 py-2 gap-1 border-t border-[#EDEDF0]">
-              {navTabs.map((t) => (
-                <Link
-                  key={t.id}
-                  to="/admin"
-                  search={rootSearch(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium transition-colors duration-150 ${tab === t.id ? "bg-[rgba(208,48,32,0.08)] text-[#D03020]" : "bg-[#F4F4F6] text-[#55555E]"}`}
-                >
-                  {t.label}
-                </Link>
-              ))}
+            <nav className="flex-1 px-2.5 pb-4 overflow-y-auto">{groupedNav()}</nav>
+          </aside>
+        )}
+
+        {/* Mobile navigation drawer */}
+        <Sheet open={mobileNav} onOpenChange={setMobileNav}>
+          <SheetContent side="left" className="w-[280px] p-0 bg-[#141416] border-r-0 text-white">
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <div className="px-5 pt-6 pb-3"><Logo offset={false} /></div>
+            <div className="px-2.5 pb-3 flex gap-1 border-b border-white/10 mb-3">
+              {apps.map((a) => {
+                const Icon = a.icon;
+                return (
+                  <Link
+                    key={a.id}
+                    to="/admin"
+                    search={rootSearch(a.home)}
+                    onClick={() => setMobileNav(false)}
+                    className={`flex-1 flex flex-col items-center gap-1 py-2 min-h-[44px] rounded-lg text-[11px] ${app === a.id ? "bg-[#1F1F23] text-white" : "text-[#8E8E96]"}`}
+                  >
+                    <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                    {a.label}
+                  </Link>
+                );
+              })}
             </div>
-          </div>
-          <main className="flex-1 min-w-0 bg-[#FAFAFB]">
-            <header className="px-8 py-4 flex items-center justify-between gap-4">
-              {/* Left: search */}
-              <div className="relative hidden sm:block w-[360px] max-w-full">
-                <Search
-                  className="w-[18px] h-[18px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2"
-                  strokeWidth={1.75}
-                />
+            <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
+              {(() => {
+                // Drawer always lists Operations destinations.
+                const ops = navTabs.filter((t) => t.app === "operations" && t.group);
+                return GROUP_ORDER.map((group) => {
+                  const items = ops.filter((t) => t.group === group);
+                  if (!items.length) return null;
+                  return (
+                    <div key={group} className="mb-4">
+                      <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
+                      <div className="space-y-0.5">{items.map((t) => navLink(t, () => setMobileNav(false)))}</div>
+                    </div>
+                  );
+                });
+              })()}
+            </nav>
+          </SheetContent>
+        </Sheet>
+
+        {/* Workspace */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <header className="sticky top-0 z-20 bg-[#FAFAFB]/95 backdrop-blur px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button
+                aria-label="Open navigation"
+                onClick={() => setMobileNav(true)}
+                className="md:hidden w-11 h-11 -ml-1 grid place-items-center rounded-lg text-[#111114] hover:bg-[#F4F4F6]"
+              >
+                <Menu className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+              <div className="relative hidden sm:block w-[340px] max-w-full">
+                <Search className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
                 <input
                   type="search"
+                  aria-label="Search drivers, vehicles and partners"
                   placeholder="Search Drivers, Vehicles, Partners…"
                   value={globalSearch}
                   onChange={(e) => {
                     const v = e.target.value;
                     setGlobalSearch(v);
-                    // Typing jumps to the list being searched. `replace`, so
-                    // a search does not leave one history entry per keystroke.
-                    if (v && !["drivers", "vehicles", "partners"].includes(tab))
-                      goRoot("drivers", { replace: true });
+                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) goRoot("drivers", { replace: true });
                   }}
-                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3] transition-all duration-150"
+                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3]"
                 />
               </div>
-              {/* Right: notifications + profile */}
-              <div className="flex items-center gap-2">
-                {/* Messages */}
-                <button
-                  aria-label="Messages"
-                  onClick={() => goRoot("messages")}
-                  className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
-                >
-                  <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                  {unreadMsgs > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">
-                      {unreadMsgs}
-                    </span>
-                  )}
-                </button>
-                <DropdownMenu
-                  onOpenChange={(o) => {
-                    if (o) markNotifsSeen();
-                  }}
-                >
-                  <DropdownMenuTrigger
-                    aria-label="Notifications"
-                    className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
-                  >
-                    <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 p-0">
-                    <div className="px-3 py-2 border-b border-[#EDEDF0] flex items-center justify-between">
-                      <div className="text-sm font-semibold text-[#111114]">Notifications</div>
-                      <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {notifs.length === 0 && (
-                        <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]">
-                          No Recent Activity
-                        </div>
-                      )}
-                      {notifs.map((n) => {
-                        const created = n.created_at ? new Date(n.created_at) : null;
-                        const isNew = created && created.getTime() > notifSeenAt;
-                        return (
-                          <button
-                            key={n.id}
-                            onClick={() => goRoot("drivers")}
-                            className="w-full text-left px-3 py-2.5 hover:bg-[#F4F4F6] transition-colors duration-150 border-b border-[#F4F4F6] last:border-0"
-                          >
-                            <div className="flex items-center gap-2">
-                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
-                              <div className="text-[13px] font-medium text-[#111114] truncate flex-1">
-                                New Lead: {n.full_name || n.email || "Unnamed"}
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
-                              {n.email || n.phone || "—"} ·{" "}
-                              {created
-                                ? created.toLocaleString([], {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })
-                                : ""}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <div className="hidden md:block text-[13px] text-[#55555E] tabular-nums pl-1">
-                  {new Date().toLocaleDateString([], {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </div>
-                {/* Profile dropdown */}
+              <div className="md:hidden text-[15px] font-semibold truncate">{current.label}</div>
+            </div>
+            <div className="flex items-center gap-1.5 md:gap-2">
+              {createActions.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    aria-label="Account"
-                    className="ml-1 w-9 h-9 rounded-full hover:bg-[#F4F4F6] transition-colors duration-150 grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#D03020]/20"
+                    aria-label="Create"
+                    className="h-10 md:h-9 px-3 rounded-full bg-[#D03020] text-white text-[13px] font-semibold flex items-center gap-1.5 hover:bg-[#B5281A] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D03020]/30"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">
-                      {initials}
-                    </div>
+                    <Plus className="w-4 h-4" strokeWidth={2.25} />
+                    <span className="hidden sm:inline">Create</span>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-[300px] p-0 rounded-2xl overflow-hidden"
-                  >
-                    <div className="p-4">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-12 h-12 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[15px] font-bold">
-                          {initials}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[14px] font-semibold text-[#111114] capitalize truncate">
-                            {displayName}
-                          </div>
-                          <div className="text-[12px] text-[#55555E] truncate">
-                            {session?.user?.email}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => goRoot("settings")}
-                        className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
-                      >
-                        <SettingsIcon
-                          className="w-[18px] h-[18px] text-[#9A9AA3] shrink-0"
-                          strokeWidth={1.75}
-                        />
-                        <span>Settings</span>
-                      </button>
-                      <button
-                        onClick={() => goRoot("team")}
-                        className="flex items-center gap-3 px-2 py-2.5 rounded-xl w-full text-left text-[13px] text-[#111114] hover:bg-[#F4F4F6] transition-colors duration-150"
-                      >
-                        <UserCog
-                          className="w-[18px] h-[18px] text-[#9A9AA3] shrink-0"
-                          strokeWidth={1.75}
-                        />
-                        <span>Team</span>
-                      </button>
-                      <div className="h-px bg-[#EDEDF0] my-3" />
-                      <button
-                        onClick={signOut}
-                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
-                      >
-                        <LogOut className="w-4 h-4" strokeWidth={2} />
-                        Log Out
-                      </button>
-                    </div>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-[#9A9AA3]">Create</DropdownMenuLabel>
+                    {createActions.map((a) => {
+                      const Icon = a.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={a.id}
+                          onSelect={() =>
+                            void navigate({ to: "/admin", search: a.add ? { tab: a.tab, add: "1" } : rootSearch(a.tab) })
+                          }
+                          className="gap-2.5 py-2"
+                        >
+                          <Icon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                          {a.label}
+                        </DropdownMenuItem>
+                      );
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
-            </header>
-            <div className="p-6 md:p-8">
-              {tab !== "overview" && (
-                <div className="mb-6">
-                  <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">
-                    {current.label}
-                  </h1>
-                  <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
-                </div>
               )}
-              {tab === "overview" && <OverviewPanel />}
-              {tab === "drivers" && (
-                <DriversPanel
-                  externalSearch={globalSearch}
-                  initialOpenId={urlRecordId ?? undefined}
-                  isOwner={tier === "owner"}
-                />
-              )}
-              {tab === "waitlist" && <WaitlistPanel />}
-              {tab === "vehicles" && (
-                <VehiclesPanel
-                    externalSearch={globalSearch}
-                    autoOpenAdd={urlAdd}
-                    openId={urlRecordId}
-                  />
-              )}
-              {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
-              {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} />}
-              {tab === "maintenance" && <MaintenancePanel />}
-              {tab === "shops" && <ShopsPanel />}
-              {tab === "vendors" && <VendorsPanel />}
-              {tab === "inspections" && <InspectionsPanel />}
-              {tab === "automations" && <AutomationsPanel />}
-              {tab === "charges" && <ChargesPanel />}
-              {tab === "incidents" && <IncidentsPanel />}
-              {tab === "messages" && <MessagesPanel />}
-              {tab === "websites" && <WebsitesPanel />}
-              {tab === "expenses" && <ExpensesPanel />}
-              {tab === "activity" && <ActivityPanel />}
-              {tab === "team" && <TeamPanel />}
-              {tab === "settings" && <SettingsPanel />}
+              <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
+                <DropdownMenuTrigger
+                  aria-label="Notifications"
+                  className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
+                >
+                  <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">{unreadCount}</span>
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 p-0">
+                  <div className="px-3 py-2 border-b border-[#EDEDF0] flex items-center justify-between">
+                    <div className="text-sm font-semibold text-[#111114]">Notifications</div>
+                    <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifs.length === 0 && <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]">No Recent Activity</div>}
+                    {notifs.map((n) => {
+                      const created = n.created_at ? new Date(n.created_at) : null;
+                      const isNew = created && created.getTime() > notifSeenAt;
+                      return (
+                        <DropdownMenuItem
+                          key={n.id}
+                          onSelect={() => void navigate({ to: "/admin", search: { tab: "drivers", id: n.id } })}
+                          className="block px-3 py-2.5 rounded-none border-b border-[#F4F4F6] last:border-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
+                            <div className="text-[13px] font-medium text-[#111114] truncate flex-1">New Lead: {n.full_name || n.email || "Unnamed"}</div>
+                          </div>
+                          <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
+                            {n.email || n.phone || "—"} ·{" "}
+                            {created ? created.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Account"
+                  className="w-10 h-10 rounded-full hover:bg-[#F4F4F6] grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#D03020]/20"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">{initials}</div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[280px] p-0 rounded-2xl overflow-hidden">
+                  <div className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-11 h-11 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[14px] font-bold">{initials}</div>
+                      <div className="min-w-0">
+                        <div className="text-[14px] font-semibold text-[#111114] capitalize truncate">{displayName}</div>
+                        <div className="text-[12px] text-[#55555E] truncate">{session?.user?.email}</div>
+                        {tier && (
+                          <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
+                            {TIER_LABELS[tier]}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {canTeam && (
+                      <>
+                        <DropdownMenuItem onSelect={() => goRoot("settings")} className="gap-3 px-2 py-2.5 rounded-xl text-[13px]">
+                          <SettingsIcon className="w-[18px] h-[18px] text-[#9A9AA3]" strokeWidth={1.75} />
+                          Settings
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => goRoot("team")} className="gap-3 px-2 py-2.5 rounded-xl text-[13px]">
+                          <UserCog className="w-[18px] h-[18px] text-[#9A9AA3]" strokeWidth={1.75} />
+                          Team
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <div className="h-px bg-[#EDEDF0] my-3" />
+                    <button
+                      onClick={signOut}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
+                    >
+                      <LogOut className="w-4 h-4" strokeWidth={2} />
+                      Log Out
+                    </button>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+          </header>
+
+          <main className="flex-1 min-w-0 p-4 md:px-8 md:pt-4 md:pb-8">
+            {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
+            {tab !== "overview" && !recordParent && (
+              <div className="mb-5">
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
+                <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
+              </div>
+            )}
+            {(tab === "vendors" || tab === "shops") && tierAllows(tier, "manager") && (
+              <div role="tablist" aria-label="Vendor type" className="mb-5 inline-flex rounded-lg bg-[#F0F0F2] p-0.5">
+                {[{ id: "vendors", label: "All Vendors" }, { id: "shops", label: "Repair Shops" }].map((v) => (
+                  <Link
+                    key={v.id}
+                    to="/admin"
+                    search={rootSearch(v.id)}
+                    role="tab"
+                    aria-selected={tab === v.id}
+                    className={`px-3 py-1.5 rounded-md text-[13px] font-medium ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
+                  >
+                    {v.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+            {tab === "overview" && <OverviewPanel />}
+            {tab === "drivers" && (
+              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} />
+            )}
+            {tab === "waitlist" && <WaitlistPanel />}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} />}
+            {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
+            {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
+            {tab === "maintenance" && <MaintenancePanel />}
+            {tab === "shops" && <ShopsPanel />}
+            {tab === "vendors" && <VendorsPanel />}
+            {tab === "inspections" && <InspectionsPanel />}
+            {tab === "automations" && <AutomationsPanel />}
+            {tab === "charges" && <ChargesPanel />}
+            {tab === "incidents" && <IncidentsPanel />}
+            {tab === "messages" && <MessagesPanel />}
+            {tab === "websites" && <WebsitesPanel />}
+            {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
+            {tab === "activity" && <ActivityPanel />}
+            {tab === "team" && <TeamPanel />}
+            {tab === "settings" && <SettingsPanel />}
           </main>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 

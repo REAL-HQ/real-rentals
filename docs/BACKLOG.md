@@ -92,3 +92,11 @@ Recorded during Phase 0 final closure; not repaired on purpose.
 - Signed-in users can execute SECURITY DEFINER function (Warn) ×5
 
 The vehicle-photos public-read finding was fixed separately.
+
+## Shops vs Vendors — data merge deferred
+
+Phase 0.5 presents both under one "Vendors" nav entry (All Vendors | Repair Shops toggle). The `shops` and `vendors` tables remain separate; merging them (vendor type = Repair Shop) needs a migration and is deferred.
+
+## Future: Admin/Renter view + "View as Renter" (not built)
+
+Plug-in point: the account menu in the shell header (src/routes/admin.tsx), gated to Owner/Manager via nav-config. Requirements when built: server-authorized short-lived read-only support session, audited start/stop, persistent "Viewing as [Name] — Exit" banner, no password/credential exposure, no URL-ID trust, and staff actions never recorded as the renter's. No generic Renter View exists today, so no switch is shown.

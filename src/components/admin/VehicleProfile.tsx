@@ -8,6 +8,7 @@ import {
   Pencil,
   Share2,
   Car,
+  ArrowLeft,
   FileText,
   Images,
   ArrowUpRight,
@@ -160,7 +161,15 @@ export function VehicleProfile({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ---- header ---------------------------------------------------- */}
-        <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-5 pb-0">
+        <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
+          <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 text-[13px] min-w-0">
+            <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[#55555E] hover:text-[#111114] font-medium shrink-0">
+              <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
+              Vehicles
+            </button>
+            <span className="text-[#B0B0B8]">/</span>
+            <span className="text-[#111114] font-semibold truncate">{p?.unitLabel ?? "…"}</span>
+          </nav>
           <div className="flex items-start gap-4">
             <div className="h-16 w-24 shrink-0 rounded-lg bg-[#F4F4F6] overflow-hidden grid place-items-center">
               {photo ? (

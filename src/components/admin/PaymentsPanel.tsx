@@ -57,7 +57,7 @@ function fmtDate(iso?: string | null) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function PaymentsPanel({ initialFilter }: { initialFilter?: string } = {}) {
+export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: string; autoOpenAdd?: boolean } = {}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -65,7 +65,7 @@ export function PaymentsPanel({ initialFilter }: { initialFilter?: string } = {}
   // unresolved at once, which no single status covers.
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
   const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
-  const [showAdd, setShowAdd] = useState(false);
+  const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
 
   useEffect(() => {
     supabase
