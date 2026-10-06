@@ -185,16 +185,16 @@ export const getMyEarnings = createServerFn({ method: "POST" })
 
     const { data: payments } = await supabase
       .from("payments")
-      .select("vehicle_id,amount,type,paid_date,status")
+      .select("vehicle_id,net_collected,type,paid_date,status")
       .in("vehicle_id", ids)
       .eq("type", "rent")
-      .eq("status", "paid")
+      .in("status", ["paid", "refunded"])
       .gte("paid_date", sinceIso);
 
     const byVehicle = new Map<string, number>();
     for (const p of payments ?? []) {
       if (!p.vehicle_id) continue;
-      byVehicle.set(p.vehicle_id, (byVehicle.get(p.vehicle_id) ?? 0) + Number(p.amount ?? 0));
+      byVehicle.set(p.vehicle_id, (byVehicle.get(p.vehicle_id) ?? 0) + Number(p.net_collected ?? 0));
     }
 
     const rows: EarningsRow[] = (vehicles ?? []).map((v: any) => {
