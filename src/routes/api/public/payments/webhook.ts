@@ -101,7 +101,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function must(res: { error: any }) {
+function must<T extends { error: any }>(res: T): T {
   if (res.error && res.error.code !== '23505') throw new Error(res.error.message);
   return res;
 }
