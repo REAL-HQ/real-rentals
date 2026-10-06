@@ -8,6 +8,9 @@ import { createVehicle } from "@/lib/vehicles.functions";
 import { registerVehicleMedia } from "@/lib/vehicle-media.functions";
 import { checkVin } from "@/lib/vin";
 import { isRentalReady } from "@/lib/vehicle-readiness";
+import { BODY_TYPES } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
+import { useVehicleDefaultPrefill } from "./useVehicleDefaults";
 
 // Quick Add — the speed path. Only the Rental Ready minimum plus an optional
 // photo. The photo goes through the private operational photo path and is
@@ -19,10 +22,16 @@ const MAX_BYTES = 15 * 1024 * 1024;
 export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: string) => void; onMore: () => void; onClose?: () => void }) {
   const create = useServerFn(createVehicle);
   const register = useServerFn(registerVehicleMedia);
-  const [f, setF] = useState({ year: "", make: "", model: "", vin: "", rate: "" });
+  const [f, setF] = useState({ year: "", make: "", model: "", vin: "", rate: "", body: "", monthly: "", deposit: "" });
   const [photo, setPhoto] = useState<File | null>(null);
   const [saving, setSaving] = useState<null | "save" | "available">(null);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const prefill = useVehicleDefaultPrefill(
+    f.body,
+    { weekly_rate: f.rate, monthly_rate: f.monthly, deposit: f.deposit },
+    (n) => setF((p) => ({ ...p, rate: n.weekly_rate, monthly: n.monthly_rate, deposit: n.deposit })),
+  );
+  const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
   const vinOk = !!f.vin.trim() && checkVin(f.vin.trim()).formatValid;
   const ready = isRentalReady({ year: f.year, make: f.make, model: f.model, vin: f.vin.trim(), weekly_rate: f.rate });
@@ -33,6 +42,8 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
     if (f.vin.trim() && !vinOk) return toast.error("That VIN isn't valid — check it against the car");
     const rate = f.rate.trim() === "" ? null : Number(f.rate);
     if (rate != null && (!Number.isFinite(rate) || rate < 0)) return toast.error("Weekly rate must be a number");
+    const monthly = num(f.monthly), deposit = num(f.deposit);
+    if ([monthly, deposit].some((x) => x != null && (!Number.isFinite(x) || x < 0))) return toast.error("Monthly rate and deposit must be numbers");
     if (makeAvailable && !ready) return toast.error("Year, make, model, a valid VIN and a weekly rate above $0 are needed");
     if (photo && photo.size > MAX_BYTES) return toast.error("Photo must be under 15MB");
 
@@ -41,7 +52,9 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
       const res = await create({
         data: {
           year, make: f.make.trim(), model: f.model.trim(), vin: f.vin.trim() || null,
-          weekly_rate: rate, status: "available", make_available: makeAvailable,
+          // Blank = explicit Not Set; the visible pre-filled values are what's saved.
+          weekly_rate: rate, monthly_rate: monthly, deposit, body_type: (f.body || null) as any,
+          status: "available", make_available: makeAvailable,
         },
       });
       if (!res.ok) return toast.error(res.error);
@@ -96,15 +109,28 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
               <input value={f.vin} onChange={(e) => set("vin", e.target.value.toUpperCase())} maxLength={17} placeholder="17 characters"
                 className={`${inputCls} font-mono tracking-wide ${vinError ? "border-brand" : ""}`} />
             </Field>
-            <Field label="Weekly Rate">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                <input inputMode="decimal" value={f.rate} onChange={(e) => set("rate", e.target.value)} placeholder="Not Set" className={`${inputCls} pl-7`} />
-              </div>
+            <Field label="Body Type">
+              <select value={f.body} onChange={(e) => set("body", e.target.value)} className={inputCls} aria-label="Body Type">
+                <option value="">Not Set</option>
+                {BODY_TYPES.map((b) => <option key={b} value={b}>{bodyTypeLabel(b)}</option>)}
+              </select>
             </Field>
+          </FormGrid>
+          <FormGrid cols={3}>
+            {([["rate", "weekly_rate", "Weekly Rate"], ["monthly", "monthly_rate", "Monthly Rate"], ["deposit", "deposit", "Deposit"]] as const).map(([k, df, label]) => (
+              <Field key={k} label={label}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <input inputMode="decimal" aria-label={label} value={f[k]} onChange={(e) => { prefill.markTouched(df); set(k, e.target.value); }} placeholder="Not Set" className={`${inputCls} pl-7`} />
+                </div>
+              </Field>
+            ))}
           </FormGrid>
         </ModalSection>
 
+        {prefill.appliedFrom && (
+          <p className="-mt-2 text-[12px] text-muted-foreground">Pre-filled from the {bodyTypeLabel(prefill.appliedFrom)} company default — change any value before saving.</p>
+        )}
         <ModalSection label="Photo">
           <UploadDropzone file={photo} onFile={setPhoto} title="Add Vehicle Photo" note="Private until published" />
         </ModalSection>
