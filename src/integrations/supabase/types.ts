@@ -2482,6 +2482,7 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           vehicle_id: string
+          vendor_credit: number | null
           vendor_id: string | null
           vendor_name_raw: string | null
           warranty_covered: number | null
@@ -2525,6 +2526,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           vehicle_id: string
+          vendor_credit?: number | null
           vendor_id?: string | null
           vendor_name_raw?: string | null
           warranty_covered?: number | null
@@ -2568,6 +2570,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           vehicle_id?: string
+          vendor_credit?: number | null
           vendor_id?: string | null
           vendor_name_raw?: string | null
           warranty_covered?: number | null
