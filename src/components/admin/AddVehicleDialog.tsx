@@ -11,6 +11,7 @@ import {
 import { checkVin } from "@/lib/vin";
 import { TitleScanStep } from "./TitleScanStep";
 import { ImportVehiclesStep } from "./ImportVehiclesStep";
+import { QuickAddForm } from "./QuickAddVehicle";
 
 // Adding a vehicle.
 //
@@ -22,7 +23,7 @@ import { ImportVehiclesStep } from "./ImportVehiclesStep";
 // Four ways in, all four built: type it, decode a VIN, photograph the title,
 // or bring a spreadsheet.
 
-type Mode = "choose" | "manual" | "vin" | "scan" | "import";
+type Mode = "quick" | "choose" | "manual" | "vin" | "scan" | "import";
 
 const DECODED_LABELS: Record<string, string> = {
   year: "Year", make: "Make", model: "Model", trim: "Trim",
@@ -39,7 +40,7 @@ export function AddVehicleDialog({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
-  const [mode, setMode] = useState<Mode>("choose");
+  const [mode, setMode] = useState<Mode>("quick");
   // Fields read off a scanned title, carried into the form for confirmation.
   const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
 
@@ -53,13 +54,13 @@ export function AddVehicleDialog({
       <div className="bg-white rounded-xl w-full max-w-2xl my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            {mode !== "choose" && (
+            {mode !== "choose" && mode !== "quick" && (
               <button onClick={back} aria-label="Back" className="text-muted-foreground hover:text-foreground">
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <h3 className="font-semibold">
-              {mode === "choose" ? "Add a vehicle"
+              {mode === "quick" ? "Quick Add" : mode === "choose" ? "Add a vehicle"
                 : mode === "vin" ? "Start from a VIN"
                 : mode === "scan" ? "Scan the title"
                 : mode === "import" ? "Import a spreadsheet"
@@ -72,7 +73,9 @@ export function AddVehicleDialog({
           </button>
         </div>
 
-        {mode === "choose" ? (
+        {mode === "quick" ? (
+          <QuickAddForm onCreated={onCreated} onMore={() => setMode("choose")} />
+        ) : mode === "choose" ? (
           <Chooser onPick={setMode} />
         ) : mode === "scan" ? (
           <TitleScanStep
@@ -99,6 +102,12 @@ export function AddVehicleDialog({
 function Chooser({ onPick }: { onPick: (m: Mode) => void }) {
   return (
     <div className="p-6 grid gap-3 sm:grid-cols-2">
+      <Option
+        icon={Sparkles}
+        title="Quick Add"
+        hint="Year, make, model, VIN, weekly rate and an optional photo — the fastest way to put a car in service."
+        onClick={() => onPick("quick")}
+      />
       <Option
         icon={Keyboard}
         title="Enter manually"
