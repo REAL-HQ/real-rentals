@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireStaff, requireManager, type Actor } from "@/lib/roles.server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
+import { notReadyMessage } from "@/lib/vehicle-readiness";
 
 // The vehicle record: creation, identity lookup and the profile aggregate.
 //
@@ -34,6 +35,7 @@ export const BODY_TYPES = [
 ] as const;
 
 export const VEHICLE_STATUSES = [
+  { value: "onboarding", label: "Needs Setup" },
   { value: "available", label: "Available" },
   { value: "rented", label: "Rented" },
   { value: "maintenance", label: "In maintenance" },
@@ -300,11 +302,13 @@ export const createVehicle = createServerFn({ method: "POST" })
           current_odometer: data.current_odometer ?? null,
           license_plate: data.license_plate?.trim().toUpperCase() || null,
           plate_state: data.plate_state?.trim().toUpperCase() || null,
-          status: data.status || "available",
+          // A brand-new record has no photo yet, so it cannot be Rental Ready
+          // at insert. Asked-for Available/Reserved starts as Needs Setup; the
+          // operator makes it Available once a rate and photo exist.
+          status: ["available", "reserved"].includes(data.status || "available") ? "onboarding" : data.status,
           partner_id: data.partner_id || null,
-          // Required by the table. Defaulted rather than demanded up front, so a
-          // car can be recorded the moment it exists and priced later.
-          weekly_rate: data.weekly_rate ?? 0,
+          // Unknown stays unknown: null means "Not Set", never $0.
+          weekly_rate: data.weekly_rate ?? null,
         } as any)
         .select("id,unit_number")
         .single();
@@ -442,6 +446,7 @@ export type VehicleProfile = {
     rentals: number;
     photos: number;
   };
+  profileContext: { docKinds: string[]; maintenanceCount: number };
   alerts: Array<{ what: string; expires_on: string; days: number }>;
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */
@@ -606,6 +611,22 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         rentals: rentals.count ?? 0,
         photos: media.count ?? 0,
       },
+      // For the non-blocking Fleet Profile checklist only.
+      profileContext: await (async () => {
+        const [{ data: own }, { data: links }, { count: maintAll }] = await Promise.all([
+          supabaseAdmin.from("documents").select("kind").eq("vehicle_id", data.id),
+          supabaseAdmin.from("document_vehicle_links").select("document_id").eq("vehicle_id", data.id),
+          supabaseAdmin.from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id),
+        ]);
+        const ids = (links ?? []).map((l: any) => l.document_id);
+        const { data: linked } = ids.length
+          ? await supabaseAdmin.from("documents").select("kind").in("id", ids)
+          : { data: [] as any[] };
+        return {
+          docKinds: [...(own ?? []), ...(linked ?? [])].map((d: any) => String(d.kind ?? "")),
+          maintenanceCount: maintAll ?? 0,
+        };
+      })(),
       alerts: alerts.sort((a, b) => a.days - b.days),
       nextService: schedule
         ? {
@@ -834,11 +855,8 @@ async function applySection(
 
     if (!Object.keys(patch).length) return { ok: true };
 
-    // weekly_rate is NOT NULL on the table. Clearing it would fail with a
-    // constraint name nobody can act on, so say what is wrong instead.
-    if ("weekly_rate" in patch && (patch.weekly_rate === null || patch.weekly_rate === undefined)) {
-      return { ok: false, error: "A weekly rate is required.", field: "weekly_rate" };
-    }
+    // weekly_rate may be null ("Not Set"). The database refuses Available /
+    // Reserved without Rental Ready; that message is translated below.
 
     const { data: before } = await supabaseAdmin
       .from("vehicles")
@@ -927,6 +945,8 @@ async function applySection(
       .eq("id", data.id);
     if (error) {
       const msg = String(error.message);
+      const notReady = notReadyMessage(msg);
+      if (notReady) return { ok: false, error: notReady, field: "status" };
       if (msg.includes("vehicles_vin_unique_idx"))
         return { ok: false, error: "Another vehicle already has that VIN.", field: "vin" };
       if (msg.includes("vehicles_plate_unique_idx"))

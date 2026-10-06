@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.vehicle_rental_ready_missing(uuid) FROM authenticated;

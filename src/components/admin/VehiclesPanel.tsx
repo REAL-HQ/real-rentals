@@ -259,7 +259,7 @@ export function VehiclesPanel({
                   {v.year} {v.make} {v.model}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  ${Number(v.weekly_rate)}/wk · {v.body_type || "—"} · {v.status}
+                  {v.weekly_rate == null ? "Rate Not Set" : `$${Number(v.weekly_rate)}/wk`} · {v.body_type || "—"} · {v.status === "onboarding" ? "Needs Setup" : v.status}
                 </div>
                 <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">

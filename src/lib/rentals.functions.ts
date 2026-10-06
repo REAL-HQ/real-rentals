@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { notReadyMessage } from "@/lib/vehicle-readiness";
 
 // Turning an approved applicant into a live renter.
 //
@@ -36,6 +37,8 @@ export type ActivationBlocker = {
     | "not_approved"
     | "already_active"
     | "invalid_dates"
+    /** Vehicle fails Rental Ready (or rate missing). Never overridable. */
+    | "vehicle_not_ready"
     /** The application's login belongs to a different identity. Never overridable. */
     | "account_conflict";
   message: string;
@@ -132,6 +135,16 @@ async function evaluateReadiness(
         blockers.push({
           code: "vehicle_busy",
           message: "That vehicle is already on an active rental with another driver.",
+        });
+      }
+
+      // Rental Ready — the single DB definition (year/make/model/VIN/weekly
+      // rate/photo). Never overridable; fleet-profile completeness is never checked.
+      const { data: missing } = await (admin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: vehicleId });
+      if (Array.isArray(missing) && missing.length) {
+        blockers.push({
+          code: "vehicle_not_ready",
+          message: notReadyMessage(`vehicle_not_rental_ready:${missing.join(",")}`) ?? "Vehicle is not rental ready.",
         });
       }
 
@@ -242,7 +255,7 @@ export const activateRental = createServerFn({ method: "POST" })
       // account_conflict is not in this list on purpose: evaluateReadiness
       // cannot know about it, so it is returned directly from the handler
       // below rather than filtered out of a readiness result.
-      (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active",
+      (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active" || b.code === "vehicle_not_ready",
     );
     if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
     if (!readiness.ready && !data.overrideBlockers) {
@@ -452,6 +465,10 @@ export function activationTxBlocker(msg: string): ActivationBlocker | null {
     return { code: "not_approved", message: "Application is not approved. Approve it before activating." };
   if (msg.includes("vehicle_unavailable") || msg.includes("vehicle_not_found"))
     return { code: "no_vehicle", message: "That vehicle is no longer in the working fleet." };
+  const nr = notReadyMessage(msg);
+  if (nr) return { code: "vehicle_not_ready", message: nr };
+  if (msg.includes("no_weekly_rate"))
+    return { code: "vehicle_not_ready", message: "A weekly rate above $0 is required to start a rental." };
   if (msg.includes("invalid_dates"))
     return { code: "no_vehicle", message: "The end date must be after the start date." };
   return null;
