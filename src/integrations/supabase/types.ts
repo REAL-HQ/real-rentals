@@ -2531,6 +2531,7 @@ export type Database = {
           late_fee_applied_through: string | null
           late_fees: number
           notes: string | null
+          notified_status: string | null
           paid_date: string | null
           payment_method: string | null
           reason: string | null
@@ -2558,6 +2559,7 @@ export type Database = {
           late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
+          notified_status?: string | null
           paid_date?: string | null
           payment_method?: string | null
           reason?: string | null
@@ -2585,6 +2587,7 @@ export type Database = {
           late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
+          notified_status?: string | null
           paid_date?: string | null
           payment_method?: string | null
           reason?: string | null
