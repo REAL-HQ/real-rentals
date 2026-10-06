@@ -523,16 +523,21 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
+    const isManager = actor.tier === "manager" || actor.tier === "owner";
     const sb = await admin();
-    const { data: links } = await sb.from("document_vehicle_links").select("document_id,page").eq("vehicle_id", data.vehicleId);
-    const ids = (links ?? []).map((l: any) => l.document_id);
-    if (!ids.length) return [];
-    const { data: docs } = await sb.from("documents").select("id,kind,label,file_name,created_at,is_current,review_status,source,expires_at").in("id", ids).is("driver_id", null);
-    const { data: all } = await sb.from("document_vehicle_links").select("document_id").in("document_id", ids);
-    const count: Record<string, number> = {};
-    for (const l of all ?? []) count[l.document_id] = (count[l.document_id] ?? 0) + 1;
+    // Same canonical loader as the vehicle profile; finance paperwork is
+    // withheld from Coordinators here, not merely hidden in the UI.
+    const { loadVehicleDocPresence } = await import("@/lib/vehicle-doc-presence.server");
+    const pres = await loadVehicleDocPresence(sb, data.vehicleId, isManager);
+    if (!pres.linked.length) return [];
+    const ids = pres.linked.map((d) => d.id);
+    const [{ data: docs }, { data: links }] = await Promise.all([
+      sb.from("documents").select("id,kind,label,file_name,created_at,is_current,review_status,source,expires_at").in("id", ids),
+      sb.from("document_vehicle_links").select("document_id,page").eq("vehicle_id", data.vehicleId),
+    ]);
+    const rel = Object.fromEntries(pres.linked.map((d) => [d.id, d.relatedVehicles ?? 1]));
     const pageBy = Object.fromEntries((links ?? []).map((l: any) => [l.document_id, l.page]));
-    return (docs ?? []).map((d: any) => ({ ...d, page: pageBy[d.id] ?? null, relatedVehicles: count[d.id] ?? 1 }))
+    return (docs ?? []).map((d: any) => ({ ...d, page: pageBy[d.id] ?? null, relatedVehicles: rel[d.id] ?? 1 }))
       .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
   });
