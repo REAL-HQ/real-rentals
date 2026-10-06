@@ -613,26 +613,23 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         : null,
       partnerName: (partner as any)?.name ?? null,
       counts: {
-        documents: docs.count ?? 0,
+        documents: presence.documentCount,
+        sharedDocuments: presence.sharedCount,
         openMaintenance: maint.count ?? 0,
         inspections: insp.count ?? 0,
         rentals: rentals.count ?? 0,
         photos: media.count ?? 0,
+        publishedPhotos: publishedMedia.count ?? 0,
       },
       // For the non-blocking Fleet Profile checklist only.
       profileContext: await (async () => {
-        const [{ data: own }, { data: links }, { count: maintAll }] = await Promise.all([
-          supabaseAdmin.from("documents").select("kind").eq("vehicle_id", data.id),
-          supabaseAdmin.from("document_vehicle_links").select("document_id").eq("vehicle_id", data.id),
-          supabaseAdmin.from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id),
-        ]);
-        const ids = (links ?? []).map((l: any) => l.document_id);
-        const { data: linked } = ids.length
-          ? await supabaseAdmin.from("documents").select("kind").in("id", ids)
-          : { data: [] as any[] };
+        const { count: maintAll } = await supabaseAdmin
+          .from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id);
         return {
-          docKinds: [...(own ?? []), ...(linked ?? [])].map((d: any) => String(d.kind ?? "")),
+          docKinds: presence.kinds,
           maintenanceCount: maintAll ?? 0,
+          inspectionCount: insp.count ?? 0,
+          photoCount: media.count ?? 0,
         };
       })(),
       alerts: alerts.sort((a, b) => a.days - b.days),
