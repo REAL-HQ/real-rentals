@@ -108,6 +108,21 @@ async function handle(request: Request): Promise<Response> {
     .limit(10);
   const appIds = (apps ?? []).map((a: any) => a.id as string);
 
+  // Thread every inbound text into the staff Messages conversation for the
+  // matched person (most recent application wins when duplicates exist).
+  if (appIds.length) {
+    const { data: newest } = await supabaseAdmin
+      .from("applications").select("id").in("id", appIds)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (newest) {
+      await supabaseAdmin.from("messages").insert({
+        thread_id: newest.id, application_id: newest.id, body: body || "(empty message)",
+        kind: "inbound", channel: "sms", direction: "inbound", delivery_state: "delivered",
+        to_address: from, read: false,
+      } as any);
+    }
+  }
+
   if (intent === "stop") {
     await supabaseAdmin
       .from("sms_opt_outs")
