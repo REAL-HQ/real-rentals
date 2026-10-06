@@ -30,8 +30,8 @@ ok(/\.eq\("status", "active"\)/.test(src), "only an active rental is authoritati
 ok(/\(fromRental \? rental\.end_date : null\) \?\? app\.contract_end_date/.test(src),
    "an open-ended live rental falls back to the agreed end date rather than blocking forever");
 ok(/endDate <= startDate/.test(src), "an end on or before the start is a blocker");
-ok(/!app\.address \|\| !app\.zip/.test(src), "a missing address is a blocker");
-ok(/Payments tab/.test(src), "  and the message names where staff can fix it");
+ok(/!app\.address \|\|[^\n]*!app\.zip/.test(src), "a missing address is a blocker");
+ok(/tab: "payments"/.test(src), "  and the message names where staff can fix it");
 
 console.log("\nAPPLICATION INTENT NEVER BECOMES A CONTRACTUAL DATE");
 ok(!/app\.pickup_date/.test(src), "pickup_date is not read");
