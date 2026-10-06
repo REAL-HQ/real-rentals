@@ -3921,7 +3921,7 @@ export type Database = {
           uber_eligibility: string[] | null
           unit_number: string | null
           vin: string | null
-          weekly_rate: number
+          weekly_rate: number | null
           year: number
         }
         Insert: {
@@ -3997,7 +3997,7 @@ export type Database = {
           uber_eligibility?: string[] | null
           unit_number?: string | null
           vin?: string | null
-          weekly_rate: number
+          weekly_rate?: number | null
           year: number
         }
         Update: {
@@ -4073,7 +4073,7 @@ export type Database = {
           uber_eligibility?: string[] | null
           unit_number?: string | null
           vin?: string | null
-          weekly_rate?: number
+          weekly_rate?: number | null
           year?: number
         }
         Relationships: [
@@ -4410,6 +4410,10 @@ export type Database = {
           vehicle_id: string
           year: number
         }[]
+      }
+      vehicle_rental_ready_missing: {
+        Args: { _vehicle_id: string }
+        Returns: string[]
       }
     }
     Enums: {
