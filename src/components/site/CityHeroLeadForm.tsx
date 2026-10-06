@@ -183,7 +183,7 @@ export function CityHeroLeadForm({
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
                   <Check className="h-6 w-6 text-real-red" />
                 </div>
-                <h2 className="mt-4 text-2xl font-semibold">You're On The List</h2>
+                <h2 className="mt-4 text-2xl font-semibold">You're on the List</h2>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   We'll email you the moment a car opens up in {market?.name ?? site.title}. Cars go
                   to the next person on the list first — no deposit or obligation while you wait.

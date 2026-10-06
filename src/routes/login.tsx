@@ -157,7 +157,7 @@ function LoginPage() {
       <p className="mt-6 text-xs text-muted-foreground">
         Haven't applied yet?{" "}
         <Link to="/apply" className="text-real-red hover:underline font-medium">
-          Start an application
+          Start an Application
         </Link>
         .
       </p>

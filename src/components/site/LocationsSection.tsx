@@ -173,7 +173,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
         {done ? (
           <div className="text-center py-6">
             <CheckCircle2 className="w-12 h-12 text-real-red mx-auto" />
-            <h3 className="mt-4 text-2xl font-semibold">You're On The List</h3>
+            <h3 className="mt-4 text-2xl font-semibold">You're on the List</h3>
             <p className="mt-2 text-muted-foreground text-sm">We'll Tell You When {card.city} Opens.</p>
             <button onClick={onClose} className="mt-6 rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium hover:opacity-90 transition active:scale-95">
               Close

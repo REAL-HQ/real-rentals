@@ -85,7 +85,7 @@ function SignPage() {
           </div>
         ) : !agreement ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
-            <h1 className="text-xl font-semibold text-[#111114]">This signing link isn't valid</h1>
+            <h1 className="text-xl font-semibold text-[#111114]">This Signing Link Isn't Valid</h1>
             <p className="mt-2 text-sm text-[#55555E]">
               It may have expired, been cancelled, or already been used. Contact our team at{" "}
               <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a new one.
@@ -93,7 +93,7 @@ function SignPage() {
           </div>
         ) : agreement.expired && !done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
-            <h1 className="text-xl font-semibold text-[#111114]">This signing link has expired</h1>
+            <h1 className="text-xl font-semibold text-[#111114]">This Signing Link Has Expired</h1>
             <p className="mt-2 text-sm text-[#55555E]">
               For your security, signing links expire. Email{" "}
               <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a fresh one.
@@ -102,7 +102,7 @@ function SignPage() {
         ) : done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
-            <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement signed</h1>
+            <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement Signed</h1>
             {portalAccess ? (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
@@ -136,7 +136,7 @@ function SignPage() {
             </div>
 
             <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6">
-              <h2 className="text-[15px] font-semibold text-[#111114]">Electronic signature</h2>
+              <h2 className="text-[15px] font-semibold text-[#111114]">Electronic Signature</h2>
               <label className="block mt-4 text-[12px] font-medium text-[#55555E]">Type your full legal name</label>
               <input
                 value={name}

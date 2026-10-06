@@ -29,7 +29,7 @@ const BENEFITS = [
 ];
 
 const TRUST = [
-  { Icon: KeySquare, label: "You Keep The Title" },
+  { Icon: KeySquare, label: "You Keep the Title" },
   { Icon: Cog, label: "Fully Managed" },
   { Icon: Satellite, label: "GPS Tracked" },
   { Icon: FileText, label: "Monthly Statements" },
@@ -252,20 +252,20 @@ function Partners() {
             </div>
           ) : (
             <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Full name" value={form.full_name} onChange={(v) => set("full_name", v)} error={errors.full_name} />
+              <Field label="Full Name" value={form.full_name} onChange={(v) => set("full_name", v)} error={errors.full_name} />
               <Field label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} error={errors.email} />
               <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} error={errors.phone} />
-              <Field label="VIN (17 characters)" value={form.vin} onChange={(v) => set("vin", v.toUpperCase().slice(0, 17))} error={errors.vin} />
+              <Field label="VIN (17 Characters)" value={form.vin} onChange={(v) => set("vin", v.toUpperCase().slice(0, 17))} error={errors.vin} />
               <Field label="Year" value={form.year} onChange={(v) => set("year", v.replace(/\D/g, "").slice(0, 4))} error={errors.year} />
               <Field label="Make" value={form.make} onChange={(v) => set("make", v)} error={errors.make} />
               <Field label="Model" value={form.model} onChange={(v) => set("model", v)} error={errors.model} />
-              <Field label="Trim (optional)" value={form.trim} onChange={(v) => set("trim", v)} />
-              <Field label="Current mileage" value={form.mileage} onChange={(v) => set("mileage", v.replace(/\D/g, ""))} />
-              <Select label="Title status" value={form.title_status} onChange={(v) => set("title_status", v)} options={TITLE_STATUSES} />
-              <Select label="Lien status" value={form.lien_status} onChange={(v) => set("lien_status", v)} options={LIEN_STATUSES} />
-              <Select label="Registration state" value={form.registration_state} onChange={(v) => set("registration_state", v)} options={US_STATES} />
-              <Select label="Currently insured" value={form.currently_insured} onChange={(v) => set("currently_insured", v)} options={["Yes", "No"]} />
-              <Select label="Vehicle condition" value={form.condition} onChange={(v) => set("condition", v)} options={CONDITIONS} />
+              <Field label="Trim (Optional)" value={form.trim} onChange={(v) => set("trim", v)} />
+              <Field label="Current Mileage" value={form.mileage} onChange={(v) => set("mileage", v.replace(/\D/g, ""))} />
+              <Select label="Title Status" value={form.title_status} onChange={(v) => set("title_status", v)} options={TITLE_STATUSES} />
+              <Select label="Lien Status" value={form.lien_status} onChange={(v) => set("lien_status", v)} options={LIEN_STATUSES} />
+              <Select label="Registration State" value={form.registration_state} onChange={(v) => set("registration_state", v)} options={US_STATES} />
+              <Select label="Currently Insured" value={form.currently_insured} onChange={(v) => set("currently_insured", v)} options={["Yes", "No"]} />
+              <Select label="Vehicle Condition" value={form.condition} onChange={(v) => set("condition", v)} options={CONDITIONS} />
 
               <div className="md:col-span-2">
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle photos (4–6)</label>

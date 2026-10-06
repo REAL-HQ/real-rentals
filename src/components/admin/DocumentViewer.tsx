@@ -100,7 +100,7 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
               onClick={() => setZoomIdx((i) => Math.max(i - 1, 0))}
               disabled={zoomIdx === 0}
               className="rounded-md p-2 hover:bg-white/10 disabled:opacity-30"
-              title="Zoom out (−)"
+              title="Zoom Out (−)"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
@@ -130,7 +130,7 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
               target="_blank"
               rel="noreferrer"
               className="shrink-0 rounded-md p-2 hover:bg-white/10"
-              title="Open in a new tab"
+              title="Open in a New Tab"
             >
               <ExternalLink className="w-4 h-4" />
             </a>

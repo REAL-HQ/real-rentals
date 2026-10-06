@@ -21,7 +21,7 @@ function TermsPage() {
     <SiteLayout>
       <section className="container-real py-14 md:py-20 max-w-3xl">
         <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Legal</div>
-        <h1 className="mt-3 text-4xl md:text-5xl font-semibold">Terms Of Service</h1>
+        <h1 className="mt-3 text-4xl md:text-5xl font-semibold">Terms of Service</h1>
         <p className="mt-3 text-sm text-muted-foreground">Last updated: June 2026</p>
 
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
@@ -33,7 +33,7 @@ function TermsPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold text-foreground">Quotes And Applications</h2>
+            <h2 className="text-xl font-semibold text-foreground">Quotes and Applications</h2>
             <p className="mt-3">Quotes are estimates only and not a guarantee of approval, vehicle availability, or pricing. Final terms are provided in the rental agreement executed at pickup.</p>
           </div>
 

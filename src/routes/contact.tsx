@@ -51,7 +51,7 @@ function Contact() {
             </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-4">
-              <Field label="Full name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
+              <Field label="Full Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
               <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <div>

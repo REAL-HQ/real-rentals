@@ -387,7 +387,7 @@ function InspectionRunner({
         onClick={onBack}
         className="inline-flex items-center gap-1.5 text-sm text-[#55555E] hover:text-[#111114]"
       >
-        <ArrowLeft className="w-4 h-4" /> All inspections
+        <ArrowLeft className="w-4 h-4" /> All Inspections
       </button>
 
       <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4">
@@ -546,7 +546,7 @@ function InspectionRunner({
           }`}
         >
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">Renter sign-off</h3>
+            <h3 className="font-semibold text-sm">Renter Sign-Off</h3>
             <StatusPill status={data.driver_signed_at ? "active" : "pending"}>
               {data.driver_signed_at ? "signed" : "awaiting signature"}
             </StatusPill>

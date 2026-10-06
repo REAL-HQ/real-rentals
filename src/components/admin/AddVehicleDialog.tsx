@@ -97,7 +97,7 @@ function Chooser({ onPick }: { onPick: (m: Mode) => void }) {
       />
       <Option
         icon={Keyboard}
-        title="Enter manually"
+        title="Enter Manually"
         hint="Type what you know. Everything else can be filled in later."
         onClick={() => onPick("manual")}
       />
@@ -109,13 +109,13 @@ function Chooser({ onPick }: { onPick: (m: Mode) => void }) {
       />
       <Option
         icon={FileText}
-        title="Scan the title"
+        title="Scan the Title"
         hint="Photograph the title or registration and check the details that come off it."
         onClick={() => onPick("scan")}
       />
       <Option
         icon={Upload}
-        title="Import a spreadsheet"
+        title="Import a Spreadsheet"
         hint="Bring in a whole fleet from CSV, with column mapping and duplicate checks before anything is created."
         onClick={() => onPick("import")}
       />
@@ -312,7 +312,7 @@ function ManualForm({
       <section className={startFromVin ? "" : "order-last"}>
         <Legend>Identity</Legend>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Unit number" hint="Leave blank to assign the next number automatically." bad={badField === "unit_number"}>
+          <Field label="Unit Number" hint="Leave blank to assign the next number automatically." bad={badField === "unit_number"}>
             <input value={f.unit_number} onChange={(e) => set("unit_number", e.target.value)} placeholder={unitHint} className={inputCls(badField === "unit_number")} />
           </Field>
           <Field label="VIN" bad={badField === "vin"}>

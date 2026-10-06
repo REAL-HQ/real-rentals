@@ -113,7 +113,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
       </div>
 
       <div className="mt-10">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Legacy submissions</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
         <div className="space-y-2">
           {legacyOwners.map(o => (
             <div key={o.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
@@ -159,7 +159,7 @@ function AddPartner({ onClose, onSave }: { onClose: () => void; onSave: (p: Part
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold mb-4">Add partner</h2>
+        <h2 className="text-lg font-semibold mb-4">Add Partner</h2>
         <div className="space-y-3 text-sm">
           <input placeholder="Name" value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
           <input placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />

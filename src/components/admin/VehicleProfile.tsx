@@ -527,7 +527,7 @@ function Insurance({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         right={<EditButton show={p.canEdit} onClick={onEdit} />}
       >
         <Row label="Carrier" value={v.insurance_carrier} />
-        <Row label="Policy number" value={v.insurance_policy_number} mono />
+        <Row label="Policy Number" value={v.insurance_policy_number} mono />
         <Row label="Coverage" value={v.insurance_coverage} />
         <Row label="Expires" value={date(v.insurance_expires_on)} />
         <Row
@@ -572,25 +572,25 @@ function Dmv({ p, onEdit }: { p: Profile; onEdit: () => void }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <SectionCard
-        title="Plate & registration"
+        title="Plate & Registration"
         icon={<ScrollText className="w-4 h-4" strokeWidth={1.75} />}
         right={<EditButton show={p.canEdit} onClick={onEdit} />}
       >
         <Row label="Plate" value={v.license_plate} mono />
-        <Row label="Plate state" value={v.plate_state} />
-        <Row label="Plate expires" value={date(v.plate_expires_on)} />
+        <Row label="Plate State" value={v.plate_state} />
+        <Row label="Plate Expires" value={date(v.plate_expires_on)} />
         <Row label="Registration #" value={v.registration_number} mono />
-        <Row label="Registration state" value={v.registration_state} />
-        <Row label="Registration expires" value={date(v.registration_expires_on)} />
+        <Row label="Registration State" value={v.registration_state} />
+        <Row label="Registration Expires" value={date(v.registration_expires_on)} />
       </SectionCard>
 
       <SectionCard
-        title="Title & identity"
+        title="Title & Identity"
         icon={<ScrollText className="w-4 h-4" strokeWidth={1.75} />}
       >
         <Row label="VIN" value={v.vin} mono />
-        <Row label="Title status" value={titleCase(v.title_status)} />
-        <Row label="Title number" value={v.title_number} mono />
+        <Row label="Title Status" value={titleCase(v.title_status)} />
+        <Row label="Title Number" value={v.title_number} mono />
         <div className="mt-3 text-[11px] text-[#9A9AA3]">
           Changing a VIN or plate is recorded in Activity with what it was before.
         </div>
@@ -620,7 +620,7 @@ function Gps({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         <Row label="SIM" value={v.gps_sim} mono />
         <Row label="Installed" value={date(v.gps_installed_on)} />
         <Row
-          label="Tracking link"
+          label="Tracking Link"
           value={
             v.gps_tracking_url ? (
               <a
@@ -645,18 +645,18 @@ function Gps({ p, onEdit }: { p: Profile; onEdit: () => void }) {
       </SectionCard>
 
       <SectionCard
-        title="Last reported"
+        title="Last Reported"
         subtitle="Written by a provider adapter, never by this app"
         icon={<Satellite className="w-4 h-4" strokeWidth={1.75} />}
       >
-        <Row label="Last ping" value={when(v.gps_last_ping_at)} />
+        <Row label="Last Ping" value={when(v.gps_last_ping_at)} />
         <Row
           label="Location"
           value={
             loc?.address ?? (loc?.lat != null && loc?.lng != null ? `${loc.lat}, ${loc.lng}` : null)
           }
         />
-        <Row label="Reported odometer" value={miles(v.gps_odometer)} />
+        <Row label="Reported Odometer" value={miles(v.gps_odometer)} />
         <Row label="Battery" value={v.gps_battery} />
         <Row label="Geofence" value={titleCase(v.gps_geofence_status)} />
         {!v.gps_last_ping_at && (
@@ -679,14 +679,14 @@ function Keys({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         icon={<KeyRound className="w-4 h-4" strokeWidth={1.75} />}
         right={<EditButton show={p.canEdit} onClick={onEdit} />}
       >
-        <Row label="Keys held" value={v.key_count} />
+        <Row label="Keys Held" value={v.key_count} />
         <Row
           label="Spare"
           value={v.spare_key === true ? "Yes" : v.spare_key === false ? "No" : null}
         />
         <Row label="Type" value={titleCase(v.key_type)} />
         <Row label="Tag" value={v.key_tag} mono />
-        <Row label="Stored at" value={v.key_location} />
+        <Row label="Stored At" value={v.key_location} />
       </SectionCard>
 
       <SectionCard title="Notes" icon={<KeyRound className="w-4 h-4" strokeWidth={1.75} />}>
@@ -706,16 +706,16 @@ function Keys({ p, onEdit }: { p: Profile; onEdit: () => void }) {
 // ---- section drawer -------------------------------------------------------
 
 const SECTION_META: Record<VehicleSection, { title: string; subtitle: string; icon: any }> = {
-  identity: { title: "Edit details", subtitle: "Identity, specs, status and rates", icon: Car },
-  insurance: { title: "Edit insurance", subtitle: "Policy and agent", icon: ShieldCheck },
+  identity: { title: "Edit Details", subtitle: "Identity, specs, status and rates", icon: Car },
+  insurance: { title: "Edit Insurance", subtitle: "Policy and agent", icon: ShieldCheck },
   dmv: {
-    title: "Edit registration & title",
+    title: "Edit Registration & Title",
     subtitle: "Plate, registration, VIN and title",
     icon: ScrollText,
   },
   gps: { title: "Edit GPS", subtitle: "Device and installation", icon: Satellite },
-  keys: { title: "Edit keys", subtitle: "Count, type and where they live", icon: KeyRound },
-  service: { title: "Edit service & tolls", subtitle: "Intervals and toll accounts", icon: Wrench },
+  keys: { title: "Edit Keys", subtitle: "Count, type and where they live", icon: KeyRound },
+  service: { title: "Edit Service & Tolls", subtitle: "Intervals and toll accounts", icon: Wrench },
 };
 
 function SectionDrawer({
@@ -787,7 +787,7 @@ function SectionDrawer({
         <>
           <div className="grid grid-cols-2 gap-3">
             <Text
-              label="Unit number"
+              label="Unit Number"
               value={str("unit_number")}
               onChange={(v) => set("unit_number", v)}
               error={err("unit_number")}
@@ -799,7 +799,7 @@ function SectionDrawer({
             <Text label="Trim" value={str("trim")} onChange={(v) => set("trim", v)} />
             <Text label="Color" value={str("color")} onChange={(v) => set("color", v)} />
             <Choice
-              label="Body type"
+              label="Body Type"
               value={str("body_type")}
               onChange={(v) => set("body_type", v)}
               options={[
@@ -818,7 +818,7 @@ function SectionDrawer({
             <Text label="Fuel" value={str("fuel_type")} onChange={(v) => set("fuel_type", v)} />
             <NumberField label="MPG" value={num("mpg")} onChange={(v) => set("mpg", v)} />
             <NumberField
-              label="Range per tank"
+              label="Range per Tank"
               value={num("miles_per_tank")}
               onChange={(v) => set("miles_per_tank", v)}
               suffix="mi"
@@ -830,14 +830,14 @@ function SectionDrawer({
               suffix="mi"
             />
             <NumberField
-              label="Weekly rate"
+              label="Weekly Rate"
               value={num("weekly_rate")}
               onChange={(v) => set("weekly_rate", v)}
               suffix="$"
               error={err("weekly_rate")}
             />
             <NumberField
-              label="Monthly rate"
+              label="Monthly Rate"
               value={num("monthly_rate")}
               onChange={(v) => set("monthly_rate", v)}
               suffix="$"
@@ -850,13 +850,13 @@ function SectionDrawer({
             />
           </div>
           <Area
-            label="Listing description"
+            label="Listing Description"
             value={str("description")}
             onChange={(v) => set("description", v)}
             hint="Shown on the public fleet page."
           />
           <Area
-            label="Internal notes"
+            label="Internal Notes"
             value={str("internal_notes")}
             onChange={(v) => set("internal_notes", v)}
             hint="Never leaves the back office."
@@ -873,7 +873,7 @@ function SectionDrawer({
               onChange={(v) => set("insurance_carrier", v)}
             />
             <Text
-              label="Policy number"
+              label="Policy Number"
               value={str("insurance_policy_number")}
               onChange={(v) => set("insurance_policy_number", v)}
               mono
@@ -943,12 +943,12 @@ function SectionDrawer({
             mono
           />
           <Text
-            label="Plate state"
+            label="Plate State"
             value={str("plate_state")}
             onChange={(v) => set("plate_state", v)}
           />
           <DateInput
-            label="Plate expires"
+            label="Plate Expires"
             value={day("plate_expires_on")}
             onChange={(v) => set("plate_expires_on", v)}
           />
@@ -959,17 +959,17 @@ function SectionDrawer({
             mono
           />
           <Text
-            label="Registration state"
+            label="Registration State"
             value={str("registration_state")}
             onChange={(v) => set("registration_state", v)}
           />
           <DateInput
-            label="Registration expires"
+            label="Registration Expires"
             value={day("registration_expires_on")}
             onChange={(v) => set("registration_expires_on", v)}
           />
           <Choice
-            label="Title status"
+            label="Title Status"
             value={str("title_status")}
             onChange={(v) => set("title_status", v)}
             options={[
@@ -982,7 +982,7 @@ function SectionDrawer({
             ]}
           />
           <Text
-            label="Title number"
+            label="Title Number"
             value={str("title_number")}
             onChange={(v) => set("title_number", v)}
             mono
@@ -1008,7 +1008,7 @@ function SectionDrawer({
                 { value: "inactive", label: "Inactive" },
                 { value: "fault", label: "Fault" },
                 { value: "removed", label: "Removed" },
-                { value: "not_installed", label: "Not installed" },
+                { value: "not_installed", label: "Not Installed" },
               ]}
             />
             <Text
@@ -1037,13 +1037,13 @@ function SectionDrawer({
             />
           </div>
           <Text
-            label="Tracking link"
+            label="Tracking Link"
             value={str("gps_tracking_url")}
             onChange={(v) => set("gps_tracking_url", v)}
             placeholder="https://"
           />
           <Area
-            label="Install notes"
+            label="Install Notes"
             value={str("gps_install_notes")}
             onChange={(v) => set("gps_install_notes", v)}
             rows={2}
@@ -1055,7 +1055,7 @@ function SectionDrawer({
         <>
           <div className="grid grid-cols-2 gap-3">
             <NumberField
-              label="Keys held"
+              label="Keys Held"
               value={num("key_count")}
               onChange={(v) => set("key_count", v)}
             />
@@ -1067,20 +1067,20 @@ function SectionDrawer({
             />
             <Text label="Tag" value={str("key_tag")} onChange={(v) => set("key_tag", v)} mono />
             <Text
-              label="Stored at"
+              label="Stored At"
               value={str("key_location")}
               onChange={(v) => set("key_location", v)}
               placeholder="Hook 4, back office"
             />
           </div>
           <Choice
-            label="Spare key"
+            label="Spare Key"
             value={f.spare_key === true ? "true" : f.spare_key === false ? "false" : ""}
             onChange={(v) => set("spare_key", v === "" ? null : v === "true")}
             options={[
-              { value: "", label: "Not recorded" },
-              { value: "true", label: "Yes — a spare exists" },
-              { value: "false", label: "No spare" },
+              { value: "", label: "Not Recorded" },
+              { value: "true", label: "Yes — a Spare Exists" },
+              { value: "false", label: "No Spare" },
             ]}
             hint="Left unrecorded until someone actually checks."
           />
@@ -1169,7 +1169,7 @@ function FinanceDrawer({
 
   return (
     <VehicleEditDrawer
-      title="Edit acquisition & financing"
+      title="Edit Acquisition & Financing"
       subtitle="Stored apart from the vehicle record — Coordinators cannot read it"
       icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}
       managerOnly
@@ -1193,12 +1193,12 @@ function FinanceDrawer({
             ]}
           />
           <Text
-            label="Legal owner"
+            label="Legal Owner"
             value={str("legal_owner")}
             onChange={(v) => set("legal_owner", v)}
           />
           <Text
-            label="Seller / dealer"
+            label="Seller / Dealer"
             value={str("seller_dealer")}
             onChange={(v) => set("seller_dealer", v)}
           />
@@ -1208,18 +1208,18 @@ function FinanceDrawer({
             onChange={(v) => set("lienholder", v)}
           />
           <DateInput
-            label="Purchase date"
+            label="Purchase Date"
             value={day("purchase_date")}
             onChange={(v) => set("purchase_date", v)}
           />
           <NumberField
-            label="Purchase price"
+            label="Purchase Price"
             value={num("purchase_price")}
             onChange={(v) => set("purchase_price", v)}
             suffix="$"
           />
           <Text
-            label="Loan / lease ref"
+            label="Loan / Lease Ref"
             value={str("loan_reference")}
             onChange={(v) => set("loan_reference", v)}
             mono
@@ -1231,7 +1231,7 @@ function FinanceDrawer({
             suffix="$"
           />
           <NumberField
-            label="Monthly payment"
+            label="Monthly Payment"
             value={num("monthly_payment")}
             onChange={(v) => set("monthly_payment", v)}
             suffix="$"

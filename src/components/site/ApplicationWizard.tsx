@@ -489,7 +489,7 @@ function LinkExpired({ message }: { message: string }) {
           to="/apply"
           className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
-          Start A New Application
+          Start a New Application
         </Link>
       </div>
     </div>
@@ -1258,7 +1258,7 @@ function DriverProfile({
                   {s.key === "license" && (
                     <>
                       <DocumentCapture
-                        title="Driver's licence"
+                        title="Driver's Licence"
                         hint="Take a photo of the front of your licence."
                         tips={[
                           "All four corners in the frame",
@@ -1312,7 +1312,7 @@ function DriverProfile({
                   {s.key === "gig_profile" && (
                     <>
                       <DocumentCapture
-                        title="Gig driver profile"
+                        title="Gig Driver Profile"
                         hint="A screenshot of your profile screen showing your name and rating."
                         tips={["Your rating should be readable", "Any app is fine"]}
                         kind="gig_profile"
@@ -1472,7 +1472,7 @@ function InsuranceSection({
   return (
     <>
       <DocumentCapture
-        title="Insurance card"
+        title="Insurance Card"
         hint="Photograph your insurance card or declaration page."
         tips={["Show the policy number and the dates it covers"]}
         kind="insurance"

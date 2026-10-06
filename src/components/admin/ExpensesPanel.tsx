@@ -49,10 +49,10 @@ function monthRange(monthsBack: number): { from: string; to: string } {
 }
 
 const PERIODS = [
-  { id: "1", label: "This month", months: 0 },
-  { id: "3", label: "Last 3 months", months: 2 },
-  { id: "12", label: "Last 12 months", months: 11 },
-  { id: "all", label: "All time", months: -1 },
+  { id: "1", label: "This Month", months: 0 },
+  { id: "3", label: "Last 3 Months", months: 2 },
+  { id: "12", label: "Last 12 Months", months: 11 },
+  { id: "all", label: "All Time", months: -1 },
 ] as const;
 
 export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
@@ -157,7 +157,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
     return (
       <EmptyState
         icon={<TrendingUp className="w-6 h-6" strokeWidth={1.75} />}
-        title="No vehicles yet"
+        title="No Vehicles Yet"
         hint="Add your cars, and this will show what each one earns against what it costs."
       />
     );
@@ -168,7 +168,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Revenue collected" value={money(totals.revenue)} tone="good" />
+        <Stat label="Revenue Collected" value={money(totals.revenue)} tone="good" />
         <Stat label="Costs" value={money(totalCost)} tone="bad" />
         <Stat
           label="Net"
@@ -356,7 +356,7 @@ function Ledger({
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
-          title="No expenses recorded"
+          title="No Expenses Recorded"
           hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
         />
       ) : (
@@ -517,7 +517,7 @@ function ExpenseForm({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Record an expense</h3>
+          <h3 className="font-semibold">Record an Expense</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
@@ -582,7 +582,7 @@ function ExpenseForm({
             />
           </Field>
 
-          <Field label="Invoice / reference">
+          <Field label="Invoice / Reference">
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
@@ -590,7 +590,7 @@ function ExpenseForm({
             />
           </Field>
 
-          <Field label="Paid with">
+          <Field label="Paid With">
             <input
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}

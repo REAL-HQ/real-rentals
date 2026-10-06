@@ -119,7 +119,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         {batches === null ? (
           <p className="text-sm text-[#9A9AA3]">Loading…</p>
         ) : batches.length === 0 ? (
-          <EmptyState title="No imports yet" hint="Uploaded files appear here as an import you can review." />
+          <EmptyState title="No Imports Yet" hint="Uploaded files appear here as an import you can review." />
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]">
             {batches.map((b) => (
@@ -353,7 +353,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       )}
 
       {confirming && (
-        <ConfirmDialog title="Before you apply" onCancel={() => setConfirming(false)} onConfirm={commit} busy={applying}
+        <ConfirmDialog title="Before You Apply" onCancel={() => setConfirming(false)} onConfirm={commit} busy={applying}
           confirmLabel={applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}>
           <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
             {creates.length > 0 && <li>{creates.length} vehicle{creates.length === 1 ? "" : "s"} will be created</li>}

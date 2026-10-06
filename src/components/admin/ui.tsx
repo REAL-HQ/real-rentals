@@ -733,7 +733,7 @@ export function buildDriverTimeline(driver: any, screening?: any): TimelineStep[
     { label: "Screening Complete", state: states[1], timestamp: fmtDate(screening?.updated_at) },
     { label: "Approved", state: states[2], timestamp: fmtDate(driver.approved_at) },
     { label: "Agreement Signed", state: states[3], timestamp: fmtDate(driver.agreement_signed_at) },
-    { label: "Card On File", state: states[4], timestamp: cardOnFile ? "Saved" : null },
+    { label: "Card on File", state: states[4], timestamp: cardOnFile ? "Saved" : null },
     { label: "Vehicle Picked Up", state: states[5], timestamp: fmtDate(driver.pickup_at) },
     { label: "Active", state: states[6], hint: active ? "Weekly autopay running" : undefined },
     { label: "Returned", state: states[7], timestamp: fmtDate(driver.return_at) },

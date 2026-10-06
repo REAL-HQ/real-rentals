@@ -280,7 +280,7 @@ function Index() {
                   Become A Partner <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
                 <Link to="/investors" className="inline-flex items-center justify-center rounded-lg border border-white/30 text-white px-8 py-4 text-sm font-medium hover:bg-white/10 transition active:scale-95">
-                  Learn About The Partner Program
+                  Learn About the Partner Program
                 </Link>
               </div>
             </FadeUp>

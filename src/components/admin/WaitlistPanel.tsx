@@ -198,7 +198,7 @@ export function WaitlistPanel() {
           <div className="p-5">
             <EmptyState
               icon={<Hourglass className="w-6 h-6" strokeWidth={1.75} />}
-              title="No Drivers On The Waitlist"
+              title="No Drivers on the Waitlist"
               hint="When Cars Available is set to zero, the site collects waitlist signups here instead of applications."
             />
           </div>
@@ -270,7 +270,7 @@ export function WaitlistPanel() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MailCheck className="h-4 w-4 text-[#D03020]" strokeWidth={1.75} />
-              A car just opened up
+              A Car Just Opened Up
             </DialogTitle>
             <DialogDescription>
               Email the first drivers on the waitlist before the car is offered anywhere else. Each

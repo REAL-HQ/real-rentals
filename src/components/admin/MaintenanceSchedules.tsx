@@ -291,7 +291,7 @@ export function MaintenanceSchedules() {
                             <button
                               onClick={() => remove(s.id)}
                               className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                              title="Delete item"
+                              title="Delete Item"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>

@@ -97,7 +97,7 @@ function SetPasswordPage() {
           to="/login"
           className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
         >
-          Get A New Link
+          Get a New Link
         </Link>
       </Shell>
     );

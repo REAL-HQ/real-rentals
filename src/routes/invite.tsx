@@ -104,7 +104,7 @@ function InvitePage() {
         {phase === "done" && (
           <div className="text-center">
             <ShieldCheck className="w-10 h-10 text-[#16A34A] mx-auto" strokeWidth={1.75} />
-            <h1 className="text-2xl font-semibold mt-4">You're in</h1>
+            <h1 className="text-2xl font-semibold mt-4">You're In</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               You now have <strong>{roleLabel}</strong> access to the REAL RENTALS back office.
             </p>
@@ -112,7 +112,7 @@ function InvitePage() {
               to="/admin"
               className="mt-6 inline-block rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
             >
-              Open the back office
+              Open the Back Office
             </Link>
           </div>
         )}
@@ -120,7 +120,7 @@ function InvitePage() {
         {phase === "failed" && (
           <div className="text-center">
             <AlertTriangle className="w-10 h-10 text-[#B45309] mx-auto" strokeWidth={1.75} />
-            <h1 className="text-2xl font-semibold mt-4">Invitation not accepted</h1>
+            <h1 className="text-2xl font-semibold mt-4">Invitation Not Accepted</h1>
             <p className="mt-2 text-sm text-muted-foreground">{message}</p>
             {session && (
               <button

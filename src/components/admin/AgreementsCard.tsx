@@ -119,7 +119,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   return (
     <SectionCard
       padded={false}
-      title="Rental agreement"
+      title="Rental Agreement"
       right={
         <button
           onClick={openPreview}
@@ -164,7 +164,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                   disabled={busy}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#111114] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
                 >
-                  <Send className="w-3.5 h-3.5" /> Send for signature
+                  <Send className="w-3.5 h-3.5" /> Send for Signature
                 </button>
               </div>
             </div>
@@ -264,7 +264,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {a.status === "signed" && a.archive_status === "archived" ? (
                     <button
-                      title="Download signed PDF"
+                      title="Download Signed PDF"
                       onClick={async () => {
                         try {
                           saveAgreementPdf(await doPdf({ data: { agreementId: a.id } }));

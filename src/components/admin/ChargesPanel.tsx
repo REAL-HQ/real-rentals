@@ -28,11 +28,11 @@ type VehicleLite = {
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "new", label: "Unassigned" },
-  { value: "assigned", label: "Ready to bill" },
+  { value: "assigned", label: "Ready to Bill" },
   { value: "rebilled", label: "Billed" },
   { value: "paid", label: "Paid" },
   { value: "disputed", label: "Disputed" },
-  { value: "written_off", label: "Written off" },
+  { value: "written_off", label: "Written Off" },
 ];
 
 function money(n: number) {
@@ -570,9 +570,9 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-2 text-center">
             <Stat label="Imported" value={result.imported} tone="green" />
-            <Stat label="Duplicates skipped" value={result.duplicates} tone="muted" />
+            <Stat label="Duplicates Skipped" value={result.duplicates} tone="muted" />
             <Stat
-              label="Could not read"
+              label="Could Not Read"
               value={result.failed.length}
               tone={result.failed.length ? "red" : "muted"}
             />

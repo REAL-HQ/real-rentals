@@ -123,7 +123,7 @@ export function DepositDialog({
         ) : (
           <div className="p-4 space-y-4">
             <div className="rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3 space-y-1.5 text-sm">
-              <Line label="Deposit held" value={money(summary.depositAmount)} />
+              <Line label="Deposit Held" value={money(summary.depositAmount)} />
               <Line label="Deductions" value={`-${money(summary.deductionTotal)}`} />
               <div className="pt-1.5 border-t border-[#EDEDF0] flex items-center justify-between">
                 <span className="font-semibold">Refund due</span>
