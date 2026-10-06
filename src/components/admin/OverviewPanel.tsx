@@ -246,7 +246,6 @@ export function OverviewPanel() {
       setMaintOpen(vMaintQ.count ?? 0);
       setReserved(vReservedQ.count ?? 0);
       setNeedsSetup(((allVehiclesQ.data ?? []) as { status: string | null }[]).filter((v) => v.status === "onboarding").length);
-      setNeedsSetup(((allVehiclesQ.data ?? []) as { status: string | null }[]).filter((v) => v.status === "onboarding").length);
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
       const sumAmt = (rows?: any[] | null) =>
