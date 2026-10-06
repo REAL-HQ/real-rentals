@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import {
   buildReadinessIndex,
   READINESS_APPLICATION_SELECT,
