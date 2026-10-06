@@ -126,6 +126,8 @@ export const registerVehicleMedia = createServerFn({ method: "POST" })
         size_bytes: data.sizeBytes ?? null,
         caption: data.caption ?? null,
         is_primary: first,
+        // Never auto-publish: a person chooses which photos are listing photos.
+        published: false,
         sort_order: ((maxRow?.sort_order as number | undefined) ?? -1) + 1,
         uploaded_by: actor.userId,
       } as any)
