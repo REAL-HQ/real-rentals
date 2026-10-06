@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireStaff, requireManager, type Actor } from "@/lib/roles.server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
+import { notReadyMessage } from "@/lib/vehicle-readiness";
 
 // The vehicle record: creation, identity lookup and the profile aggregate.
 //
@@ -927,6 +928,8 @@ async function applySection(
       .eq("id", data.id);
     if (error) {
       const msg = String(error.message);
+      const notReady = notReadyMessage(msg);
+      if (notReady) return { ok: false, error: notReady, field: "status" };
       if (msg.includes("vehicles_vin_unique_idx"))
         return { ok: false, error: "Another vehicle already has that VIN.", field: "vin" };
       if (msg.includes("vehicles_plate_unique_idx"))
