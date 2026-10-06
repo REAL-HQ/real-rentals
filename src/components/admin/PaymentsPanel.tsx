@@ -20,26 +20,35 @@ import { MoreVertical, ChevronDown, Check } from "lucide-react";
 
 const STATUSES = [
   "upcoming",
+  "pending",
   "current",
   "paid",
+  "overdue",
   "past_due",
   "failed",
+  "unpaid",
   "collections",
+  "refunded",
   "waived",
 ] as const;
 /** Everything the dashboard's Collections card counts: due and not received. */
 const OVERDUE_SET = new Set(["late", "past_due", "collections", "failed", "overdue", "unpaid"]);
 const STATUS_LABEL: Record<string, string> = {
   upcoming: "Upcoming",
+  pending: "Processing",
   current: "Due",
   paid: "Paid",
+  overdue: "Overdue",
   past_due: "Past Due",
   failed: "Failed",
+  unpaid: "Unpaid",
   collections: "In Collections",
+  refunded: "Refunded",
   waived: "Waived",
+  void: "Void",
   late: "Late",
 };
-const TYPES = ["rent", "deposit", "late_fee", "other"] as const;
+const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
