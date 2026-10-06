@@ -64,7 +64,7 @@ type AdminSearch = {
   add?: "1";
   /** Settings workspace section. */
   section?: string;
-  /** Messages overlay: "1" = open, or an application id = open on that conversation. Global, survives tab. */
+  /** Messages overlay: "inbox" = open, or an application id = open on that conversation. Global, survives tab. */
   msg?: string;
 };
 
@@ -133,7 +133,7 @@ export const Route = createFileRoute("/admin")({
     // number 1 — and silently did nothing.
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
-    if (raw.msg === 1 || raw.msg === true) out.msg = "1";
+    if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
     return out;
   },
@@ -235,7 +235,7 @@ function Admin() {
     if (legacy) {
       const next: AdminSearch = { tab: legacy.tab };
       if (legacy.section) next.section = legacy.section;
-      if (legacy.messages || search.msg) next.msg = search.msg ?? "1";
+      if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
       void navigate({ to: "/admin", search: next, replace: true });
       return;
     }
@@ -253,7 +253,7 @@ function Admin() {
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const listConvs = useServerFn(listConversations);
   const msgOpen = !!search.msg;
-  const msgApp = search.msg && search.msg !== "1" ? search.msg : null;
+  const msgApp = search.msg && search.msg !== "inbox" ? search.msg : null;
   const setMsg = useCallback(
     (value: string | null) =>
       void navigate({ to: "/admin", search: (prev: AdminSearch) => ({ ...prev, msg: value ?? undefined }), replace: true }),
@@ -264,7 +264,7 @@ function Admin() {
   useEffect(() => {
     const onOpen = (e: Event) => {
       const id = (e as CustomEvent<{ applicationId?: string }>).detail?.applicationId;
-      setMsg(id || "1");
+      setMsg(id || "inbox");
     };
     window.addEventListener("open-messages", onOpen);
     return () => window.removeEventListener("open-messages", onOpen);
@@ -505,7 +505,7 @@ function Admin() {
               )}
               <button
                 aria-label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs} unread)` : ""}`}
-                onClick={() => setMsg("1")}
+                onClick={() => setMsg("inbox")}
                 className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
               >
                 <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
@@ -637,7 +637,7 @@ function Admin() {
       <MessagesOverlay
         open={msgOpen}
         applicationId={msgApp}
-        onSelect={(id) => setMsg(id ?? "1")}
+        onSelect={(id) => setMsg(id ?? "inbox")}
         onClose={() => setMsg(null)}
         onUnreadChange={setUnreadMsgs}
       />
