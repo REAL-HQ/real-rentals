@@ -4,7 +4,13 @@ import { z } from "zod";
 import { requireStaff, requireManager, type Actor } from "@/lib/roles.server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
-import { notReadyMessage } from "@/lib/vehicle-readiness";
+import { notReadyMessage, hasValidRate } from "@/lib/vehicle-readiness";
+import { normalizeDisplayText } from "@/lib/display-normalize";
+
+async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance: boolean) {
+  const m = await import("@/lib/vehicle-doc-presence.server");
+  return m.loadVehicleDocPresence(sb, vehicleId, includeFinance);
+}
 
 // The vehicle record: creation, identity lookup and the profile aggregate.
 //
