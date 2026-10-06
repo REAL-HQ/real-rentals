@@ -22,7 +22,7 @@ type VehicleLite = {
 };
 
 /** Blockers the operator is never allowed to click past. */
-const HARD = new Set(["vehicle_busy", "no_email", "already_active"]);
+const HARD = new Set(["vehicle_busy", "no_email", "already_active", "vehicle_not_ready"]);
 
 export function ActivateRentalDialog({
   driver,
@@ -163,7 +163,7 @@ export function ActivateRentalDialog({
                 <option key={v.id} value={v.id}>
                   {[v.year, v.make, v.model, v.trim].filter(Boolean).join(" ")}
                   {v.license_plate ? ` · ${v.license_plate}` : ""}
-                  {v.status && v.status !== "available" ? ` (${v.status})` : ""}
+                  {v.status === "onboarding" ? " (Needs Setup)" : v.status && v.status !== "available" ? ` (${v.status})` : ""}
                 </option>
               ))}
             </select>

@@ -42,6 +42,7 @@ const rawRow = z.record(z.string(), z.string());
 const previewInput = z.object({ rows: z.array(rawRow).min(1).max(500) });
 
 const STATUSES = new Set([
+  "onboarding",
   "available",
   "rented",
   "maintenance",
@@ -201,10 +202,10 @@ function assess(
   else {
     // weekly_rate is NOT NULL. Defaulted rather than refused, so a car can be
     // recorded now and priced later — same rule as adding one by hand.
-    values.weekly_rate = 0;
+    values.weekly_rate = null;
     if (raw.weekly_rate)
-      warnings.push(`Weekly rate "${raw.weekly_rate}" could not be read — set to 0.`);
-    else warnings.push("No weekly rate — set to 0, price it before listing.");
+      warnings.push(`Weekly rate "${raw.weekly_rate}" could not be read — left Not Set.`);
+    else warnings.push("No weekly rate — left Not Set.");
   }
 
   if (raw.status) {
@@ -213,6 +214,8 @@ function assess(
     else warnings.push(`Status "${raw.status}" is not one we use — set to available.`);
   }
   if (!values.status) values.status = "available";
+  // No photo exists at import, so nothing can be Rental Ready yet.
+  if (values.status === "available" || values.status === "reserved") values.status = "onboarding";
 
   return { line, action: "create", label, warnings, values };
 }

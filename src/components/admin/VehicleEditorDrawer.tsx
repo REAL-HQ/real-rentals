@@ -220,8 +220,8 @@ export function VehicleEditorDrawer({
     const raw = String(f.vin ?? "").trim();
     return raw ? !checkVin(raw).formatValid : false;
   }, [f.vin]);
-  const rateIssue =
-    f.weekly_rate === null || f.weekly_rate === "" ? "A weekly rate is required." : null;
+  // Not Set is allowed; the server refuses Available/Reserved without Rental Ready.
+  const rateIssue = null as string | null;
   const emailIssue =
     str("insurance_agent_email").trim() &&
     !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(str("insurance_agent_email").trim())
