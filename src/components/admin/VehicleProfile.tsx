@@ -1,3 +1,4 @@
+import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -213,7 +214,7 @@ export function VehicleProfile({
                   onClick={() => setEditorOpen(true)}
                   className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
                 >
-                  <Pencil className="w-3.5 h-3.5" /> Edit vehicle
+                  <Pencil className="w-3.5 h-3.5" /> Edit Vehicle
                 </button>
               )}
               <button
@@ -392,69 +393,70 @@ function Overview({
   onOpenTab: (t: Tab) => void;
 }) {
   const v = p.vehicle;
+  // Core identity rows always show ("—" when empty); optional rows only when filled.
+  const optional: [string, React.ReactNode][] = ([
+    ["Trim", v.trim],
+    ["Color", v.color],
+    ["Seats", v.seats],
+    ["Doors", v.doors],
+    ["Fuel", titleCase(v.fuel_type)],
+    ["MPG", v.mpg],
+    ["Range per Tank", miles(v.miles_per_tank)],
+    ["Partner", p.partnerName],
+    ["Platforms", Array.isArray(v.uber_eligibility) && v.uber_eligibility.length ? v.uber_eligibility.join(", ") : null],
+  ] as [string, React.ReactNode][]).filter(([, val]) => val != null && val !== "");
+  const plate = v.license_plate ? `${v.plate_state ? `${v.plate_state} ` : ""}${v.license_plate}` : null;
+  const quiet = !p.currentRental && !p.nextService && !p.counts.openMaintenance;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
         <ReadinessCard p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
         <SectionCard
-          title="Details"
+          title="Vehicle Details"
           icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
           right={<EditButton show={p.canEdit} onClick={() => onEdit("identity")} />}
         >
           <TwoCol>
             <div>
-              <Row label="Unit number" value={v.unit_number} />
+              <Row label="Unit Number" value={v.unit_number} />
               <Row label="Year" value={v.year} />
               <Row label="Make" value={v.make} />
               <Row label="Model" value={v.model} />
-              <Row label="Trim" value={v.trim} />
-              <Row label="Color" value={v.color} />
-              <Row label="Body type" value={titleCase(v.body_type)} />
-              <Row
-                label="Status"
-                value={v.status ? <StatusPill status={String(v.status)} /> : null}
-              />
+              <Row label="Body Type" value={titleCase(v.body_type)} />
             </div>
             <div>
-              <Row label="Seats" value={v.seats} />
-              <Row label="Doors" value={v.doors} />
-              <Row label="Fuel" value={titleCase(v.fuel_type)} />
-              <Row label="MPG" value={v.mpg} />
-              <Row label="Range per tank" value={miles(v.miles_per_tank)} />
-              <Row label="Odometer" value={miles(v.current_odometer)} />
-              <Row label="Partner" value={p.partnerName} />
-              <Row
-                label="Platforms"
-                value={
-                  Array.isArray(v.uber_eligibility) && v.uber_eligibility.length
-                    ? v.uber_eligibility.join(", ")
-                    : null
-                }
-              />
+              <Row label="VIN" value={v.vin} mono />
+              <Row label="Plate" value={plate} mono />
+              <Row label="Mileage" value={miles(v.current_odometer)} />
+              <Row label="Status" value={v.status ? <StatusPill status={String(v.status)} /> : null} />
             </div>
           </TwoCol>
+          {optional.length > 0 && (
+            <div className="mt-2">
+              <TwoCol>
+                <div>{optional.filter((_, i) => i % 2 === 0).map(([l, val]) => <Row key={l} label={l} value={val} />)}</div>
+                <div>{optional.filter((_, i) => i % 2 === 1).map(([l, val]) => <Row key={l} label={l} value={val} />)}</div>
+              </TwoCol>
+            </div>
+          )}
           {v.description && (
             <div className="mt-4 pt-4 border-t border-[#F4F4F6]">
-              <MicroLabel className="mb-1.5">Listing description</MicroLabel>
+              <MicroLabel className="mb-1.5">Listing Description</MicroLabel>
               <p className="text-[13px] text-[#55555E] leading-relaxed">{String(v.description)}</p>
             </div>
           )}
           {v.internal_notes && (
             <div className="mt-4 pt-4 border-t border-[#F4F4F6]">
-              <MicroLabel className="mb-1.5">Internal notes</MicroLabel>
-              <p className="text-[13px] text-[#55555E] leading-relaxed whitespace-pre-wrap">
-                {String(v.internal_notes)}
-              </p>
-              <div className="text-[11px] text-[#9A9AA3] mt-1.5">
-                Never shown to renters or partners.
-              </div>
+              <MicroLabel className="mb-1.5">Internal Notes</MicroLabel>
+              <p className="text-[13px] text-[#55555E] leading-relaxed whitespace-pre-wrap">{String(v.internal_notes)}</p>
+              <div className="text-[11px] text-[#9A9AA3] mt-1.5">Never shown to renters or partners.</div>
             </div>
           )}
         </SectionCard>
 
         {p.finance !== null || p.canEdit ? (
           <SectionCard
-            title="Acquisition & financing"
+            title="Acquisition & Financing"
             subtitle="Owners and managers only"
             icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}
             right={<EditButton show={p.canEdit} onClick={() => onEdit("finance")} />}
@@ -463,125 +465,51 @@ function Overview({
               <TwoCol>
                 <div>
                   <Row label="Ownership" value={titleCase(p.finance.ownership_type)} />
-                  <Row label="Legal owner" value={p.finance.legal_owner} />
-                  <Row label="Seller / dealer" value={p.finance.seller_dealer} />
+                  <Row label="Legal Owner" value={p.finance.legal_owner} />
+                  <Row label="Seller / Dealer" value={p.finance.seller_dealer} />
                   <Row label="Lienholder" value={p.finance.lienholder} />
                   <Row label="Purchased" value={date(p.finance.purchase_date)} />
                 </div>
                 <div>
-                  <Row label="Purchase price" value={money(p.finance.purchase_price)} />
-                  <Row label="Loan / lease ref" value={p.finance.loan_reference} mono />
+                  <Row label="Purchase Price" value={money(p.finance.purchase_price)} />
+                  <Row label="Loan / Lease Ref" value={p.finance.loan_reference} mono />
                   <Row label="Payoff" value={money(p.finance.payoff_amount)} />
-                  <Row label="Monthly payment" value={money(p.finance.monthly_payment)} />
+                  <Row label="Monthly Payment" value={money(p.finance.monthly_payment)} />
                   <Row label="Matures" value={date(p.finance.loan_maturity_date)} />
                 </div>
               </TwoCol>
             ) : (
-              <div className="text-[13px] text-[#9A9AA3] py-2">
-                Nothing recorded. Add how this vehicle is held and what is owed on it.
-              </div>
+              <div className="text-[13px] text-[#9A9AA3] py-1">Nothing recorded yet.</div>
             )}
           </SectionCard>
         ) : null}
       </div>
 
       <div className="space-y-5">
-        <SectionCard title="Rates" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+        <SectionCard title="Rates" icon={<Car className="w-4 h-4" strokeWidth={1.75} />} right={<EditButton show={p.canEdit} onClick={() => onEdit("identity")} />}>
           <Row label="Weekly" value={money(v.weekly_rate) ?? "Not Set"} />
-          <Row label="Monthly" value={money(v.monthly_rate)} />
+          <Row label="Monthly" value={money(v.monthly_rate) ?? "Not Set"} />
           <Row label="Deposit" value={v.deposit == null ? "Not Set" : Number(v.deposit) === 0 ? "$0" : money(v.deposit)} />
         </SectionCard>
 
-        <SectionCard title="Right now" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
-          <Row
-            label="On rental"
-            value={
-              p.currentRental
-                ? `${p.currentRental.driver_name ?? "Driver"} · since ${date(p.currentRental.start_date)}`
-                : null
-            }
-          />
-          <Row
-            label="Next service"
-            value={
-              p.nextService
-                ? `${p.nextService.item}${p.nextService.due_date ? ` · ${date(p.nextService.due_date)}` : ""}${
-                    p.nextService.due_mileage ? ` · ${miles(p.nextService.due_mileage)}` : ""
-                  }`
-                : null
-            }
-          />
-          <Row
-            label="Open maintenance"
-            value={
-              <Elsewhere
-                tab="maintenance"
-                count={p.counts.openMaintenance}
-                label="View maintenance"
-              />
-            }
-          />
-          <Row
-            label="Inspections"
-            value={
-              <Elsewhere tab="inspections" count={p.counts.inspections} label="View inspections" />
-            }
-          />
-          <Row
-            label="Rentals to date"
-            value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View rental history" />}
-          />
-          <Row
-            label="Photos on file"
-            value={
-              <button
-                onClick={() => onOpenTab("photos")}
-                className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
-              >
-                {p.counts.photos || "None"} <ArrowUpRight className="w-3 h-3" />
-              </button>
-            }
-          />
-          <Row
-            label="Documents"
-            value={
-              <button
-                onClick={() => onOpenTab("documents")}
-                className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
-              >
-                {p.counts.documents
-                  ? `${p.counts.documents}${p.counts.sharedDocuments ? ` (${p.counts.sharedDocuments} shared)` : ""}`
-                  : "None"}{" "}
-                <ArrowUpRight className="w-3 h-3" />
-              </button>
-            }
-          />
+        <SectionCard title="Right Now" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
+          {quiet && <div className="text-[13px] text-[#9A9AA3] pb-1">Not on rental. Nothing open.</div>}
+          {p.currentRental && <Row label="Rental" value={`${p.currentRental.driver_name ?? "Driver"} · since ${date(p.currentRental.start_date)}`} />}
+          {p.nextService && (
+            <Row label="Next Service" value={`${p.nextService.item}${p.nextService.due_date ? ` · ${date(p.nextService.due_date)}` : ""}${p.nextService.due_mileage ? ` · ${miles(p.nextService.due_mileage)}` : ""}`} />
+          )}
+          {p.counts.openMaintenance > 0 && <Row label="Open Maintenance" value={<Elsewhere tab="maintenance" count={p.counts.openMaintenance} label="View Maintenance" />} />}
+          <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
+          <Row label="Rentals to Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
         </SectionCard>
 
         {p.financials && (
-          <SectionCard
-            title="Lifetime P&L"
-            subtitle="Owners and managers only"
-            icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}
-          >
+          <SectionCard title="Lifetime P&L" subtitle="Owners and managers only" icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}>
             <Row label="Revenue" value={money(p.financials.revenue)} />
             <Row label="Expenses" value={money(p.financials.expenses)} />
             <Row label="Maintenance" value={money(p.financials.maintenance)} />
-            <Row
-              label="Net"
-              value={
-                <span
-                  className={
-                    p.financials.net >= 0
-                      ? "text-[#50C060] font-medium"
-                      : "text-[#D03020] font-medium"
-                  }
-                >
-                  {money(p.financials.net)}
-                </span>
-              }
-            />
-            <Row label="Days on rent" value={p.financials.days_on_rent || null} />
+            <Row label="Net" value={<span className={p.financials.net >= 0 ? "text-[#1E7B3C] font-medium" : "text-[#D03020] font-medium"}>{money(p.financials.net)}</span>} />
+            <Row label="Days on Rent" value={p.financials.days_on_rent || null} />
           </SectionCard>
         )}
       </div>
@@ -1319,18 +1247,23 @@ function FinanceDrawer({
   );
 }
 
-/** Rental Ready (blocking minimum) and Fleet Profile (never blocking) — kept as two lists on purpose. */
+/**
+ * Readiness — three separate answers in compact rows. Rental Ready (blocking
+ * minimum), Listing Ready (public listing) and Fleet Profile (never blocks).
+ * The full profile checklist sits behind "View Setup".
+ */
 function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
   const v = p.vehicle;
   const save = useServerFn(updateVehicleSection);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const ready = rentalReadyItems(v);
   const missing = ready.filter((i) => !i.done);
   const listing = listingReadyItems(v, p.counts.publishedPhotos ?? 0);
-  const listingReady = listing.every((i) => i.done);
+  const listingMissing = listing.filter((i) => !i.done);
+  const listingReady = listingMissing.length === 0;
   const profile = profileItems(v, p.profileContext ?? { docKinds: [], maintenanceCount: 0 });
   const pct = percent(profile);
-  const nextSteps = profile.filter((i) => !i.done).slice(0, 6);
   const inService = !["onboarding", "archived", "sold", "retired"].includes(String(v.status ?? ""));
 
   async function makeAvailable() {
@@ -1342,57 +1275,52 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
     } finally { setBusy(false); }
   }
 
-  const Item = ({ done, label }: { done: boolean; label: string }) => (
-    <li className="flex items-center gap-2 text-[13px]">
-      <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
-      <span className={done ? "text-[#111114]" : "text-[#55555E]"}>{label}</span>
-    </li>
+  const titleList = (items: { label: string }[]) => items.map((i) => i.label.replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bVin\b/, "VIN")).join(", ");
+  const Btn = ({ onClick, children, primary }: { onClick: () => void; children: React.ReactNode; primary?: boolean }) => (
+    <button disabled={busy} onClick={onClick}
+      className={`shrink-0 h-8 px-3 rounded-lg text-[12px] font-medium disabled:opacity-50 ${primary ? "bg-[#D03020] text-white" : "border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]"}`}>{children}</button>
+  );
+  const Line = ({ label, value, ok, note, action }: { label: string; value: string; ok: boolean | null; note: string; action?: React.ReactNode }) => (
+    <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-3">
+          <span className="text-[14px] font-medium text-[#111114] w-28 shrink-0">{label}</span>
+          <span className={`text-[13px] font-semibold ${ok === null ? "text-[#111114]" : ok ? "text-[#1E7B3C]" : "text-[#B45309]"}`}>{value}</span>
+        </div>
+        <div className="mt-0.5 text-[12px] text-[#77777F] sm:pl-[124px]">{note}</div>
+      </div>
+      {action}
+    </div>
   );
 
   return (
-    <SectionCard title="Setup" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div>
-          <MicroLabel>Rental Ready — {missing.length ? "No" : "Yes"}</MicroLabel>
-          <ul className="mt-2 space-y-1.5">{ready.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
-          <div className="mt-3 text-[12px] text-[#55555E]">
-            {missing.length ? `${missing.length} item${missing.length > 1 ? "s" : ""} needed to rent` : inService ? "Rental ready and in service." : "Rental ready — you choose when it enters service."}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {missing.length > 0 && p.canEdit && (
-              <button onClick={() => onEdit("identity")} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">
-                {missing.length === 1 && missing[0].key === "weekly_rate" ? "Set weekly rate" : "Complete details"}
-              </button>
-            )}
-            {!missing.length && v.status === "onboarding" && p.canEdit && (
-              <button disabled={busy} onClick={makeAvailable} className="rounded-md bg-[#D03020] px-3 py-1 text-[12px] font-medium text-white disabled:opacity-50">Make Available</button>
-            )}
-          </div>
-        </div>
-        <div>
-          <MicroLabel>Listing Ready — {listingReady ? "Yes" : "No"}</MicroLabel>
-          <ul className="mt-2 space-y-1.5">{listing.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
-          <div className="mt-3 text-[12px] text-[#55555E]">
-            {listingReady ? "Can be shown to renters." : "Needed only for public listings — never blocks renting."}
-          </div>
-          {!listing[1].done && (
-            <button onClick={() => onOpenTab("photos" as Tab)} className="mt-2 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">
-              {p.counts.photos ? "Publish a photo" : "Add photo"}
-            </button>
-          )}
-        </div>
-        <div>
-          <MicroLabel>Fleet Profile — {pct}% Complete</MicroLabel>
-          <div className="mt-2 h-1.5 rounded-full bg-[#EDEDF0] overflow-hidden"><div className="h-full bg-[#1E7B3C]" style={{ width: `${pct}%` }} /></div>
-          {nextSteps.length > 0 && (
-            <>
-              <div className="mt-3 text-[12px] text-[#55555E]">Recommended next steps</div>
-              <ul className="mt-1.5 space-y-1.5">{nextSteps.map((i) => <Item key={i.key} done={false} label={`Add ${i.label.toLowerCase()}`} />)}</ul>
-            </>
-          )}
+    <SectionCard title="Readiness" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
+      <div className="divide-y divide-[#F0F0F2]">
+        <Line label="Rental Ready" ok={!missing.length} value={missing.length ? "Not Ready" : "Ready"}
+          note={missing.length ? `Missing: ${titleList(missing)}` : inService ? "Ready and in service." : "Ready — you choose when it enters service."}
+          action={missing.length > 0 && p.canEdit
+            ? <Btn onClick={() => onEdit("identity")}>{missing.length === 1 && missing[0].key === "weekly_rate" ? "Set Rate" : "Complete Details"}</Btn>
+            : !missing.length && v.status === "onboarding" && p.canEdit ? <Btn primary onClick={makeAvailable}>Make Available</Btn> : undefined} />
+        <Line label="Listing Ready" ok={listingReady} value={listingReady ? "Ready" : "Not Ready"}
+          note={listingReady ? "Can be shown to renters." : `Missing: ${titleList(listingMissing)} · never blocks renting`}
+          action={!listing[1]?.done ? <Btn onClick={() => onOpenTab("photos" as Tab)}>{p.counts.photos ? "Publish Photo" : "Add Photo"}</Btn> : undefined} />
+        <Line label="Fleet Profile" ok={null} value={`${pct}%`} note="Recommended information can be added anytime."
+          action={<Btn onClick={() => setOpen((o) => !o)}>{open ? "Hide Setup" : "View Setup"}</Btn>} />
+      </div>
+      {open && (
+        <div className="mt-4 pt-4 border-t border-[#F0F0F2]">
+          <div className="h-1.5 rounded-full bg-[#EDEDF0] overflow-hidden mb-3"><div className="h-full bg-[#1E7B3C]" style={{ width: `${pct}%` }} /></div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {profile.map((i) => (
+              <li key={i.key} className="flex items-center gap-2 text-[13px]">
+                <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${i.done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
+                <span className={i.done ? "text-[#111114]" : "text-[#55555E]"}>{i.label.replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bGps\b/, "GPS").replace(/\bVin\b/, "VIN")}</span>
+              </li>
+            ))}
+          </ul>
           <div className="mt-3 text-[11px] text-[#77777F]">Recommended only — never blocks renting.</div>
         </div>
-      </div>
+      )}
     </SectionCard>
   );
 }
