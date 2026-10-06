@@ -80,3 +80,15 @@ a security boundary, only storage cost.
 **The fix it needs.** Separate buckets per document type so images can carry
 their own 15 MB ceiling, or a storage-side check on `metadata->>'size'`. Both
 are bucket surgery with a path migration, which is why it is not inline.
+
+
+## Pre-existing database linter warnings (12) — deferred
+
+Recorded during Phase 0 final closure; not repaired on purpose.
+
+- RLS enabled, no policy (Info) ×2
+- Security definer view (Error-level in linter) ×1
+- Public can execute SECURITY DEFINER function (Warn) ×4
+- Signed-in users can execute SECURITY DEFINER function (Warn) ×5
+
+The vehicle-photos public-read finding was fixed separately.
