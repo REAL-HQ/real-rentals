@@ -64,6 +64,11 @@ async function copyCardFromApplicationToRental(admin: any, rentalId: string, app
 }
 
 // ─── Admin: charge card on file for an incidental / manual rent charge ─────
+//
+// The charge is recorded FIRST, then collected. A decline, a provider error or
+// a missing card leaves an owed charge with the reason — it never vanishes.
+// Pass `paymentId` to retry an existing unpaid charge: the same row is
+// re-attempted, so a retry can never create a second charge.
 
 export const chargeCardOnRental = createServerFn({ method: 'POST' })
   .middleware([requireSupabaseAuth])
@@ -72,27 +77,67 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
     amountCents: number;
     reason: ChargeReason;
     note?: string;
+    paymentId?: string;
     environment: StripeEnv;
   }) => {
     if (!/^[0-9a-f-]{36}$/i.test(data.rentalId)) throw new Error('Invalid rentalId');
+    if (data.paymentId && !/^[0-9a-f-]{36}$/i.test(data.paymentId)) throw new Error('Invalid paymentId');
     if (!Number.isFinite(data.amountCents) || data.amountCents < 50) throw new Error('Amount must be at least $0.50');
     if (!REASONS.includes(data.reason)) throw new Error('Invalid reason');
     return data;
   })
-  .handler(async ({ data, context }): Promise<{ ok: true; paymentIntentId: string } | { error: string }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true; paymentIntentId: string; paymentId: string; status: string } | { error: string; paymentId?: string }> => {
+    let paymentId: string | undefined;
     try {
       await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+      const { collectRows, markUncollectable, REASON_TO_TYPE } = await import('@/lib/payment-collection.server');
       const { data: rental } = await supabaseAdmin
         .from('rentals')
-        .select('id, application_id, stripe_customer_id, stripe_payment_method_id')
+        .select('id, application_id, vehicle_id, stripe_customer_id, stripe_payment_method_id')
         .eq('id', data.rentalId)
         .maybeSingle();
       if (!rental) throw new Error('Rental not found');
 
+      // 1. The charge (amount owed) exists before any collection attempt.
+      let row: any;
+      if (data.paymentId) {
+        const { data: existing } = await supabaseAdmin
+          .from('payments')
+          .select('id, status, amount, balance_due, attempt_count, rental_id')
+          .eq('id', data.paymentId)
+          .eq('rental_id', data.rentalId)
+          .maybeSingle();
+        if (!existing) throw new Error('Charge not found on this rental');
+        if (existing.status === 'paid' || existing.status === 'refunded' || existing.status === 'void' || existing.status === 'waived')
+          return { error: `This charge is ${existing.status} and cannot be collected again`, paymentId: existing.id as string };
+        row = existing;
+      } else {
+        const amount = data.amountCents / 100;
+        const { data: inserted, error: insErr } = await supabaseAdmin
+          .from('payments')
+          .insert({
+            rental_id: data.rentalId,
+            driver_id: rental.application_id as string,
+            vehicle_id: (rental as any).vehicle_id ?? null,
+            amount,
+            balance_due: amount,
+            type: REASON_TO_TYPE[data.reason] ?? 'other',
+            reason: data.reason,
+            status: 'pending',
+            due_date: new Date().toISOString().slice(0, 10),
+            notes: data.note ?? null,
+          } as any)
+          .select('id, status, amount, balance_due, attempt_count')
+          .single();
+        if (insErr) throw new Error(`Could not record the charge: ${insErr.message}`);
+        row = inserted;
+      }
+      paymentId = row.id as string;
+
+      // 2. Card on file.
       let customerId = rental.stripe_customer_id as string | null;
       let paymentMethodId = rental.stripe_payment_method_id as string | null;
-
       if ((!customerId || !paymentMethodId) && rental.application_id) {
         await copyCardFromApplicationToRental(supabaseAdmin, rental.id as string, rental.application_id as string);
         const { data: refetched } = await supabaseAdmin
@@ -103,40 +148,27 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
         customerId = (refetched?.stripe_customer_id as string | null) ?? null;
         paymentMethodId = (refetched?.stripe_payment_method_id as string | null) ?? null;
       }
-      if (!customerId || !paymentMethodId) throw new Error('No card on file for this rental');
+      if (!customerId || !paymentMethodId) {
+        await markUncollectable(supabaseAdmin, [paymentId], 'No card on file');
+        return { error: 'No card on file — the charge is recorded as unpaid.', paymentId };
+      }
 
+      // 3. Collect.
       const stripe = createStripeClient(data.environment);
-      const pi = await stripe.paymentIntents.create({
-        amount: data.amountCents,
-        currency: 'usd',
-        customer: customerId,
-        payment_method: paymentMethodId,
-        off_session: true,
-        confirm: true,
+      const res = await collectRows(supabaseAdmin, stripe, [row], {
+        customerId,
+        paymentMethodId,
         description: `${data.reason.replace('_', ' ')}${data.note ? ` — ${data.note}` : ''}`,
         metadata: {
           rentalId: data.rentalId,
           reason: data.reason,
-          ...(data.note && { note: data.note.slice(0, 500) }),
+          ...(data.note && { note: data.note.slice(0, 450) }),
         },
       });
-
-      // Record the pending row; webhook flips it on succeeded/failed.
-      await supabaseAdmin.from('payments').insert({
-        rental_id: data.rentalId,
-        driver_id: rental.application_id as string,
-        amount: data.amountCents / 100,
-        type: data.reason === 'rent' ? 'rent' : 'other',
-        reason: data.reason,
-        status: pi.status === 'succeeded' ? 'paid' : 'pending',
-        stripe_payment_intent_id: pi.id,
-        notes: data.note ?? null,
-        paid_date: pi.status === 'succeeded' ? new Date().toISOString().slice(0, 10) : null,
-      });
-
-      return { ok: true, paymentIntentId: pi.id };
+      if ('error' in res) return { error: `${res.error} — the charge is recorded as failed and can be retried.`, paymentId };
+      return { ok: true, paymentIntentId: res.paymentIntentId, paymentId, status: res.status };
     } catch (error) {
-      return { error: getStripeErrorMessage(error) };
+      return { error: getStripeErrorMessage(error), paymentId };
     }
   });
 
@@ -234,6 +266,11 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
 
 // ─── Driver Portal: pay outstanding balance ───────────────────────────────
 
+// Pays the driver's EXISTING outstanding charges (incl. late fees on them).
+// It never creates a new charge: a failed attempt marks those charges failed
+// (still owed) instead of adding a phantom "rent" row, and success marks them
+// paid. The amount is computed server-side; the client's figure is only a
+// confirmation that the driver saw the same balance.
 export const payRentalBalance = createServerFn({ method: 'POST' })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { rentalId: string; amountCents: number; environment: StripeEnv }) => {
@@ -251,31 +288,29 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
       if (!rental) throw new Error('Rental not found');
       if (!rental.stripe_customer_id || !rental.stripe_payment_method_id) throw new Error('No card on file');
 
+      const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+      const { collectRows, owedOn, OUTSTANDING_STATUSES } = await import('@/lib/payment-collection.server');
+      const { data: owed } = await supabaseAdmin
+        .from('payments')
+        .select('id, amount, balance_due, attempt_count')
+        .eq('rental_id', data.rentalId)
+        .in('status', [...OUTSTANDING_STATUSES])
+        .order('due_date', { ascending: true, nullsFirst: true })
+        .limit(12);
+      const rows = (owed ?? []) as any[];
+      if (!rows.length) return { error: 'Nothing is owed on this rental.' };
+      const cents = Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100);
+      if (cents !== Math.round(data.amountCents)) return { error: 'Your balance changed. Refresh and try again.' };
+
       const stripe = createStripeClient(data.environment);
-      const pi = await stripe.paymentIntents.create({
-        amount: data.amountCents,
-        currency: 'usd',
-        customer: rental.stripe_customer_id,
-        payment_method: rental.stripe_payment_method_id,
-        off_session: true,
-        confirm: true,
+      const res = await collectRows(supabaseAdmin, stripe, rows, {
+        customerId: rental.stripe_customer_id,
+        paymentMethodId: rental.stripe_payment_method_id,
         description: 'Rent balance payment',
         metadata: { rentalId: data.rentalId, reason: 'rent', source: 'driver_portal' },
       });
-
-      const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      await supabaseAdmin.from('payments').insert({
-        rental_id: data.rentalId,
-        driver_id: rental.application_id,
-        amount: data.amountCents / 100,
-        type: 'rent',
-        reason: 'rent',
-        status: pi.status === 'succeeded' ? 'paid' : 'pending',
-        stripe_payment_intent_id: pi.id,
-        paid_date: pi.status === 'succeeded' ? new Date().toISOString().slice(0, 10) : null,
-      });
-
-      return { ok: true, paymentIntentId: pi.id };
+      if ('error' in res) return { error: res.error };
+      return { ok: true, paymentIntentId: res.paymentIntentId };
     } catch (error) {
       return { error: getStripeErrorMessage(error) };
     }

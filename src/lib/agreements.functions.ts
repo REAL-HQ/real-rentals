@@ -73,6 +73,14 @@ async function hashToken(token: string): Promise<string> {
 /** What renderTemplate substitutes for a merge field it has no value for. */
 const BLANK = "__________";
 
+/** Merge fields an issuable agreement must carry (mirrors buildMergeData's blockers). */
+const AGREEMENT_REQUIRED_KEYS = [
+  "driver_name", "driver_email", "driver_phone", "driver_address",
+  "license_number", "license_state", "license_expiration",
+  "vehicle", "vehicle_vin", "vehicle_color",
+  "weekly_rate", "deposit_amount", "start_date", "return_date",
+] as const;
+
 function money(v: unknown): string {
   const n = Number(v ?? 0);
   if (!n) return "";
@@ -86,7 +94,13 @@ function money(v: unknown): string {
  * staff member everything that is missing at once, instead of one item per
  * attempt.
  */
-export type AgreementBlocker = { field: string; label: string; why: string };
+export type AgreementBlocker = {
+  field: string;
+  label: string;
+  why: string;
+  /** Where staff fix it: a driver-profile tab, or the vehicle's own page. */
+  fix?: { tab: "payments" | "rental" } | { vehicleId: string };
+};
 
 async function buildMergeData(
   admin: any,
@@ -162,22 +176,66 @@ async function buildMergeData(
       label: "A scheduled end date after the start date",
       why: `The agreement would run from ${startDate} to ${endDate}, which ends on or before it begins.`,
     });
-  if (!app.address || !app.zip)
+  // ---- Agreement Readiness: every value the contract renders must be real.
+  // No placeholders, no defaults — a blank here would print "__________" in a
+  // document someone signs. This is the ONE validator: preview, send, the
+  // approval auto-send and resend all go through it.
+  const pay = { tab: "payments" as const };
+  if (!String(app.full_name ?? "").trim())
+    blockers.push({ field: "driver_name", label: "Driver's full legal name", why: "The agreement names the renter.", fix: pay });
+  if (!app.email)
+    blockers.push({ field: "driver_email", label: "Driver email", why: "The signing link is emailed and the agreement prints it.", fix: pay });
+  if (!String(app.phone ?? "").trim())
+    blockers.push({ field: "driver_phone", label: "Driver phone", why: "The agreement prints the renter's phone number.", fix: pay });
+  if (!app.address || !app.city || !app.state || !app.zip)
     blockers.push({
       field: "driver_address",
-      label: "Driver address",
-      why: "The agreement names the driver's address. Confirm it with the driver and enter it on the Payments tab, or ask them to add it in their driver profile — do not guess it.",
+      label: "Driver address (street, city, state, ZIP)",
+      why: "The agreement names the driver's full address. Confirm it with the driver — do not guess it.",
+      fix: pay,
     });
+  // Licence: the contract prints number, issuing state and expiry, and limits
+  // operation to the Renter — so all three identify the authorised driver, and
+  // a licence that has expired by the start date cannot authorise anyone.
+  if (!String(app.license_number ?? "").trim())
+    blockers.push({ field: "license_number", label: "Driver licence number", why: "Identifies the only person allowed to drive the vehicle.", fix: pay });
+  if (!String(app.license_state ?? "").trim())
+    blockers.push({ field: "license_state", label: "Licence issuing state", why: "A licence number is only meaningful with its issuing state.", fix: pay });
+  if (!app.license_expiration)
+    blockers.push({ field: "license_expiration", label: "Licence expiry date", why: "The agreement prints it, and shows the licence is valid for the rental.", fix: pay });
+  else if (startDate && String(app.license_expiration) < String(startDate))
+    blockers.push({ field: "license_expiration", label: "A licence valid on the start date", why: `The licence expires ${app.license_expiration}, before the rental starts ${startDate}.`, fix: pay });
 
   let vehicle: any = null;
   if (app.vehicle_id) {
     const { data: v } = await admin
       .from("vehicles")
-      .select("id,year,make,model,trim,color,weekly_rate,deposit")
+      .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit")
       .eq("id", app.vehicle_id)
       .maybeSingle();
     vehicle = v ?? null;
   }
+  if (!vehicle) {
+    blockers.push({ field: "vehicle", label: "Vehicle assignment", why: "Choose the vehicle this agreement covers.", fix: { tab: "rental" } });
+  } else {
+    const vfix = { vehicleId: vehicle.id as string };
+    const { checkVin } = await import("@/lib/vin");
+    if (!vehicle.year || !vehicle.make || !vehicle.model)
+      blockers.push({ field: "vehicle", label: "Vehicle year, make and model", why: "The agreement describes the vehicle.", fix: vfix });
+    if (!vehicle.vin)
+      blockers.push({ field: "vehicle_vin", label: "VIN", why: "The agreement identifies the vehicle by VIN.", fix: vfix });
+    else if (!checkVin(String(vehicle.vin)).formatValid)
+      blockers.push({ field: "vehicle_vin", label: "A valid 17-character VIN", why: `"${vehicle.vin}" is not a valid VIN.`, fix: vfix });
+    if (!String(vehicle.color ?? "").trim())
+      blockers.push({ field: "vehicle_color", label: "Vehicle colour", why: "The agreement prints the vehicle's colour.", fix: vfix });
+  }
+
+  const weekly = app.weekly_rent ?? vehicle?.weekly_rate;
+  if (!(Number(weekly) > 0))
+    blockers.push({ field: "weekly_rate", label: "Weekly rate", why: "The agreement states the weekly rent.", fix: pay });
+  const deposit = app.deposit_amount ?? vehicle?.deposit;
+  if (deposit == null || !Number.isFinite(Number(deposit)) || Number(deposit) < 0)
+    blockers.push({ field: "deposit_amount", label: "Security deposit (enter 0 if none)", why: "The agreement states the deposit.", fix: pay });
 
   let marketName: string | null = null;
   if (app.market_id) {
@@ -205,9 +263,11 @@ async function buildMergeData(
       ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ")
       : "",
     vehicle_color: vehicle?.color ?? "",
-    vehicle_vin: vehicle?.id ? String(vehicle.id).slice(0, 8).toUpperCase() : "",
-    weekly_rate: money(app.weekly_rent ?? vehicle?.weekly_rate),
-    deposit_amount: money(app.deposit_amount ?? vehicle?.deposit),
+    // The real VIN, never a stand-in. (This used to print the first 8
+    // characters of our internal record id under the heading "VIN".)
+    vehicle_vin: vehicle?.vin ? String(vehicle.vin).toUpperCase() : "",
+    weekly_rate: money(weekly),
+    deposit_amount: deposit != null && Number(deposit) === 0 ? "$0" : money(deposit),
     start_date: startDate ?? "",
     return_date: endDate ?? "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
@@ -487,6 +547,17 @@ export const resendAgreement = createServerFn({ method: "POST" })
     if (!ag) throw new Error("Agreement not found");
     if (ag.status === "signed" || ag.status === "voided")
       throw new Error("This agreement can no longer be sent");
+    // A link reissue sends the SAME frozen document again, so it must meet the
+    // same readiness bar as a new send. Documents issued before the gate
+    // existed (blank VIN, licence, etc.) must be voided and re-prepared.
+    {
+      const md = (ag.merge_data ?? {}) as Record<string, string>;
+      const gaps = AGREEMENT_REQUIRED_KEYS.filter((k) => !String(md[k] ?? "").trim());
+      if (gaps.length)
+        throw new Error(
+          `This agreement was prepared without ${gaps.join(", ").replace(/_/g, " ")}. Void it and prepare a new one.`,
+        );
+    }
 
     const token = randomToken();
     const tokenHash = await hashToken(token);

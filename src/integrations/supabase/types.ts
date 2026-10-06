@@ -2520,17 +2520,22 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          attempt_count: number
           balance_due: number
           created_at: string
           driver_id: string | null
           due_date: string | null
+          failure_reason: string | null
           id: string
+          last_attempt_at: string | null
           late_fee_applied_through: string | null
           late_fees: number
           notes: string | null
           paid_date: string | null
           payment_method: string | null
           reason: string | null
+          refunded_amount: number
+          refunded_at: string | null
           rental_id: string | null
           status: string
           stripe_invoice_id: string | null
@@ -2542,17 +2547,22 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          attempt_count?: number
           balance_due?: number
           created_at?: string
           driver_id?: string | null
           due_date?: string | null
+          failure_reason?: string | null
           id?: string
+          last_attempt_at?: string | null
           late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
           paid_date?: string | null
           payment_method?: string | null
           reason?: string | null
+          refunded_amount?: number
+          refunded_at?: string | null
           rental_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
@@ -2564,17 +2574,22 @@ export type Database = {
         }
         Update: {
           amount?: number
+          attempt_count?: number
           balance_due?: number
           created_at?: string
           driver_id?: string | null
           due_date?: string | null
+          failure_reason?: string | null
           id?: string
+          last_attempt_at?: string | null
           late_fee_applied_through?: string | null
           late_fees?: number
           notes?: string | null
           paid_date?: string | null
           payment_method?: string | null
           reason?: string | null
+          refunded_amount?: number
+          refunded_at?: string | null
           rental_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
@@ -3857,6 +3872,19 @@ export type Database = {
       }
     }
     Functions: {
+      activate_rental_tx: {
+        Args: {
+          _application_id: string
+          _deposit: number
+          _deposit_held: boolean
+          _driver_id: string
+          _end: string
+          _start: string
+          _vehicle_id: string
+          _weekly_rate: number
+        }
+        Returns: string
+      }
       application_accepts_uploads: {
         Args: { _application_id: string }
         Returns: boolean
@@ -3876,6 +3904,10 @@ export type Database = {
         Returns: string
       }
       email_state_rank: { Args: { _s: string }; Returns: number }
+      end_rental_tx: {
+        Args: { _end: string; _rental_id: string; _vehicle_status: string }
+        Returns: string
+      }
       esign_claim: {
         Args: { _id: string; _token_hash: string }
         Returns: string

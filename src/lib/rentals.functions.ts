@@ -35,6 +35,7 @@ export type ActivationBlocker = {
     | "no_email"
     | "not_approved"
     | "already_active"
+    | "invalid_dates"
     /** The application's login belongs to a different identity. Never overridable. */
     | "account_conflict";
   message: string;
@@ -286,63 +287,27 @@ export const activateRental = createServerFn({ method: "POST" })
       };
     }
 
-    // 4. The rental itself.
-    const { data: rental, error: rentalErr } = await supabaseAdmin
-      .from("rentals")
-      .insert({
-        driver_id: userId,
-        vehicle_id: data.vehicleId,
-        application_id: data.applicationId,
-        start_date: data.startDate,
-        end_date: data.endDate ?? null,
-        status: "active",
-        weekly_rate: data.weeklyRate,
-        deposit_amount: data.depositAmount,
-        deposit_held: data.depositHeld ?? false,
-        next_payment_due: data.startDate,
-      })
-      .select("id")
-      .single();
-    if (rentalErr) {
-      // The partial unique indexes are the real double-booking guard: the
-      // pre-flight check above is not atomic with this insert, so two
-      // simultaneous activations can both pass it and only one can land here.
-      const msg = String(rentalErr.message);
-      if (msg.includes("rentals_one_active_per_vehicle_idx")) {
-        return {
-          ok: false,
-          blockers: [
-            {
-              code: "vehicle_busy",
-              message: "That vehicle was just activated on another rental. Pick a different one.",
-            },
-          ],
-        };
-      }
-      if (msg.includes("rentals_one_active_per_driver_idx")) {
-        return {
-          ok: false,
-          blockers: [
-            { code: "already_active", message: "This driver already has an active rental." },
-          ],
-        };
-      }
-      throw new Error(rentalErr.message);
+    // 4–6. The authoritative state transition, as ONE database transaction
+    //      (activate_rental_tx): rental row, vehicle → rented, application →
+    //      active + vehicle, agreement → rental link. It row-locks the vehicle,
+    //      so of two simultaneous activations exactly one wins; any failure
+    //      rolls every write back. Never re-split this into separate updates.
+    const { data: rentalId, error: txErr } = await (supabaseAdmin as any).rpc("activate_rental_tx", {
+      _application_id: data.applicationId,
+      _vehicle_id: data.vehicleId,
+      _driver_id: userId,
+      _weekly_rate: data.weeklyRate,
+      _deposit: data.depositAmount,
+      _deposit_held: data.depositHeld ?? false,
+      _start: data.startDate,
+      _end: data.endDate ?? null,
+    });
+    if (txErr) {
+      const blocker = activationTxBlocker(String(txErr.message));
+      if (blocker) return { ok: false, blockers: [blocker] };
+      throw new Error(txErr.message);
     }
-
-    // 5. Reflect the new state on the vehicle and the application.
-    await supabaseAdmin.from("vehicles").update({ status: "rented" }).eq("id", data.vehicleId);
-    await supabaseAdmin
-      .from("applications")
-      .update({ status: "active", vehicle_id: data.vehicleId })
-      .eq("id", data.applicationId);
-
-    // 6. Link any signed agreement to the rental it actually governs.
-    await supabaseAdmin
-      .from("agreements")
-      .update({ rental_id: rental.id })
-      .eq("application_id", data.applicationId)
-      .is("rental_id", null);
+    const rental = { id: rentalId as string };
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
     //    minted during provisioning; an existing one — which is now the normal
@@ -453,32 +418,15 @@ export const endRental = createServerFn({ method: "POST" })
 
     const endDate = data.endDate ?? new Date().toISOString().slice(0, 10);
 
-    const { error } = await supabaseAdmin
-      .from("rentals")
-      .update({ status: "closed", end_date: endDate, autopay_active: false })
-      .eq("id", data.rentalId);
+    // One transaction (end_rental_tx): rental closed, vehicle released,
+    // application closed, automations stopped — all or nothing.
+    const { data: outcome, error } = await (supabaseAdmin as any).rpc("end_rental_tx", {
+      _rental_id: data.rentalId,
+      _end: endDate,
+      _vehicle_status: data.vehicleStatus,
+    });
     if (error) throw new Error(error.message);
-
-    await supabaseAdmin
-      .from("vehicles")
-      .update({ status: data.vehicleStatus })
-      .eq("id", rental.vehicle_id);
-
-    if (rental.application_id) {
-      await supabaseAdmin
-        .from("applications")
-        .update({ status: "closed" })
-        .eq("id", rental.application_id);
-    }
-
-    // Stop any automation still running for this driver.
-    if (rental.application_id) {
-      await supabaseAdmin
-        .from("automation_enrollments")
-        .update({ status: "cancelled", cancelled_reason: "rental ended", next_run_at: null })
-        .eq("application_id", rental.application_id)
-        .eq("status", "active");
-    }
+    if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, {
@@ -491,6 +439,23 @@ export const endRental = createServerFn({ method: "POST" })
 
     return { ok: true, alreadyClosed: false };
   });
+
+/** Truthful messages for the reasons activate_rental_tx refuses. */
+export function activationTxBlocker(msg: string): ActivationBlocker | null {
+  if (msg.includes("vehicle_busy"))
+    return { code: "vehicle_busy", message: "That vehicle was just activated on another rental. Pick a different one." };
+  if (msg.includes("already_active"))
+    return { code: "already_active", message: "This driver already has an active rental." };
+  if (msg.includes("account_conflict"))
+    return { code: "account_conflict", message: "This application's login does not match the driver account. Resolve the identity before activating." };
+  if (msg.includes("not_approved"))
+    return { code: "not_approved", message: "Application is not approved. Approve it before activating." };
+  if (msg.includes("vehicle_unavailable") || msg.includes("vehicle_not_found"))
+    return { code: "no_vehicle", message: "That vehicle is no longer in the working fleet." };
+  if (msg.includes("invalid_dates"))
+    return { code: "no_vehicle", message: "The end date must be after the start date." };
+  return null;
+}
 
 function escapeHtml(v: unknown): string {
   return String(v ?? "")

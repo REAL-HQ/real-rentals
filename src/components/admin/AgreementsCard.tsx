@@ -145,7 +145,9 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
               ))}
             </ul>
             <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">
-              Fill these in on the Payments tab, then prepare the agreement again.
+              Driver, licence, rate and deposit details are on the Payments tab. Vehicle
+              VIN, colour and model are on the vehicle's page in Fleet. Then prepare the
+              agreement again.
             </p>
           </div>
         ) : null}
