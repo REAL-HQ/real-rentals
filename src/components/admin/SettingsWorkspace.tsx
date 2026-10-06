@@ -63,10 +63,17 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           </div>
         </div>
         <div className="hidden md:block sticky top-20 space-y-4">
-          {groups.map((g) => (
+          {groups.map((g) => {
+            const containsActive = items.some((s) => s.group === g && s.id === current.id);
+            const open = containsActive || !closedGroups.has(g);
+            return (
             <div key={g}>
-              <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">{g}</div>
-              <div className="space-y-0.5">
+              <button type="button" onClick={() => toggleGroup(g)} aria-expanded={open}
+                className="w-full flex items-center justify-between px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] hover:text-[#55555E]">
+                {g}
+                {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+              {open && <div className="space-y-0.5">
                 {items.filter((s) => s.group === g).map((s) => {
                   const active = s.id === current.id;
                   return (
