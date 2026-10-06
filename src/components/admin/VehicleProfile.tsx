@@ -127,7 +127,10 @@ export function VehicleProfile({
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    const h = () => { void refresh(); onChanged?.(); };
+    window.addEventListener("vehicle-profile-refresh", h);
+    return () => window.removeEventListener("vehicle-profile-refresh", h);
+  }, [refresh, onChanged]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1327,9 +1330,9 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
   async function makeAvailable() {
     setBusy(true);
     try {
-      const r = await save({ data: { id: v.id, section: "identity", patch: { status: "available" } } as any });
+      const r = await save({ data: { id: v.id, section: "identity", values: { status: "available" } } as any });
       if (!r.ok) toast.error(r.error ?? "Could not make this vehicle available");
-      else { toast.success("Vehicle is now Available"); await (onEdit as any)?.__refresh?.(); window.dispatchEvent(new Event("vehicle-profile-refresh")); }
+      else { toast.success("Vehicle is now Available"); window.dispatchEvent(new Event("vehicle-profile-refresh")); }
     } finally { setBusy(false); }
   }
 
