@@ -1,0 +1,1 @@
+- Marketing fleet category photos are bundled imports ({sedan,suv,minivan}.jpg), not CDN asset pointers — the dev asset proxy returned intermittent 502s for these.
