@@ -39,6 +39,7 @@ import { ShareVehicleDialog } from "./ShareVehicleDialog";
 import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { VehiclePhotos } from "./VehiclePhotos";
+import { rentalReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
 
 // The vehicle as a record you read.
 //
@@ -391,6 +392,7 @@ function Overview({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
+        <ReadinessCard p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
         <SectionCard
           title="Details"
           icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
@@ -482,7 +484,7 @@ function Overview({
 
       <div className="space-y-5">
         <SectionCard title="Rates" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <Row label="Weekly" value={money(v.weekly_rate)} />
+          <Row label="Weekly" value={money(v.weekly_rate) ?? "Not Set"} />
           <Row label="Monthly" value={money(v.monthly_rate)} />
           <Row label="Deposit" value={money(v.deposit)} />
         </SectionCard>
@@ -1308,5 +1310,62 @@ function FinanceDrawer({
         </div>
       )}
     </VehicleEditDrawer>
+  );
+}
+
+/** Rental Ready (blocking minimum) and Fleet Profile (never blocking) — kept as two lists on purpose. */
+function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
+  const v = p.vehicle;
+  const save = useServerFn(updateVehicleSection);
+  const [busy, setBusy] = useState(false);
+  const ready = rentalReadyItems(v, p.counts.photos);
+  const missing = ready.filter((i) => !i.done);
+  const profile = profileItems(v, p.profileContext ?? { docKinds: [], maintenanceCount: 0 });
+  const pct = percent(profile);
+  const inService = !["onboarding", "archived", "sold", "retired"].includes(String(v.status ?? ""));
+
+  async function makeAvailable() {
+    setBusy(true);
+    try {
+      const r = await save({ data: { id: v.id, section: "identity", patch: { status: "available" } } as any });
+      if (!r.ok) toast.error(r.error ?? "Could not make this vehicle available");
+      else { toast.success("Vehicle is now Available"); await (onEdit as any)?.__refresh?.(); window.dispatchEvent(new Event("vehicle-profile-refresh")); }
+    } finally { setBusy(false); }
+  }
+
+  const Item = ({ done, label }: { done: boolean; label: string }) => (
+    <li className="flex items-center gap-2 text-[13px]">
+      <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
+      <span className={done ? "text-[#111114]" : "text-[#55555E]"}>{label}</span>
+    </li>
+  );
+
+  return (
+    <SectionCard title="Setup" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div>
+          <MicroLabel>Rental Ready — required before renting</MicroLabel>
+          <ul className="mt-2 space-y-1.5">{ready.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
+          <div className="mt-3 text-[12px] text-[#55555E]">
+            {missing.length ? `${missing.length} item${missing.length > 1 ? "s" : ""} needed` : inService ? "Rental ready and in service." : "Rental ready — you choose when it enters service."}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {missing.some((m) => m.key === "weekly_rate") && p.canEdit && (
+              <button onClick={() => onEdit("identity")} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">Set weekly rate</button>
+            )}
+            {missing.some((m) => m.key === "photo") && (
+              <button onClick={() => onOpenTab("photos" as Tab)} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">Add photo</button>
+            )}
+            {!missing.length && v.status === "onboarding" && p.canEdit && (
+              <button disabled={busy} onClick={makeAvailable} className="rounded-md bg-[#D03020] px-3 py-1 text-[12px] font-medium text-white disabled:opacity-50">Make Available</button>
+            )}
+          </div>
+        </div>
+        <div>
+          <MicroLabel>Fleet Profile — {pct}% complete (recommended, never blocks renting)</MicroLabel>
+          <ul className="mt-2 space-y-1.5">{profile.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
+        </div>
+      </div>
+    </SectionCard>
   );
 }

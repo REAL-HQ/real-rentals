@@ -446,6 +446,7 @@ export type VehicleProfile = {
     rentals: number;
     photos: number;
   };
+  profileContext: { docKinds: string[]; maintenanceCount: number };
   alerts: Array<{ what: string; expires_on: string; days: number }>;
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */

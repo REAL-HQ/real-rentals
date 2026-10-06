@@ -113,7 +113,7 @@ export function StatusPill({
   className?: string;
 }) {
   const t = TONE[tone ?? toneFor(status)];
-  const label = children ?? (status ? String(status).replace(/_/g, " ") : "—");
+  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? String(status).replace(/_/g, " ") : "—");
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${className}`}
