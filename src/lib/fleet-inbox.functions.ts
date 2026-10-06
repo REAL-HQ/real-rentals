@@ -91,7 +91,7 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const { data: doc, error: docErr } = await sb.from("documents").insert({
       kind: "unknown", category: "unknown", label: data.fileName, storage_bucket: BUCKET, storage_path: data.path,
       file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength, content_sha256: sha,
-      is_current: true, visibility: ["staff"], uploaded_by: actor.userId, uploaded_by_role: actor.role,
+      is_current: true, visibility: ["admin"], uploaded_by: actor.userId, uploaded_by_role: actor.role,
       source: "fleet_inbox", review_status: "uploaded",
     }).select("id").single();
     if (docErr) {
