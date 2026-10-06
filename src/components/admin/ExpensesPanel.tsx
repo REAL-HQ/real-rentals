@@ -55,8 +55,8 @@ const PERIODS = [
   { id: "all", label: "All time", months: -1 },
 ] as const;
 
-export function ExpensesPanel() {
-  const [view, setView] = useState<"pl" | "ledger">("pl");
+export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
+  const [view, setView] = useState<"pl" | "ledger">(autoOpenAdd ? "ledger" : "pl");
   const [period, setPeriod] = useState<string>("3");
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
 
@@ -121,7 +121,7 @@ export function ExpensesPanel() {
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
       ) : (
-        <Ledger vehicles={vehicles} from={range.from} to={range.to} />
+        <Ledger vehicles={vehicles} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
       )}
     </div>
   );
@@ -268,12 +268,13 @@ function Ledger({
   vehicles: VehicleOption[];
   from: string | null;
   to: string | null;
+  autoOpenAdd?: boolean;
 }) {
   const load = useServerFn(listExpenses);
   const del = useServerFn(deleteExpense);
   const [rows, setRows] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(!!autoOpenAdd);
   const [vehicleFilter, setVehicleFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
