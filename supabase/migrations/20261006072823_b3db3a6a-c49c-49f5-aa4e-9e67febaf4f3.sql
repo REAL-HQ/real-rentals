@@ -1,0 +1,2 @@
+DROP POLICY IF EXISTS "Staff read fleet import items" ON public.fleet_import_items;
+CREATE POLICY "Managers read fleet import items" ON public.fleet_import_items FOR SELECT TO authenticated USING (private.is_manager());
