@@ -1,0 +1,1 @@
+ALTER TABLE public.vehicle_media ALTER COLUMN published SET DEFAULT false;
