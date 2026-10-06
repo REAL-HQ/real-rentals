@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Car, Loader2, ShieldAlert } from "lucide-react";
@@ -134,31 +135,17 @@ export function ActivateRentalDialog({
   const selectable = vehicles.filter((v) => v.status !== "retired");
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-5 border-b border-[#EDEDF0]">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Car className="w-4 h-4" /> Activate Rental
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Creates {driver.full_name || "this driver"}&rsquo;s portal login, starts the rental and
-            notifies them.
-          </p>
-        </div>
-
-        <div className="p-5 space-y-4">
+    <ModalShell onClose={onClose} size="md" label="Activate Rental">
+      <ModalHeader title="Activate Rental"
+        subtitle={<>Starts {driver.full_name || "this driver"}&rsquo;s rental, creates their portal login and notifies them.</>}
+        onClose={onClose} />
+        <ModalBody className="space-y-5">
           <div>
             <MicroLabel>Vehicle</MicroLabel>
             <select
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
+              className={`${inputCls} mt-1.5`}
             >
               <option value="">Select a vehicle…</option>
               {selectable.map((v) => (
@@ -244,7 +231,7 @@ export function ActivateRentalDialog({
                 onChange={(e) => setWeeklyRate(e.target.value)}
                 inputMode="decimal"
                 placeholder="325"
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
+                className={`${inputCls} mt-1.5`}
               />
             </div>
             <div>
@@ -254,7 +241,7 @@ export function ActivateRentalDialog({
                 onChange={(e) => setDeposit(e.target.value)}
                 inputMode="decimal"
                 placeholder="249"
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
+                className={`${inputCls} mt-1.5`}
               />
             </div>
             <div>
@@ -263,7 +250,7 @@ export function ActivateRentalDialog({
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
+                className={`${inputCls} mt-1.5`}
               />
             </div>
             <div>
@@ -272,7 +259,7 @@ export function ActivateRentalDialog({
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
+                className={`${inputCls} mt-1.5`}
               />
             </div>
           </div>
@@ -285,25 +272,15 @@ export function ActivateRentalDialog({
             />
             Deposit already collected
           </label>
-        </div>
+        </ModalBody>
 
-        <div className="p-5 border-t border-[#EDEDF0] flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-[#EDEDF0] px-4 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={!canSubmit}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
-          >
+        <ModalFooter>
+          <ModalButton onClick={onClose}>Cancel</ModalButton>
+          <ModalButton variant="primary" onClick={submit} disabled={!canSubmit}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {busy ? "Activating…" : "Activate Rental"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </ModalButton>
+        </ModalFooter>
+    </ModalShell>
   );
 }
