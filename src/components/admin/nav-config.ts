@@ -68,6 +68,7 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; messag
 export type SettingsSectionDef = { id: string; label: string; group: string; minTier: StaffTier };
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "company", label: "Company", group: "GENERAL", minTier: "owner" },
+  { id: "vehicle_defaults", label: "Vehicle Defaults", group: "FLEET", minTier: "manager" },
   { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
