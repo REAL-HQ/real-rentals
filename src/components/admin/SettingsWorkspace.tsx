@@ -84,9 +84,10 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
                     </Link>
                   );
                 })}
-              </div>
+              </div>}
             </div>
-          ))}
+            );
+          })}
         </div>
       </nav>
       <section className={`flex-1 min-w-0 ${wide ? "" : "max-w-3xl"}`}>
