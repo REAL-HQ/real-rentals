@@ -1393,11 +1393,6 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
           <div className="mt-3 text-[11px] text-[#77777F]">Recommended only — never blocks renting.</div>
         </div>
       </div>
-        <div>
-          <MicroLabel>Fleet Profile — {pct}% complete (recommended, never blocks renting)</MicroLabel>
-          <ul className="mt-2 space-y-1.5">{profile.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
-        </div>
-      </div>
     </SectionCard>
   );
 }
