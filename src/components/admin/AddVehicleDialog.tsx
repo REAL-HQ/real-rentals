@@ -213,10 +213,11 @@ function ManualForm({
 
   // Offer the next free unit number, but leave it editable — a fleet that
   // already numbers its cars should not be forced onto ours.
+  // Blank = the database assigns the next RR number at save (concurrency-safe);
+  // the suggestion is shown only as a placeholder so it can never collide.
+  const [unitHint, setUnitHint] = useState("RR-001");
   useEffect(() => {
-    suggest({ data: {} })
-      .then((r) => r.suggestion && setF((prev) => (prev.unit_number ? prev : { ...prev, unit_number: r.suggestion })))
-      .catch(() => {});
+    suggest({ data: {} }).then((r) => r.suggestion && setUnitHint(r.suggestion)).catch(() => {});
   }, [suggest]);
 
   const vinState = f.vin.trim() ? checkVin(f.vin) : null;
@@ -315,8 +316,8 @@ function ManualForm({
       <section className={startFromVin ? "" : "order-last"}>
         <Legend>Identity</Legend>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Unit number" hint="Suggested from your fleet — edit freely." bad={badField === "unit_number"}>
-            <input value={f.unit_number} onChange={(e) => set("unit_number", e.target.value)} placeholder="RR-001" className={inputCls(badField === "unit_number")} />
+          <Field label="Unit number" hint="Leave blank to assign the next number automatically." bad={badField === "unit_number"}>
+            <input value={f.unit_number} onChange={(e) => set("unit_number", e.target.value)} placeholder={unitHint} className={inputCls(badField === "unit_number")} />
           </Field>
           <Field label="VIN" bad={badField === "vin"}>
             <div className="flex gap-2">
