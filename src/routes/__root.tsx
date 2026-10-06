@@ -81,6 +81,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
+      // Keep native controls (select dropdowns, scrollbars) light even when
+      // the user's OS is in dark mode — dropdown menus must stay white.
+      { name: "color-scheme", content: "light" },
       // viewport-fit=cover so env(safe-area-inset-*) is non-zero on a
       // notched phone — without it the sticky Continue bar sits under the
       // home indicator.

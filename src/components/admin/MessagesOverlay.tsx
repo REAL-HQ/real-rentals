@@ -190,12 +190,14 @@ export function MessagesOverlay({
         )}
         <div className={`mt-3 grid gap-2 ${hasBothChannels ? "grid-cols-2" : "grid-cols-1"}`}>
           <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter conversations"
+            style={{ colorScheme: "light" }}
             className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
             <option value="all">All Conversations</option>
             <option value="unread">Unread</option>
           </select>
           {hasBothChannels && (
             <select value={chFilter} onChange={(e) => setChFilter(e.target.value as typeof chFilter)} aria-label="Channel"
+              style={{ colorScheme: "light" }}
               className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
               <option value="all">All Channels</option>
               <option value="sms">Text</option>
