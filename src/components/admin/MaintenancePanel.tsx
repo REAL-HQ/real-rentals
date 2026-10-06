@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
 import { StatusPill, EmptyState } from "./ui";
-import { MaintenanceSchedules } from "./MaintenanceSchedules";
 
 type Row = {
   id: string;
@@ -139,7 +138,6 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
   return (
     <div className="space-y-6">
       <FleetServiceCenter autoOpenAdd={autoOpenAdd} />
-      <MaintenanceSchedules />
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2 text-xs">
