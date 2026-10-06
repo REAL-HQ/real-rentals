@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
-  X, Search, Plus, ArrowLeft, Info, Mail, MessageSquare, Send, Loader2, ExternalLink, Phone, Car, StickyNote,
+  X, Search, SquarePen, CheckCheck, ArrowLeft, Info, Mail, MessageSquare, Send, Loader2, ExternalLink, Phone, Car, StickyNote,
 } from "lucide-react";
 import {
   listConversations, getConversation, markConversationRead, searchMessagePeople, sendStaffMessage,
@@ -12,6 +12,23 @@ import {
 
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase() ?? "").join("") || "?";
+}
+const AV = ["#E5484D", "#0EA5E9", "#F59E0B", "#3B82F6", "#8B5CF6", "#10B981", "#EC4899", "#F97316"];
+function avColor(key: string) {
+  let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AV[h % AV.length];
+}
+function Avatar({ name, id, size = 40 }: { name: string; id: string; size?: number }) {
+  return (
+    <div style={{ width: size, height: size, background: avColor(id), fontSize: size * 0.4 }}
+      className="rounded-full text-white grid place-items-center font-semibold shrink-0">{name.trim()[0]?.toUpperCase() ?? "?"}</div>
+  );
+}
+function fmtAgo(iso: string) {
+  const m = Math.max(0, (Date.now() - new Date(iso).getTime()) / 6e4);
+  if (m < 60) return `${Math.max(1, Math.round(m))}m`;
+  if (m < 1440) return `${Math.round(m / 60)}h`;
+  return `${Math.round(m / 1440)}d`;
 }
 function fmtWhen(iso: string) {
   const d = new Date(iso);
@@ -66,6 +83,7 @@ export function MessagesOverlay({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const loadList = useCallback(async () => {
@@ -147,28 +165,35 @@ export function MessagesOverlay({
 
   const listPane = (
     <aside className={`${mobile === "list" ? "flex" : "hidden"} md:flex flex-col min-h-0 border-r border-[#EDEDF0] bg-white`}>
-      <div className="pl-4 pr-14 md:pr-4 pt-4 pb-3 border-b border-[#EDEDF0]">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-[17px] font-semibold text-[#111114]">Messages</h2>
-          <button
+      <div className="pl-4 pr-14 md:pr-3 pt-4 pb-3 border-b border-[#EDEDF0]">
+        <div className="flex items-center gap-1">
+          <h2 className="text-[17px] font-semibold text-[#111114] mr-auto">Messages</h2>
+          <button aria-label="Search conversations" title="Search" onClick={() => setSearchOpen((v) => !v)}
+            className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><Search className="w-[18px] h-[18px]" /></button>
+          <button aria-label="Mark all as read" title="Mark all as read" disabled={!convs?.some((c) => c.unread > 0)}
+            onClick={async () => { for (const c of convs ?? []) if (c.unread > 0) await markRead({ data: { applicationId: c.applicationId } }); void loadList(); }}
+            className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6] disabled:text-[#C4C4CB] disabled:hover:bg-transparent"><CheckCheck className="w-[18px] h-[18px]" /></button>
+          <button aria-label="New Message" title="New Message"
             onClick={() => { setComposing(true); setPeopleQ(""); onSelect(null); setMobile("thread"); }}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-[#D03020] text-white text-[12px] font-semibold hover:bg-[#B5281A]"
-          >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2.25} /> New Message
-          </button>
+            className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><SquarePen className="w-[18px] h-[18px]" /></button>
         </div>
-        <div className="relative mt-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA3]" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations" aria-label="Search conversations"
-            className="w-full h-10 pl-9 pr-3 text-[13px] rounded-lg bg-[#FAFAFB] border border-[#EDEDF0] focus:outline-none focus:border-[#C4C4CB]" />
-        </div>
-        <div className="mt-2 flex gap-1">
-          {(["all", "unread"] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`h-8 px-3 rounded-full text-[12px] font-medium ${filter === f ? "bg-[#111114] text-white" : "text-[#55555E] hover:bg-[#F4F4F6]"}`}>
-              {f === "all" ? "All" : "Unread"}
-            </button>
-          ))}
+        {searchOpen && (
+          <div className="relative mt-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA3]" />
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations" aria-label="Search conversations text"
+              className="w-full h-10 pl-9 pr-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] focus:outline-none focus:border-[#C4C4CB]" />
+          </div>
+        )}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter conversations"
+            className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
+            <option value="all">All</option>
+            <option value="unread">Unread</option>
+          </select>
+          <select value="all" onChange={() => {}} aria-label="Channel" disabled
+            className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none disabled:opacity-100">
+            <option value="all">All Channels</option>
+          </select>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -188,17 +213,17 @@ export function MessagesOverlay({
               return (
                 <li key={c.applicationId}>
                   <button onClick={() => onSelect(c.applicationId)}
-                    className={`w-full text-left px-4 py-3 flex gap-3 border-b border-[#F4F4F6] min-h-[64px] ${active ? "bg-[#FAFAFB]" : "hover:bg-[#FAFAFB]"}`}>
-                    <div className="w-9 h-9 rounded-full bg-[#F4F4F6] text-[#55555E] grid place-items-center text-[11px] font-semibold shrink-0">{initials(c.name)}</div>
+                    className={`w-full text-left px-4 py-4 flex gap-3 border-b border-[#EDEDF0] ${active ? "bg-[#FAFAFB]" : "hover:bg-[#FAFAFB]"}`}>
+                    <Avatar name={c.name} id={c.applicationId} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[13px] truncate ${c.unread ? "font-semibold" : "font-medium"} text-[#111114]`}>{c.name}</span>
-                        <span className="ml-auto text-[11px] text-[#9A9AA3] tabular-nums shrink-0">{fmtWhen(c.lastAt)}</span>
+                        <span className="text-[15px] font-semibold truncate text-[#111114]">{c.name}</span>
+                        <span className="ml-auto text-[12px] text-[#9A9AA3] tabular-nums shrink-0">{fmtAgo(c.lastAt)}</span>
+                        {c.unread > 0 && <span aria-label={`${c.unread} unread`} className="w-2 h-2 rounded-full bg-[#F59E0B] shrink-0" />}
                       </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <Icon className="w-3 h-3 text-[#9A9AA3] shrink-0" />
-                        <span className="text-[12px] text-[#55555E] truncate flex-1">{c.lastBody}</span>
-                        {c.unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">{c.unread}</span>}
+                      <p className="mt-0.5 text-[13px] leading-snug text-[#55555E] line-clamp-2 break-words">{c.lastBody}</p>
+                      <div className="mt-1 flex items-center gap-1.5 text-[12px] font-medium text-[#9A9AA3]">
+                        <Icon className="w-3 h-3" />{CH_LABEL[c.lastChannel] ?? "Message"}
                       </div>
                     </div>
                   </button>
@@ -219,7 +244,7 @@ export function MessagesOverlay({
   }
 
   const centerPane = (
-    <section className={`${mobile === "thread" ? "flex" : "hidden"} md:flex flex-col min-h-0 bg-[#FAFAFB]`}>
+    <section className={`${mobile === "thread" ? "flex" : "hidden"} md:flex flex-col min-h-0 bg-white`}>
       {composing && !applicationId ? (
         <div className="flex-1 flex flex-col min-h-0">
           <header className="flex items-center gap-2 px-4 h-14 border-b border-[#EDEDF0] bg-white">
@@ -250,16 +275,16 @@ export function MessagesOverlay({
         <div className="flex-1 grid place-items-center text-[13px] text-[#9A9AA3]">Select a conversation or start a new one.</div>
       ) : (
         <>
-          <header className="flex items-center gap-3 pl-4 pr-14 h-14 border-b border-[#EDEDF0] bg-white shrink-0">
+          <header className="flex items-center gap-3 pl-4 pr-14 h-[72px] border-b border-[#EDEDF0] bg-white shrink-0">
             <button aria-label="Back to conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
-            <div className="w-9 h-9 rounded-full bg-[#F4F4F6] text-[#55555E] grid place-items-center text-[12px] font-semibold shrink-0">{initials(person?.name ?? "?")}</div>
+            <Avatar name={person?.name ?? "?"} id={applicationId} size={34} />
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold truncate">{person?.name ?? "Loading…"}</div>
-              <div className="text-[11px] text-[#9A9AA3] truncate capitalize">{person?.status ?? ""}</div>
+              <div className="text-[17px] font-semibold truncate text-[#111114]">{person?.name ?? "Loading…"}</div>
+              <div className="text-[12px] text-[#77777F] truncate capitalize">{person?.status ?? ""}</div>
             </div>
             <button aria-label="Conversation info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
               title="Conversation info"
-              className="w-11 h-11 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><Info className="w-5 h-5" /></button>
+              className="w-10 h-10 grid place-items-center rounded-lg border border-[#E4E4E8] text-[#55555E] hover:bg-[#F4F4F6]"><Info className="w-5 h-5" /></button>
           </header>
           <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
             {loadingThread && !thread ? (
@@ -269,7 +294,7 @@ export function MessagesOverlay({
             ) : (
               groups.map((g) => (
                 <div key={g.day} className="mb-3">
-                  <div className="my-3 flex items-center gap-3 text-[11px] text-[#9A9AA3]"><span className="h-px flex-1 bg-[#EDEDF0]" />{g.day}<span className="h-px flex-1 bg-[#EDEDF0]" /></div>
+                  <div className="my-4 flex items-center gap-4 text-[12px] font-medium text-[#55555E]"><span className="h-px flex-1 bg-[#EDEDF0]" />{g.day}<span className="h-px flex-1 bg-[#EDEDF0]" /></div>
                   <div className="space-y-2">
                     {g.items.map((m) => {
                       const out = m.direction !== "inbound";
@@ -277,16 +302,16 @@ export function MessagesOverlay({
                       const bad = m.deliveryState && ["failed", "bounced", "complained", "skipped"].includes(m.deliveryState);
                       return (
                         <div key={m.id} className={`flex ${out ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[80%] md:max-w-[70%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug ${out ? "bg-[#111114] text-white rounded-br-sm" : "bg-white border border-[#EDEDF0] text-[#111114] rounded-bl-sm"}`}>
-                            {m.subject && <div className={`text-[11px] font-semibold mb-0.5 ${out ? "text-white/70" : "text-[#55555E]"}`}>{m.subject}</div>}
-                            <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                            <div className={`mt-1 flex items-center gap-1.5 text-[10px] ${out ? "text-white/60" : "text-[#9A9AA3]"}`}>
-                              <Icon className="w-3 h-3" />
-                              <span>{CH_LABEL[m.channel]}</span>
-                              <span>· {new Date(m.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
-                              {out && m.deliveryState && <span className={bad ? "text-[#FF8A80]" : ""}>· {STATE_LABEL[m.deliveryState] ?? m.deliveryState}</span>}
+                          <div className={`max-w-[80%] md:max-w-[70%] rounded-xl px-4 py-2.5 text-[14px] leading-relaxed text-[#111114] border ${out ? "bg-[#FFF8EC] border-[#F6E7CC]" : "bg-[#F6F6F8] border-[#EDEDF0]"}`}>
+                            <div className="mb-1 flex items-center gap-1.5 text-[12px]">
+                              <span className="font-semibold text-[#33333A]">{out ? "You" : person?.name.split(" ")[0]}</span>
+                              <span className="text-[#77777F]">{new Date(m.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                              <span className="text-[#9A9AA3] inline-flex items-center gap-1">· <Icon className="w-3 h-3" />{CH_LABEL[m.channel]}</span>
                             </div>
-                            {bad && m.deliveryError && <div className="mt-0.5 text-[10px] text-[#FF8A80]">{m.deliveryError}</div>}
+                            {m.subject && <div className="text-[13px] font-semibold mb-0.5">{m.subject}</div>}
+                            <div className="whitespace-pre-wrap break-words">{m.body}</div>
+                            {out && m.deliveryState && <div className={`mt-1 text-[11px] ${bad ? "text-[#D03020]" : "text-[#9A9AA3]"}`}>{STATE_LABEL[m.deliveryState] ?? m.deliveryState}</div>}
+                            {bad && m.deliveryError && <div className="mt-0.5 text-[11px] text-[#D03020]">{m.deliveryError}</div>}
                           </div>
                         </div>
                       );
@@ -298,41 +323,41 @@ export function MessagesOverlay({
             <div ref={endRef} />
           </div>
           {person && (
-            <footer className="shrink-0 border-t border-[#EDEDF0] bg-white p-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+            <footer className="shrink-0 border-t border-[#EDEDF0] bg-white p-4 pb-[max(16px,env(safe-area-inset-bottom))]">
               {noChannel ? (
                 <p className="text-[12px] text-[#55555E] px-1 py-2">No delivery method is available for this person right now. {person.email_channel.reason} {person.sms_channel.reason}</p>
               ) : (
                 <>
-                  <div className="flex items-center gap-1 mb-2">
-                    <span className="text-[11px] text-[#9A9AA3] mr-1">Send via</span>
-                    {(["email", "sms"] as const).map((c) => {
-                      const a = c === "email" ? person.email_channel : person.sms_channel;
-                      return (
-                        <button key={c} disabled={!a.available} onClick={() => setChannel(c)} title={a.reason ?? a.address ?? ""}
-                          className={`h-8 px-3 rounded-full text-[12px] font-medium inline-flex items-center gap-1.5 ${channel === c && a.available ? "bg-[#111114] text-white" : a.available ? "text-[#55555E] hover:bg-[#F4F4F6]" : "text-[#C4C4CB] cursor-not-allowed"}`}>
-                          {c === "email" ? <Mail className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}{c === "email" ? "Email" : "Text"}
-                        </button>
-                      );
-                    })}
-                  </div>
                   {!chAvail?.available && <p className="text-[11px] text-[#9A9AA3] mb-2">{chAvail?.reason}</p>}
-                  {(!person.sms_channel.available && person.sms_channel.reason) && channel === "email" && (
-                    <p className="text-[11px] text-[#9A9AA3] mb-2">Text unavailable: {person.sms_channel.reason}</p>
-                  )}
-                  {channel === "email" && chAvail?.available && (
-                    <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject (optional)"
-                      className="w-full h-9 mb-2 px-3 text-[13px] rounded-lg border border-[#EDEDF0] focus:outline-none focus:border-[#C4C4CB]" />
-                  )}
-                  <div className="flex items-end gap-2">
-                    <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} disabled={!chAvail?.available}
-                      placeholder={chAvail?.available ? `Write ${channel === "email" ? "an email" : "a text"} to ${person.name.split(" ")[0]}…` : "Choose an available delivery method"}
+                  <div className="rounded-xl border border-[#E4E4E8] bg-white focus-within:border-[#C4C4CB]">
+                    {channel === "email" && chAvail?.available && (
+                      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject (optional)"
+                        className="w-full h-10 px-4 text-[14px] bg-transparent border-b border-[#F0F0F2] focus:outline-none" />
+                    )}
+                    <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} disabled={!chAvail?.available}
+                      placeholder={chAvail?.available ? "Write a reply" : "Choose an available delivery method"}
                       onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit(); }}
-                      className="flex-1 min-h-[44px] max-h-40 px-3 py-2.5 text-[13px] rounded-lg border border-[#EDEDF0] focus:outline-none focus:border-[#C4C4CB] resize-y" />
-                    <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available}
-                      className="h-11 px-4 rounded-lg bg-[#D03020] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40">
-                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
-                    </button>
+                      className="w-full min-h-[64px] max-h-48 px-4 py-3 text-[14px] bg-transparent focus:outline-none resize-none" />
+                    <div className="flex items-center gap-1 px-3 pb-3">
+                      {(["email", "sms"] as const).map((c) => {
+                        const a = c === "email" ? person.email_channel : person.sms_channel;
+                        return (
+                          <button key={c} disabled={!a.available} onClick={() => setChannel(c)} title={a.available ? a.address ?? "" : a.reason ?? ""}
+                            aria-label={`Send via ${c === "email" ? "Email" : "Text"}`}
+                            className={`h-8 px-2.5 rounded-lg text-[12px] font-medium inline-flex items-center gap-1.5 ${channel === c && a.available ? "bg-[#F4F4F6] text-[#111114]" : a.available ? "text-[#55555E] hover:bg-[#F4F4F6]" : "text-[#C4C4CB] cursor-not-allowed"}`}>
+                            {c === "email" ? <Mail className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}{c === "email" ? "Email" : "Text"}
+                          </button>
+                        );
+                      })}
+                      <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available}
+                        className="ml-auto h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40">
+                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
+                      </button>
+                    </div>
                   </div>
+                  {!person.sms_channel.available && person.sms_channel.reason && channel === "email" && (
+                    <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Text unavailable: {person.sms_channel.reason}</p>
+                  )}
                   {channel === "email" && chAvail?.available && <p className="mt-1.5 text-[10px] text-[#9A9AA3]">Sent from Team@DriveReal.com. Replies arrive in the Team@ mailbox, not here.</p>}
                 </>
               )}
@@ -349,8 +374,11 @@ export function MessagesOverlay({
         <button aria-label="Back to conversation" onClick={() => setMobile("thread")} className="w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
         <div className="text-[14px] font-semibold">Info</div>
       </div>
-      <div className="p-5 pt-14 md:pt-14 text-center border-b border-[#EDEDF0]">
-        <div className="w-14 h-14 mx-auto rounded-full bg-[#F4F4F6] text-[#55555E] grid place-items-center text-[16px] font-semibold">{initials(person.name)}</div>
+      <div className="hidden md:flex items-center gap-1 px-3 h-14 pr-16 border-b border-[#EDEDF0]">
+        <span className="h-8 px-2.5 rounded-lg bg-[#F4F4F6] text-[13px] font-semibold text-[#111114] inline-flex items-center">Details</span>
+      </div>
+      <div className="p-5 text-center border-b border-[#EDEDF0]">
+        <div className="mx-auto w-fit"><Avatar name={person.name} id={person.applicationId} size={56} /></div>
         <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
         <div className="text-[12px] text-[#9A9AA3] capitalize">{person.status ?? "—"}</div>
         <Link to="/admin" search={{ tab: "drivers", id: person.applicationId }} onClick={onClose}
