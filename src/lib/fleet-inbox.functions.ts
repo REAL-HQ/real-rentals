@@ -424,7 +424,12 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           const row: Record<string, unknown> = {
             ...toWrite, vin: fresh.vin,
             year: coerce("year", entry.fields.year!.value), make: entry.fields.make!.value, model: entry.fields.model!.value,
-            weekly_rate: defaultWeeklyRate((toWrite.body_type as string) ?? null),
+            // Documents never establish a price: rate stays Not Set and the car
+            // starts as Needs Setup until a human prices it, adds a photo and
+            // chooses Make Available.
+            weekly_rate: null,
+            status: "onboarding",
+            unit_number: ((await sb.rpc("next_unit_number", { _prefix: "RR" })).data as string | null) ?? null,
           };
           if (row.current_odometer) row.odometer_updated_at = new Date().toISOString();
           const { data: v, error } = await sb.from("vehicles").insert(row as any).select("id").single();
