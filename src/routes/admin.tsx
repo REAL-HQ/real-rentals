@@ -7,7 +7,6 @@ import { DriversPanel } from "@/components/admin/DriversPanel";
 import { WaitlistPanel } from "@/components/admin/WaitlistPanel";
 import { PartnersPanel } from "@/components/admin/PartnersPanel";
 import { PaymentsPanel } from "@/components/admin/PaymentsPanel";
-import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import adminHero from "@/assets/admin-hero.jpg";
@@ -19,34 +18,27 @@ import {
   Bell,
   Menu,
   Plus,
-  Settings as SettingsIcon,
-  UserCog,
+  MessageSquare,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   TABS,
   GROUP_ORDER,
   ADD_TABS,
   visibleTabs,
-  visibleApps,
   visibleCreateActions,
-  appOf,
   navOwner,
+  LEGACY_TABS,
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
-import { MessagesPanel } from "@/components/admin/MessagesPanel";
+import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
+import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
+import { useServerFn } from "@tanstack/react-start";
+import { listConversations } from "@/lib/messages.functions";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
-import { TeamPanel } from "@/components/admin/TeamPanel";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
-import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
@@ -70,6 +62,10 @@ type AdminSearch = {
   id?: string;
   filter?: string;
   add?: "1";
+  /** Settings workspace section. */
+  section?: string;
+  /** Messages overlay: "inbox" = open, or an application id = open on that conversation. Global, survives tab. */
+  msg?: string;
 };
 
 /**
@@ -84,13 +80,14 @@ type AdminSearch = {
  * through, and by the normalization effect that strips a stale parameter
  * arriving from a hand-edited or forwarded URL.
  */
-const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab">, readonly string[]> = {
+const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly string[]> = {
   // A selected record. Only tabs that can show one.
   id: ["drivers", "vehicles"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
+  section: ["settings"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -101,7 +98,8 @@ export function rootSearch(tab: string): AdminSearch {
 /** Drop any parameter that does not belong to `tab`. */
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
-  for (const key of ["id", "filter", "add"] as const) {
+  if (search.msg) out.msg = search.msg;
+  for (const key of ["id", "filter", "add", "section"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -134,6 +132,9 @@ export const Route = createFileRoute("/admin")({
     // the string "1" while a hand-typed or emailed ?add=1 arrives as the
     // number 1 — and silently did nothing.
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
+    if (str(raw.section)) out.section = str(raw.section);
+    if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
+    else if (str(raw.msg)) out.msg = str(raw.msg);
     return out;
   },
   head: () => ({
@@ -229,16 +230,45 @@ function Admin() {
   );
 
   useEffect(() => {
+    // Old bookmarks (?tab=messages / automations / team) land on their new home.
+    const legacy = urlTab ? LEGACY_TABS[urlTab] : undefined;
+    if (legacy) {
+      const next: AdminSearch = { tab: legacy.tab };
+      if (legacy.section) next.section = legacy.section;
+      if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
+      void navigate({ to: "/admin", search: next, replace: true });
+      return;
+    }
     const owned = ownedSearch(tab, search);
     const same =
       owned.tab === search.tab &&
       owned.id === search.id &&
       owned.filter === search.filter &&
-      owned.add === search.add;
+      owned.add === search.add &&
+      owned.section === search.section &&
+      owned.msg === search.msg;
     if (same) return;
     void navigate({ to: "/admin", search: owned, replace: true });
-  }, [tab, search, navigate]);
+  }, [tab, search, navigate, urlTab]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const listConvs = useServerFn(listConversations);
+  const msgOpen = !!search.msg;
+  const msgApp = search.msg && search.msg !== "inbox" ? search.msg : null;
+  const setMsg = useCallback(
+    (value: string | null) =>
+      void navigate({ to: "/admin", search: (prev: AdminSearch) => ({ ...prev, msg: value ?? undefined }), replace: true }),
+    [navigate],
+  );
+  // Contextual "Message" actions anywhere in the back office open the overlay
+  // on that person without leaving the current page.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<{ applicationId?: string }>).detail?.applicationId;
+      setMsg(id || "inbox");
+    };
+    window.addEventListener("open-messages", onOpen);
+    return () => window.removeEventListener("open-messages", onOpen);
+  }, [setMsg]);
   const [notifSeenAt, setNotifSeenAt] = useState<number>(() => {
     if (typeof window === "undefined") return 0;
     return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
@@ -288,11 +318,12 @@ function Admin() {
         .order("created_at", { ascending: false })
         .limit(15);
       if (!cancelled) setNotifs(data || []);
-      const { count } = await supabase
-        .from("messages")
-        .select("id", { count: "exact", head: true })
-        .eq("read", false);
-      if (!cancelled) setUnreadMsgs(count ?? 0);
+      try {
+        const r = await listConvs();
+        if (!cancelled) setUnreadMsgs(r.unread);
+      } catch {
+        /* unread badge is a convenience */
+      }
     }
     load();
     const t = setInterval(load, 60_000);
@@ -300,7 +331,7 @@ function Admin() {
       cancelled = true;
       clearInterval(t);
     };
-  }, [isAdmin]);
+  }, [isAdmin, listConvs]);
 
   const unreadCount = notifs.filter(
     (n) => new Date(n.created_at ?? 0).getTime() > notifSeenAt,
@@ -339,13 +370,9 @@ function Admin() {
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const app = appOf(tab);
-  const apps = visibleApps(tier);
   const createActions = visibleCreateActions(tier);
   const ownerTab = navOwner(tab);
-  const appTabs = navTabs.filter((t) => t.app === app && t.group);
-  const showContextNav = app === "operations";
-  const canTeam = tierAllows(tier, "owner");
+  const appTabs = navTabs.filter((t) => t.group);
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef, onClick?: () => void) => {
@@ -384,82 +411,25 @@ function Admin() {
     });
 
   return (
-    <TooltipProvider delayDuration={150}>
+    <>
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
-        {/* App Dock — business apps, not a second copy of the menu */}
-        <aside aria-label="Apps" className="hidden md:flex w-[60px] shrink-0 flex-col items-center gap-1 bg-[#0B0B0D] sticky top-0 h-screen py-4 border-r border-white/5">
-          <Link
-            to="/admin"
-            search={rootSearch("overview")}
-            aria-label="REAL RENTALS home"
-            className="mb-4 w-9 h-9 rounded-md bg-[#D03020] text-white grid place-items-center text-[15px] font-black tracking-tight"
-          >
-            R
-          </Link>
-          {apps.map((a) => {
-            const Icon = a.icon;
-            const active = app === a.id;
-            return (
-              <Tooltip key={a.id}>
-                <TooltipTrigger asChild>
-                  <Link
-                    to="/admin"
-                    search={rootSearch(a.home)}
-                    aria-label={a.label}
-                    aria-current={active ? "page" : undefined}
-                    className={`relative w-10 h-10 rounded-lg grid place-items-center transition-colors duration-150 ${
-                      active ? "bg-[#1F1F23] text-white" : "text-[#77777F] hover:bg-[#18181B] hover:text-white"
-                    }`}
-                  >
-                    {active && <span className="absolute -left-[10px] top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r bg-[#D03020]" />}
-                    <Icon className="w-[19px] h-[19px]" strokeWidth={1.75} />
-                    {a.id === "messages" && unreadMsgs > 0 && (
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D03020]" />
-                    )}
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right">{a.label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
+        {/* Single business navigation rail */}
+        <aside aria-label="Main navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
+          <div className="px-5 pt-6 pb-4">
+            <Logo offset={false} />
+          </div>
+          <nav className="flex-1 px-2.5 pb-4 overflow-y-auto">{groupedNav()}</nav>
         </aside>
-
-        {/* Contextual navigation for the selected app */}
-        {showContextNav && (
-          <aside aria-label="Operations navigation" className="hidden md:flex w-[212px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
-            <div className="px-5 pt-6 pb-4">
-              <Logo offset={false} />
-            </div>
-            <nav className="flex-1 px-2.5 pb-4 overflow-y-auto">{groupedNav()}</nav>
-          </aside>
-        )}
 
         {/* Mobile navigation drawer */}
         <Sheet open={mobileNav} onOpenChange={setMobileNav}>
           <SheetContent side="left" className="w-[280px] p-0 bg-[#141416] border-r-0 text-white">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <div className="px-5 pt-6 pb-3"><Logo offset={false} /></div>
-            <div className="px-2.5 pb-3 flex gap-1 border-b border-white/10 mb-3">
-              {apps.map((a) => {
-                const Icon = a.icon;
-                return (
-                  <Link
-                    key={a.id}
-                    to="/admin"
-                    search={rootSearch(a.home)}
-                    onClick={() => setMobileNav(false)}
-                    className={`flex-1 flex flex-col items-center gap-1 py-2 min-h-[44px] rounded-lg text-[11px] ${app === a.id ? "bg-[#1F1F23] text-white" : "text-[#8E8E96]"}`}
-                  >
-                    <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                    {a.label}
-                  </Link>
-                );
-              })}
-            </div>
             <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
               {(() => {
                 // Drawer always lists Operations destinations.
-                const ops = navTabs.filter((t) => t.app === "operations" && t.group);
+                const ops = navTabs.filter((t) => t.group);
                 return GROUP_ORDER.map((group) => {
                   const items = ops.filter((t) => t.group === group);
                   if (!items.length) return null;
@@ -533,6 +503,16 @@ function Admin() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              <button
+                aria-label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs} unread)` : ""}`}
+                onClick={() => setMsg("inbox")}
+                className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
+              >
+                <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                {unreadMsgs > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#111114] text-white text-[10px] font-semibold grid place-items-center">{unreadMsgs}</span>
+                )}
+              </button>
               <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
                 <DropdownMenuTrigger
                   aria-label="Notifications"
@@ -594,18 +574,6 @@ function Admin() {
                         )}
                       </div>
                     </div>
-                    {canTeam && (
-                      <>
-                        <DropdownMenuItem onSelect={() => goRoot("settings")} className="gap-3 px-2 py-2.5 rounded-xl text-[13px]">
-                          <SettingsIcon className="w-[18px] h-[18px] text-[#9A9AA3]" strokeWidth={1.75} />
-                          Settings
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => goRoot("team")} className="gap-3 px-2 py-2.5 rounded-xl text-[13px]">
-                          <UserCog className="w-[18px] h-[18px] text-[#9A9AA3]" strokeWidth={1.75} />
-                          Team
-                        </DropdownMenuItem>
-                      </>
-                    )}
                     <div className="h-px bg-[#EDEDF0] my-3" />
                     <button
                       onClick={signOut}
@@ -657,19 +625,23 @@ function Admin() {
             {tab === "shops" && <ShopsPanel />}
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
-            {tab === "automations" && <AutomationsPanel />}
             {tab === "charges" && <ChargesPanel />}
             {tab === "incidents" && <IncidentsPanel />}
-            {tab === "messages" && <MessagesPanel />}
             {tab === "websites" && <WebsitesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {tab === "activity" && <ActivityPanel />}
-            {tab === "team" && <TeamPanel />}
-            {tab === "settings" && <SettingsPanel />}
+            {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
       </div>
-    </TooltipProvider>
+      <MessagesOverlay
+        open={msgOpen}
+        applicationId={msgApp}
+        onSelect={(id) => setMsg(id ?? "inbox")}
+        onClose={() => setMsg(null)}
+        onUnreadChange={setUnreadMsgs}
+      />
+    </>
   );
 }
 

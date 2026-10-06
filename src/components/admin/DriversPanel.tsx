@@ -796,6 +796,9 @@ export function DriversPanel({
                               <MessageSquare className="w-4 h-4 mr-2" /> Text
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: a.id } }))}>
+                            <MessageSquare className="w-4 h-4 mr-2" /> Open in Messages
+                          </DropdownMenuItem>
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
                               <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
@@ -1208,6 +1211,9 @@ function DriverDetail({
                 <MoreVertical className="w-4 h-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Open in Messages
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
                   <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
                 </DropdownMenuItem>

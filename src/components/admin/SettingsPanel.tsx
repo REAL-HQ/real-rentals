@@ -55,7 +55,19 @@ const SECTIONS: {
   ]},
 ];
 
-export function SettingsPanel() {
+/** Settings workspace section id → persisted app_settings key (keys unchanged). */
+export const SECTION_KEY: Record<string, string> = {
+  company: "system_preferences",
+  rental_terms: "rental_terms",
+  deposits: "deposit_defaults",
+  applications: "application_settings",
+  esign: "esign_company_signer",
+  payments: "payment_settings",
+  partners: "partner_settings",
+  notifications: "notifications",
+};
+
+export function SettingsPanel({ only }: { only?: string } = {}) {
   const [settings, setSettings] = useState<SettingsMap>({});
 
   useEffect(() => {
@@ -76,11 +88,11 @@ export function SettingsPanel() {
 
   return (
     <div className="space-y-8 max-w-3xl">
-      {SECTIONS.map(sec => {
+      {SECTIONS.filter((sec) => !only || sec.key === only).map(sec => {
         const current = settings[sec.key] || {};
         return (
-          <div key={sec.key} className="rounded-xl bg-soft p-5">
-            <h3 className="font-semibold mb-1">{sec.title}</h3>
+          <div key={sec.key} className={only ? "" : "rounded-xl bg-soft p-5"}>
+            {!only && <h3 className="font-semibold mb-1">{sec.title}</h3>}
             {sec.hint && <p className="text-xs text-muted-foreground mb-3">{sec.hint}</p>}
             {sec.key === "notifications" && <EmailDeliveryStatus />}
             <div className="grid grid-cols-2 gap-3">
@@ -136,7 +148,7 @@ export function SettingsPanel() {
           points at the one that is correct. Team management lives in one
           place, goes through the trusted server path, and is the only way
           roles change. */}
-      <div className="rounded-xl bg-soft p-5">
+      {!only && <div className="rounded-xl bg-soft p-5">
         <h3 className="font-semibold mb-1">Staff Access</h3>
         <p className="text-sm text-muted-foreground">
           Invite teammates, set their tier and remove access from the{" "}
@@ -144,7 +156,7 @@ export function SettingsPanel() {
           every grant goes through a server-side check that only an Owner may
           pass, records an audit entry, and refuses to remove the last Owner.
         </p>
-      </div>
+      </div>}
     </div>
   );
 }

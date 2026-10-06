@@ -2594,42 +2594,80 @@ export type Database = {
       }
       messages: {
         Row: {
+          application_id: string | null
           body: string
+          channel: string
           created_at: string
+          delivery_error: string | null
+          delivery_state: string | null
+          direction: string
           driver_id: string | null
+          email_delivery_id: string | null
           id: string
           kind: string
           partner_id: string | null
           read: boolean
           recipient_id: string | null
           sender_id: string | null
+          subject: string | null
           thread_id: string
+          to_address: string | null
         }
         Insert: {
+          application_id?: string | null
           body: string
+          channel?: string
           created_at?: string
+          delivery_error?: string | null
+          delivery_state?: string | null
+          direction?: string
           driver_id?: string | null
+          email_delivery_id?: string | null
           id?: string
           kind?: string
           partner_id?: string | null
           read?: boolean
           recipient_id?: string | null
           sender_id?: string | null
+          subject?: string | null
           thread_id?: string
+          to_address?: string | null
         }
         Update: {
+          application_id?: string | null
           body?: string
+          channel?: string
           created_at?: string
+          delivery_error?: string | null
+          delivery_state?: string | null
+          direction?: string
           driver_id?: string | null
+          email_delivery_id?: string | null
           id?: string
           kind?: string
           partner_id?: string | null
           read?: boolean
           recipient_id?: string | null
           sender_id?: string | null
+          subject?: string | null
           thread_id?: string
+          to_address?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "messages_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_email_delivery_id_fkey"
+            columns: ["email_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "email_deliveries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "messages_partner_id_fkey"
             columns: ["partner_id"]
