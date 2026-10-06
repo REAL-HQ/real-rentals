@@ -334,7 +334,7 @@ function InviteForm({
           disabled={saving}
           className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
         >
-          {saving ? "Sending…" : "Send invitation"}
+          {saving ? "Sending…" : "Send Invitation"}
         </button>
       </form>
     </div>

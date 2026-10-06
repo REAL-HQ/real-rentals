@@ -220,7 +220,7 @@ export function MaintenanceSchedules() {
                         disabled={seeding === v.id}
                         className="rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-medium hover:opacity-90 disabled:opacity-40"
                       >
-                        {seeding === v.id ? "Adding…" : "Use standard schedule"}
+                        {seeding === v.id ? "Adding…" : "Use Standard Schedule"}
                       </button>
                     ) : null}
                     <button

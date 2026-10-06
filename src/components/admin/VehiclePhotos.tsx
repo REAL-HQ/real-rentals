@@ -218,7 +218,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 ) : (
                   <Upload className="w-3.5 h-3.5" />
                 )}
-                {uploading > 0 ? `Uploading ${uploading}…` : "Add photos"}
+                {uploading > 0 ? `Uploading ${uploading}…` : "Add Photos"}
               </button>
             </>
           ) : null
@@ -394,7 +394,7 @@ function PhotoTile({
         {canEdit && (
           <div className="flex items-center gap-1">
             <IconBtn
-              title={m.published ? "Remove from the website" : "Show on the website"}
+              title={m.published ? "Remove from the Website" : "Show on the Website"}
               onClick={() => onPublish(!m.published)}
               disabled={busy}
             >
@@ -447,7 +447,7 @@ function EnhanceMenu({
   return (
     <div className="relative">
       <IconBtn
-        title={disabled ? reason : "Create a retouched version"}
+        title={disabled ? reason : "Create a Retouched Version"}
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
       >

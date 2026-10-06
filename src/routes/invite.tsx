@@ -179,7 +179,7 @@ function AuthStep() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-center">
-        {mode === "signup" ? "Create your account" : "Sign in"}
+        {mode === "signup" ? "Create Your Account" : "Sign in"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground text-center">
         Use the email address the invitation was sent to — it only works for that address.
@@ -220,7 +220,7 @@ function AuthStep() {
           disabled={busy}
           className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
         >
-          {busy ? "Working…" : mode === "signup" ? "Create account & accept" : "Sign in & accept"}
+          {busy ? "Working…" : mode === "signup" ? "Create Account & Accept" : "Sign in & Accept"}
         </button>
       </form>
 

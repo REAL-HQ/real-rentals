@@ -165,7 +165,7 @@ function SignPage() {
                 onClick={onSign}
                 className="mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-6 py-3 disabled:opacity-40"
               >
-                {busy ? "Signing…" : "Sign agreement"}
+                {busy ? "Signing…" : "Sign Agreement"}
               </button>
             </div>
           </>

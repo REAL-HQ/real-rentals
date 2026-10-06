@@ -2308,7 +2308,7 @@ function VehiclePicker({
         <span className={selected ? "" : "text-muted-foreground"}>
           {selected
             ? `${selected.year} ${selected.make} ${selected.model}${selected.trim ? " " + selected.trim : ""}`
-            : "Assign vehicle"}
+            : "Assign Vehicle"}
         </span>
         <ChevronDown className="w-4 h-4 text-muted-foreground" />
       </button>

@@ -234,7 +234,7 @@ export function ShareVehicleDialog({
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-            {copied ? "Copied" : "Copy as text"}
+            {copied ? "Copied" : "Copy as Text"}
           </button>
           <button
             onClick={() => window.print()}

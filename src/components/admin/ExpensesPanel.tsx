@@ -647,7 +647,7 @@ function ExpenseForm({
           disabled={saving || uploading}
           className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save expense"}
+          {saving ? "Saving…" : "Save Expense"}
         </button>
       </form>
     </div>

@@ -433,7 +433,7 @@ function AgreementsView() {
                   }}
                   className="text-xs font-semibold text-real-red"
                 >
-                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
+                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & Sign"}
                 </button>
               </div>
             </div>
@@ -482,7 +482,7 @@ function AgreementsView() {
                       }}
                       className="rounded-lg bg-real-red text-white text-sm font-semibold px-5 py-2.5 disabled:opacity-40"
                     >
-                      {busy ? "Signing…" : "Sign agreement"}
+                      {busy ? "Signing…" : "Sign Agreement"}
                     </button>
                   </div>
                 ) : null}

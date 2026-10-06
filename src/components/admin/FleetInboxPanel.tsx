@@ -463,7 +463,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
             <ActionBtn active={dec.action === "create"} onClick={() => setOne({ action: dec.action === "create" ? null : "create" })} disabled={!p.vin_check?.formatValid}>Create Vehicle</ActionBtn>
           )}
           <ActionBtn active={dec.action === "match"} onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })} disabled={!vehicles.length}>
-            <Link2 className="w-3.5 h-3.5" /> {p.kind === "new" ? "Match Existing" : "Apply to vehicle"}
+            <Link2 className="w-3.5 h-3.5" /> {p.kind === "new" ? "Match Existing" : "Apply to Vehicle"}
           </ActionBtn>
           {dec.action === "match" && (
             <select value={dec.vehicleId ?? ""} onChange={(e) => setOne({ vehicleId: e.target.value })} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-full">

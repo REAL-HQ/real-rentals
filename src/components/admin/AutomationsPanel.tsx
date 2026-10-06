@@ -186,7 +186,7 @@ export function AutomationsPanel() {
                           : "border-transparent bg-[#D03020] text-white hover:opacity-90"
                       }`}
                     >
-                      {wf.is_active ? "Pause" : "Turn on"}
+                      {wf.is_active ? "Pause" : "Turn On"}
                     </button>
                     <button
                       onClick={() => removeWorkflow(wf.id)}

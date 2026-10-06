@@ -149,7 +149,7 @@ function LoginPage() {
         }}
         className="mt-4 text-sm text-real-red hover:underline font-medium"
       >
-        {mode === "signin" ? "Forgot your password?" : "Back to sign in"}
+        {mode === "signin" ? "Forgot your password?" : "Back to Sign In"}
       </button>
 
       {/* No Create Account. A driver account is made when we approve the
