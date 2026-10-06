@@ -187,7 +187,7 @@ export function MessagesOverlay({
         <div className="mt-3 grid grid-cols-2 gap-2">
           <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter conversations"
             className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
-            <option value="all">All Conversations</option>
+            <option value="all">All</option>
             <option value="unread">Unread</option>
           </select>
           <select value="all" onChange={() => {}} aria-label="Channel" disabled
