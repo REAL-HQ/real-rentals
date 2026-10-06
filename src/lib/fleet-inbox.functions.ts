@@ -2,6 +2,7 @@
 // AI proposes, the server validates, a person approves. Originals are stored
 // once in the private vehicle-docs bucket and recorded in the existing
 // `documents` vault; document_vehicle_links relates one document to many cars.
+import { normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -416,14 +417,15 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           }
           const val = coerce(f, c.proposed);
           if (val == null) continue;
-          toWrite[f] = val; written.push(c);
+          // Display-only re-casing for descriptive fields; raw text stays in provenance.
+          toWrite[f] = normalizeDisplayField(f, val); written.push(c);
         }
 
         let vehicleId: string;
         if (dec.action === "create") {
           const row: Record<string, unknown> = {
             ...toWrite, vin: fresh.vin,
-            year: coerce("year", entry.fields.year!.value), make: entry.fields.make!.value, model: entry.fields.model!.value,
+            year: coerce("year", entry.fields.year!.value), make: normalizeDisplayText(String(entry.fields.make!.value)), model: normalizeDisplayText(String(entry.fields.model!.value)),
             // Documents never establish a price: rate stays Not Set and the car
             // starts as Needs Setup until a human prices it, adds a photo and
             // chooses Make Available.
