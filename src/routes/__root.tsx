@@ -14,6 +14,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { FileDropBridge } from "@/components/FileDropBridge";
 import { captureAttribution } from "@/lib/attribution";
 
 function NotFoundComponent() {
@@ -182,6 +183,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />
+      <FileDropBridge />
     </QueryClientProvider>
   );
 }
