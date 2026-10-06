@@ -7,7 +7,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { logAudit } from "@/lib/audit";
 import { tierAllows } from "@/lib/roles";
 import {
-  dueStatus, sortTimeline, categoryLabel, normalizeCategory, SOURCE_LABELS,
+  dueStatus, sortTimeline, netServiceCost, categoryLabel, normalizeCategory, SOURCE_LABELS,
   type DueResult, type TimelineEvent,
 } from "@/lib/maintenance-rules";
 
@@ -15,7 +15,7 @@ const admin = async () => (await import("@/integrations/supabase/client.server")
 const today = () => new Date().toISOString().slice(0, 10);
 const money = z.number().min(0).max(1_000_000).nullable().optional();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const COST_FIELDS = ["labor_cost", "parts_cost", "tax_amount", "other_cost", "total_cost", "warranty_covered", "company_share", "partner_share", "payment_status", "payment_method"];
+const COST_FIELDS = ["labor_cost", "parts_cost", "tax_amount", "other_cost", "total_cost", "warranty_covered", "vendor_credit", "company_share", "partner_share", "payment_status", "payment_method"];
 const stripCosts = (r: any) => { const o = { ...r }; for (const f of COST_FIELDS) delete o[f]; return o; };
 
 async function sha256Hex(bytes: Uint8Array) {
@@ -214,7 +214,8 @@ export const correctServiceEvent = createServerFn({ method: "POST" })
     changes: z.object({
       performed_on: isoDate.nullable().optional(), invoice_number: z.string().max(80).nullable().optional(),
       description: z.string().max(2000).nullable().optional(), notes: z.string().max(4000).nullable().optional(),
-      total_cost: money, status: z.enum(["completed", "in_progress", "scheduled"]).optional(),
+      total_cost: money, warranty_covered: money, vendor_credit: money,
+      status: z.enum(["completed", "in_progress", "scheduled"]).optional(),
       vendor_id: z.string().uuid().nullable().optional(),
     }),
   }).parse(d))
@@ -231,7 +232,17 @@ export const correctServiceEvent = createServerFn({ method: "POST" })
     const patch: any = Object.fromEntries(Object.entries(diff).map(([k, d]) => [k, d.to]));
     if (patch.status === "completed" && !before.completed_at) patch.completed_at = new Date().toISOString();
     await sb.from("maintenance_records").update({ ...patch, updated_by: actor.userId }).eq("id", data.id);
-    if ("total_cost" in patch) await sb.from("vehicle_expenses").update({ amount: patch.total_cost ?? 0 }).eq("maintenance_record_id", data.id);
+    // Linked expense always mirrors the net amount actually paid (refunds / warranty / vendor credits lower it; gross stays on the record).
+    if ("total_cost" in patch || "warranty_covered" in patch || "vendor_credit" in patch) {
+      const after = { ...before, ...patch } as any;
+      const net = netServiceCost(after.total_cost, after.warranty_covered, after.vendor_credit) ?? 0;
+      const { data: exp } = await sb.from("vehicle_expenses").select("id").eq("maintenance_record_id", data.id).maybeSingle();
+      if (exp) await sb.from("vehicle_expenses").update({ amount: net }).eq("id", exp.id);
+      else if (net > 0 && after.status === "completed") await sb.from("vehicle_expenses").insert({
+        vehicle_id: after.vehicle_id, vendor_id: after.vendor_id, category: "maintenance", description: String(after.item ?? "Service").slice(0, 200),
+        amount: net, incurred_on: after.performed_on ?? today(), maintenance_record_id: data.id, created_by: actor.userId,
+      });
+    }
     await logAudit(actor, { action: "service.corrected", summary: `Corrected service record (${Object.keys(diff).join(", ")})`, entityType: "vehicle", entityId: before.vehicle_id, metadata: { maintenance_record_id: data.id, diff, reason: data.reason ?? null } });
     return { ok: true as const };
   });

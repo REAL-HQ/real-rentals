@@ -336,9 +336,7 @@ function stripServiceCosts(p: any) {
     return [k, { ...v, value: JSON.stringify(items.map((i) => ({ description: i?.description ?? "" }))), raw: undefined }];
   }));
   const changes = Array.isArray(p.changes) ? p.changes.filter((c: any) => !SERVICE_COST_FIELDS.has(c?.field) && c?.field !== "service_items") : p.changes;
-  const { result, ...rest } = p;
-  const safeResult = result && typeof result === "object" ? { ...result, message: undefined } : result;
-  return { ...rest, fields, changes, result: safeResult };
+  return { ...p, fields, changes };
 }
 export const getImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

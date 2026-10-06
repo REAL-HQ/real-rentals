@@ -133,3 +133,9 @@ export const TIMELINE_FILTERS: { key: string; label: string; kinds: TimelineKind
 export function sortTimeline(ev: TimelineEvent[]): TimelineEvent[] {
   return [...ev].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
+
+/** Business cost of a service = invoice total − warranty coverage − vendor credits/refunds (never below 0). Null when total unknown. */
+export function netServiceCost(total: number | null | undefined, warranty?: number | null, credits?: number | null): number | null {
+  if (total == null || !Number.isFinite(total)) return null;
+  return Math.max(0, Math.round((total - (warranty ?? 0) - (credits ?? 0)) * 100) / 100);
+}

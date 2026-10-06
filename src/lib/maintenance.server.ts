@@ -4,7 +4,7 @@
 // (one dollar counted once) and at most one mileage reading per evidence.
 import type { Actor } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
-import { normalizeCategory, sumKnown, vendorKey } from "@/lib/maintenance-rules";
+import { netServiceCost, normalizeCategory, sumKnown, vendorKey } from "@/lib/maintenance-rules";
 
 export type ServiceItemInput = { description: string; category?: string | null; amount?: number | null; quantity?: number | null };
 export type ServiceEventInput = {
@@ -89,10 +89,12 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
     })));
   }
   // Single financial truth: one expense row that points at this event.
-  if (completed && total != null && total > 0) {
+  // The expense is what the business actually paid: invoice total minus warranty coverage.
+  const net = netServiceCost(total, input.warrantyCovered ?? null);
+  if (completed && net != null && net > 0) {
     await sb.from("vehicle_expenses").insert({
       vehicle_id: input.vehicleId, vendor_id: vendorId, category: "maintenance", description: title.slice(0, 200),
-      amount: total, incurred_on: input.performedOn ?? new Date().toISOString().slice(0, 10),
+      amount: net, incurred_on: input.performedOn ?? new Date().toISOString().slice(0, 10),
       payment_method: input.paymentMethod ?? null, reference: input.invoiceNumber ?? null,
       maintenance_record_id: rec.id, created_by: actor.userId,
     });
