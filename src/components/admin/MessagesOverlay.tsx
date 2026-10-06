@@ -204,7 +204,6 @@ export function MessagesOverlay({
           )}
         </div>
       </div>
-      </div>
       <div className="flex-1 overflow-y-auto">
         {convs === null ? (
           <div className="p-6 text-[12px] text-[#9A9AA3]">Loading…</div>
