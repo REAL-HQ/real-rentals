@@ -49,12 +49,12 @@ export function vendorKey(name: string | null | undefined): string {
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
-  service: "Service", inspection: "Inspection", rental_checkout: "Rental Checkout", rental_return: "Rental Return",
+  service: "Service", inspection: "Inspection", rental_checkout: "Rental Pickup", rental_return: "Rental Return",
   manual: "Manual", fleet_inbox: "Fleet Inbox", title: "Title", registration: "Registration",
   odometer_photo: "Odometer Photo", incident: "Incident", other: "Other",
 };
 
-export type Reading = { id?: string; mileage: number; observed_on: string; status: string };
+export type Reading = { id?: string; mileage: number; observed_on: string; observed_at?: string | null; status: string };
 
 /** Material drop that makes a newer-dated reading suspicious (matches DB trigger). */
 export const ODOMETER_TOLERANCE = 500;
@@ -64,10 +64,21 @@ export function isOdometerConflict(history: Reading[], next: { mileage: number; 
   return history.some((r) => r.status === "valid" && r.observed_on <= next.observed_on && r.mileage > next.mileage + ODOMETER_TOLERANCE);
 }
 
-/** Current mileage = newest valid reading (date, then miles). */
+/**
+ * Current mileage = newest valid reading by OBSERVATION (not insert) order: date, then exact time when the
+ * source had one (date-only sources are never given an invented time and sort after timed ones that day),
+ * then miles. Mirrors vehicle_sync_current_odometer.
+ */
 export function currentMileage(history: Reading[]): Reading | null {
   const valid = history.filter((r) => r.status === "valid");
-  valid.sort((a, b) => (a.observed_on === b.observed_on ? b.mileage - a.mileage : a.observed_on < b.observed_on ? 1 : -1));
+  valid.sort((a, b) => {
+    if (a.observed_on !== b.observed_on) return a.observed_on < b.observed_on ? 1 : -1;
+    const ta = a.observed_at ?? null, tb = b.observed_at ?? null;
+    if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
+    if (ta && !tb) return -1;
+    if (!ta && tb) return 1;
+    return b.mileage - a.mileage;
+  });
   return valid[0] ?? null;
 }
 
@@ -132,4 +143,16 @@ export const TIMELINE_FILTERS: { key: string; label: string; kinds: TimelineKind
 ];
 export function sortTimeline(ev: TimelineEvent[]): TimelineEvent[] {
   return [...ev].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+/** Business cost of a service = invoice total − warranty coverage − vendor credits/refunds (never below 0). Null when total unknown. */
+export function netServiceCost(total: number | null | undefined, warranty?: number | null, credits?: number | null): number | null {
+  if (total == null || !Number.isFinite(total)) return null;
+  return Math.max(0, Math.round((total - (warranty ?? 0) - (credits ?? 0)) * 100) / 100);
+}
+
+/** Miles Driven is derived from the rental's pickup and return observations — never stored or hand-edited. */
+export function milesDriven(pickup: number | null | undefined, ret: number | null | undefined): number | null {
+  if (pickup == null || ret == null || ret < pickup) return null;
+  return ret - pickup;
 }

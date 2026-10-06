@@ -2482,6 +2482,7 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           vehicle_id: string
+          vendor_credit: number | null
           vendor_id: string | null
           vendor_name_raw: string | null
           warranty_covered: number | null
@@ -2525,6 +2526,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           vehicle_id: string
+          vendor_credit?: number | null
           vendor_id?: string | null
           vendor_name_raw?: string | null
           warranty_covered?: number | null
@@ -2568,6 +2570,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           vehicle_id?: string
+          vendor_credit?: number | null
           vendor_id?: string | null
           vendor_name_raw?: string | null
           warranty_covered?: number | null
@@ -2877,12 +2880,15 @@ export type Database = {
           created_at: string
           document_id: string | null
           document_page: number | null
+          driver_id: string | null
           entered_by: string | null
           evidence_key: string | null
           id: string
           mileage: number
           note: string | null
+          observed_at: string | null
           observed_on: string
+          rental_id: string | null
           source_id: string | null
           source_type: string
           status: string
@@ -2893,12 +2899,15 @@ export type Database = {
           created_at?: string
           document_id?: string | null
           document_page?: number | null
+          driver_id?: string | null
           entered_by?: string | null
           evidence_key?: string | null
           id?: string
           mileage: number
           note?: string | null
+          observed_at?: string | null
           observed_on: string
+          rental_id?: string | null
           source_id?: string | null
           source_type: string
           status?: string
@@ -2909,12 +2918,15 @@ export type Database = {
           created_at?: string
           document_id?: string | null
           document_page?: number | null
+          driver_id?: string | null
           entered_by?: string | null
           evidence_key?: string | null
           id?: string
           mileage?: number
           note?: string | null
+          observed_at?: string | null
           observed_on?: string
+          rental_id?: string | null
           source_id?: string | null
           source_type?: string
           status?: string
@@ -2927,6 +2939,13 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odometer_readings_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
             referencedColumns: ["id"]
           },
           {
@@ -3384,6 +3403,8 @@ export type Database = {
           id: string
           next_payment_due: string | null
           payment_status: string
+          pickup_reading_id: string | null
+          return_reading_id: string | null
           start_date: string
           status: string
           stripe_customer_id: string | null
@@ -3413,6 +3434,8 @@ export type Database = {
           id?: string
           next_payment_due?: string | null
           payment_status?: string
+          pickup_reading_id?: string | null
+          return_reading_id?: string | null
           start_date?: string
           status?: string
           stripe_customer_id?: string | null
@@ -3442,6 +3465,8 @@ export type Database = {
           id?: string
           next_payment_due?: string | null
           payment_status?: string
+          pickup_reading_id?: string | null
+          return_reading_id?: string | null
           start_date?: string
           status?: string
           stripe_customer_id?: string | null
@@ -3457,6 +3482,20 @@ export type Database = {
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rentals_pickup_reading_id_fkey"
+            columns: ["pickup_reading_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rentals_return_reading_id_fkey"
+            columns: ["return_reading_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
             referencedColumns: ["id"]
           },
           {
@@ -4702,11 +4741,13 @@ export type Database = {
     Functions: {
       activate_rental_tx: {
         Args: {
+          _actor?: string
           _application_id: string
           _deposit: number
           _deposit_held: boolean
           _driver_id: string
           _end: string
+          _pickup_miles?: number
           _start: string
           _vehicle_id: string
           _weekly_rate: number
@@ -4743,7 +4784,13 @@ export type Database = {
       }
       email_state_rank: { Args: { _s: string }; Returns: number }
       end_rental_tx: {
-        Args: { _end: string; _rental_id: string; _vehicle_status: string }
+        Args: {
+          _actor?: string
+          _end: string
+          _rental_id: string
+          _return_miles?: number
+          _vehicle_status: string
+        }
         Returns: string
       }
       esign_claim: {

@@ -1063,10 +1063,22 @@ function DriverDetail({
 
   async function doEndRental() {
     if (!activeRentalId) return;
-    if (!confirm("End this rental? The vehicle is released and any running automations stop."))
-      return;
+    // Return Mileage: prefilled from a return inspection on this car, if one exists (one observation, not two).
+    const { data: r } = await supabase.from("rentals").select("vehicle_id,start_date").eq("id", activeRentalId).maybeSingle();
+    const { data: insp } = r?.vehicle_id
+      ? await supabase.from("inspections").select("odometer").eq("vehicle_id", r.vehicle_id).eq("inspection_type", "return")
+          .not("completed_at", "is", null).gte("completed_at", r.start_date ?? "1970-01-01").order("completed_at", { ascending: false }).limit(1).maybeSingle()
+      : { data: null };
+    const entered = window.prompt(
+      "End this rental? The vehicle is released and any running automations stop.\n\nReturn Mileage (odometer now):",
+      insp?.odometer != null ? String(insp.odometer) : "",
+    );
+    if (entered === null) return;
+    const digits = entered.replace(/[^\d]/g, "");
+    if (!digits && !confirm("End without recording Return Mileage?")) return;
     try {
-      await closeRental({ data: { rentalId: activeRentalId, vehicleStatus: "available" } });
+      const res: any = await closeRental({ data: { rentalId: activeRentalId, vehicleStatus: "available", returnMileage: digits ? Number(digits) : null } });
+      if (res && res.ok === false) { toast.error(res.error ?? "Could not end the rental"); return; }
       toast.success("Rental ended — settle the deposit next");
       setDepositRentalId(activeRentalId);
       onUpdate({ status: "closed" });

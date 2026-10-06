@@ -1,0 +1,1 @@
+ALTER TABLE public.maintenance_records ADD COLUMN IF NOT EXISTS vendor_credit numeric(12,2) CHECK (vendor_credit IS NULL OR vendor_credit >= 0);

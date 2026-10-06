@@ -328,6 +328,16 @@ export const attachInboxItem = createServerFn({ method: "POST" })
   });
 
 // ---------------------------------------------------------------- read batch
+const SERVICE_COST_FIELDS = new Set(["parts_total", "labor_total", "tax_total", "total", "payment_method"]);
+function stripServiceCosts(p: any) {
+  const fields = Object.fromEntries(Object.entries(p.fields ?? {}).filter(([k]) => !SERVICE_COST_FIELDS.has(k)).map(([k, v]: [string, any]) => {
+    if (k !== "service_items" || !v) return [k, v];
+    let items: any[] = []; try { items = JSON.parse(v.value ?? "[]"); } catch { items = []; }
+    return [k, { ...v, value: JSON.stringify(items.map((i) => ({ description: i?.description ?? "" }))), raw: undefined }];
+  }));
+  const changes = Array.isArray(p.changes) ? p.changes.filter((c: any) => !SERVICE_COST_FIELDS.has(c?.field) && c?.field !== "service_items") : p.changes;
+  return { ...p, fields, changes };
+}
 export const getImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ batchId: z.string().uuid() }).parse(d))
@@ -346,10 +356,12 @@ export const getImportBatch = createServerFn({ method: "POST" })
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
-      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => canFinance || !isFinanceField(k)));
+      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => canFinance || (!isFinanceField(k) && !SERVICE_COST_FIELDS.has(k))));
       return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length } : null };
     });
-    return { batch, items: safeItems, proposals: proposals ?? [], finance, vehicles: vehicles ?? [], canFinance };
+    // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
+    const safeProposals = canFinance ? proposals ?? [] : (proposals ?? []).map(stripServiceCosts);
+    return { batch, items: safeItems, proposals: safeProposals, finance, vehicles: vehicles ?? [], canFinance };
   });
 
 // ---------------------------------------------------------------- apply

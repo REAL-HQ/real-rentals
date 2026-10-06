@@ -7,7 +7,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { logAudit } from "@/lib/audit";
 import { tierAllows } from "@/lib/roles";
 import {
-  dueStatus, sortTimeline, categoryLabel, normalizeCategory, SOURCE_LABELS,
+  dueStatus, sortTimeline, netServiceCost, milesDriven, categoryLabel, normalizeCategory, SOURCE_LABELS,
   type DueResult, type TimelineEvent,
 } from "@/lib/maintenance-rules";
 
@@ -15,7 +15,7 @@ const admin = async () => (await import("@/integrations/supabase/client.server")
 const today = () => new Date().toISOString().slice(0, 10);
 const money = z.number().min(0).max(1_000_000).nullable().optional();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const COST_FIELDS = ["labor_cost", "parts_cost", "tax_amount", "other_cost", "total_cost", "warranty_covered", "company_share", "partner_share", "payment_status", "payment_method"];
+const COST_FIELDS = ["labor_cost", "parts_cost", "tax_amount", "other_cost", "total_cost", "warranty_covered", "vendor_credit", "company_share", "partner_share", "payment_status", "payment_method"];
 const stripCosts = (r: any) => { const o = { ...r }; for (const f of COST_FIELDS) delete o[f]; return o; };
 
 async function sha256Hex(bytes: Uint8Array) {
@@ -214,7 +214,8 @@ export const correctServiceEvent = createServerFn({ method: "POST" })
     changes: z.object({
       performed_on: isoDate.nullable().optional(), invoice_number: z.string().max(80).nullable().optional(),
       description: z.string().max(2000).nullable().optional(), notes: z.string().max(4000).nullable().optional(),
-      total_cost: money, status: z.enum(["completed", "in_progress", "scheduled"]).optional(),
+      total_cost: money, warranty_covered: money, vendor_credit: money,
+      status: z.enum(["completed", "in_progress", "scheduled"]).optional(),
       vendor_id: z.string().uuid().nullable().optional(),
     }),
   }).parse(d))
@@ -231,7 +232,17 @@ export const correctServiceEvent = createServerFn({ method: "POST" })
     const patch: any = Object.fromEntries(Object.entries(diff).map(([k, d]) => [k, d.to]));
     if (patch.status === "completed" && !before.completed_at) patch.completed_at = new Date().toISOString();
     await sb.from("maintenance_records").update({ ...patch, updated_by: actor.userId }).eq("id", data.id);
-    if ("total_cost" in patch) await sb.from("vehicle_expenses").update({ amount: patch.total_cost ?? 0 }).eq("maintenance_record_id", data.id);
+    // Linked expense always mirrors the net amount actually paid (refunds / warranty / vendor credits lower it; gross stays on the record).
+    if ("total_cost" in patch || "warranty_covered" in patch || "vendor_credit" in patch) {
+      const after = { ...before, ...patch } as any;
+      const net = netServiceCost(after.total_cost, after.warranty_covered, after.vendor_credit) ?? 0;
+      const { data: exp } = await sb.from("vehicle_expenses").select("id").eq("maintenance_record_id", data.id).maybeSingle();
+      if (exp) await sb.from("vehicle_expenses").update({ amount: net }).eq("id", exp.id);
+      else if (net > 0 && after.status === "completed") await sb.from("vehicle_expenses").insert({
+        vehicle_id: after.vehicle_id, vendor_id: after.vendor_id, category: "maintenance", description: String(after.item ?? "Service").slice(0, 200),
+        amount: net, incurred_on: after.performed_on ?? today(), maintenance_record_id: data.id, created_by: actor.userId,
+      });
+    }
     await logAudit(actor, { action: "service.corrected", summary: `Corrected service record (${Object.keys(diff).join(", ")})`, entityType: "vehicle", entityId: before.vehicle_id, metadata: { maintenance_record_id: data.id, diff, reason: data.reason ?? null } });
     return { ok: true as const };
   });
@@ -332,7 +343,9 @@ export const getFleetMaintenance = createServerFn({ method: "POST" })
     }
     const rank: Record<string, number> = { overdue: 0, conflict: 1, open: 2, due: 3 };
     attention.sort((a, b) => (rank[a.due.state] ?? 9) - (rank[b.due.state] ?? 9));
-    return { attention, upcoming };
+    const count = (st: string) => attention.filter((a) => a.due.state === st).length;
+    const counts = { overdue: count("overdue"), due: count("due"), dueSoon: upcoming.length, open: count("open"), conflict: count("conflict") };
+    return { attention, upcoming, counts };
   });
 
 // ---------------------------------------------------------------- vehicle timeline
@@ -351,7 +364,7 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
       sb.from("maintenance_records").select("id,item,status,performed_on,created_at,odometer,document_id,vendor_name_raw,vendors(name)").eq("vehicle_id", id),
       sb.from("odometer_readings").select("id,mileage,observed_on,source_type,status,document_id").eq("vehicle_id", id),
       sb.from("inspections").select("id,inspection_type,status,completed_at,created_at,odometer").eq("vehicle_id", id),
-      sb.from("rentals").select("id,start_date,end_date,status").eq("vehicle_id", id),
+      sb.from("rentals").select("id,start_date,end_date,status,pickup_reading_id,return_reading_id").eq("vehicle_id", id),
       sb.from("incidents").select("id,incident_type,occurred_at,severity,status").eq("vehicle_id", id),
       sb.from("vehicle_media").select("id,created_at,published").eq("vehicle_id", id).eq("published", true),
       sb.from("audit_log").select("id,action,summary,created_at,metadata").eq("entity_type", "vehicle").eq("entity_id", id).ilike("action", "%status%").limit(200),
@@ -381,8 +394,11 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
     });
     for (const i of (insp.data ?? []) as any[]) if (i.completed_at) ev.push({ id: `i:${i.id}`, kind: "inspection", at: i.completed_at, title: "Inspection Completed", detail: [categoryLabel(i.inspection_type), i.odometer ? `${Number(i.odometer).toLocaleString("en-US")} mi` : null].filter(Boolean).join(" · "), ref: { table: "inspections", id: i.id } });
     for (const r of (rents.data ?? []) as any[]) {
-      ev.push({ id: `rs:${r.id}`, kind: "rental", at: r.start_date, title: "Rental Started", ref: { table: "rentals", id: r.id } });
-      if (r.status !== "active" && r.end_date) ev.push({ id: `re:${r.id}`, kind: "rental", at: r.end_date, title: "Rental Ended", ref: { table: "rentals", id: r.id } });
+      const rd = (rid: string | null) => (reads.data ?? []).find((x: any) => x.id === rid) as any;
+      const pick = rd(r.pickup_reading_id), ret = rd(r.return_reading_id);
+      const md = milesDriven(pick?.mileage ?? null, ret?.mileage ?? null);
+      ev.push({ id: `rs:${r.id}`, kind: "rental", at: r.start_date, title: "Rental Started", detail: pick ? `Pickup ${Number(pick.mileage).toLocaleString("en-US")} mi` : null, ref: { table: "rentals", id: r.id } });
+      if (r.status !== "active" && r.end_date) ev.push({ id: `re:${r.id}`, kind: "rental", at: r.end_date, title: "Rental Ended", detail: [ret ? `Return ${Number(ret.mileage).toLocaleString("en-US")} mi` : null, md != null ? `${md.toLocaleString("en-US")} Miles Driven` : null].filter(Boolean).join(" · ") || null, ref: { table: "rentals", id: r.id } });
     }
     for (const i of (incs.data ?? []) as any[]) ev.push({ id: `x:${i.id}`, kind: "incident", at: i.occurred_at, title: "Incident Recorded", detail: [categoryLabel(i.incident_type), i.severity].filter(Boolean).join(" · "), ref: { table: "incidents", id: i.id } });
     for (const m of (media.data ?? []) as any[]) ev.push({ id: `p:${m.id}`, kind: "photo", at: m.created_at, title: "Photo Published", ref: { table: "vehicle_media", id: m.id } });
