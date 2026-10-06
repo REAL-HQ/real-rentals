@@ -4395,6 +4395,10 @@ export type Database = {
         Returns: boolean
       }
       sync_vehicle_photos: { Args: { _vehicle_id: string }; Returns: undefined }
+      vehicle_listing_ready_missing: {
+        Args: { _vehicle_id: string }
+        Returns: string[]
+      }
       vehicle_pl: {
         Args: { _from?: string; _to?: string }
         Returns: {
