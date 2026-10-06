@@ -184,7 +184,7 @@ function Portal() {
               to="/apply"
               className="inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
             >
-              Start An Application
+              Start an Application
             </Link>
             <button
               type="button"
@@ -348,7 +348,7 @@ function DocumentsView() {
 
       {!isLoading && shared.length > 0 ? (
         <div className="rounded-2xl border border-border bg-white p-5">
-          <h3 className="font-semibold">Shared By Our Team</h3>
+          <h3 className="font-semibold">Shared by Our Team</h3>
           <ul className="mt-3 divide-y divide-border">
             {shared.map((d) => (
               <li key={d.id} className="py-3 flex items-center justify-between gap-4">
@@ -433,7 +433,7 @@ function AgreementsView() {
                   }}
                   className="text-xs font-semibold text-real-red"
                 >
-                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & sign"}
+                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & Sign"}
                 </button>
               </div>
             </div>
@@ -482,7 +482,7 @@ function AgreementsView() {
                       }}
                       className="rounded-lg bg-real-red text-white text-sm font-semibold px-5 py-2.5 disabled:opacity-40"
                     >
-                      {busy ? "Signing…" : "Sign agreement"}
+                      {busy ? "Signing…" : "Sign Agreement"}
                     </button>
                   </div>
                 ) : null}
@@ -650,7 +650,7 @@ function CheckoutSignOffCard() {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-semibold">Vehicle Condition At Pickup</h3>
+          <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
               ? `You signed this on ${new Date(data.signedAt as string).toLocaleDateString()}.`
@@ -855,7 +855,7 @@ function PicturesView() {
       {vehicleId ? (
         <>
           <div className="rounded-2xl border border-border bg-white p-5">
-            <h3 className="font-semibold">Proof Of Condition</h3>
+            <h3 className="font-semibold">Proof of Condition</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Photograph the car when you pick it up and again when you bring it back. These
               timestamped photos protect you if there is ever a question about damage — and you can
@@ -864,7 +864,7 @@ function PicturesView() {
           </div>
 
           <ConditionUploader
-            title="Before — At Pickup"
+            title="Before — at Pickup"
             vehicleId={vehicleId}
             rentalId={rentalId}
             phase="checkout"
@@ -873,7 +873,7 @@ function PicturesView() {
           />
 
           <ConditionUploader
-            title="After — At Return"
+            title="After — at Return"
             vehicleId={vehicleId}
             rentalId={rentalId}
             phase="checkin"
@@ -883,7 +883,7 @@ function PicturesView() {
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-white p-5">
-          <h3 className="font-semibold">Proof Of Condition</h3>
+          <h3 className="font-semibold">Proof of Condition</h3>
           <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
             <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
             <div className="mt-3 text-sm font-medium">No Vehicle Assigned Yet</div>
@@ -945,7 +945,7 @@ function SettingsView() {
     try {
       const res = await submitIssue({
         data: {
-          title: "Account detail update request",
+          title: "Account Detail Update Request",
           body: note,
           kind: "account",
           severity: "low",
@@ -994,7 +994,7 @@ function SettingsView() {
       </div>
 
       <form onSubmit={requestChange} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Request A Change</h3>
+        <h3 className="font-semibold">Request a Change</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Anything else you need updated — our team will take care of it.
         </p>
@@ -1068,7 +1068,7 @@ function IssuesViewInner() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Report An Issue</h3>
+        <h3 className="font-semibold">Report an Issue</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Mechanical problems, accidents, or anything else we should know about.
         </p>
@@ -1216,7 +1216,7 @@ function ReferralsView() {
       </div>
 
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Refer A Driver</h3>
+        <h3 className="font-semibold">Refer a Driver</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Send us their email and we'll take it from there. You earn once they start renting.
         </p>
@@ -1853,7 +1853,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Upcoming For Your Vehicle</h3>
+        <h3 className="font-semibold">Upcoming for Your Vehicle</h3>
         {data.maintenance.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             Nothing scheduled. We'll notify you when routine service is due.
@@ -1877,7 +1877,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
         )}
       </div>
       <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Preferred Shops In Your Market</h3>
+        <h3 className="font-semibold">Preferred Shops in Your Market</h3>
         {data.shops.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No shops listed for your market yet.</p>
         ) : (

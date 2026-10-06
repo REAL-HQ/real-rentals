@@ -305,7 +305,7 @@ export function VehiclesPanel({
                     onClick={() => setViewing(v.id)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm"
                   >
-                    Open record <ArrowRight className="w-3.5 h-3.5" />
+                    Open Record <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => remove(v)}

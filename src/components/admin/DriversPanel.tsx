@@ -1224,7 +1224,7 @@ function DriverDetail({
                   className="text-[#D03020] focus:text-[#D03020]"
                   onClick={onDelete}
                 >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete driver
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Driver
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1361,7 +1361,7 @@ function DriverDetail({
                   value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
                 />
                 <Row2
-                  label="Card On File"
+                  label="Card on File"
                   value={driver.card_last4 ? `····${driver.card_last4}` : "Not saved"}
                 />
               </dl>
@@ -1376,7 +1376,7 @@ function DriverDetail({
                   detail={`${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}`}
                 />
                 <SignalRow label="Insurance" ok={insuranceOk} />
-                <SignalRow label="Card on file" ok={!!driver.card_last4} />
+                <SignalRow label="Card on File" ok={!!driver.card_last4} />
                 <SignalRow label="Approved" ok={approved} />
               </dl>
             </SectionCard>
@@ -1385,33 +1385,33 @@ function DriverDetail({
               <div className="space-y-1.5">
                 <QuickAction
                   icon={ClipboardList}
-                  label="Continue interview"
+                  label="Continue Interview"
                   onClick={() => setInterviewOpen(true)}
                 />
                 <QuickAction
                   icon={FileText}
-                  label="Request documents"
+                  label="Request Documents"
                   onClick={() =>
                     (document.getElementById("tab-documents") as HTMLElement | null)?.click()
                   }
                 />
                 <QuickAction
                   icon={ShieldCheck}
-                  label="Verify insurance"
+                  label="Verify Insurance"
                   onClick={() =>
                     (document.getElementById("tab-screening") as HTMLElement | null)?.click()
                   }
                 />
                 <QuickAction
                   icon={Car}
-                  label="Assign vehicle"
+                  label="Assign Vehicle"
                   onClick={() =>
                     (document.getElementById("tab-rental") as HTMLElement | null)?.click()
                   }
                 />
                 <QuickAction
                   icon={FileText}
-                  label="Add note"
+                  label="Add Note"
                   onClick={() =>
                     (document.getElementById("tab-notes") as HTMLElement | null)?.click()
                   }
@@ -1420,11 +1420,11 @@ function DriverDetail({
                   <>
                     <QuickAction
                       icon={Wallet}
-                      label="Deposit disposition"
+                      label="Deposit Disposition"
                       onClick={() => setDepositRentalId(activeRentalId)}
                     />
                     {driver.status === "active" ? (
-                      <QuickAction icon={Car} label="End rental" onClick={doEndRental} />
+                      <QuickAction icon={Car} label="End Rental" onClick={doEndRental} />
                     ) : null}
                   </>
                 ) : null}
@@ -1512,18 +1512,18 @@ function DriverDetail({
                       }
                     />
                     <Fact label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
-                    <Fact label="Years licensed" value={driver.years_licensed ?? "—"} />
-                    <Fact label="Weekly hours" value={driver.weekly_hours ?? "—"} />
+                    <Fact label="Years Licensed" value={driver.years_licensed ?? "—"} />
+                    <Fact label="Weekly Hours" value={driver.weekly_hours ?? "—"} />
                     <Fact
                       label="Accidents (3y)"
                       value={(screening as any)?.accidents_last_3yr ?? "—"}
                     />
                     <Fact
-                      label="License points"
+                      label="License Points"
                       value={(screening as any)?.license_points ?? "—"}
                     />
                     <Fact
-                      label="Drive type"
+                      label="Drive Type"
                       value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"}
                     />
                   </div>
@@ -1531,17 +1531,17 @@ function DriverDetail({
 
                 <SectionCard title="Requirements Checklist">
                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <ReqRow ok={screeningDone} label="Interview complete" />
+                    <ReqRow ok={screeningDone} label="Interview Complete" />
                     <ReqRow
                       ok={!!driver.license_photo_url || !!driver.license_valid}
-                      label="License uploaded"
+                      label="License Uploaded"
                     />
-                    <ReqRow ok={insuranceOk} label="Insurance verified" />
-                    <ReqRow ok={!!(screening as any)?.mvr_authorized} label="MVR authorized" />
-                    <ReqRow ok={!!driver.card_last4} label="Card on file" />
-                    <ReqRow ok={!!(driver as any).agreement_signed_at} label="Agreement signed" />
-                    <ReqRow ok={!!(driver as any).pickup_at} label="Pickup scheduled" />
-                    <ReqRow ok={docsComplete} label="All documents received" />
+                    <ReqRow ok={insuranceOk} label="Insurance Verified" />
+                    <ReqRow ok={!!(screening as any)?.mvr_authorized} label="MVR Authorized" />
+                    <ReqRow ok={!!driver.card_last4} label="Card on File" />
+                    <ReqRow ok={!!(driver as any).agreement_signed_at} label="Agreement Signed" />
+                    <ReqRow ok={!!(driver as any).pickup_at} label="Pickup Scheduled" />
+                    <ReqRow ok={docsComplete} label="All Documents Received" />
                   </ul>
                 </SectionCard>
 
@@ -1600,13 +1600,13 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="application" className="mt-4 space-y-4">
-                <Card title="Driver info" icon={<UserIcon className="w-4 h-4" />}>
+                <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <Field label="DOB" value={driver.dob} />
                     <Field label="License #" value={driver.license_number} />
-                    <Field label="License state" value={driver.license_state} />
+                    <Field label="License State" value={driver.license_state} />
                     <Field label="License exp." value={driver.license_expiration} />
-                    <Field label="Years licensed" value={driver.years_licensed} />
+                    <Field label="Years Licensed" value={driver.years_licensed} />
                     <Field
                       label="Address"
                       value={
@@ -1616,45 +1616,45 @@ function DriverDetail({
                       }
                     />
                     <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
-                    <Field label="Weekly hours" value={driver.weekly_hours} />
+                    <Field label="Weekly Hours" value={driver.weekly_hours} />
                     <Field label="Term" value={driver.rental_term} />
-                    <Field label="Payment method" value={driver.payment_method} />
+                    <Field label="Payment Method" value={driver.payment_method} />
                   </div>
                 </Card>
-                <Card title="Status & compliance" icon={<ShieldCheck className="w-4 h-4" />}>
+                <Card title="Status & Compliance" icon={<ShieldCheck className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <SelField
-                      label="Driver status"
+                      label="Driver Status"
                       value={driver.status}
                       options={[...DRIVER_STATUSES]}
                       onChange={(v) => onUpdate({ status: v })}
                     />
                     <SelField
-                      label="Deposit status"
+                      label="Deposit Status"
                       value={driver.deposit_status}
                       options={[...DEPOSIT_STATUSES]}
                       onChange={(v) => onUpdate({ deposit_status: v })}
                     />
                     <SelField
-                      label="Payment status"
+                      label="Payment Status"
                       value={driver.payment_status}
                       options={[...PAYMENT_STATUSES]}
                       onChange={(v) => onUpdate({ payment_status: v })}
                     />
                     <SelField
-                      label="Background check"
+                      label="Background Check"
                       value={driver.background_check_status}
                       options={[...CHECK_STATUSES]}
                       onChange={(v) => onUpdate({ background_check_status: v })}
                     />
                     <SelField
-                      label="MVR status"
+                      label="MVR Status"
                       value={driver.mvr_status}
                       options={[...CHECK_STATUSES]}
                       onChange={(v) => onUpdate({ mvr_status: v })}
                     />
                     <NumField
-                      label="Incident count"
+                      label="Incident Count"
                       value={driver.incident_count}
                       onSave={(v) => onUpdate({ incident_count: v ?? 0 })}
                     />
@@ -1678,14 +1678,14 @@ function DriverDetail({
                     <Field label="utm_source" value={driver.utm_source} />
                     <Field label="utm_medium" value={driver.utm_medium} />
                     <Field label="utm_campaign" value={driver.utm_campaign} />
-                    <Field label="Landing page" value={driver.landing_page} />
+                    <Field label="Landing Page" value={driver.landing_page} />
                     <Field label="Referrer" value={driver.referrer} />
                   </div>
                 </Card>
               </TabsContent>
 
               <TabsContent value="rental" className="mt-4">
-                <Card title="Assigned vehicle" icon={<Car className="w-4 h-4" />}>
+                <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
                       <div>
@@ -1711,26 +1711,26 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="payments" className="mt-4 space-y-4">
-                <Card title="Payment terms" icon={<CreditCard className="w-4 h-4" />}>
+                <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField
-                      label="Deposit amount ($)"
+                      label="Deposit Amount ($)"
                       value={driver.deposit_amount as any}
                       onSave={(v) => onUpdate({ deposit_amount: v as any })}
                     />
                     <NumField
-                      label="Deposit paid ($)"
+                      label="Deposit Paid ($)"
                       value={driver.deposit_paid as any}
                       onSave={(v) => onUpdate({ deposit_paid: v as any })}
                     />
                     <NumField
-                      label="Weekly rent ($)"
+                      label="Weekly Rent ($)"
                       value={driver.weekly_rent as any}
                       onSave={(v) => onUpdate({ weekly_rent: v as any })}
                     />
                   </div>
                 </Card>
-                <Card title="Contract dates" icon={<CalendarDays className="w-4 h-4" />}>
+                <Card title="Contract Dates" icon={<CalendarDays className="w-4 h-4" />}>
                   {/* These are the agreement's dates, and only these. What the
                       applicant told us — their desired start and how long they
                       expect to need the car — is shown alongside as context,
@@ -1738,12 +1738,12 @@ function DriverDetail({
                       not a term somebody should be asked to sign. */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <DateField
-                      label="Contract start"
+                      label="Contract Start"
                       value={(driver as any).contract_start_date ?? null}
                       onSave={(v) => onUpdate({ contract_start_date: v } as any)}
                     />
                     <DateField
-                      label="Scheduled end"
+                      label="Scheduled End"
                       value={(driver as any).contract_end_date ?? null}
                       onSave={(v) => onUpdate({ contract_end_date: v } as any)}
                     />
@@ -1762,7 +1762,7 @@ function DriverDetail({
                     without both.
                   </p>
                 </Card>
-                <Card title="Driver address" icon={<MapPin className="w-4 h-4" />}>
+                <Card title="Driver Address" icon={<MapPin className="w-4 h-4" />}>
                   {/* The agreement names the driver's address, and Part 1 no
                       longer asks for it — by design, it is contract
                       information rather than lead capture. Part 2 collects it
@@ -1772,7 +1772,7 @@ function DriverDetail({
                       this card existed there was nowhere in the back office to
                       enter it. */}
                   <TxtField
-                    label="Street address"
+                    label="Street Address"
                     value={driver.address ?? null}
                     onSave={(v) => onUpdate({ address: v } as any)}
                   />
@@ -1821,7 +1821,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="notes" className="mt-4">
-                <Card title="Internal notes" icon={<FileText className="w-4 h-4" />}>
+                <Card title="Internal Notes" icon={<FileText className="w-4 h-4" />}>
                   <textarea
                     defaultValue={driver.notes || ""}
                     rows={6}
@@ -2308,7 +2308,7 @@ function VehiclePicker({
         <span className={selected ? "" : "text-muted-foreground"}>
           {selected
             ? `${selected.year} ${selected.make} ${selected.model}${selected.trim ? " " + selected.trim : ""}`
-            : "Assign vehicle"}
+            : "Assign Vehicle"}
         </span>
         <ChevronDown className="w-4 h-4 text-muted-foreground" />
       </button>
@@ -2499,7 +2499,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={copyLink}>
-            <Copy className="w-4 h-4 mr-2" /> Copy card-on-file link
+            <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
           </DropdownMenuItem>
           {driver.phone && (
             <DropdownMenuItem asChild>
@@ -2521,7 +2521,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
           )}
           {hasCard && (
             <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={remove}>
-              <Trash2 className="w-4 h-4 mr-2" /> Remove card
+              <Trash2 className="w-4 h-4 mr-2" /> Remove Card
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -2583,7 +2583,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         className="bg-white rounded-2xl max-w-md w-full p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold mb-1">Charge Card On File</h2>
+        <h2 className="text-lg font-semibold mb-1">Charge Card on File</h2>
         <p className="text-xs text-muted-foreground mb-4">
           {driver.card_brand} ····{driver.card_last4} — {driver.full_name}
         </p>
@@ -2786,7 +2786,7 @@ const DOC_ITEMS: { key: "license" | "gig_screenshot" | "insurance" | "other"; la
   { key: "license", label: "License Photo" },
   { key: "gig_screenshot", label: "Driving Profile Screenshot (Uber, Lyft, DoorDash, etc.)" },
   { key: "insurance", label: "Insurance Information" },
-  { key: "other", label: "Other (specify below)" },
+  { key: "other", label: "Other (Specify Below)" },
 ];
 
 function RequestDocumentsAction({

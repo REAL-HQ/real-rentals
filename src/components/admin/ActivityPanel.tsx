@@ -21,7 +21,7 @@ const ACTION_GROUPS = [
   { value: "expense", label: "Expenses" },
   { value: "role", label: "Access" },
   { value: "invite", label: "Invitations" },
-  { value: "vehicle_doc", label: "Vehicle documents" },
+  { value: "vehicle_doc", label: "Vehicle Documents" },
 ];
 
 function actionTone(action: string): string {
@@ -128,7 +128,7 @@ export function ActivityPanel() {
         ) : rows.length === 0 ? (
           <EmptyState
             icon={<History className="w-6 h-6" strokeWidth={1.75} />}
-            title="Nothing recorded yet"
+            title="Nothing Recorded Yet"
             hint="Approvals, rentals, expenses and access changes will appear here as they happen."
           />
         ) : (

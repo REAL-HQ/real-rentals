@@ -650,7 +650,7 @@ export function OverviewPanel() {
                           {unread && (
                             <span
                               className="h-1.5 w-1.5 rounded-full bg-[#D03020] shrink-0"
-                              title="Not yet opened"
+                              title="Not Yet Opened"
                             />
                           )}
                           <span className="truncate">{a.full_name || "Unnamed Driver"}</span>
@@ -689,7 +689,7 @@ export function OverviewPanel() {
         // thing that would. Until money moves, say so in one line.
         if (!hasActivity) {
           return (
-            <SectionCard title="Billed Vs Collected">
+            <SectionCard title="Billed vs Collected">
               <div className="py-6 text-center">
                 <div className="mx-auto h-9 w-9 rounded-full bg-[#F4F4F6] grid place-items-center text-[#9A9AA3]">
                   <TrendingUp className="w-4 h-4" strokeWidth={1.75} />
@@ -716,7 +716,7 @@ export function OverviewPanel() {
         }
         return (
           <SectionCard
-            title="Billed Vs Collected"
+            title="Billed vs Collected"
             subtitle={
               collectionRate == null
                 ? "Last 12 Weeks · No Invoices Yet"

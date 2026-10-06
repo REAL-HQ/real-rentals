@@ -220,7 +220,7 @@ export function MaintenanceSchedules() {
                         disabled={seeding === v.id}
                         className="rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-medium hover:opacity-90 disabled:opacity-40"
                       >
-                        {seeding === v.id ? "Adding…" : "Use standard schedule"}
+                        {seeding === v.id ? "Adding…" : "Use Standard Schedule"}
                       </button>
                     ) : null}
                     <button
@@ -291,7 +291,7 @@ export function MaintenanceSchedules() {
                             <button
                               onClick={() => remove(s.id)}
                               className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                              title="Delete item"
+                              title="Delete Item"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>

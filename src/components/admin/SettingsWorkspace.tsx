@@ -2,11 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
+import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
 const DESCRIPTIONS: Record<string, string> = {
   company: "Company name and support contact.",
+  vehicle_defaults: "Set standard pricing for each vehicle type. These values pre-fill new vehicles and can always be changed before saving. Existing vehicles never change.",
   rental_terms: "Minimum term, return notice and the terms text.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
@@ -71,6 +73,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
         </div>
         {current.id === "automations" ? (
           <AutomationsPanel />
+        ) : current.id === "vehicle_defaults" ? (
+          <VehicleDefaultsPanel />
         ) : current.id === "team" ? (
           <TeamPanel />
         ) : (

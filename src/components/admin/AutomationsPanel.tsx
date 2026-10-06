@@ -39,11 +39,11 @@ type LogRow = {
 };
 
 const TRIGGERS = [
-  { value: "application_submitted", label: "Someone completes an application" },
-  { value: "application_abandoned", label: "Someone abandons the application" },
-  { value: "application_approved", label: "An application is approved" },
-  { value: "rental_started", label: "A rental starts" },
-  { value: "payment_past_due", label: "A payment goes past due" },
+  { value: "application_submitted", label: "Someone Completes an Application" },
+  { value: "application_abandoned", label: "Someone Abandons the Application" },
+  { value: "application_approved", label: "An Application Is Approved" },
+  { value: "rental_started", label: "A Rental Starts" },
+  { value: "payment_past_due", label: "A Payment Goes Past Due" },
 ];
 
 const TOKENS = ["first_name", "full_name", "city", "phone", "email"];
@@ -186,12 +186,12 @@ export function AutomationsPanel() {
                           : "border-transparent bg-[#D03020] text-white hover:opacity-90"
                       }`}
                     >
-                      {wf.is_active ? "Pause" : "Turn on"}
+                      {wf.is_active ? "Pause" : "Turn On"}
                     </button>
                     <button
                       onClick={() => removeWorkflow(wf.id)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#EDEDF0] text-[#55555E] hover:text-[#D03020] hover:border-[#D6D6DB]"
-                      title="Delete automation"
+                      title="Delete Automation"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -231,7 +231,7 @@ export function AutomationsPanel() {
                         <button
                           onClick={() => removeStep(s.id)}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                          title="Delete message"
+                          title="Delete Message"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -405,10 +405,10 @@ function WorkflowForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Quiet hours start">
+        <Field label="Quiet Hours Start">
           <HourSelect value={quietStart} onChange={setQuietStart} />
         </Field>
-        <Field label="Quiet hours end">
+        <Field label="Quiet Hours End">
           <HourSelect value={quietEnd} onChange={setQuietEnd} />
         </Field>
       </div>

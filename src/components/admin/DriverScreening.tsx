@@ -424,7 +424,7 @@ export function InterviewTab({
                 ]}
               />
             </Field>
-            <Field label="Months On Platform">
+            <Field label="Months on Platform">
               <NumInput
                 value={s.months_on_platform}
                 onChange={(v) => up("months_on_platform" as any, v as any)}
@@ -468,7 +468,7 @@ export function InterviewTab({
                 onChange={(v) => up("has_current_vehicle" as any, v as any)}
               />
             </Field>
-            <Field label="Needed By Date">
+            <Field label="Needed by Date">
               <input
                 type="date"
                 value={s.needed_by_date ?? ""}
@@ -482,7 +482,7 @@ export function InterviewTab({
                 onChange={(v) => up("rate_confirmed" as any, v as any)}
               />
             </Field>
-            <Field label="Card In Own Name">
+            <Field label="Card in Own Name">
               <BoolToggle
                 value={s.card_in_own_name}
                 onChange={(v) => up("card_in_own_name" as any, v as any)}

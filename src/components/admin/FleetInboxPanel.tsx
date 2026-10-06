@@ -119,7 +119,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         {batches === null ? (
           <p className="text-sm text-[#9A9AA3]">Loading…</p>
         ) : batches.length === 0 ? (
-          <EmptyState title="No imports yet" hint="Uploaded files appear here as an import you can review." />
+          <EmptyState title="No Imports Yet" hint="Uploaded files appear here as an import you can review." />
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]">
             {batches.map((b) => (
@@ -353,7 +353,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       )}
 
       {confirming && (
-        <ConfirmDialog title="Before you apply" onCancel={() => setConfirming(false)} onConfirm={commit} busy={applying}
+        <ConfirmDialog title="Before You Apply" onCancel={() => setConfirming(false)} onConfirm={commit} busy={applying}
           confirmLabel={applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}>
           <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
             {creates.length > 0 && <li>{creates.length} vehicle{creates.length === 1 ? "" : "s"} will be created</li>}
@@ -463,7 +463,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
             <ActionBtn active={dec.action === "create"} onClick={() => setOne({ action: dec.action === "create" ? null : "create" })} disabled={!p.vin_check?.formatValid}>Create Vehicle</ActionBtn>
           )}
           <ActionBtn active={dec.action === "match"} onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })} disabled={!vehicles.length}>
-            <Link2 className="w-3.5 h-3.5" /> {p.kind === "new" ? "Match Existing" : "Apply to vehicle"}
+            <Link2 className="w-3.5 h-3.5" /> {p.kind === "new" ? "Match Existing" : "Apply to Vehicle"}
           </ActionBtn>
           {dec.action === "match" && (
             <select value={dec.vehicleId ?? ""} onChange={(e) => setOne({ vehicleId: e.target.value })} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-full">

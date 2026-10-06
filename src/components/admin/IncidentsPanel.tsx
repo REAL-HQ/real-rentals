@@ -171,8 +171,8 @@ export function IncidentsPanel() {
                     <Fig label="Fault" text={r.at_fault.replace(/_/g, " ")} />
                     <Fig label="Estimate" text={money(r.estimated_cost)} />
                     <Fig label="Actual" text={money(r.actual_cost)} />
-                    <Fig label="Insurance paid" text={money(r.insurance_payout)} />
-                    <Fig label="Renter owes" text={money(r.driver_responsible_amount)} />
+                    <Fig label="Insurance Paid" text={money(r.insurance_payout)} />
+                    <Fig label="Renter Owes" text={money(r.driver_responsible_amount)} />
                     {r.claim_number ? (
                       <Fig
                         label="Claim"
@@ -180,7 +180,7 @@ export function IncidentsPanel() {
                       />
                     ) : null}
                     {r.actual_cost > 0 ? (
-                      <Fig label="Net to company" text={money(net)} strong />
+                      <Fig label="Net to Company" text={money(net)} strong />
                     ) : null}
                   </div>
                 ) : null}
@@ -371,7 +371,7 @@ function IncidentForm({
               options={SEVERITIES.map((s) => [s, s.replace(/_/g, " ")])}
             />
             <Sel
-              label="At fault"
+              label="At Fault"
               value={f.atFault}
               onChange={(v) => set("atFault", v)}
               options={FAULTS.map((s) => [s, s.replace(/_/g, " ")])}

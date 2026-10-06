@@ -206,7 +206,7 @@ function HowItWorks() {
                 Get My Quote <ArrowRight className="w-4 h-4" />
               </Link>
               <Link to="/contact" className="inline-flex items-center rounded-lg border border-white/30 px-8 py-4 text-sm font-medium text-white hover:bg-white/10 transition active:scale-95">
-                Talk To A Human
+                Talk to a Human
               </Link>
             </div>
           </FadeUp>

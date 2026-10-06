@@ -54,7 +54,7 @@ export const TABS: readonly TabDef[] = [
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Capital Partners And Lenders" },
   { id: "websites", label: "Websites", icon: Globe, minTier: "manager", group: "BUSINESS", description: "Market-Specific Marketing Sites" },
   { id: "activity", label: "Activity", icon: History, minTier: "manager", group: "MANAGE", description: "Who Did What, And What Is About To Expire" },
-  { id: "settings", label: "Settings", icon: SettingsIcon, minTier: "manager", group: "MANAGE", description: "Company Configuration, Automations And Team" },
+  { id: "settings", label: "Settings", icon: SettingsIcon, minTier: "manager", group: "MANAGE", description: "Company Configuration, Automations and Team" },
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */
@@ -68,6 +68,7 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; messag
 export type SettingsSectionDef = { id: string; label: string; group: string; minTier: StaffTier };
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "company", label: "Company", group: "GENERAL", minTier: "owner" },
+  { id: "vehicle_defaults", label: "Vehicle Defaults", group: "FLEET", minTier: "manager" },
   { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },

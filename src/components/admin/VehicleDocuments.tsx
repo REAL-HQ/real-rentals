@@ -271,7 +271,7 @@ function DocRow({
           type="date"
           value={expires}
           onChange={(e) => setExpires(e.target.value)}
-          title="Expiry date"
+          title="Expiry Date"
           className="rounded-md border border-border px-2 py-1 text-xs"
         />
       )}

@@ -193,7 +193,7 @@ export function VendorsPanel() {
                   <button
                     onClick={() => remove(v.id)}
                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
-                    title="Delete vendor"
+                    title="Delete Vendor"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -372,7 +372,7 @@ function VendorForm({
             </select>
           </div>
           <Txt
-            label="Contact name"
+            label="Contact Name"
             v={f.contact_name ?? ""}
             onChange={(s) => set("contact_name", s || null)}
           />
@@ -422,7 +422,7 @@ function VendorForm({
 
           <div className="sm:col-span-2">
             <Txt
-              label="Services (comma separated)"
+              label="Services (Comma Separated)"
               v={servicesText}
               onChange={setServicesText}
               placeholder="Oil change, Brakes, Tires, Alignment"
@@ -430,7 +430,7 @@ function VendorForm({
           </div>
           <div className="sm:col-span-2">
             <Txt
-              label="Rate notes"
+              label="Rate Notes"
               v={f.rate_notes ?? ""}
               onChange={(s) => set("rate_notes", s || null)}
               placeholder="$65/hr labor, 10% fleet discount"

@@ -218,7 +218,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 ) : (
                   <Upload className="w-3.5 h-3.5" />
                 )}
-                {uploading > 0 ? `Uploading ${uploading}…` : "Add photos"}
+                {uploading > 0 ? `Uploading ${uploading}…` : "Add Photos"}
               </button>
             </>
           ) : null
@@ -231,7 +231,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
         ) : items.length === 0 ? (
           <EmptyState
             icon={<ImageOff className="w-6 h-6" strokeWidth={1.75} />}
-            title="No photos yet"
+            title="No Photos Yet"
             hint={
               canEdit
                 ? "The first photo you add becomes the one the website leads with."
@@ -262,7 +262,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 
       {data && (
         <SectionCard
-          title="Retouched images"
+          title="Retouched Images"
           icon={<Sparkles className="w-4 h-4" strokeWidth={1.75} />}
         >
           <div className="flex items-start gap-2.5 text-[12px] text-[#55555E] leading-relaxed">
@@ -289,10 +289,10 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 }
 
 const MODES = [
-  { value: "clean_background", label: "Clean background" },
+  { value: "clean_background", label: "Clean Background" },
   { value: "studio", label: "Studio" },
   { value: "outdoor", label: "Outdoor" },
-  { value: "dealer_listing", label: "Dealer listing" },
+  { value: "dealer_listing", label: "Dealer Listing" },
 ];
 
 function PhotoTile({
@@ -394,7 +394,7 @@ function PhotoTile({
         {canEdit && (
           <div className="flex items-center gap-1">
             <IconBtn
-              title={m.published ? "Remove from the website" : "Show on the website"}
+              title={m.published ? "Remove from the Website" : "Show on the Website"}
               onClick={() => onPublish(!m.published)}
               disabled={busy}
             >
@@ -423,7 +423,7 @@ function PhotoTile({
             <div className="flex-1" />
 
             {canDelete && (
-              <IconBtn title="Delete permanently" onClick={onDelete} disabled={busy} danger>
+              <IconBtn title="Delete Permanently" onClick={onDelete} disabled={busy} danger>
                 <Trash2 className="w-3.5 h-3.5" />
               </IconBtn>
             )}
@@ -447,7 +447,7 @@ function EnhanceMenu({
   return (
     <div className="relative">
       <IconBtn
-        title={disabled ? reason : "Create a retouched version"}
+        title={disabled ? reason : "Create a Retouched Version"}
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
       >

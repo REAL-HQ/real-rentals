@@ -54,7 +54,7 @@ const GROUPS: Array<{ key: Section | "ownership"; label: string; icon: any }> = 
   { key: "ownership", label: "Ownership", icon: Building2 },
   { key: "gps", label: "GPS", icon: Satellite },
   { key: "keys", label: "Keys", icon: KeyRound },
-  { key: "service", label: "Service & tolls", icon: Wrench },
+  { key: "service", label: "Service & Tolls", icon: Wrench },
 ];
 
 const FINANCE_FIELDS = [
@@ -312,7 +312,7 @@ export function VehicleEditorDrawer({
         {/* ---- header ---------------------------------------------------- */}
         <header className="bg-white border-b border-[#EDEDF0] px-5 py-3.5 flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold text-[#111114] truncate">Edit vehicle</h2>
+            <h2 className="text-[15px] font-semibold text-[#111114] truncate">Edit Vehicle</h2>
             <p className="text-[12px] text-[#9A9AA3] truncate">
               {profile.unitLabel}
               {hasChanges && <span className="ml-2 text-[#C68A12]">· Unsaved changes</span>}
@@ -365,7 +365,7 @@ export function VehicleEditorDrawer({
           <Group id="identity" title="Vehicle" icon={Car}>
             <Grid>
               <Text
-                label="Unit number"
+                label="Unit Number"
                 value={str("unit_number")}
                 onChange={(x) => set("identity", "unit_number", x)}
                 error={fieldErr("unit_number")}
@@ -401,7 +401,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("identity", "color", x)}
               />
               <Choice
-                label="Body type"
+                label="Body Type"
                 value={str("body_type")}
                 onChange={(x) => set("identity", "body_type", x)}
                 options={[
@@ -447,7 +447,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("identity", "mpg", x)}
               />
               <NumberField
-                label="Range per tank"
+                label="Range per Tank"
                 value={num("miles_per_tank")}
                 onChange={(x) => set("identity", "miles_per_tank", x)}
                 suffix="mi"
@@ -457,14 +457,14 @@ export function VehicleEditorDrawer({
             <Sub>Listing &amp; pricing</Sub>
             <Grid>
               <NumberField
-                label="Weekly rate"
+                label="Weekly Rate"
                 value={num("weekly_rate")}
                 onChange={(x) => set("identity", "weekly_rate", x)}
                 suffix="$"
                 error={fieldErr("weekly_rate") ?? rateIssue ?? undefined}
               />
               <NumberField
-                label="Monthly rate"
+                label="Monthly Rate"
                 value={num("monthly_rate")}
                 onChange={(x) => set("identity", "monthly_rate", x)}
                 suffix="$"
@@ -489,13 +489,13 @@ export function VehicleEditorDrawer({
               suggestions={["Unlimited Miles", "Maintenance Included", "Hybrid", "New Arrival"]}
             />
             <Area
-              label="Listing description"
+              label="Listing Description"
               value={str("description")}
               onChange={(x) => set("identity", "description", x)}
               hint="Shown on the public fleet page."
             />
             <Area
-              label="Internal notes"
+              label="Internal Notes"
               value={str("internal_notes")}
               onChange={(x) => set("identity", "internal_notes", x)}
               rows={2}
@@ -516,12 +516,12 @@ export function VehicleEditorDrawer({
                 mono
               />
               <Text
-                label="Plate state"
+                label="Plate State"
                 value={str("plate_state")}
                 onChange={(x) => set("dmv", "plate_state", x)}
               />
               <DateInput
-                label="Plate expires"
+                label="Plate Expires"
                 value={day("plate_expires_on")}
                 onChange={(x) => set("dmv", "plate_expires_on", x)}
               />
@@ -532,23 +532,23 @@ export function VehicleEditorDrawer({
                 mono
               />
               <Text
-                label="Registration state"
+                label="Registration State"
                 value={str("registration_state")}
                 onChange={(x) => set("dmv", "registration_state", x)}
               />
               <DateInput
-                label="Registration expires"
+                label="Registration Expires"
                 value={day("registration_expires_on")}
                 onChange={(x) => set("dmv", "registration_expires_on", x)}
               />
               <Text
-                label="Title number"
+                label="Title Number"
                 value={str("title_number")}
                 onChange={(x) => set("dmv", "title_number", x)}
                 mono
               />
               <Choice
-                label="Title status"
+                label="Title Status"
                 value={str("title_status")}
                 onChange={(x) => set("dmv", "title_status", x)}
                 options={[
@@ -562,7 +562,7 @@ export function VehicleEditorDrawer({
               />
             </Grid>
             <DocLink
-              label="Title and registration documents"
+              label="Title and Registration Documents"
               hint="Files, expiry dates and version history live in the document vault."
               onOpen={() => leaveFor("documents")}
             />
@@ -577,7 +577,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("insurance", "insurance_carrier", x)}
               />
               <Text
-                label="Policy number"
+                label="Policy Number"
                 value={str("insurance_policy_number")}
                 onChange={(x) => set("insurance", "insurance_policy_number", x)}
                 mono
@@ -632,7 +632,7 @@ export function VehicleEditorDrawer({
               />
             </Grid>
             <DocLink
-              label="Insurance card"
+              label="Insurance Card"
               hint="Upload and view the card in the document vault."
               onOpen={() => leaveFor("documents")}
             />
@@ -642,7 +642,7 @@ export function VehicleEditorDrawer({
           <Group id="ownership" title="Ownership" icon={Building2}>
             <Grid>
               <Text
-                label="Assigned partner"
+                label="Assigned Partner"
                 value={profile.partnerName ?? ""}
                 onChange={() => {}}
                 readOnly
@@ -674,12 +674,12 @@ export function VehicleEditorDrawer({
                     ]}
                   />
                   <Text
-                    label="Legal owner"
+                    label="Legal Owner"
                     value={fstr("legal_owner")}
                     onChange={(x) => setFinField("legal_owner", x)}
                   />
                   <Text
-                    label="Seller / dealer"
+                    label="Seller / Dealer"
                     value={fstr("seller_dealer")}
                     onChange={(x) => setFinField("seller_dealer", x)}
                   />
@@ -689,18 +689,18 @@ export function VehicleEditorDrawer({
                     onChange={(x) => setFinField("lienholder", x)}
                   />
                   <DateInput
-                    label="Purchase date"
+                    label="Purchase Date"
                     value={fday("purchase_date")}
                     onChange={(x) => setFinField("purchase_date", x)}
                   />
                   <NumberField
-                    label="Purchase price"
+                    label="Purchase Price"
                     value={fnum("purchase_price")}
                     onChange={(x) => setFinField("purchase_price", x)}
                     suffix="$"
                   />
                   <Text
-                    label="Loan / lease ref"
+                    label="Loan / Lease Ref"
                     value={fstr("loan_reference")}
                     onChange={(x) => setFinField("loan_reference", x)}
                     mono
@@ -712,7 +712,7 @@ export function VehicleEditorDrawer({
                     suffix="$"
                   />
                   <NumberField
-                    label="Monthly payment"
+                    label="Monthly Payment"
                     value={fnum("monthly_payment")}
                     onChange={(x) => setFinField("monthly_payment", x)}
                     suffix="$"
@@ -732,7 +732,7 @@ export function VehicleEditorDrawer({
           </Group>
 
           {/* ===== 5. GPS ================================================== */}
-          <Group id="gps" title="GPS / telematics" icon={Satellite}>
+          <Group id="gps" title="GPS / Telematics" icon={Satellite}>
             <Sub>Device — entered by hand</Sub>
             <Grid>
               <Text
@@ -741,7 +741,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("gps", "gps_provider", x)}
               />
               <Choice
-                label="Device status"
+                label="Device Status"
                 value={str("gps_status")}
                 onChange={(x) => set("gps", "gps_status", x)}
                 options={[
@@ -750,7 +750,7 @@ export function VehicleEditorDrawer({
                   { value: "inactive", label: "Inactive" },
                   { value: "fault", label: "Fault" },
                   { value: "removed", label: "Removed" },
-                  { value: "not_installed", label: "Not installed" },
+                  { value: "not_installed", label: "Not Installed" },
                 ]}
               />
               <Text
@@ -784,13 +784,13 @@ export function VehicleEditorDrawer({
               />
             </Grid>
             <Text
-              label="Tracking link"
+              label="Tracking Link"
               value={str("gps_tracking_url")}
               onChange={(x) => set("gps", "gps_tracking_url", x)}
               placeholder="https://"
             />
             <Area
-              label="Install notes"
+              label="Install Notes"
               value={str("gps_install_notes")}
               onChange={(x) => set("gps", "gps_install_notes", x)}
               rows={2}
@@ -804,13 +804,13 @@ export function VehicleEditorDrawer({
             </p>
             <Grid>
               <NumberField
-                label="Reported odometer"
+                label="Reported Odometer"
                 value={num("gps_odometer")}
                 onChange={(x) => set("gps", "gps_odometer", x)}
                 suffix="mi"
               />
               <Text
-                label="Last ping"
+                label="Last Ping"
                 value={
                   v.gps_last_ping_at ? new Date(String(v.gps_last_ping_at)).toLocaleString() : ""
                 }
@@ -836,34 +836,34 @@ export function VehicleEditorDrawer({
           <Group id="keys" title="Keys" icon={KeyRound}>
             <Grid>
               <NumberField
-                label="Number of keys"
+                label="Number of Keys"
                 value={num("key_count")}
                 onChange={(x) => set("keys", "key_count", x)}
               />
               <Choice
-                label="Spare key"
+                label="Spare Key"
                 value={f.spare_key === true ? "true" : f.spare_key === false ? "false" : ""}
                 onChange={(x) => set("keys", "spare_key", x === "" ? null : x === "true")}
                 options={[
-                  { value: "", label: "Not recorded" },
-                  { value: "true", label: "Yes — a spare exists" },
-                  { value: "false", label: "No spare" },
+                  { value: "", label: "Not Recorded" },
+                  { value: "true", label: "Yes — a Spare Exists" },
+                  { value: "false", label: "No Spare" },
                 ]}
               />
               <Text
-                label="Key / fob type"
+                label="Key / Fob Type"
                 value={str("key_type")}
                 onChange={(x) => set("keys", "key_type", x)}
                 placeholder="Fob, smart, blade"
               />
               <Text
-                label="Key tag"
+                label="Key Tag"
                 value={str("key_tag")}
                 onChange={(x) => set("keys", "key_tag", x)}
                 mono
               />
               <Text
-                label="Key location"
+                label="Key Location"
                 value={str("key_location")}
                 onChange={(x) => set("keys", "key_location", x)}
                 placeholder="Hook 4, back office"
@@ -879,43 +879,43 @@ export function VehicleEditorDrawer({
           </Group>
 
           {/* ===== 7. Service & tolls ====================================== */}
-          <Group id="service" title="Service intervals & tolls" icon={Wrench}>
+          <Group id="service" title="Service Intervals & Tolls" icon={Wrench}>
             <Grid>
               <Text
-                label="Maintenance status"
+                label="Maintenance Status"
                 value={str("maintenance_status")}
                 onChange={(x) => set("service", "maintenance_status", x)}
               />
               <NumberField
-                label="Oil interval"
+                label="Oil Interval"
                 value={num("oil_interval_miles")}
                 onChange={(x) => set("service", "oil_interval_miles", x)}
                 suffix="mi"
               />
               <NumberField
-                label="Last oil change at"
+                label="Last Oil Change At"
                 value={num("last_oil_change_miles")}
                 onChange={(x) => set("service", "last_oil_change_miles", x)}
                 suffix="mi"
               />
               <DateInput
-                label="Last tyres"
+                label="Last Tyres"
                 value={day("last_tire_date")}
                 onChange={(x) => set("service", "last_tire_date", x)}
               />
               <DateInput
-                label="Last brake inspection"
+                label="Last Brake Inspection"
                 value={day("last_brake_inspection_date")}
                 onChange={(x) => set("service", "last_brake_inspection_date", x)}
               />
               <Text
-                label="Toll transponder"
+                label="Toll Transponder"
                 value={str("toll_transponder_id")}
                 onChange={(x) => set("service", "toll_transponder_id", x)}
                 mono
               />
               <Text
-                label="Toll account"
+                label="Toll Account"
                 value={str("toll_account")}
                 onChange={(x) => set("service", "toll_account", x)}
                 mono

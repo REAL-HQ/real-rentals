@@ -3559,6 +3559,36 @@ export type Database = {
         }
         Relationships: []
       }
+      vehicle_defaults: {
+        Row: {
+          body_type: string
+          created_at: string
+          deposit: number | null
+          monthly_rate: number | null
+          updated_at: string
+          updated_by: string | null
+          weekly_rate: number | null
+        }
+        Insert: {
+          body_type: string
+          created_at?: string
+          deposit?: number | null
+          monthly_rate?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          weekly_rate?: number | null
+        }
+        Update: {
+          body_type?: string
+          created_at?: string
+          deposit?: number | null
+          monthly_rate?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          weekly_rate?: number | null
+        }
+        Relationships: []
+      }
       vehicle_expenses: {
         Row: {
           amount: number

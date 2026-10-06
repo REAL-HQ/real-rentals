@@ -116,7 +116,7 @@ export function TeamPanel() {
             {members.length === 0 ? (
               <EmptyState
                 icon={<Users className="w-6 h-6" strokeWidth={1.75} />}
-                title="Nobody has access yet"
+                title="Nobody Has Access Yet"
                 hint="Invite a teammate by email to get them into the back office."
               />
             ) : (
@@ -274,7 +274,7 @@ function InviteForm({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Invite a teammate</h3>
+          <h3 className="font-semibold">Invite a Teammate</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
@@ -334,7 +334,7 @@ function InviteForm({
           disabled={saving}
           className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
         >
-          {saving ? "Sending…" : "Send invitation"}
+          {saving ? "Sending…" : "Send Invitation"}
         </button>
       </form>
     </div>

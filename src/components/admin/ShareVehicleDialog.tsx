@@ -97,7 +97,7 @@ export function ShareVehicleDialog({
       <div className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden print:max-h-none print:rounded-none print:shadow-none print:max-w-none">
         <header className="flex items-center gap-3 border-b border-[#EDEDF0] px-5 py-4 print:hidden">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold text-[#111114]">Share vehicle info</h2>
+            <h2 className="text-[15px] font-semibold text-[#111114]">Share Vehicle Info</h2>
             <p className="text-[12px] text-[#9A9AA3] mt-0.5">
               Financing, keys, GPS identifiers and internal notes are never included.
             </p>
@@ -117,7 +117,7 @@ export function ShareVehicleDialog({
             <div className="flex flex-wrap gap-x-5 gap-y-2">
               <Opt label="VIN" on={opts.includeVin} onChange={(v) => set("includeVin", v)} />
               <Opt
-                label="Registration & plate"
+                label="Registration & Plate"
                 on={opts.includeRegistration}
                 onChange={(v) => set("includeRegistration", v)}
               />
@@ -127,7 +127,7 @@ export function ShareVehicleDialog({
                 onChange={(v) => set("includeInsurance", v)}
               />
               <Opt
-                label="Policy number"
+                label="Policy Number"
                 on={opts.includePolicyNumber}
                 disabled={!opts.includeInsurance}
                 onChange={(v) => set("includePolicyNumber", v)}
@@ -234,7 +234,7 @@ export function ShareVehicleDialog({
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-            {copied ? "Copied" : "Copy as text"}
+            {copied ? "Copied" : "Copy as Text"}
           </button>
           <button
             onClick={() => window.print()}

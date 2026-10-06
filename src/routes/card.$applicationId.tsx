@@ -58,7 +58,7 @@ function CardOnFilePage() {
     <div className="min-h-screen bg-soft px-4 py-10">
       <div className="max-w-xl mx-auto">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-semibold">Save Your Card On File</h1>
+          <h1 className="text-2xl font-semibold">Save Your Card on File</h1>
           <p className="text-sm text-muted-foreground mt-2">
             Real Rentals will securely store your card via Stripe. No charge will be made now.
           </p>

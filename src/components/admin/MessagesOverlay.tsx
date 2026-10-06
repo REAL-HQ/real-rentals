@@ -174,7 +174,7 @@ export function MessagesOverlay({
           <h2 className="text-[17px] font-semibold text-[#111114] mr-auto">Messages</h2>
           <button aria-label="Search conversations" title="Search" onClick={() => setSearchOpen((v) => !v)}
             className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><Search className="w-[18px] h-[18px]" /></button>
-          <button aria-label="Mark all as read" title="Mark all as read" disabled={!convs?.some((c) => c.unread > 0)}
+          <button aria-label="Mark all as read" title="Mark All as Read" disabled={!convs?.some((c) => c.unread > 0)}
             onClick={async () => { for (const c of convs ?? []) if (c.unread > 0) await markRead({ data: { applicationId: c.applicationId } }); void loadList(); }}
             className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6] disabled:text-[#C4C4CB] disabled:hover:bg-transparent"><CheckCheck className="w-[18px] h-[18px]" /></button>
           <button aria-label="New Message" title="New Message"
@@ -291,7 +291,7 @@ export function MessagesOverlay({
               <div className="text-[12px] text-[#77777F] truncate capitalize">{person?.status ?? ""}</div>
             </div>
             <button aria-label="Conversation info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
-              title="Conversation info"
+              title="Conversation Info"
               className="w-10 h-10 grid place-items-center rounded-lg border border-[#E4E4E8] text-[#55555E] hover:bg-[#F4F4F6]"><Info className="w-5 h-5" /></button>
           </header>
           <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">

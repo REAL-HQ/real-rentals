@@ -70,7 +70,7 @@ export function Footer() {
               to="/partners"
               className="inline-flex items-center justify-center rounded-lg border border-white/40 text-white px-6 py-3 text-sm font-medium hover:bg-white/10 transition active:scale-95"
             >
-              Become A Partner
+              Become a Partner
             </Link>
           </div>
         </div>
@@ -125,7 +125,7 @@ export function Footer() {
           <div>© 2026 REAL RENTALS. All Rights Reserved.</div>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="hover:text-foreground transition-colors">Terms Of Service</Link>
+            <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
             <Link to="/sms-consent" className="hover:text-foreground transition-colors">SMS Consent</Link>
           </div>
         </div>
