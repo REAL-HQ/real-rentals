@@ -94,7 +94,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         className={`rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition-colors ${drag ? "border-[#D03020] bg-[rgba(208,48,32,0.04)]" : "border-[#E2E2E7] bg-white"}`}
       >
         <Upload className="w-8 h-8 mx-auto text-[#9A9AA3]" />
-        <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop fleet files here</h2>
+        <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop Fleet Files Here</h2>
         <p className="mt-1 text-sm text-[#55555E] max-w-md mx-auto">
           Titles, registrations, insurance, receipts, photos — one file or a whole stack. REAL RENTALS sorts each
           document, identifies the vehicles and prepares updates for you to review. Nothing changes until you approve it.
