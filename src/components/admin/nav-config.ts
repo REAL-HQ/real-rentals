@@ -54,8 +54,9 @@ export const TABS: readonly TabDef[] = [
   { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Capital Partners And Lenders" },
   { id: "websites", label: "Websites", icon: Globe, minTier: "manager", group: "BUSINESS", description: "Market-Specific Marketing Sites" },
-  { id: "activity", label: "Activity", icon: History, minTier: "manager", group: "MANAGE", description: "Who Did What, And What Is About To Expire" },
-  { id: "settings", label: "Settings", icon: SettingsIcon, minTier: "manager", group: "MANAGE", description: "Company Configuration, Automations and Team" },
+  // Activity and Settings live in the top-right profile menu, not the rail.
+  { id: "activity", label: "Activity", icon: History, minTier: "manager", description: "Who Did What, And What Is About To Expire" },
+  { id: "settings", label: "Settings", icon: SettingsIcon, minTier: "manager", description: "Company Configuration, Automations and Team" },
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */

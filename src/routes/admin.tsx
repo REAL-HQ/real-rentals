@@ -14,6 +14,9 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  History as HistoryIcon,
+  Settings as SettingsGear,
+  UserPlus,
   Search,
   Bell,
   Menu,
@@ -559,29 +562,55 @@ function Admin() {
                 >
                   <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">{initials}</div>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[280px] p-0 rounded-2xl overflow-hidden">
-                  <div className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-11 h-11 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[14px] font-bold">{initials}</div>
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-semibold text-[#111114] capitalize truncate">{displayName}</div>
-                        <div className="text-[12px] text-[#55555E] truncate">{session?.user?.email}</div>
-                        {tier && (
-                          <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
-                            {TIER_LABELS[tier]}
-                          </div>
-                        )}
-                      </div>
+                <DropdownMenuContent align="end" className="w-[300px] p-3 rounded-2xl bg-white text-[#111114] border border-[#D6D6DB] shadow-xl">
+                  <div className="flex items-center gap-3 px-1 pt-1 pb-3">
+                    <div className="w-12 h-12 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[15px] font-bold shrink-0">{initials}</div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold text-[#111114] truncate">{displayName}</div>
+                      <div className="text-[13px] text-[#55555E] truncate">{session?.user?.email}</div>
+                      {tier && (
+                        <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
+                          {TIER_LABELS[tier]}
+                        </div>
+                      )}
                     </div>
-                    <div className="h-px bg-[#EDEDF0] my-3" />
-                    <button
-                      onClick={signOut}
-                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[13px] font-semibold hover:bg-[#B00000] transition-colors duration-150"
-                    >
-                      <LogOut className="w-4 h-4" strokeWidth={2} />
-                      Log Out
-                    </button>
                   </div>
+                  {tierAllows(tier, "owner") && (
+                    <DropdownMenuItem
+                      onSelect={() => void navigate({ to: "/admin", search: { tab: "settings", section: "team" } })}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-[#D6D6DB] bg-white text-[14px] font-semibold text-[#111114] cursor-pointer focus:bg-[#F4F4F6]"
+                    >
+                      <UserPlus className="w-4 h-4" strokeWidth={1.75} />
+                      Invite Members
+                    </DropdownMenuItem>
+                  )}
+                  <div className="h-px bg-[#EDEDF0] my-3" />
+                  {tierAllows(tier, "manager") && (
+                    <>
+                      <DropdownMenuItem
+                        onSelect={() => void navigate({ to: "/admin", search: rootSearch("activity") })}
+                        className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
+                      >
+                        <HistoryIcon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                        Activity
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => void navigate({ to: "/admin", search: rootSearch("settings") })}
+                        className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
+                      >
+                        <SettingsGear className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                        Settings
+                      </DropdownMenuItem>
+                      <div className="h-px bg-[#EDEDF0] my-3" />
+                    </>
+                  )}
+                  <button
+                    onClick={signOut}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[14px] font-semibold hover:bg-[#B5281A] transition-colors duration-150"
+                  >
+                    <LogOut className="w-4 h-4" strokeWidth={2} />
+                    Log Out
+                  </button>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
