@@ -432,7 +432,7 @@ function ManualForm({
           Cancel
         </button>
         <button disabled={saving} className="flex-1 rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60">
-          {saving ? "Adding…" : "Add vehicle"}
+          {saving ? "Adding…" : "Add Vehicle"}
         </button>
       </div>
     </form>
