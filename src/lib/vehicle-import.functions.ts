@@ -292,8 +292,15 @@ export const commitVehicleImport = createServerFn({ method: "POST" })
           continue;
         }
 
+        // Same canonical Vehicle Defaults resolver as Quick Add / detailed form.
+        const rv = row.values as any;
+        const { resolveForCreate } = await import("@/lib/vehicle-defaults.server");
+        const priced = await resolveForCreate(rv.body_type, {
+          weekly_rate: rv.weekly_rate ?? undefined, monthly_rate: rv.monthly_rate ?? undefined, deposit: rv.deposit ?? undefined,
+        });
         const { error } = await supabaseAdmin.from("vehicles").insert({
           ...row.values,
+          weekly_rate: priced.weekly_rate, monthly_rate: priced.monthly_rate, deposit: priced.deposit,
           ...(typeof (row.values as any).make === "string" ? { make: normalizeDisplayText((row.values as any).make) } : {}),
           ...(typeof (row.values as any).model === "string" ? { model: normalizeDisplayText((row.values as any).model) } : {}),
           // Imported cars always start as Needs Setup; only a human makes them Available.
