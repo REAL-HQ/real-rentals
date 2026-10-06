@@ -14,30 +14,33 @@ import adminHero from "@/assets/admin-hero.jpg";
 import {
   Eye,
   EyeOff,
-  Users,
-  Car,
-  Handshake,
-  CreditCard,
-  Settings as SettingsIcon,
   LogOut,
-  Wrench,
-  Store,
-  MessageSquare,
-  Globe,
-  UserCog,
-  PanelLeftClose,
-  PanelLeftOpen,
-  LayoutDashboard,
   Search,
   Bell,
-  Hourglass,
-  Zap,
-  ClipboardCheck,
-  Truck,
-  Receipt,
-  History,
-  ShieldAlert,
+  Menu,
+  Plus,
+  ChevronRight,
+  Settings as SettingsIcon,
+  UserCog,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  TABS,
+  GROUP_ORDER,
+  ADD_TABS,
+  visibleTabs,
+  visibleApps,
+  visibleCreateActions,
+  appOf,
+  navOwner,
+  type TabDef,
+} from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesPanel } from "@/components/admin/MessagesPanel";
@@ -51,7 +54,7 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
-import { tierAllows, tierFromRoles, TIER_LABELS, TIER_SUMMARY, type StaffTier } from "@/lib/roles";
+import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,8 +89,8 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab">, readonly string[]> 
   id: ["drivers", "vehicles"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments"],
-  // The vehicle creation flow.
-  add: ["vehicles"],
+  // A creation flow opened from "+ Create".
+  add: [...ADD_TABS],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -139,169 +142,7 @@ export const Route = createFileRoute("/admin")({
   component: Admin,
 });
 
-const TABS = [
-  {
-    id: "overview",
-    minTier: "coordinator" as StaffTier,
-    label: "Overview",
-    icon: LayoutDashboard,
-    group: "OPERATIONS",
-    description: "Pipeline, Fleet And Revenue At A Glance",
-  },
-  {
-    id: "drivers",
-    minTier: "coordinator" as StaffTier,
-    label: "Drivers",
-    icon: Users,
-    group: "OPERATIONS",
-    description: "Manage Applicants, Active Renters And Driver Lifecycle",
-  },
-  {
-    id: "waitlist",
-    minTier: "coordinator" as StaffTier,
-    label: "Waitlist",
-    icon: Hourglass,
-    group: "OPERATIONS",
-    description: "Drivers Waiting When No Cars Are Available",
-  },
-  {
-    id: "payments",
-    minTier: "manager" as StaffTier,
-    label: "Payments",
-    icon: CreditCard,
-    group: "OPERATIONS",
-    description: "Rent, Deposits And Balances",
-  },
-  {
-    id: "messages",
-    minTier: "coordinator" as StaffTier,
-    label: "Messages",
-    icon: MessageSquare,
-    group: "OPERATIONS",
-    description: "Inbound Driver & Partner Conversations",
-  },
-  {
-    id: "automations",
-    minTier: "manager" as StaffTier,
-    label: "Automations",
-    icon: Zap,
-    group: "OPERATIONS",
-    description: "Automatic SMS And Email Follow-Up Sequences",
-  },
-  {
-    id: "charges",
-    minTier: "manager" as StaffTier,
-    label: "Charges",
-    icon: Receipt,
-    group: "OPERATIONS",
-    description: "Tolls And Violations, Matched To The Renter Who Had The Car",
-  },
-  {
-    id: "vehicles",
-    minTier: "coordinator" as StaffTier,
-    label: "Vehicles",
-    icon: Car,
-    group: "FLEET",
-    description: "Fleet Inventory & Vehicle Status",
-  },
-  {
-    id: "maintenance",
-    minTier: "manager" as StaffTier,
-    label: "Service",
-    icon: Wrench,
-    group: "FLEET",
-    description: "Vehicles Down, Due, Scheduled And In Shop",
-  },
-  {
-    id: "inspections",
-    minTier: "coordinator" as StaffTier,
-    label: "Inspections",
-    icon: ClipboardCheck,
-    group: "FLEET",
-    description: "Pre-Delivery And Return Checklists With Photo Proof",
-  },
-  {
-    id: "shops",
-    minTier: "manager" as StaffTier,
-    label: "Shops",
-    icon: Store,
-    group: "FLEET",
-    description: "Preferred Maintenance Providers By Market",
-  },
-  {
-    id: "vendors",
-    minTier: "coordinator" as StaffTier,
-    label: "Vendors",
-    icon: Truck,
-    group: "FLEET",
-    description: "Every Vendor We Work With — Service, Towing, GPS, Insurance",
-  },
-  {
-    id: "incidents",
-    minTier: "manager" as StaffTier,
-    label: "Incidents",
-    icon: ShieldAlert,
-    group: "FLEET",
-    description: "Accidents, Damage And Insurance Claims",
-  },
-  {
-    id: "partners",
-    minTier: "manager" as StaffTier,
-    label: "Partners",
-    icon: Handshake,
-    group: "GROWTH",
-    description: "Vehicle Owners, Capital Partners And Lenders",
-  },
-  {
-    id: "websites",
-    minTier: "manager" as StaffTier,
-    label: "Websites",
-    icon: Globe,
-    group: "GROWTH",
-    description: "Market-Specific Marketing Sites",
-  },
-  {
-    id: "expenses",
-    minTier: "manager" as StaffTier,
-    label: "Expenses",
-    icon: Receipt,
-    group: "FLEET",
-    description: "Every Cost Against Every Car, And What Each One Earns",
-  },
-  {
-    id: "activity",
-    minTier: "manager" as StaffTier,
-    label: "Activity",
-    icon: History,
-    group: "SYSTEM",
-    description: "Who Did What, And What Is About To Expire",
-  },
-  {
-    id: "team",
-    minTier: "owner" as StaffTier,
-    label: "Team",
-    icon: UserCog,
-    group: "SYSTEM",
-    description: "Internal Roles & Access Control",
-  },
-  {
-    id: "settings",
-    minTier: "owner" as StaffTier,
-    label: "Settings",
-    icon: SettingsIcon,
-    group: "SYSTEM",
-    description: "Rental Terms, Payments, Admin Users And Preferences",
-  },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
-type TabDef = (typeof TABS)[number];
-
-/** Tabs this tier may open. The database refuses the rest anyway; this
- *  keeps a Coordinator from being shown doors that open onto an error. */
-function visibleTabs(tier: StaffTier | null): TabDef[] {
-  return TABS.filter((t) => tierAllows(tier, t.minTier));
-}
-const GROUP_ORDER = ["OPERATIONS", "FLEET", "GROWTH", "SYSTEM"] as const;
+type Tab = string;
 
 function Admin() {
   const [session, setSession] = useState<any>(null);
