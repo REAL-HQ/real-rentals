@@ -223,12 +223,20 @@ export function VehiclesPanel({
             </button>
           )}
         </div>
-        <button
-          onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 self-start lg:self-auto"
-        >
-          <Plus className="w-4 h-4" /> Add Vehicle
-        </button>
+        <div className="flex items-center gap-2 self-start lg:self-auto">
+          <button
+            onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })}
+            className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]"
+          >
+            Import / Fleet Inbox
+          </button>
+          <button
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
+          >
+            <Plus className="w-4 h-4" /> Add Vehicle
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((v) => {

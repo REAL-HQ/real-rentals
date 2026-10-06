@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Wallet,
   LayoutGrid,
+  Inbox,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -48,6 +49,7 @@ export const TABS: readonly TabDef[] = [
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", app: "operations", group: "RENTALS", description: "Rent, Deposits And Balances" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", app: "operations", group: "RENTALS", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", app: "operations", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
+  { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", app: "operations", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", app: "operations", group: "FLEET", description: "Vehicles Down, Due, Scheduled And In Shop" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", app: "operations", group: "FLEET", description: "Pre-Delivery And Return Checklists With Photo Proof" },
   { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", app: "operations", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
@@ -95,6 +97,7 @@ export function navOwner(tab: string): string {
 export type CreateAction = { id: string; label: string; icon: LucideIcon; tab: string; add: boolean; minTier: StaffTier };
 export const CREATE_ACTIONS: readonly CreateAction[] = [
   { id: "vehicle", label: "Add Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
+  { id: "fleet_files", label: "Upload Fleet Files", icon: Inbox, tab: "fleet_inbox", add: false, minTier: "coordinator" },
   { id: "payment", label: "Record Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Add Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
   { id: "message", label: "Send Message", icon: MessageSquare, tab: "messages", add: false, minTier: "coordinator" },

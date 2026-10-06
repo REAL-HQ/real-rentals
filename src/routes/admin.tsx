@@ -53,6 +53,7 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
+import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
@@ -649,6 +650,7 @@ function Admin() {
             )}
             {tab === "waitlist" && <WaitlistPanel />}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} />}
+            {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
             {tab === "maintenance" && <MaintenancePanel />}
