@@ -147,8 +147,8 @@ export function MessagesOverlay({
 
   const listPane = (
     <aside className={`${mobile === "list" ? "flex" : "hidden"} md:flex flex-col min-h-0 border-r border-[#EDEDF0] bg-white`}>
-      <div className="px-4 pt-4 pb-3 border-b border-[#EDEDF0]">
-        <div className="flex items-center justify-between">
+      <div className="pl-4 pr-14 md:pr-4 pt-4 pb-3 border-b border-[#EDEDF0]">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-[17px] font-semibold text-[#111114]">Messages</h2>
           <button
             onClick={() => { setComposing(true); setPeopleQ(""); onSelect(null); setMobile("thread"); }}
