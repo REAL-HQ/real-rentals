@@ -33,8 +33,20 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
   const items = visibleSettingsSections(tier);
   const current = items.find((s) => s.id === section) ?? items[0];
   const groups = Array.from(new Set(items.map((s) => s.group)));
+  // Collapsible groups: only the first starts open; the group holding the
+  // active section always opens so deep links never land on a hidden item.
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(
+    () => new Set(groups.slice(1)),
+  );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
   const wide = current.id === "automations" || current.id === "team";
+  const toggleGroup = (g: string) =>
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
