@@ -9,7 +9,7 @@ const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
 ok(owner.length === TABS.length, "Owner sees every destination");
 ok(mgr.includes("settings"), "Manager: Settings (for Automations)");
-ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["vehicle_defaults","automations"]', "Manager Settings: Vehicle Defaults (view) + Automations");
+ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["vehicle_defaults","maintenance","automations"]', "Manager Settings: Vehicle Defaults + Maintenance (view) + Automations");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
 ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Settings sections");
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
@@ -22,7 +22,7 @@ ok(!TABS.some((t) => ["messages", "automations", "team"].includes(t.id)), "No Me
 ok(LEGACY_TABS.automations.section === "automations" && LEGACY_TABS.team.section === "team" && LEGACY_TABS.messages.messages === true, "Old bookmarks resolve");
 
 ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files"]', "Coordinator Create: Add Vehicle, Upload Fleet Files");
-ok(ids(visibleCreateActions("manager")).length === 4, "Manager Create: all four");
+ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five (incl. Service)");
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 ok(navOwner("shops") === "vendors" && !TABS.find((t) => t.id === "shops")!.group, "Repair Shops lives under Vendors");
 
