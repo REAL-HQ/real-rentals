@@ -19,7 +19,6 @@ import {
   Bell,
   Menu,
   Plus,
-  ChevronRight,
   Settings as SettingsIcon,
   UserCog,
 } from "lucide-react";
@@ -245,25 +244,7 @@ function Admin() {
   });
   const [mobileNav, setMobileNav] = useState(false);
 
-  // Breadcrumb label for the open record (Drivers → name, Vehicles → unit).
-  const [recordLabel, setRecordLabel] = useState<string | null>(null);
-  useEffect(() => {
-    setRecordLabel(null);
-    if (!isAdmin || !urlRecordId || (tab !== "drivers" && tab !== "vehicles")) return;
-    let live = true;
-    (async () => {
-      if (tab === "drivers") {
-        const { data } = await supabase.from("applications").select("full_name,email").eq("id", urlRecordId).maybeSingle();
-        if (live) setRecordLabel(data?.full_name || data?.email || "Driver");
-      } else {
-        const { data } = await supabase.from("vehicles").select("unit_number,year,make,model").eq("id", urlRecordId).maybeSingle();
-        if (live) setRecordLabel(data ? data.unit_number || [data.year, data.make, data.model].filter(Boolean).join(" ") : "Vehicle");
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [isAdmin, urlRecordId, tab]);
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -639,21 +620,12 @@ function Admin() {
           </header>
 
           <main className="flex-1 min-w-0 p-4 md:px-8 md:pt-4 md:pb-8">
-            {recordParent ? (
-              <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-[13px] min-w-0">
-                <Link to="/admin" search={rootSearch(recordParent.id)} className="text-[#55555E] hover:text-[#111114] font-medium shrink-0">
-                  {recordParent.label}
-                </Link>
-                <ChevronRight className="w-3.5 h-3.5 text-[#B0B0B8] shrink-0" />
-                <span className="text-[#111114] font-semibold truncate">{recordLabel ?? "…"}</span>
-              </nav>
-            ) : (
-              tab !== "overview" && (
-                <div className="mb-5">
-                  <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
-                  <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
-                </div>
-              )
+            {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
+            {tab !== "overview" && !recordParent && (
+              <div className="mb-5">
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
+                <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
+              </div>
             )}
             {(tab === "vendors" || tab === "shops") && tierAllows(tier, "manager") && (
               <div role="tablist" aria-label="Vendor type" className="mb-5 inline-flex rounded-lg bg-[#F0F0F2] p-0.5">
