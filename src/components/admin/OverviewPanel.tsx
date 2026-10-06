@@ -121,6 +121,7 @@ export function OverviewPanel() {
   const [rented, setRented] = useState(0);
   const [maintOpen, setMaintOpen] = useState(0);
   const [reserved, setReserved] = useState(0);
+  const [needsSetup, setNeedsSetup] = useState(0);
   const [newApps, setNewApps] = useState(0);
   const [pendingApps, setPendingApps] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
@@ -244,6 +245,7 @@ export function OverviewPanel() {
       setRented(vRentedQ.count ?? 0);
       setMaintOpen(vMaintQ.count ?? 0);
       setReserved(vReservedQ.count ?? 0);
+      setNeedsSetup(((allVehiclesQ.data ?? []) as { status: string | null }[]).filter((v) => v.status === "onboarding").length);
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
       const sumAmt = (rows?: any[] | null) =>
@@ -302,8 +304,8 @@ export function OverviewPanel() {
     })();
   }, []);
 
-  const total = vehiclesAvail + rented + reserved + maintOpen;
-  const rentable = Math.max(0, total - maintOpen);
+  const total = vehiclesAvail + rented + reserved + maintOpen + needsSetup;
+  const rentable = Math.max(0, total - maintOpen - needsSetup);
   const utilPct = rentable > 0 ? Math.round((rented / rentable) * 100) : 0;
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   // ---- revenue for the selected range -------------------------------------
@@ -553,6 +555,7 @@ export function OverviewPanel() {
                 { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
                 { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
                 { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
+                { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
               ]}
             />
             <div>
@@ -562,6 +565,7 @@ export function OverviewPanel() {
                   { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
                   { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
                   { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
+                  { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
                 ].map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
                     <span
