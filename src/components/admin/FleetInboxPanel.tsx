@@ -401,6 +401,8 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
         ) : p.status === "failed" ? <StatusPill tone="red">Failed — {p.result?.message ?? ""}</StatusPill> : null}
       </div>
 
+      <ServiceSummary fields={p.fields} />
+
       {(p.issues ?? []).length > 0 && (
         <ul className="mt-2 space-y-0.5">
           {p.issues.map((s: string) => <li key={s} className="text-xs text-[#B45309] flex gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" />{s}</li>)}
@@ -487,5 +489,34 @@ function ActionBtn({ active, onClick, disabled, children }: { active: boolean; o
       className={`min-h-[44px] px-4 rounded-md text-sm font-medium inline-flex items-center gap-1.5 border disabled:opacity-40 ${active ? "bg-[#111114] text-white border-[#111114]" : "bg-white border-[#EDEDF0] text-[#111114]"}`}>
       {children}
     </button>
+  );
+}
+
+/** Proposed service event, shown before anything changes vehicle history. */
+function ServiceSummary({ fields }: { fields: any }) {
+  const f = (k: string) => fields?.[k]?.value as string | undefined;
+  if (!f("service_date") && !f("vendor") && !f("service_items") && !f("service_description") && !f("total")) return null;
+  let items: { description: string; amount: number | null }[] = [];
+  try { items = JSON.parse(f("service_items") ?? "[]"); } catch { items = []; }
+  if (!items.length && f("service_description")) items = [{ description: String(f("service_description")), amount: null }];
+  const Cell = ({ k, v }: { k: string; v?: string | null }) => (
+    <div><div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9A9AA3]">{k}</div><div className="text-[13px] text-[#111114]">{v || "Unknown"}</div></div>
+  );
+  return (
+    <div className="mt-3 rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-3">
+      <div className="mb-2 text-[12px] font-semibold text-[#111114]">Proposed Service Record</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Cell k="Service Date" v={f("service_date")} />
+        <Cell k="Vendor" v={f("vendor")} />
+        <Cell k="Mileage" v={f("current_odometer") ? `${Number(f("current_odometer")).toLocaleString("en-US")} mi` : null} />
+        <Cell k="Total" v={f("total") ? `$${f("total")}` : null} />
+      </div>
+      {items.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[12px] text-[#55555E]">
+          {items.map((i, n) => <li key={n}>• {i.description}{i.amount != null ? ` — $${i.amount}` : ""}</li>)}
+        </ul>
+      )}
+      <div className="mt-2 text-[11px] text-[#9A9AA3]">Approving creates one service record, one linked expense and one dated mileage reading, all pointing back to this document.</div>
+    </div>
   );
 }

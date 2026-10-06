@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import { FleetServiceCenter } from "./FleetServiceCenter";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
 import { StatusPill, EmptyState } from "./ui";
-import { MaintenanceSchedules } from "./MaintenanceSchedules";
 
 type Row = {
   id: string;
@@ -61,7 +61,7 @@ export function needsOdometer(v: VehicleLite): boolean {
   return v.current_odometer == null || v.current_odometer <= 0;
 }
 
-export function MaintenancePanel() {
+export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolean } = {}) {
   const [rows, setRows] = useState<Row[]>([]);
   const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,7 +137,7 @@ export function MaintenancePanel() {
 
   return (
     <div className="space-y-6">
-      <MaintenanceSchedules />
+      <FleetServiceCenter autoOpenAdd={autoOpenAdd} />
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2 text-xs">

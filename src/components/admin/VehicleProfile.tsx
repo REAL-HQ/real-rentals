@@ -21,6 +21,7 @@ import {
   Wrench,
   Lock,
   ExternalLink,
+  History,
 } from "lucide-react";
 import {
   getVehicleProfile,
@@ -40,6 +41,8 @@ import { ShareVehicleDialog } from "./ShareVehicleDialog";
 import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { VehiclePhotos } from "./VehiclePhotos";
+import { VehicleService } from "./VehicleService";
+import { VehicleTimeline } from "./VehicleTimeline";
 import { rentalReadyItems, listingReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
 
 // The vehicle as a record you read.
@@ -54,10 +57,12 @@ import { rentalReadyItems, listingReadyItems, profileItems, percent } from "@/li
 // everybody is slightly afraid of. You should be able to open this to check a
 // plate expiry without feeling like you are inside a database.
 
-type Tab = "overview" | "photos" | "documents" | "insurance" | "dmv" | "gps" | "keys";
+type Tab = "overview" | "service" | "timeline" | "photos" | "documents" | "insurance" | "dmv" | "gps" | "keys";
 
 const TABS: Array<{ key: Tab; label: string; icon: any }> = [
   { key: "overview", label: "Overview", icon: Car },
+  { key: "service", label: "Service", icon: Wrench },
+  { key: "timeline", label: "Timeline", icon: History },
   { key: "photos", label: "Photos", icon: Images },
   { key: "documents", label: "Documents", icon: FileText },
   { key: "insurance", label: "Insurance", icon: ShieldCheck },
@@ -297,6 +302,8 @@ export function VehicleProfile({
           ) : (
             <>
               {tab === "overview" && <Overview p={p} onEdit={setEditing} onOpenTab={setTab} />}
+              {tab === "service" && <VehicleService vehicleId={vehicleId} />}
+              {tab === "timeline" && <VehicleTimeline vehicleId={vehicleId} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
               {tab === "documents" && (
                 <SectionCard
@@ -498,7 +505,8 @@ function Overview({
           {p.nextService && (
             <Row label="Next Service" value={`${p.nextService.item}${p.nextService.due_date ? ` · ${date(p.nextService.due_date)}` : ""}${p.nextService.due_mileage ? ` · ${miles(p.nextService.due_mileage)}` : ""}`} />
           )}
-          {p.counts.openMaintenance > 0 && <Row label="Open Maintenance" value={<Elsewhere tab="maintenance" count={p.counts.openMaintenance} label="View Maintenance" />} />}
+          {p.counts.openMaintenance > 0 && <Row label="Open Maintenance" value={p.counts.openMaintenance} />}
+          <Row label="Service" value={<button onClick={() => onOpenTab("service")} className="text-[13px] font-medium underline-offset-2 hover:underline">View Service</button>} />
           <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
           <Row label="Rentals to Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
         </SectionCard>

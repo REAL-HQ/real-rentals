@@ -15,3 +15,4 @@
 - Unit numbers: assigned only by the vehicles_assign_unit_number insert trigger from vehicle_unit_seq ; creation paths leave it blank unless a human typed one — because client max+1 suggestions collided.
 - Vehicle Defaults: new-vehicle pricing resolves only via src/lib/vehicle-defaults.ts (explicit → type default → Not Set), Owner-write + audited, copied at create, never retroactive or from documents — pricing must be a human-confirmed snapshot.
 - UI casing: labels/titles/tabs/menus are Title Case in the strings, never CSS text-transform — it corrupts eSign/VIN/GPS.
+- Maintenance: service writes only via src/lib/maintenance.server.ts (one linked expense each); mileage only in append-only odometer_readings, current_odometer is trigger-derived — no double counts, old evidence never lowers mileage.

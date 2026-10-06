@@ -63,6 +63,8 @@
   --color-brand-foreground: var(--accent-foreground);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-overlay: var(--overlay);
 }
 
@@ -92,6 +94,8 @@
   --caption: oklch(0.62 0 0);                  /* #888888 */
   --success: oklch(0.55 0.14 155);
   --success-soft: oklch(0.96 0.04 155);
+  --warning: oklch(0.8 0.15 85);
+  --warning-foreground: oklch(0.42 0.1 70);
   --overlay: oklch(0.15 0.005 286 / 0.5);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);

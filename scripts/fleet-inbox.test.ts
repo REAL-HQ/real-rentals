@@ -37,7 +37,7 @@ ok(p.kind === "unidentified" && p.issues.some((s) => /not valid/.test(s)), "Inva
 
 // I: mileage regression
 p = buildProposal({ fields: F({ vin: V2, current_odometer: "42118" }) }, "service_receipt", [existing]);
-ok(p.kind === "conflict" && p.changes.find((c) => c.field === "current_odometer")?.kind === "conflict", "I. mileage lower than on file → conflict");
+ok(p.changes.find((c) => c.field === "current_odometer")?.kind === "update" && p.issues.some((s) => /lower/i.test(s)), "I. lower mileage goes to dated history (flagged in issues), never a blind overwrite");
 
 // Safe change: insurance fill on matched vehicle
 p = buildProposal({ fields: F({ vin: V2, insurance_carrier: "Mobilitas", insurance_expires_on: "2027-07-01" }) }, "insurance_card", [existing]);

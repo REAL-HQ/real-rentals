@@ -70,6 +70,7 @@ export type SettingsSectionDef = { id: string; label: string; group: string; min
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "company", label: "Company", group: "GENERAL", minTier: "owner" },
   { id: "vehicle_defaults", label: "Vehicle Defaults", group: "FLEET", minTier: "manager" },
+  { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
   { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
@@ -98,6 +99,7 @@ export type CreateAction = { id: string; label: string; icon: LucideIcon; tab: s
 export const CREATE_ACTIONS: readonly CreateAction[] = [
   { id: "vehicle", label: "Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
   { id: "fleet_files", label: "Files", icon: Upload, tab: "fleet_inbox", add: false, minTier: "coordinator" },
+  { id: "service", label: "Service", icon: Wrench, tab: "maintenance", add: true, minTier: "manager" },
   { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];

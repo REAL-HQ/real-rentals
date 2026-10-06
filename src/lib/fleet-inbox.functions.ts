@@ -123,19 +123,20 @@ Transcribe. Never infer, complete or correct. If a value is not printed, omit it
 A single document may describe MANY vehicles (e.g. a PDF of several insurance cards, one per page). Return one entry per distinct vehicle, with the page number (1-based) where it appears. Values that apply to every vehicle (insurer, policy number, policy dates, named insured, shop name) go in "shared" once.
 
 documentClass: one of ${DOC_CLASSES.join(", ")}. Use "unknown" if not confident.
-Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, service_date, vendor, service_description, parts_total, labor_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
+Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
 body_type: sedan, suv, minivan, truck, van, coupe, hatchback, wagon, convertible, other. Dates YYYY-MM-DD. Money and mileage digits only (decimal point allowed for money).
 confidence: high (clear), medium (legible but imperfect), low (unclear).
+For service/repair/maintenance receipts: current_odometer is the mileage printed on the invoice; also list each service line on that vehicle's entry as "serviceItems":[{"description":"as printed","amount":"digits or omit"}]. Never invent a line, amount, mileage, date, vendor or invoice number.
 
 Respond ONLY with strict JSON:
 {"documentClass":"...","classConfidence":"high|medium|low","pageCount":<int|null>,
  "shared":{"<field>":{"value":"...","raw":"...","confidence":"...","note":"..."}},
- "vehicles":[{"page":<int|null>,"fields":{"<field>":{...}}}],
+ "vehicles":[{"page":<int|null>,"fields":{"<field>":{...}},"serviceItems":[...]}],
  "warnings":["..."]}`;
 
 const ALL_FIELDS = new Set<string>([
   ...VEHICLE_FIELDS, ...FINANCE_FIELDS, "unit_number", "named_insured", "service_date", "vendor",
-  "service_description", "parts_total", "labor_total", "total",
+  "service_description", "parts_total", "labor_total", "total", "invoice_number", "tax_total", "service_items",
 ]);
 
 function cleanFields(o: any): Record<string, ExtractedField> {
@@ -152,6 +153,17 @@ function cleanFields(o: any): Record<string, ExtractedField> {
     };
   }
   return out;
+}
+
+/** Service lines kept as one JSON field so the existing proposal shape carries them unchanged. */
+function withServiceItems(f: Record<string, ExtractedField>, items: unknown): Record<string, ExtractedField> {
+  if (!Array.isArray(items)) return f;
+  const clean = items.slice(0, 50).map((i: any) => ({
+    description: String(i?.description ?? "").trim().slice(0, 300),
+    amount: i?.amount != null && String(i.amount).replace(/[^0-9.]/g, "") !== "" ? Number(String(i.amount).replace(/[^0-9.]/g, "")) : null,
+  })).filter((i) => i.description);
+  if (!clean.length) return f;
+  return { ...f, service_items: { value: JSON.stringify(clean), confidence: "medium" } };
 }
 
 async function loadVehicles(sb: any): Promise<ExistingVehicle[]> {
@@ -266,7 +278,7 @@ export const analyzeInboxItem = createServerFn({ method: "POST" })
     const extraction = {
       shared: cleanFields(parsed?.shared),
       vehicles: (Array.isArray(parsed?.vehicles) ? parsed.vehicles : []).slice(0, 100).map((v: any) => ({
-        page: Number.isFinite(Number(v?.page)) ? Number(v.page) : null, fields: cleanFields(v?.fields),
+        page: Number.isFinite(Number(v?.page)) ? Number(v.page) : null, fields: withServiceItems(cleanFields(v?.fields), v?.serviceItems),
       })),
     };
     const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.filter((w: unknown) => typeof w === "string").slice(0, 10) : [];
@@ -422,6 +434,10 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           toWrite[f] = normalizeDisplayField(f, val); written.push(c);
         }
 
+        // Mileage is never written straight onto the car: it becomes a dated,
+        // evidence-backed reading and the history decides current mileage.
+        const odo = toWrite.current_odometer != null ? Number(toWrite.current_odometer) : null;
+        delete toWrite.current_odometer;
         let vehicleId: string;
         if (dec.action === "create") {
           const row: Record<string, unknown> = {
@@ -434,20 +450,51 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
             status: "onboarding",
             // unit_number assigned by the vehicles_assign_unit_number trigger.
           };
-          if (row.current_odometer) row.odometer_updated_at = new Date().toISOString();
           const { data: v, error } = await sb.from("vehicles").insert(row as any).select("id").single();
           if (error) throw new Error(/duplicate|unique/i.test(error.message) ? "A vehicle with this VIN, plate or unit number already exists." : "Could not create the vehicle.");
           vehicleId = v.id;
         } else {
           vehicleId = target!.id;
           if (Object.keys(toWrite).length) {
-            if (toWrite.current_odometer) toWrite.odometer_updated_at = new Date().toISOString();
             const { error } = await sb.from("vehicles").update(toWrite as any).eq("id", vehicleId);
             if (error) throw new Error("Could not update the vehicle.");
           }
         }
 
         await sb.from("document_vehicle_links").upsert({ document_id: item.document_id, vehicle_id: vehicleId, page: p.page, created_by: actor.userId }, { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+
+        let serviceNote = "";
+        const isService = docGroupOf(docClass) === "Maintenance";
+        const { recordServiceEvent, addOdometerReading } = await import("@/lib/maintenance.server");
+        if (isService) {
+          const fv = (k: string) => (entry.fields[k] as any)?.value as string | undefined;
+          const num = (k: string) => { const v = fv(k); if (v == null) return null; const n = Number(String(v).replace(/[^0-9.]/g, "")); return Number.isFinite(n) && String(v).replace(/[^0-9.]/g, "") !== "" ? n : null; };
+          let items: { description: string; amount: number | null }[] = [];
+          try { items = JSON.parse(fv("service_items") ?? "[]"); } catch { items = []; }
+          if (!items.length && fv("service_description")) items = [{ description: String(fv("service_description")), amount: null }];
+          const date = fv("service_date") && /^\d{4}-\d{2}-\d{2}$/.test(String(fv("service_date"))) ? String(fv("service_date")) : null;
+          const mileage = num("current_odometer");
+          const res = await recordServiceEvent(sb, actor, {
+            vehicleId, performedOn: date, mileage: date ? mileage : null, vendorNameRaw: fv("vendor") ?? null,
+            invoiceNumber: fv("invoice_number") ?? null, description: fv("service_description") ?? null, items,
+            laborCost: num("labor_total"), partsCost: num("parts_total"), taxAmount: num("tax_total"), totalCost: num("total"),
+            source: "fleet_inbox", documentId: item.document_id, documentPage: p.page, proposalId: p.id,
+            originalExtraction: entry.fields,
+          });
+          serviceNote = res.duplicate ? " Service record already exists." : ` Service recorded${res.odometerStatus === "conflict" ? " — mileage flagged for review (odometer conflict)" : ""}.`;
+          if (!date && mileage != null) serviceNote += " Mileage not recorded: the receipt has no readable service date.";
+          const svcProv = ["service_date", "vendor", "invoice_number", "current_odometer", "total", "labor_total", "parts_total", "tax_total"].filter((k) => fv(k));
+          if (svcProv.length) await sb.from("vehicle_field_provenance").upsert(svcProv.map((k) => ({
+            vehicle_id: vehicleId, field: `service.${k}`, value: String(fv(k)), raw_value: (entry.fields[k] as any)?.raw ?? String(fv(k)),
+            document_id: item.document_id, doc_class: docClass, authority: authorityOf(k, docClass), page: p.page,
+            method: "ai_extraction", confidence: (entry.fields[k] as any)?.confidence ?? "medium", extracted_at: item.analyzed_at, confirmed_by: actor.userId, proposal_id: p.id,
+          })), { onConflict: "proposal_id,field", ignoreDuplicates: true });
+        } else if (odo != null && Number.isFinite(odo)) {
+          const obs = (entry.fields.service_date as any)?.value ?? (item.analyzed_at ?? new Date().toISOString()).slice(0, 10);
+          const src = docClass === "title" ? "title" : docClass === "registration" ? "registration" : docClass === "odometer_photo" ? "odometer_photo" : "fleet_inbox";
+          const r = await addOdometerReading(sb, actor, { vehicleId, mileage: odo, observedOn: String(obs).slice(0, 10), sourceType: src, documentId: item.document_id, documentPage: p.page, evidenceKey: `doc:${item.document_id}:${vehicleId}:${p.page ?? 0}` });
+          if (r.status === "conflict") serviceNote = " Mileage flagged for review (odometer conflict).";
+        }
         if (written.length) {
           await sb.from("vehicle_field_provenance").upsert(written.map((c) => ({
             vehicle_id: vehicleId, field: c.field, value: c.proposed, raw_value: (entry.fields[c.field] as any)?.raw ?? c.proposed,
@@ -483,7 +530,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           entityType: "vehicle", entityId: vehicleId,
           metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field) },
         });
-        await finish("applied", { proposalId: p.id, ok: true, vehicleId, message: (dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`) + financeNote }, vehicleId);
+        await finish("applied", { proposalId: p.id, ok: true, vehicleId, message: (dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`) + serviceNote + financeNote }, vehicleId);
       } catch (e: any) {
         await finish("failed", { proposalId: p.id, ok: false, message: e?.message ?? "Failed." });
       }
