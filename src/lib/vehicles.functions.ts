@@ -488,7 +488,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     const v = vehicle as any;
     const isManager = actor.tier === "manager" || actor.tier === "owner";
 
-    const [{ data: rental }, { data: partner }, docs, maint, insp, rentals, media] =
+    const [{ data: rental }, { data: partner }, publishedMedia, maint, insp, rentals, media] =
       await Promise.all([
         supabaseAdmin
           .from("rentals")
@@ -500,10 +500,10 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           ? supabaseAdmin.from("partners").select("name").eq("id", v.partner_id).maybeSingle()
           : Promise.resolve({ data: null }),
         supabaseAdmin
-          .from("documents")
+          .from("vehicle_media")
           .select("id", { count: "exact", head: true })
           .eq("vehicle_id", data.id)
-          .eq("is_current", true),
+          .eq("published", true),
         supabaseAdmin
           .from("maintenance_records")
           .select("id", { count: "exact", head: true })
@@ -522,6 +522,10 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           .select("id", { count: "exact", head: true })
           .eq("vehicle_id", data.id),
       ]);
+
+    // Canonical document presence: direct + Fleet Inbox links, one physical
+    // document counted once. Finance paperwork is hidden from Coordinators.
+    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, isManager);
 
     let driverName: string | null = null;
     if (rental?.application_id) {
