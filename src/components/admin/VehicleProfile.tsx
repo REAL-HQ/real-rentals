@@ -489,7 +489,7 @@ function Overview({
         <SectionCard title="Rates" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
           <Row label="Weekly" value={money(v.weekly_rate) ?? "Not Set"} />
           <Row label="Monthly" value={money(v.monthly_rate)} />
-          <Row label="Deposit" value={money(v.deposit)} />
+          <Row label="Deposit" value={v.deposit == null ? "Not Set" : Number(v.deposit) === 0 ? "$0" : money(v.deposit)} />
         </SectionCard>
 
         <SectionCard title="Right now" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
