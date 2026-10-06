@@ -244,7 +244,7 @@ export const analyzeInboxItem = createServerFn({ method: "POST" })
       await refreshBatchStatus(claimed.batch_id);
       return { ok: false as const, error: msg };
     };
-    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,mime_type").eq("id", claimed.document_id).single();
+    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,mime_type").eq("id", claimed.document_id as string).single();
     if (!doc) return fail("The original file record is missing.");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) return fail("Could not read the original file.");
@@ -273,7 +273,7 @@ export const analyzeInboxItem = createServerFn({ method: "POST" })
     await sb.from("fleet_import_items").update({
       status: "matching", doc_class: docClass, class_confidence: classConf, extraction, warnings, analyzed_at: new Date().toISOString(),
     }).eq("id", data.itemId);
-    await sb.from("documents").update({ kind: docClass, category: docClass, page_count: pageCount }).eq("id", claimed.document_id);
+    await sb.from("documents").update({ kind: docClass, category: docClass, page_count: pageCount }).eq("id", claimed.document_id as string);
 
     await buildItemProposals(sb, data.itemId);
     const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
