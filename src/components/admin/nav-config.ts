@@ -99,6 +99,7 @@ export type CreateAction = { id: string; label: string; icon: LucideIcon; tab: s
 export const CREATE_ACTIONS: readonly CreateAction[] = [
   { id: "vehicle", label: "Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
   { id: "fleet_files", label: "Files", icon: Upload, tab: "fleet_inbox", add: false, minTier: "coordinator" },
+  { id: "service", label: "Service", icon: Wrench, tab: "maintenance", add: true, minTier: "coordinator" },
   { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];
