@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
@@ -320,16 +321,10 @@ function AddPayment({
     due_date: new Date().toISOString().slice(0, 10),
   });
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl max-w-md w-full p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold mb-4">Add payment</h2>
-        <div className="space-y-3 text-sm">
+    <ModalShell onClose={onClose} size="md" label="Add Payment">
+      <ModalHeader title="Add Payment" onClose={onClose} />
+      <ModalBody>
+        <div className="space-y-4 text-sm">
           <Select
             value={form.driver_id || "none"}
             onValueChange={(v) => {
@@ -403,7 +398,7 @@ function AddPayment({
                 type="number"
                 value={form.amount as any}
                 onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
-                className="w-full bg-soft rounded-md px-3 py-2 mt-1"
+                className={`${inputCls} mt-1.5`}
               />
             </label>
             <label className="text-xs">
@@ -412,7 +407,7 @@ function AddPayment({
                 type="date"
                 value={form.due_date || ""}
                 onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-                className="w-full bg-soft rounded-md px-3 py-2 mt-1"
+                className={`${inputCls} mt-1.5`}
               />
             </label>
           </div>
@@ -420,21 +415,14 @@ function AddPayment({
             placeholder="Payment method (e.g. Card, ACH)"
             value={form.payment_method || ""}
             onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
-            className="w-full bg-soft rounded-md px-3 py-2"
+            className={inputCls}
           />
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm">
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(form)}
-            className="rounded-md bg-real-red text-white px-4 py-2 text-sm"
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalFooter>
+        <ModalButton onClick={onClose}>Cancel</ModalButton>
+        <ModalButton variant="primary" onClick={() => onSave(form)}>Add Payment</ModalButton>
+      </ModalFooter>
+    </ModalShell>
   );
 }

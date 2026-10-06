@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Loader2, Camera } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ModalBody, ModalSection, ModalFooter, ModalButton, Field, FormGrid, UploadDropzone, ReadinessStatus, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
 import { createVehicle } from "@/lib/vehicles.functions";
 import { registerVehicleMedia } from "@/lib/vehicle-media.functions";
@@ -15,7 +16,7 @@ import { isRentalReady } from "@/lib/vehicle-readiness";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 
-export function QuickAddForm({ onCreated, onMore }: { onCreated: (id: string) => void; onMore: () => void }) {
+export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: string) => void; onMore: () => void; onClose?: () => void }) {
   const create = useServerFn(createVehicle);
   const register = useServerFn(registerVehicleMedia);
   const [f, setF] = useState({ year: "", make: "", model: "", vin: "", rate: "" });
@@ -68,44 +69,70 @@ export function QuickAddForm({ onCreated, onMore }: { onCreated: (id: string) =>
     }
   }
 
-  const input = "w-full rounded-md border border-border px-3 py-2 text-sm";
+  const missingRental = (() => {
+    const m: string[] = [];
+    if (!f.year.trim() || !f.make.trim() || !f.model.trim()) m.push("details");
+    if (!vinOk) m.push(f.vin.trim() ? "Enter a valid VIN" : "Add VIN");
+    const r = Number(f.rate);
+    if (!f.rate.trim() || !(r > 0)) m.push("Add weekly rate");
+    if (m.length === 0) return undefined;
+    if (m.length === 1) return m[0] === "details" ? "Add year, make and model" : m[0];
+    return "Complete required details";
+  })();
+  const vinError = f.vin && f.vin.length >= 11 && !vinOk ? "Not a valid VIN" : null;
+  const onCancel = onClose ?? (() => {});
+
   return (
-    <div className="p-6 space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        <label className="text-xs font-medium space-y-1">Year *<input inputMode="numeric" value={f.year} onChange={(e) => set("year", e.target.value)} className={input} /></label>
-        <label className="text-xs font-medium space-y-1">Make *<input value={f.make} onChange={(e) => set("make", e.target.value)} className={input} /></label>
-        <label className="text-xs font-medium space-y-1">Model *<input value={f.model} onChange={(e) => set("model", e.target.value)} className={input} /></label>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <label className="col-span-2 text-xs font-medium space-y-1">VIN
-          <input value={f.vin} onChange={(e) => set("vin", e.target.value.toUpperCase())} maxLength={17} className={`${input} font-mono ${f.vin && !vinOk ? "border-[#D03020]" : ""}`} />
-        </label>
-        <label className="text-xs font-medium space-y-1">Weekly Rate ($)<input inputMode="decimal" value={f.rate} onChange={(e) => set("rate", e.target.value)} placeholder="Not Set" className={input} /></label>
-      </div>
-      <label className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2.5 text-sm cursor-pointer hover:bg-soft">
-        <Camera className="w-4 h-4 text-muted-foreground" />
-        <span className="truncate">{photo ? photo.name : "Vehicle Photo (optional — stays private until you publish it)"}</span>
-        <input type="file" accept="image/*" className="hidden" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
-      </label>
+    <>
+      <ModalBody>
+        <ModalSection>
+          <FormGrid cols={3}>
+            <Field label="Year" required><input inputMode="numeric" placeholder="2024" value={f.year} onChange={(e) => set("year", e.target.value)} className={inputCls} /></Field>
+            <Field label="Make" required><input placeholder="Toyota" value={f.make} onChange={(e) => set("make", e.target.value)} className={inputCls} /></Field>
+            <Field label="Model" required><input placeholder="Camry" value={f.model} onChange={(e) => set("model", e.target.value)} className={inputCls} /></Field>
+          </FormGrid>
+          <FormGrid cols={3}>
+            <Field label="VIN" className="sm:col-span-2" error={vinError}>
+              <input value={f.vin} onChange={(e) => set("vin", e.target.value.toUpperCase())} maxLength={17} placeholder="17 characters"
+                className={`${inputCls} font-mono tracking-wide ${vinError ? "border-brand" : ""}`} />
+            </Field>
+            <Field label="Weekly Rate">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <input inputMode="decimal" value={f.rate} onChange={(e) => set("rate", e.target.value)} placeholder="Not Set" className={`${inputCls} pl-7`} />
+              </div>
+            </Field>
+          </FormGrid>
+        </ModalSection>
 
-      <div className="rounded-md bg-soft px-3 py-2 text-xs space-y-0.5">
-        <div>Rental Ready: <b>{ready ? "Yes" : "No"}</b>{!ready && " — needs year, make, model, valid VIN and a weekly rate above $0"}</div>
-        <div>Listing Ready: <b>No</b> — {photo ? "publish the photo from the Photos tab when you're happy with it" : "add a photo"}</div>
-      </div>
+        <ModalSection label="Photo">
+          <UploadDropzone file={photo} onFile={setPhoto} title="Add Vehicle Photo" note="Private until published" />
+        </ModalSection>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <button type="button" onClick={onMore} className="text-xs text-muted-foreground underline">
-          More ways to add (detailed form, VIN lookup, scan title, spreadsheet)
-        </button>
-        <div className="flex gap-2">
-          <button type="button" disabled={!!saving} onClick={() => submit(false)} className="rounded-md border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">
-            {saving === "save" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Vehicle"}
-          </button>
-          <button type="button" disabled={!!saving || !ready} onClick={() => submit(true)} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            {saving === "available" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save & Make Available"}
-          </button>
+        <ModalSection label="Readiness">
+          <ReadinessStatus items={[
+            { label: "Rental Ready", ready, missing: missingRental },
+            { label: "Listing Ready", ready: false, missing: photo ? "Publish photo from Photos tab" : "Add a photo" },
+          ]} />
+        </ModalSection>
+
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-t border-border pt-5">
+          <span className="mr-2 text-[13px] text-muted-foreground">More ways to add</span>
+          {["Detailed Form", "VIN Lookup", "Scan Title", "Spreadsheet Import"].map((l) => (
+            <button key={l} type="button" onClick={onMore}
+              className="h-8 rounded-full border border-border px-3 text-[13px] font-medium text-foreground hover:bg-muted">{l}</button>
+          ))}
         </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalFooter left={onClose ? <ModalButton variant="ghost" onClick={onCancel}>Cancel</ModalButton> : undefined}>
+        <ModalButton disabled={!!saving} onClick={() => submit(false)}>
+          {saving === "save" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Vehicle"}
+        </ModalButton>
+        <ModalButton variant="primary" disabled={!!saving || !ready} onClick={() => submit(true)}
+          title={ready ? undefined : "Needs year, make, model, a valid VIN and a weekly rate"}>
+          {saving === "available" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save & Make Available"}
+        </ModalButton>
+      </ModalFooter>
+    </>
   );
 }

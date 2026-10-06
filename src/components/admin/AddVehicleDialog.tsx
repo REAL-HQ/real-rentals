@@ -12,6 +12,7 @@ import { checkVin } from "@/lib/vin";
 import { TitleScanStep } from "./TitleScanStep";
 import { ImportVehiclesStep } from "./ImportVehiclesStep";
 import { QuickAddForm } from "./QuickAddVehicle";
+import { ModalShell, ModalHeader } from "./modal";
 
 // Adding a vehicle.
 //
@@ -49,33 +50,18 @@ export function AddVehicleDialog({
     setPrefill(null);
   }
 
+  const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a vehicle"
+    : mode === "vin" ? "Start from a VIN"
+    : mode === "scan" ? "Scan the title"
+    : mode === "import" ? "Import a spreadsheet"
+    : prefill ? "Confirm the details"
+    : "Vehicle details";
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            {mode !== "choose" && mode !== "quick" && (
-              <button onClick={back} aria-label="Back" className="text-muted-foreground hover:text-foreground">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-            <h3 className="font-semibold">
-              {mode === "quick" ? "Quick Add" : mode === "choose" ? "Add a vehicle"
-                : mode === "vin" ? "Start from a VIN"
-                : mode === "scan" ? "Scan the title"
-                : mode === "import" ? "Import a spreadsheet"
-                : prefill ? "Confirm the details"
-                : "Vehicle details"}
-            </h3>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+    <ModalShell onClose={onClose} size={mode === "quick" || mode === "choose" ? "md" : "lg"} label={title}>
+      <ModalHeader title={title} onClose={onClose} onBack={mode !== "choose" && mode !== "quick" ? back : undefined} />
         {mode === "quick" ? (
-          <QuickAddForm onCreated={onCreated} onMore={() => setMode("choose")} />
-        ) : mode === "choose" ? (
+          <QuickAddForm onCreated={onCreated} onMore={() => setMode("choose")} onClose={onClose} />
+        ) : (<div className="min-h-0 flex-1 overflow-y-auto">{mode === "choose" ? (
           <Chooser onPick={setMode} />
         ) : mode === "scan" ? (
           <TitleScanStep
@@ -93,9 +79,8 @@ export function AddVehicleDialog({
             onCreated={onCreated}
             onClose={onClose}
           />
-        )}
-      </div>
-    </div>
+        )}</div>)}
+    </ModalShell>
   );
 }
 
