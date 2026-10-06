@@ -6,7 +6,7 @@ const ok = (c: boolean, m: string) => { console.log(`  ${c ? "PASS" : "FAIL"}  $
 const F = (o: Record<string, string>, conf: "high" | "medium" | "low" = "high") =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { value: v, confidence: conf }]));
 // Valid check-digit VINs.
-const V1 = "1FAHP3F20CL148530", V2 = "3FA6P0HD5ER123457", BAD = "3FA6P0HD5ER12345O";
+const V1 = "1FAHP3F28CL148530", V2 = "3FA6P0HD8ER123457", BAD = "3FA6P0HD5ER12345O";
 const veh = (o: Partial<ExistingVehicle>): ExistingVehicle => ({ id: crypto.randomUUID(), vin: null, unit_number: null, license_plate: null, plate_state: null, title_number: null, registration_number: null, year: 2015, make: "Ford", model: "Fusion", ...o });
 
 // A: title → new vehicle
