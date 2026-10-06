@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "./modal";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -352,26 +353,18 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       )}
 
       {confirming && (
-        <div className="fixed inset-0 z-40 bg-black/40 grid place-items-center p-4" role="dialog" aria-modal="true" aria-label="Confirm import">
-          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3">
-            <h3 className="text-base font-semibold">Before you apply</h3>
-            <ul className="text-sm text-[#55555E] space-y-1 list-disc pl-5">
-              {creates.length > 0 && <li>{creates.length} vehicle{creates.length === 1 ? "" : "s"} will be created</li>}
-              {matches.length > 0 && <li>{matches.length} existing vehicle{matches.length === 1 ? "" : "s"} will be updated with the changes you accepted</li>}
-              {ignores.length > 0 && <li>{ignores.length} entr{ignores.length === 1 ? "y" : "ies"} will be ignored</li>}
-              {linkDocs > 0 && <li>{linkDocs} document{linkDocs === 1 ? "" : "s"} (already stored once) will be linked</li>}
-              {creates.length + matches.length > 0 && <li>{creates.length + matches.length} document relationship{creates.length + matches.length === 1 ? "" : "s"} will be created</li>}
-              {creates.length > 0 && <li>Extracted fields (including shared insurance details) will be applied to the new vehicles</li>}
-            </ul>
-            <p className="text-xs text-[#9A9AA3]">Everything is re-checked on the server first. Each entry reports its own result.</p>
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setConfirming(false)} className="min-h-[44px] px-4 rounded-md border border-[#EDEDF0] text-sm">Cancel</button>
-              <button onClick={commit} disabled={applying} className="min-h-[44px] px-5 rounded-md bg-[#D03020] text-white text-sm font-medium disabled:opacity-50">
-                {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog title="Before you apply" onCancel={() => setConfirming(false)} onConfirm={commit} busy={applying}
+          confirmLabel={applying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}>
+          <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
+            {creates.length > 0 && <li>{creates.length} vehicle{creates.length === 1 ? "" : "s"} will be created</li>}
+            {matches.length > 0 && <li>{matches.length} existing vehicle{matches.length === 1 ? "" : "s"} updated with accepted changes</li>}
+            {ignores.length > 0 && <li>{ignores.length} entr{ignores.length === 1 ? "y" : "ies"} ignored</li>}
+            {linkDocs > 0 && <li>{linkDocs} document{linkDocs === 1 ? "" : "s"} linked (stored once)</li>}
+            {creates.length + matches.length > 0 && <li>{creates.length + matches.length} document relationship{creates.length + matches.length === 1 ? "" : "s"} created</li>}
+            {creates.length > 0 && <li>Extracted fields, including shared insurance, applied to new vehicles</li>}
+          </ul>
+          <p className="text-xs text-muted-foreground">Everything is re-checked on the server first.</p>
+        </ConfirmDialog>
       )}
     </div>
   );
