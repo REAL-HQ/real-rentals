@@ -230,6 +230,9 @@ const createInput = z.object({
   ownership_type: z.enum(["owned", "financed", "leased", "partner"]).nullish(),
   partner_id: z.string().uuid().nullish(),
   weekly_rate: z.number().min(0).max(100000).nullish(),
+  deposit: z.number().min(0).max(100000).nullish(),
+  /** Quick Add "Save & Make Available" — an explicit human choice. */
+  make_available: z.boolean().optional(),
 });
 
 export const createVehicle = createServerFn({ method: "POST" })
@@ -300,21 +303,25 @@ export const createVehicle = createServerFn({ method: "POST" })
           unit_number: data.unit_number?.trim() || null,
           vin,
           year: data.year,
-          make: data.make,
-          model: data.model,
-          trim: data.trim || null,
-          color: data.color || null,
+          make: normalizeDisplayText(data.make),
+          model: normalizeDisplayText(data.model),
+          trim: data.trim ? normalizeDisplayText(data.trim) : null,
+          color: data.color ? normalizeDisplayText(data.color) : null,
           body_type: data.body_type || null,
           current_odometer: data.current_odometer ?? null,
           license_plate: data.license_plate?.trim().toUpperCase() || null,
           plate_state: data.plate_state?.trim().toUpperCase() || null,
-          // A brand-new record has no photo yet, so it cannot be Rental Ready
-          // at insert. Asked-for Available/Reserved starts as Needs Setup; the
-          // operator makes it Available once a rate and photo exist.
-          status: ["available", "reserved"].includes(data.status || "available") ? "onboarding" : data.status,
+          // Available only when a human explicitly asked for it (Quick Add's
+          // "Save & Make Available") AND the car is Rental Ready — the status
+          // trigger re-checks this server-side. Otherwise Needs Setup.
+          status: ["available", "reserved"].includes(data.status || "available")
+            ? data.make_available && vin && hasValidRate(data.weekly_rate) ? "available" : "onboarding"
+            : data.status,
           partner_id: data.partner_id || null,
           // Unknown stays unknown: null means "Not Set", never $0.
           weekly_rate: data.weekly_rate ?? null,
+          // Deposit has no hard-coded default: Not Set until a human sets it.
+          deposit: data.deposit ?? null,
         } as any)
         .select("id,unit_number")
         .single();
