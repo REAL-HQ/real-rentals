@@ -49,7 +49,7 @@ export function vendorKey(name: string | null | undefined): string {
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
-  service: "Service", inspection: "Inspection", rental_checkout: "Rental Checkout", rental_return: "Rental Return",
+  service: "Service", inspection: "Inspection", rental_checkout: "Rental Pickup", rental_return: "Rental Return",
   manual: "Manual", fleet_inbox: "Fleet Inbox", title: "Title", registration: "Registration",
   odometer_photo: "Odometer Photo", incident: "Incident", other: "Other",
 };
