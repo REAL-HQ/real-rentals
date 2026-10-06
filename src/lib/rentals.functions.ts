@@ -135,6 +135,16 @@ async function evaluateReadiness(
         });
       }
 
+      // Rental Ready — the single DB definition (year/make/model/VIN/weekly
+      // rate/photo). Never overridable; fleet-profile completeness is never checked.
+      const { data: missing } = await (admin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: vehicleId });
+      if (Array.isArray(missing) && missing.length) {
+        blockers.push({
+          code: "vehicle_not_ready",
+          message: notReadyMessage(`vehicle_not_rental_ready:${missing.join(",")}`) ?? "Vehicle is not rental ready.",
+        });
+      }
+
       // A car must not leave the lot without a passed pre-delivery inspection.
       const { data: inspection } = await admin
         .from("inspections")
