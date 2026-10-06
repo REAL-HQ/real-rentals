@@ -8,3 +8,4 @@
 - Agreements: buildMergeData's blockers are the single readiness gate for preview, send, approval auto-send and resend; every rendered contract field must be real data (real vehicles.vin, never record ids).
 
 - Vehicle photos: the vehicle-photos bucket is private (staff-only storage policies); the public site gets listing photos only via /api/public/vehicle-photos/*, which serves a path only if a published vehicle_media row names it, and staff galleries download bytes via loadStaffPhoto — because unpublished originals and AI retouches must never be publicly reachable.
+- Back-office shell: navigation lives in src/components/admin/nav-config.ts (Dock apps → grouped Operations nav → tabs, plus "+ Create" deep links via ?add=1); admin.tsx renders it and the URL stays the only source of truth for location, because two owners of "where am I" caused the dead-click navigation bug. Only add Dock apps/Create actions that open a real, existing flow.
