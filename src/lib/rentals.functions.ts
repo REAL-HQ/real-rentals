@@ -40,7 +40,9 @@ export type ActivationBlocker = {
     /** Vehicle fails Rental Ready (or rate missing). Never overridable. */
     | "vehicle_not_ready"
     /** The application's login belongs to a different identity. Never overridable. */
-    | "account_conflict";
+    | "account_conflict"
+    /** Pickup mileage is materially below the vehicle's mileage history. */
+    | "mileage_invalid";
   message: string;
 };
 
@@ -51,6 +53,10 @@ export type ActivationReadiness = {
   vehicleId: string | null;
   suggestedWeeklyRate: number | null;
   suggestedDeposit: number | null;
+  /** Odometer from the latest passed pre-delivery inspection — prefills Pickup Mileage (same observation, never duplicated). */
+  inspectionMileage: number | null;
+  /** Newest valid reading in mileage history, for the "at least" hint. */
+  currentMileage: number | null;
 };
 
 /**
@@ -151,13 +157,15 @@ async function evaluateReadiness(
       // A car must not leave the lot without a passed pre-delivery inspection.
       const { data: inspection } = await admin
         .from("inspections")
-        .select("id,status,completed_at")
+        .select("id,status,completed_at,odometer")
         .eq("vehicle_id", vehicleId)
         .eq("inspection_type", "pre_delivery")
         .eq("status", "passed")
         .order("completed_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+      inspectionMileage = (inspection as any)?.odometer != null ? Number((inspection as any).odometer) : null;
+      currentMileage = (v as any).current_odometer != null ? Number((v as any).current_odometer) : null;
       if (!inspection) {
         blockers.push({
           code: "no_passed_inspection",
@@ -195,6 +203,8 @@ async function evaluateReadiness(
           ? Number(vehicle.weekly_rate)
           : null,
     suggestedDeposit: vehicle?.deposit != null ? Number(vehicle.deposit) : null,
+    inspectionMileage,
+    currentMileage,
   };
 }
 
@@ -242,6 +252,8 @@ export const activateRental = createServerFn({ method: "POST" })
         overrideBlockers: z.boolean().optional(),
         /** Required whenever overrideBlockers is used; stored in the immutable audit log. */
         overrideReason: z.string().trim().max(500).optional(),
+        /** Odometer at handover → one canonical mileage observation (source Rental Pickup). */
+        pickupMileage: z.number().int().min(0).max(2_000_000).nullable().optional(),
       })
       .parse(d),
   )
@@ -321,6 +333,8 @@ export const activateRental = createServerFn({ method: "POST" })
       _deposit_held: data.depositHeld ?? false,
       _start: data.startDate,
       _end: data.endDate ?? null,
+      _pickup_miles: data.pickupMileage ?? null,
+      _actor: actor.userId,
     });
     if (txErr) {
       const blocker = activationTxBlocker(String(txErr.message));
@@ -429,6 +443,8 @@ export const endRental = createServerFn({ method: "POST" })
         /** Where the vehicle goes next: straight back out, or into the shop. */
         vehicleStatus: z.enum(["available", "maintenance"]).default("available"),
         reason: z.string().max(500).optional(),
+        /** Odometer at return → one canonical mileage observation (source Rental Return). */
+        returnMileage: z.number().int().min(0).max(2_000_000).nullable().optional(),
       })
       .parse(d),
   )
@@ -452,8 +468,16 @@ export const endRental = createServerFn({ method: "POST" })
       _rental_id: data.rentalId,
       _end: endDate,
       _vehicle_status: data.vehicleStatus,
+      _return_miles: data.returnMileage ?? null,
+      _actor: actor.userId,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      const m = String(error.message);
+      const n = (s: string) => Number(m.split(s + ":")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
+      if (m.includes("return_below_pickup")) return { ok: false, error: `Return mileage can't be lower than pickup mileage (${n("return_below_pickup")} mi).` };
+      if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
+      throw new Error(error.message);
+    }
     if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -484,6 +508,11 @@ export function activationTxBlocker(msg: string): ActivationBlocker | null {
   if (nr) return { code: "vehicle_not_ready", message: nr };
   if (msg.includes("no_weekly_rate"))
     return { code: "vehicle_not_ready", message: "A weekly rate above $0 is required to start a rental." };
+  if (msg.includes("pickup_below_history")) {
+    const n = Number(msg.split("pickup_below_history:")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
+    return { code: "mileage_invalid", message: `Pickup mileage is far below this car's mileage history (${n} mi). Check the odometer.` };
+  }
+  if (msg.includes("invalid_mileage")) return { code: "mileage_invalid", message: "Enter a valid odometer reading." };
   if (msg.includes("invalid_dates"))
     return { code: "no_vehicle", message: "The end date must be after the start date." };
   return null;
