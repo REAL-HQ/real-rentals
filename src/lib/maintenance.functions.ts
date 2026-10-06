@@ -7,7 +7,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { logAudit } from "@/lib/audit";
 import { tierAllows } from "@/lib/roles";
 import {
-  dueStatus, sortTimeline, netServiceCost, categoryLabel, normalizeCategory, SOURCE_LABELS,
+  dueStatus, sortTimeline, netServiceCost, milesDriven, categoryLabel, normalizeCategory, SOURCE_LABELS,
   type DueResult, type TimelineEvent,
 } from "@/lib/maintenance-rules";
 
@@ -364,7 +364,7 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
       sb.from("maintenance_records").select("id,item,status,performed_on,created_at,odometer,document_id,vendor_name_raw,vendors(name)").eq("vehicle_id", id),
       sb.from("odometer_readings").select("id,mileage,observed_on,source_type,status,document_id").eq("vehicle_id", id),
       sb.from("inspections").select("id,inspection_type,status,completed_at,created_at,odometer").eq("vehicle_id", id),
-      sb.from("rentals").select("id,start_date,end_date,status").eq("vehicle_id", id),
+      sb.from("rentals").select("id,start_date,end_date,status,pickup_reading_id,return_reading_id").eq("vehicle_id", id),
       sb.from("incidents").select("id,incident_type,occurred_at,severity,status").eq("vehicle_id", id),
       sb.from("vehicle_media").select("id,created_at,published").eq("vehicle_id", id).eq("published", true),
       sb.from("audit_log").select("id,action,summary,created_at,metadata").eq("entity_type", "vehicle").eq("entity_id", id).ilike("action", "%status%").limit(200),
@@ -394,8 +394,11 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
     });
     for (const i of (insp.data ?? []) as any[]) if (i.completed_at) ev.push({ id: `i:${i.id}`, kind: "inspection", at: i.completed_at, title: "Inspection Completed", detail: [categoryLabel(i.inspection_type), i.odometer ? `${Number(i.odometer).toLocaleString("en-US")} mi` : null].filter(Boolean).join(" · "), ref: { table: "inspections", id: i.id } });
     for (const r of (rents.data ?? []) as any[]) {
-      ev.push({ id: `rs:${r.id}`, kind: "rental", at: r.start_date, title: "Rental Started", ref: { table: "rentals", id: r.id } });
-      if (r.status !== "active" && r.end_date) ev.push({ id: `re:${r.id}`, kind: "rental", at: r.end_date, title: "Rental Ended", ref: { table: "rentals", id: r.id } });
+      const rd = (rid: string | null) => (reads.data ?? []).find((x: any) => x.id === rid) as any;
+      const pick = rd(r.pickup_reading_id), ret = rd(r.return_reading_id);
+      const md = milesDriven(pick?.mileage ?? null, ret?.mileage ?? null);
+      ev.push({ id: `rs:${r.id}`, kind: "rental", at: r.start_date, title: "Rental Started", detail: pick ? `Pickup ${Number(pick.mileage).toLocaleString("en-US")} mi` : null, ref: { table: "rentals", id: r.id } });
+      if (r.status !== "active" && r.end_date) ev.push({ id: `re:${r.id}`, kind: "rental", at: r.end_date, title: "Rental Ended", detail: [ret ? `Return ${Number(ret.mileage).toLocaleString("en-US")} mi` : null, md != null ? `${md.toLocaleString("en-US")} Miles Driven` : null].filter(Boolean).join(" · ") || null, ref: { table: "rentals", id: r.id } });
     }
     for (const i of (incs.data ?? []) as any[]) ev.push({ id: `x:${i.id}`, kind: "incident", at: i.occurred_at, title: "Incident Recorded", detail: [categoryLabel(i.incident_type), i.severity].filter(Boolean).join(" · "), ref: { table: "incidents", id: i.id } });
     for (const m of (media.data ?? []) as any[]) ev.push({ id: `p:${m.id}`, kind: "photo", at: m.created_at, title: "Photo Published", ref: { table: "vehicle_media", id: m.id } });
