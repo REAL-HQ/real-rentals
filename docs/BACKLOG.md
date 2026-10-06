@@ -100,3 +100,9 @@ Phase 0.5 presents both under one "Vendors" nav entry (All Vendors | Repair Shop
 ## Future: Admin/Renter view + "View as Renter" (not built)
 
 Plug-in point: the account menu in the shell header (src/routes/admin.tsx), gated to Owner/Manager via nav-config. Requirements when built: server-authorized short-lived read-only support session, audited start/stop, persistent "Viewing as [Name] — Exit" banner, no password/credential exposure, no URL-ID trust, and staff actions never recorded as the renter's. No generic Renter View exists today, so no switch is shown.
+
+## Test infrastructure (found Phase 1 closure, 2026-10-06)
+- `bunx vitest run` reports 22 files / 0 tests: the `scripts/*.test.*` files are standalone node/bun assertion scripts (custom `ok()` harness, `process.exit`), not vitest-native suites. Vitest discovers them by filename but finds no `describe/it`.
+- The real runner is `npm test` (chained scripts). It currently stops at `scripts/grants.test.mjs` because the `pg` package is not installed, so later scripts in the chain do not run unless invoked individually.
+- `scripts/client-chunks.test.mjs` SKIPs without a production build (`.output/public/assets`).
+- `.ts` scripts (vehicle-readiness, fleet-inbox, esign-engine, admin-shell-roles) are run with `bun scripts/<name>.test.ts`; they are not in `npm test`.

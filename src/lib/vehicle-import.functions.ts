@@ -1,3 +1,4 @@
+import { normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -293,6 +294,10 @@ export const commitVehicleImport = createServerFn({ method: "POST" })
 
         const { error } = await supabaseAdmin.from("vehicles").insert({
           ...row.values,
+          ...(typeof (row.values as any).make === "string" ? { make: normalizeDisplayText((row.values as any).make) } : {}),
+          ...(typeof (row.values as any).model === "string" ? { model: normalizeDisplayText((row.values as any).model) } : {}),
+          // Imported cars always start as Needs Setup; only a human makes them Available.
+          status: "onboarding",
           // Required by the table and not something a spreadsheet carries.
           fuel_type: "gas",
           oil_interval_miles: 5000,
