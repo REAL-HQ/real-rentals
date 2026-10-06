@@ -175,8 +175,8 @@ export function VehicleProfile({
             <span className="text-[#B0B0B8]">/</span>
             <span className="text-[#111114] font-semibold truncate">{p?.unitLabel ?? "…"}</span>
           </nav>
-          <div className="flex items-start gap-4">
-            <div className="h-16 w-24 shrink-0 rounded-lg bg-[#F4F4F6] overflow-hidden grid place-items-center">
+          <div className="flex flex-wrap sm:flex-nowrap items-start gap-x-4 gap-y-3">
+            <div className="h-12 w-16 sm:h-16 sm:w-24 shrink-0 rounded-lg bg-[#F4F4F6] overflow-hidden grid place-items-center">
               {photo ? (
                 <img src={photo} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -208,7 +208,7 @@ export function VehicleProfile({
               )}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto order-last sm:order-none">
               {p?.canEdit && (
                 <button
                   onClick={() => setEditorOpen(true)}
