@@ -2517,6 +2517,39 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_refunds: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          payment_ids: string[]
+          status: string | null
+          stripe_charge_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_refund_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          payment_ids?: string[]
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          payment_ids?: string[]
+          status?: string | null
+          stripe_charge_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -2530,6 +2563,7 @@ export type Database = {
           last_attempt_at: string | null
           late_fee_applied_through: string | null
           late_fees: number
+          net_collected: number | null
           notes: string | null
           notified_status: string | null
           paid_date: string | null
@@ -2558,6 +2592,7 @@ export type Database = {
           last_attempt_at?: string | null
           late_fee_applied_through?: string | null
           late_fees?: number
+          net_collected?: number | null
           notes?: string | null
           notified_status?: string | null
           paid_date?: string | null
@@ -2586,6 +2621,7 @@ export type Database = {
           last_attempt_at?: string | null
           late_fee_applied_through?: string | null
           late_fees?: number
+          net_collected?: number | null
           notes?: string | null
           notified_status?: string | null
           paid_date?: string | null
@@ -3891,6 +3927,16 @@ export type Database = {
       application_accepts_uploads: {
         Args: { _application_id: string }
         Returns: boolean
+      }
+      apply_payment_refund: {
+        Args: {
+          _charge_id: string
+          _cumulative: number
+          _payment_ids: string[]
+          _pi: string
+          _refunds: Json
+        }
+        Returns: Json
       }
       cars_available: { Args: never; Returns: number }
       email_delivery_attach: {
