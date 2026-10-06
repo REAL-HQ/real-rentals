@@ -41,6 +41,7 @@ import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/pu
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
 import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
+import { Route as ApiPublicVehiclePhotosSplatRouteImport } from './routes/api/public/vehicle-photos/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -207,6 +208,12 @@ const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
   path: '/api/public/sms/inbound',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicVehiclePhotosSplatRoute =
+  ApiPublicVehiclePhotosSplatRouteImport.update({
+    id: '/api/public/vehicle-photos/$',
+    path: '/api/public/vehicle-photos/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByFullPath {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -275,6 +283,7 @@ export interface FileRoutesByTo {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -310,6 +319,7 @@ export interface FileRoutesById {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -346,6 +356,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/vehicle-photos/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -380,6 +391,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/vehicle-photos/$'
   id:
     | '__root__'
     | '/'
@@ -414,6 +426,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/vehicle-photos/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -449,6 +462,7 @@ export interface RootRouteChildren {
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
   ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
+  ApiPublicVehiclePhotosSplatRoute: typeof ApiPublicVehiclePhotosSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -677,6 +691,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/vehicle-photos/$': {
+      id: '/api/public/vehicle-photos/$'
+      path: '/api/public/vehicle-photos/$'
+      fullPath: '/api/public/vehicle-photos/$'
+      preLoaderRoute: typeof ApiPublicVehiclePhotosSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -713,6 +734,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
   ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
+  ApiPublicVehiclePhotosSplatRoute: ApiPublicVehiclePhotosSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

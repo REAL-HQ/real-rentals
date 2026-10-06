@@ -288,16 +288,32 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   }
 }
 
-/** Money returned. Full refund → 'refunded' (drops out of revenue); partial → amount recorded. */
+/**
+ * Money returned. The original charge row keeps its gross amount; refunded_amount
+ * follows Stripe's cumulative amount_refunded (provider truth), so duplicate or
+ * out-of-order events are idempotent and can never lower it. net_collected
+ * (amount − refunded_amount) is what reports count. Only a full refund flips
+ * the status to 'refunded'. Each Stripe refund is logged once in payment_refunds.
+ */
 async function handleChargeRefunded(charge: any) {
   const admin: any = getSupabase();
   const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
   if (!piId) return;
-  const refunded = Number(charge.amount_refunded ?? 0) / 100;
-  const full = charge.refunded === true || Number(charge.amount_refunded ?? 0) >= Number(charge.amount ?? Infinity);
-  must(await admin.from('payments')
-    .update({ refunded_amount: refunded, refunded_at: new Date().toISOString(), ...(full ? { status: 'refunded' } : {}) })
-    .eq('stripe_payment_intent_id', piId));
+  // Single charge: matched by pointer. Combined balance payment: by metadata.paymentIds.
+  let ids: string[] = String(charge.metadata?.paymentIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) {
+    const { data } = await admin.from('payments').select('id').eq('stripe_payment_intent_id', piId);
+    ids = (data ?? []).map((r: any) => r.id);
+  }
+  if (!ids.length) return;
+  const refunds = (charge.refunds?.data ?? []).map((r: any) => ({ id: r.id, amount: Number(r.amount ?? 0) / 100, status: r.status ?? null }));
+  must(await admin.rpc('apply_payment_refund', {
+    _payment_ids: ids,
+    _cumulative: Number(charge.amount_refunded ?? 0) / 100,
+    _refunds: refunds,
+    _charge_id: charge.id ?? null,
+    _pi: piId,
+  }));
 }
 
 async function handleSubscriptionUpdated(sub: any) {

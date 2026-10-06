@@ -198,8 +198,8 @@ export function OverviewPanel() {
           .in("status", OVERDUE_STATUSES as unknown as string[]),
         supabase
           .from("payments")
-          .select("amount, paid_date")
-          .eq("status", "paid")
+          .select("net_collected, paid_date")
+          .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", d84),
         supabase.from("payments").select("amount, due_date").gte("due_date", d84),
@@ -247,7 +247,7 @@ export function OverviewPanel() {
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
       const sumAmt = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
+        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
       const overdueRows = (overdueQ.data ?? []) as any[];
       setOverdueAmt(sumAmt(overdueRows));
       setOverdueCount(overdueRows.length);
@@ -283,7 +283,7 @@ export function OverviewPanel() {
         if (!p.paid_date) continue;
         const w = bucketStart(new Date(p.paid_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.amount ?? 0);
+        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
       }
       for (const p of (billed12wQ.data ?? []) as any[]) {
         if (!p.due_date) continue;
@@ -322,15 +322,15 @@ export function OverviewPanel() {
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("amount")
-          .eq("status", "paid")
+          .select("net_collected")
+          .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
           .lte("paid_date", r.to);
       const [cur, prev] = await Promise.all([q(range), q(compare)]);
       if (!live) return;
       const sum = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.amount ?? 0), 0);
+        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
       setRevenue(sum(cur.data));
       setPriorRevenue(sum(prev.data));
       setRevenueLoading(false);

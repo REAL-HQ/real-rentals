@@ -23,7 +23,7 @@ import {
   type VehicleMedia,
   type VehicleMediaList,
 } from "@/lib/vehicle-media.functions";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { loadStaffPhoto } from "@/lib/photoUrl";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
 
 // The gallery.
@@ -318,7 +318,14 @@ function PhotoTile({
   onEnhance: (mode: string) => void;
 }) {
   const [caption, setCaption] = useState(m.caption ?? "");
-  const url = resolvePhotoUrl(m.storage_path);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadStaffPhoto(m.storage_path).then((u) => live && setUrl(u));
+    return () => {
+      live = false;
+    };
+  }, [m.storage_path]);
   const isEnhanced = m.kind === "ai_enhanced";
 
   return (

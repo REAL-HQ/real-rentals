@@ -66,7 +66,10 @@ console.log("\nNO APPLICANT INPUT IS SPLICED INTO A POSTGREST FILTER");
   // Nav.tsx composes a filter from the signed-in user's own auth UUID, which is
   // issued by Supabase and never attacker-chosen. Listed so that a NEW one
   // shows up here rather than hiding in a count.
-  const ALLOWED = ["src/components/site/Nav.tsx"];
+  // esign.server.ts interpolates a server-computed ISO timestamp; the payments
+  // webhook interpolates a Stripe id from a signature-verified event and a
+  // status from a fixed enum. None is applicant input.
+  const ALLOWED = ["src/components/site/Nav.tsx", "src/lib/esign.server.ts", "src/routes/api/public/payments/webhook.ts"];
   const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)));
   ok(unexpected.length === 0, `no unreviewed interpolated filter (found ${unexpected.length})`);
   for (const o of unexpected) console.log(`       ${o}`);
