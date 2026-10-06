@@ -187,7 +187,7 @@ function ManualForm({
     }
     return next;
   });
-  const prefill = useVehicleDefaultPrefill(
+  const priceDefaults = useVehicleDefaultPrefill(
     f.body_type,
     { weekly_rate: f.weekly_rate, monthly_rate: f.monthly_rate, deposit: f.deposit },
     (n) => setF((p) => ({ ...p, ...n })),
@@ -392,7 +392,7 @@ function ManualForm({
           {(["weekly_rate", "monthly_rate", "deposit"] as const).map((k) => (
             <Field key={k} label={DEFAULT_FIELD_LABELS[k]}>
               <input value={f[k]} inputMode="decimal" placeholder="Not Set" aria-label={DEFAULT_FIELD_LABELS[k]}
-                onChange={(e) => { prefill.markTouched(k); set(k, e.target.value); }} className={inputCls()} />
+                onChange={(e) => { priceDefaults.markTouched(k); set(k, e.target.value); }} className={inputCls()} />
             </Field>
           ))}
           <Field label="Mileage"><input value={f.current_odometer} onChange={(e) => set("current_odometer", e.target.value)} inputMode="numeric" className={inputCls()} /></Field>

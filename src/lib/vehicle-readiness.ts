@@ -31,9 +31,9 @@ export function hasValidRate(rate: unknown): boolean {
 export function rentalReadyItems(v: V): ReadyItem[] {
   const vin = String(v.vin ?? "").trim();
   return [
-    { key: "identity", label: "Year, make and model", done: !!v.year && !!String(v.make ?? "").trim() && !!String(v.model ?? "").trim() },
+    { key: "identity", label: "Year, Make and Model", done: !!v.year && !!String(v.make ?? "").trim() && !!String(v.model ?? "").trim() },
     { key: "vin", label: "Valid VIN", done: !!vin && checkVin(vin).formatValid },
-    { key: "weekly_rate", label: "Weekly rate", done: hasValidRate(v.weekly_rate) },
+    { key: "weekly_rate", label: "Weekly Rate", done: hasValidRate(v.weekly_rate) },
   ];
 }
 
@@ -44,7 +44,7 @@ export function isRentalReady(v: V): boolean {
 export function listingReadyItems(v: V, publishedPhotoCount: number): ReadyItem[] {
   return [
     { key: "rental_ready", label: "Rental Ready", done: isRentalReady(v) },
-    { key: "listing_photo", label: "Published listing photo", done: publishedPhotoCount > 0 },
+    { key: "listing_photo", label: "Published Listing Photo", done: publishedPhotoCount > 0 },
   ];
 }
 
@@ -54,17 +54,17 @@ export function profileItems(
 ): ReadyItem[] {
   const slots = presentSlots(ctx.docKinds);
   return [
-    { key: "mileage", label: "Current mileage", done: v.current_odometer != null },
+    { key: "mileage", label: "Current Mileage", done: v.current_odometer != null },
     { key: "color", label: "Color", done: !!v.color },
-    { key: "plate", label: "License plate", done: !!v.license_plate },
+    { key: "plate", label: "License Plate", done: !!v.license_plate },
     { key: "registration", label: "Registration", done: slots.has("registration") || !!v.registration_expires_on },
     { key: "title", label: "Title", done: slots.has("title") || !!v.title_number },
-    { key: "insurance", label: "Insurance evidence", done: slots.has("insurance_card") || !!v.insurance_carrier },
-    { key: "gps", label: "GPS / tracker", done: !!v.gps_status && v.gps_status !== "not_installed" },
-    { key: "maintenance", label: "Maintenance history", done: ctx.maintenanceCount > 0 },
-    ...(ctx.inspectionCount === undefined ? [] : [{ key: "inspection", label: "Inspection history", done: ctx.inspectionCount > 0 }]),
+    { key: "insurance", label: "Insurance Evidence", done: slots.has("insurance_card") || !!v.insurance_carrier },
+    { key: "gps", label: "GPS / Tracker", done: !!v.gps_status && v.gps_status !== "not_installed" },
+    { key: "maintenance", label: "Maintenance History", done: ctx.maintenanceCount > 0 },
+    ...(ctx.inspectionCount === undefined ? [] : [{ key: "inspection", label: "Inspection History", done: ctx.inspectionCount > 0 }]),
     ...(ctx.photoCount === undefined ? [] : [{ key: "photos", label: "Photos", done: ctx.photoCount > 0 }]),
-    ...(ctx.hasFinance === undefined ? [] : [{ key: "purchase", label: "Purchase information", done: !!ctx.hasFinance }]),
+    ...(ctx.hasFinance === undefined ? [] : [{ key: "purchase", label: "Purchase Information", done: !!ctx.hasFinance }]),
   ];
 }
 

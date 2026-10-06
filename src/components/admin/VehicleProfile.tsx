@@ -1275,7 +1275,7 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
     } finally { setBusy(false); }
   }
 
-  const titleList = (items: { label: string }[]) => items.map((i) => i.label.replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bVin\b/, "VIN")).join(", ");
+  const titleList = (items: { label: string }[]) => items.map((i) => i.label).join(", ");
   const Btn = ({ onClick, children, primary }: { onClick: () => void; children: React.ReactNode; primary?: boolean }) => (
     <button disabled={busy} onClick={onClick}
       className={`shrink-0 h-8 px-3 rounded-lg text-[12px] font-medium disabled:opacity-50 ${primary ? "bg-[#D03020] text-white" : "border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]"}`}>{children}</button>
@@ -1314,7 +1314,7 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
             {profile.map((i) => (
               <li key={i.key} className="flex items-center gap-2 text-[13px]">
                 <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${i.done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
-                <span className={i.done ? "text-[#111114]" : "text-[#55555E]"}>{i.label.replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bGps\b/, "GPS").replace(/\bVin\b/, "VIN")}</span>
+                <span className={i.done ? "text-[#111114]" : "text-[#55555E]"}>{i.label}</span>
               </li>
             ))}
           </ul>
