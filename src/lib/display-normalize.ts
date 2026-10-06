@@ -35,3 +35,10 @@ export function normalizeDisplayField<T>(field: string, value: T): T {
   if (typeof value !== "string" || !NORMALIZED_FIELDS.has(field)) return value;
   return normalizeDisplayText(value) as unknown as T;
 }
+
+/** Display-only title for cards: also fixes all-lowercase input ("ford fusion" → "Ford Fusion"). Never used for identifiers. */
+export function displayVehicleWord(value: string): string {
+  const s = value.trim();
+  if (s && s === s.toLowerCase() && /[a-z]/.test(s)) return normalizeDisplayText(s.toUpperCase());
+  return normalizeDisplayText(s);
+}

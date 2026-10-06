@@ -7,7 +7,7 @@ import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Car, ArrowRight, Copy } from "lucide-react";
-import { normalizeDisplayText } from "@/lib/display-normalize";
+import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
 import {
   Select,
@@ -260,7 +260,7 @@ export function VehiclesPanel({
                   {(v as any).unit_number ?? ""}
                 </div>
                 <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">
-                  {[v.year, normalizeDisplayText(v.make ?? ""), normalizeDisplayText(v.model ?? "")].filter(Boolean).join(" ")}
+                  {[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ")}
                 </div>
                 <dl className="mt-2.5 grid grid-cols-[44px_1fr] gap-y-1 text-[13px]">
                   <dt className="text-muted-foreground">Plate</dt>
