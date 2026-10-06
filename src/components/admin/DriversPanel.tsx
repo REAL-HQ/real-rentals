@@ -1295,59 +1295,6 @@ function DriverDetail({
             </DropdownMenu>
           </div>
         </div>
-        {/* Identity strip */}
-        <div className="px-8 pb-4 flex items-center gap-4">
-          <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-[18px] font-semibold text-[#111114] truncate">
-                {driver.full_name || "Unnamed"}
-              </h2>
-              <StatusPill status={driver.status} />
-              {driver.gclid && (
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
-                  Google Ads
-                </span>
-              )}
-              {(driver.resubmission_count ?? 0) > 0 && (
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E] bg-[#F4F4F6] rounded px-1.5 py-0.5">
-                  Merged {driver.resubmission_count} Duplicate
-                  {driver.resubmission_count === 1 ? "" : "(s)"}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
-              {(driver.city || driver.state) && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-[#9A9AA3]" />{" "}
-                  {[driver.city, driver.state].filter(Boolean).join(", ")}
-                </span>
-              )}
-              {driver.phone && (
-                <span className="inline-flex items-center gap-1">
-                  <Phone className="w-3 h-3 text-[#9A9AA3]" /> {formatPhone(driver.phone)}
-                </span>
-              )}
-              {driver.email && (
-                <span className="inline-flex items-center gap-1 truncate max-w-[240px]">
-                  <Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}
-                </span>
-              )}
-              {driver.created_at && (
-                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">
-                  Applied {new Date(driver.created_at).toLocaleDateString()}
-                </span>
-              )}
-              {driver.contacted_at && (
-                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">
-                  · Last contact {new Date(driver.contacted_at).toLocaleDateString()}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="px-8 py-6 space-y-6">
