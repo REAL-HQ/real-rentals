@@ -2,6 +2,7 @@
 // AI proposes, the server validates, a person approves. Originals are stored
 // once in the private vehicle-docs bucket and recorded in the existing
 // `documents` vault; document_vehicle_links relates one document to many cars.
+import { isFinanceKind } from "@/lib/vehicle-doc-presence";
 import { normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -506,10 +507,10 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
-    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category").eq("id", data.documentId).maybeSingle();
+    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category,kind").eq("id", data.documentId).maybeSingle();
     if (!doc || doc.driver_id) throw new Error("Not found");
     // Loan / payoff / purchase paperwork stays inside the finance boundary.
-    if (docGroupOf(doc.category) === "Finance" && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
+    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind)) && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
