@@ -43,6 +43,7 @@ export function ActivateRentalDialog({
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const [weeklyRate, setWeeklyRate] = useState("");
   const [deposit, setDeposit] = useState("");
@@ -91,7 +92,7 @@ export function ActivateRentalDialog({
     rateNum > 0 &&
     !!startDate &&
     hardBlockers.length === 0 &&
-    (softBlockers.length === 0 || acknowledged);
+    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= 5));
 
   async function submit() {
     setBusy(true);
@@ -106,6 +107,7 @@ export function ActivateRentalDialog({
           endDate: endDate || null,
           depositHeld,
           overrideBlockers: softBlockers.length > 0 && acknowledged,
+          overrideReason: softBlockers.length > 0 && acknowledged ? overrideReason.trim() : undefined,
         },
       });
       if (!res.ok) {
@@ -209,6 +211,15 @@ export function ActivateRentalDialog({
                   I understand and am activating anyway. This is recorded against my account.
                 </span>
               </label>
+              {acknowledged && (
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Reason for override (required)"
+                  rows={2}
+                  className="mt-2 w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
+                />
+              )}
             </div>
           ) : null}
 

@@ -240,6 +240,8 @@ export const activateRental = createServerFn({ method: "POST" })
         depositHeld: z.boolean().optional(),
         /** Set only when the operator has explicitly acknowledged the blockers. */
         overrideBlockers: z.boolean().optional(),
+        /** Required whenever overrideBlockers is used; stored in the immutable audit log. */
+        overrideReason: z.string().trim().max(500).optional(),
       })
       .parse(d),
   )
@@ -260,6 +262,11 @@ export const activateRental = createServerFn({ method: "POST" })
     if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
     if (!readiness.ready && !data.overrideBlockers) {
       return { ok: false, blockers: readiness.blockers };
+    }
+    // An override is deliberate and attributable: it needs a written reason.
+    const overridden = readiness.ready ? [] : readiness.blockers;
+    if (overridden.length && (data.overrideReason ?? "").length < 5) {
+      return { ok: false, blockers: [{ code: "override_reason_required" as any, message: "Enter a reason for the override." }] };
     }
 
     const { data: app } = await supabaseAdmin
@@ -394,7 +401,15 @@ export const activateRental = createServerFn({ method: "POST" })
         vehicle_id: data.vehicleId,
         application_id: data.applicationId,
         account_created: created,
-        overrides: (data as any).acknowledge ?? null,
+        driver_id: userId,
+        overrides: overridden.length
+          ? {
+              blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
+              reason: data.overrideReason ?? null,
+              by: actor.userId,
+              at: new Date().toISOString(),
+            }
+          : null,
       },
     });
 
