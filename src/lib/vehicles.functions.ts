@@ -34,6 +34,7 @@ export const BODY_TYPES = [
 ] as const;
 
 export const VEHICLE_STATUSES = [
+  { value: "onboarding", label: "Needs Setup" },
   { value: "available", label: "Available" },
   { value: "rented", label: "Rented" },
   { value: "maintenance", label: "In maintenance" },
@@ -300,11 +301,13 @@ export const createVehicle = createServerFn({ method: "POST" })
           current_odometer: data.current_odometer ?? null,
           license_plate: data.license_plate?.trim().toUpperCase() || null,
           plate_state: data.plate_state?.trim().toUpperCase() || null,
-          status: data.status || "available",
+          // A brand-new record has no photo yet, so it cannot be Rental Ready
+          // at insert. Asked-for Available/Reserved starts as Needs Setup; the
+          // operator makes it Available once a rate and photo exist.
+          status: ["available", "reserved"].includes(data.status || "available") ? "onboarding" : data.status,
           partner_id: data.partner_id || null,
-          // Required by the table. Defaulted rather than demanded up front, so a
-          // car can be recorded the moment it exists and priced later.
-          weekly_rate: data.weekly_rate ?? 0,
+          // Unknown stays unknown: null means "Not Set", never $0.
+          weekly_rate: data.weekly_rate ?? null,
         } as any)
         .select("id,unit_number")
         .single();
@@ -834,11 +837,8 @@ async function applySection(
 
     if (!Object.keys(patch).length) return { ok: true };
 
-    // weekly_rate is NOT NULL on the table. Clearing it would fail with a
-    // constraint name nobody can act on, so say what is wrong instead.
-    if ("weekly_rate" in patch && (patch.weekly_rate === null || patch.weekly_rate === undefined)) {
-      return { ok: false, error: "A weekly rate is required.", field: "weekly_rate" };
-    }
+    // weekly_rate may be null ("Not Set"). The database refuses Available /
+    // Reserved without Rental Ready; that message is translated below.
 
     const { data: before } = await supabaseAdmin
       .from("vehicles")
