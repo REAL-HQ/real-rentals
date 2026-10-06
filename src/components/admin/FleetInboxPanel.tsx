@@ -295,7 +295,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
               {["failed", "needs_attention"].includes(it.status) && (
                 <button onClick={async () => { const r = await analyze({ data: { itemId: it.id } }); if (!r.ok) toast.error(r.error); void load(); }} className="min-h-[36px] px-2 text-xs inline-flex items-center gap-1 text-[#D03020]"><RotateCw className="w-3.5 h-3.5" /> Retry Analysis</button>
               )}
-              {it.status !== "duplicate" && it.status !== "analyzing" && (
+              {!["duplicate", "analyzing", "applied"].includes(it.status) && (
                 <select aria-label="Classify manually" value="" onChange={async (e) => { if (!e.target.value) return; await classify({ data: { itemId: it.id, docClass: e.target.value } }); void load(); }}
                   className="min-h-[36px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2">
                   <option value="">Classify…</option>
