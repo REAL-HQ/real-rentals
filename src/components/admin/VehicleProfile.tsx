@@ -39,7 +39,7 @@ import { ShareVehicleDialog } from "./ShareVehicleDialog";
 import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { VehiclePhotos } from "./VehiclePhotos";
-import { rentalReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
+import { rentalReadyItems, listingReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
 
 // The vehicle as a record you read.
 //
@@ -1324,10 +1324,13 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
   const v = p.vehicle;
   const save = useServerFn(updateVehicleSection);
   const [busy, setBusy] = useState(false);
-  const ready = rentalReadyItems(v, p.counts.photos);
+  const ready = rentalReadyItems(v);
   const missing = ready.filter((i) => !i.done);
+  const listing = listingReadyItems(v, p.counts.publishedPhotos ?? 0);
+  const listingReady = listing.every((i) => i.done);
   const profile = profileItems(v, p.profileContext ?? { docKinds: [], maintenanceCount: 0 });
   const pct = percent(profile);
+  const nextSteps = profile.filter((i) => !i.done).slice(0, 6);
   const inService = !["onboarding", "archived", "sold", "retired"].includes(String(v.status ?? ""));
 
   async function makeAvailable() {
@@ -1348,25 +1351,48 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
 
   return (
     <SectionCard title="Setup" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div>
-          <MicroLabel>Rental Ready — required before renting</MicroLabel>
+          <MicroLabel>Rental Ready — {missing.length ? "No" : "Yes"}</MicroLabel>
           <ul className="mt-2 space-y-1.5">{ready.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
           <div className="mt-3 text-[12px] text-[#55555E]">
-            {missing.length ? `${missing.length} item${missing.length > 1 ? "s" : ""} needed` : inService ? "Rental ready and in service." : "Rental ready — you choose when it enters service."}
+            {missing.length ? `${missing.length} item${missing.length > 1 ? "s" : ""} needed to rent` : inService ? "Rental ready and in service." : "Rental ready — you choose when it enters service."}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {missing.some((m) => m.key === "weekly_rate") && p.canEdit && (
-              <button onClick={() => onEdit("identity")} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">Set weekly rate</button>
-            )}
-            {missing.some((m) => m.key === "photo") && (
-              <button onClick={() => onOpenTab("photos" as Tab)} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">Add photo</button>
+            {missing.length > 0 && p.canEdit && (
+              <button onClick={() => onEdit("identity")} className="rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">
+                {missing.length === 1 && missing[0].key === "weekly_rate" ? "Set weekly rate" : "Complete details"}
+              </button>
             )}
             {!missing.length && v.status === "onboarding" && p.canEdit && (
               <button disabled={busy} onClick={makeAvailable} className="rounded-md bg-[#D03020] px-3 py-1 text-[12px] font-medium text-white disabled:opacity-50">Make Available</button>
             )}
           </div>
         </div>
+        <div>
+          <MicroLabel>Listing Ready — {listingReady ? "Yes" : "No"}</MicroLabel>
+          <ul className="mt-2 space-y-1.5">{listing.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
+          <div className="mt-3 text-[12px] text-[#55555E]">
+            {listingReady ? "Can be shown to renters." : "Needed only for public listings — never blocks renting."}
+          </div>
+          {!listing[1].done && (
+            <button onClick={() => onOpenTab("photos" as Tab)} className="mt-2 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-medium">
+              {p.counts.photos ? "Publish a photo" : "Add photo"}
+            </button>
+          )}
+        </div>
+        <div>
+          <MicroLabel>Fleet Profile — {pct}% Complete</MicroLabel>
+          <div className="mt-2 h-1.5 rounded-full bg-[#EDEDF0] overflow-hidden"><div className="h-full bg-[#1E7B3C]" style={{ width: `${pct}%` }} /></div>
+          {nextSteps.length > 0 && (
+            <>
+              <div className="mt-3 text-[12px] text-[#55555E]">Recommended next steps</div>
+              <ul className="mt-1.5 space-y-1.5">{nextSteps.map((i) => <Item key={i.key} done={false} label={`Add ${i.label.toLowerCase()}`} />)}</ul>
+            </>
+          )}
+          <div className="mt-3 text-[11px] text-[#77777F]">Recommended only — never blocks renting.</div>
+        </div>
+      </div>
         <div>
           <MicroLabel>Fleet Profile — {pct}% complete (recommended, never blocks renting)</MicroLabel>
           <ul className="mt-2 space-y-1.5">{profile.map((i) => <Item key={i.key} done={i.done} label={i.label} />)}</ul>
