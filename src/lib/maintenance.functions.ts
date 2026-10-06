@@ -343,7 +343,9 @@ export const getFleetMaintenance = createServerFn({ method: "POST" })
     }
     const rank: Record<string, number> = { overdue: 0, conflict: 1, open: 2, due: 3 };
     attention.sort((a, b) => (rank[a.due.state] ?? 9) - (rank[b.due.state] ?? 9));
-    return { attention, upcoming };
+    const count = (st: string) => attention.filter((a) => a.due.state === st).length;
+    const counts = { overdue: count("overdue"), due: count("due"), dueSoon: upcoming.length, open: count("open"), conflict: count("conflict") };
+    return { attention, upcoming, counts };
   });
 
 // ---------------------------------------------------------------- vehicle timeline

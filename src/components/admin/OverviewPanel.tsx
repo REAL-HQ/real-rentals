@@ -33,7 +33,8 @@ import {
   READINESS_DOCUMENT_SELECT,
   READINESS_SCREENING_SELECT,
 } from "@/lib/readiness-index";
-import { computeDueReasons, needsOdometer } from "./MaintenancePanel";
+import { useServerFn } from "@tanstack/react-start";
+import { getFleetMaintenance } from "@/lib/maintenance.functions";
 import { applicationStage, wizardProgress } from "@/lib/application-stage";
 
 /**
@@ -134,8 +135,13 @@ export function OverviewPanel() {
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
   const [screenings, setScreenings] = useState<ScreeningRow[]>([]);
   const [leadDocs, setLeadDocs] = useState<{ lead_id: string; doc_type: string }[]>([]);
-  const [serviceDue, setServiceDue] = useState(0);
-  const [serviceNeedsOdo, setServiceNeedsOdo] = useState(0);
+  const fleetMaint = useServerFn(getFleetMaintenance);
+  const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
+  useEffect(() => {
+    // Canonical maintenance-due engine (same as the Service page) — never a local re-derivation.
+    fleetMaint().then((r) => setSvc(r.counts)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -223,14 +229,7 @@ export function OverviewPanel() {
       setOverdueAmt(sumAmt(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
-      const dueCount = (allVehiclesQ.data ?? []).filter(
-        (v: any) => v.status !== "maintenance" && computeDueReasons(v).length > 0,
-      ).length;
-      setServiceDue(dueCount);
-      const needsOdoCount = (allVehiclesQ.data ?? []).filter(
-        (v: any) => v.status !== "maintenance" && needsOdometer(v),
-      ).length;
-      setServiceNeedsOdo(needsOdoCount);
+
 
       // 12-week weekly buckets
       const bucketStart = (d: Date) => {
@@ -320,7 +319,7 @@ export function OverviewPanel() {
     return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
   }, [revenue, priorRevenue]);
 
-  const serviceAttention = maintOpen + serviceDue;
+  const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
   // Readiness for every applicant in the window, from the three result sets
   // already fetched. Both the priority strip and the recent list read this
@@ -480,24 +479,27 @@ export function OverviewPanel() {
         />
 
         <ActionCard
-          icon={serviceAttention > 0 ? Wrench : CheckCircle2}
+          icon={serviceAttention > 0 || svc.dueSoon > 0 ? Wrench : CheckCircle2}
           eyebrow="Service"
-          title={serviceAttention > 0 ? `${serviceAttention} Need Attention` : "All Clear"}
+          title={
+            svc.overdue > 0 ? `${svc.overdue} Overdue`
+            : svc.due > 0 ? `${svc.due} Due`
+            : svc.open + svc.conflict > 0 ? `${svc.open + svc.conflict} Need Attention`
+            : svc.dueSoon > 0 ? `${svc.dueSoon} Due Soon`
+            : "All Clear"
+          }
           hint={
-            serviceAttention > 0
-              ? [
-                  maintOpen > 0 ? `${maintOpen} down` : null,
-                  serviceDue > 0 ? `${serviceDue} service due` : null,
-                  serviceNeedsOdo > 0 ? `${serviceNeedsOdo} need a reading` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : "0 due"
+            [
+              svc.overdue > 0 && svc.due > 0 ? `${svc.due} due` : null,
+              svc.open > 0 && (svc.overdue > 0 || svc.due > 0) ? `${svc.open} open` : null,
+              svc.conflict > 0 && (svc.overdue > 0 || svc.due > 0) ? `${svc.conflict} mileage to review` : null,
+              svc.dueSoon > 0 && serviceAttention > 0 ? `${svc.dueSoon} due soon` : null,
+            ].filter(Boolean).join(" · ") || (serviceAttention + svc.dueSoon === 0 ? "0 due" : "View service")
           }
           href="/admin"
           search={{ tab: "maintenance" }}
           control="view"
-          tint={maintOpen > 0 ? "red" : serviceDue > 0 ? "amber" : undefined}
+          tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
       </div>
