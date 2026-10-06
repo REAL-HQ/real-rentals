@@ -415,7 +415,7 @@ function Admin() {
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
         {/* Single business navigation rail */}
         <aside aria-label="Main navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
-          <div className="px-5 pt-6 pb-4">
+          <div className="flex justify-center pt-6 pb-4">
             <Logo offset={false} />
           </div>
           <nav className="flex-1 px-2.5 pb-4 overflow-y-auto">{groupedNav()}</nav>
@@ -425,7 +425,7 @@ function Admin() {
         <Sheet open={mobileNav} onOpenChange={setMobileNav}>
           <SheetContent side="left" className="w-[280px] p-0 bg-[#141416] border-r-0 text-white">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <div className="px-5 pt-6 pb-3"><Logo offset={false} /></div>
+            <div className="flex justify-center pt-6 pb-3"><Logo offset={false} /></div>
             <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
               {(() => {
                 // Drawer always lists Operations destinations.
