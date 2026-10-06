@@ -390,7 +390,7 @@ function VendorForm({
               onChange={(e) => set("market_id", e.target.value || null)}
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
             >
-              <option value="">All markets</option>
+              <option value="">All Markets</option>
               {markets.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}

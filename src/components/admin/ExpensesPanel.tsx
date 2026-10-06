@@ -319,7 +319,7 @@ function Ledger({
           onChange={(e) => setVehicleFilter(e.target.value)}
           className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
         >
-          <option value="all">All vehicles</option>
+          <option value="all">All Vehicles</option>
           {vehicles.map((v) => (
             <option key={v.id} value={v.id}>
               {v.label}
@@ -331,7 +331,7 @@ function Ledger({
           onChange={(e) => setCategoryFilter(e.target.value)}
           className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
         >
-          <option value="all">All categories</option>
+          <option value="all">All Categories</option>
           {EXPENSE_CATEGORIES.map((c) => (
             <option key={c.value} value={c.value}>
               {c.label}
