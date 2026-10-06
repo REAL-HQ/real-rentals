@@ -1177,14 +1177,20 @@ function DriverDetail({
     <div className="-mx-8 -my-8 min-h-full bg-[#FAFAFB]">
       {/* Compact header */}
       <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
-        <div className="px-8 py-3 flex items-center justify-between">
+        <div className="px-8 pt-3">
           <button
             onClick={onBack}
             className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Drivers
           </button>
-          <div className="flex items-center gap-2">
+        </div>
+        {/* Identity strip */}
+        <div className="px-8 py-4 flex items-center gap-4">
+          <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
+            {initials}
+          </div>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <button
               onClick={primaryAction.onClick}
               className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
