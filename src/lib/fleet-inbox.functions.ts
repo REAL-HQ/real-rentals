@@ -17,7 +17,7 @@ const BUCKET = "vehicle-docs";
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const d = await crypto.subtle.digest("SHA-256", bytes);
+  const d = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -246,7 +246,7 @@ export const analyzeInboxItem = createServerFn({ method: "POST" })
     };
     const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,mime_type").eq("id", claimed.document_id).single();
     if (!doc) return fail("The original file record is missing.");
-    const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path);
+    const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) return fail("Could not read the original file.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mime = doc.mime_type || file.type || "application/octet-stream";
@@ -387,7 +387,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
 
         // Re-derive the proposal from current data — never trust the preview.
         const vehicles = await loadVehicles(sb);
-        const entry: ExtractedEntry = { page: p.page, fields: p.fields ?? {} };
+        const entry: ExtractedEntry = { page: p.page, fields: ((p.fields ?? {}) as unknown) as Record<string, ExtractedField> };
         let target: ExistingVehicle | null = null;
         if (dec.action === "match") {
           target = vehicles.find((v) => v.id === dec.vehicleId) ?? null;
@@ -501,7 +501,7 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
     const sb = await admin();
     const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category").eq("id", data.documentId).maybeSingle();
     if (!doc || doc.driver_id) throw new Error("Not found");
-    const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path);
+    const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
     let bin = "";
