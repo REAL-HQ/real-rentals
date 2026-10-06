@@ -106,3 +106,7 @@ Plug-in point: the account menu in the shell header (src/routes/admin.tsx), gate
 - The real runner is `npm test` (chained scripts). It currently stops at `scripts/grants.test.mjs` because the `pg` package is not installed, so later scripts in the chain do not run unless invoked individually.
 - `scripts/client-chunks.test.mjs` SKIPs without a production build (`.output/public/assets`).
 - `.ts` scripts (vehicle-readiness, fleet-inbox, esign-engine, admin-shell-roles) are run with `bun scripts/<name>.test.ts`; they are not in `npm test`.
+
+## Phase 1 production baseline (live 2026-10-06) — preserve in later phases
+Canonical fleet (9 real cars RR-001..009), DB unit numbering (RR-010..012 consumed by QA; next RR-013), Fleet Inbox bulk ingestion with AI extraction, VIN matching, many-to-many vehicle/document evidence, provenance and conflict review, private documents, Rental Ready / Listing Ready / Fleet Profile, Quick Add, manual editing, private vs published photos, shared insurance evidence, unified Fleet Snapshot.
+Deferred: inspection override full E2E (first real rental); real Coordinator session; 12 older security warnings; test runner.
