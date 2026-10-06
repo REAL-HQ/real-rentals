@@ -13,3 +13,4 @@
 - Rental activation overrides: overriding soft blockers (e.g. no passed pre-delivery inspection) requires a written reason, recorded with blockers, actor, driver, vehicle and time in the immutable audit_log.
 - Fleet counts: every Overview fleet number comes from src/lib/fleet-summary.ts — because separate status queries disagreed.
 - Unit numbers: assigned only by the vehicles_assign_unit_number insert trigger from vehicle_unit_seq ; creation paths leave it blank unless a human typed one — because client max+1 suggestions collided.
+- Back-office modals: new/updated dialogs use src/components/admin/modal.tsx (ModalShell sizes sm/md/lg/workspace, header/body/footer, UploadDropzone, ReadinessStatus, ConfirmDialog) — one consistent visual behavior (Esc, backdrop, scroll, mobile sheet) instead of hand-styled overlays.
