@@ -357,7 +357,7 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
       sb.from("audit_log").select("id,action,summary,created_at,metadata").eq("entity_type", "vehicle").eq("entity_id", id).ilike("action", "%status%").limit(200),
     ]);
     const ev: TimelineEvent[] = [];
-    if (veh.data) ev.push({ id: `v:${id}`, kind: "vehicle", at: veh.data.created_at, title: "Vehicle Added", ref: { table: "vehicles", id } });
+    if (veh.data) ev.push({ id: `v:${id}`, kind: "vehicle", at: veh.data.created_at ?? "", title: "Vehicle Added", ref: { table: "vehicles", id } });
     const directDocs = await sb.from("documents").select("id,kind,label,file_name,created_at").eq("vehicle_id", id).is("driver_id", null);
     const seenDocs = new Set<string>();
     const pushDoc = (docId: string, d: any, at: string) => {
