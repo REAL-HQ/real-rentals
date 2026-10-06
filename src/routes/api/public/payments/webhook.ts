@@ -321,6 +321,9 @@ export const Route = createFileRoute('/api/public/payments/webhook')({
             case 'invoice.payment_failed':
               await upsertPaymentFromInvoice(event.data.object, 'failed');
               break;
+            case 'charge.refunded':
+              await handleChargeRefunded(event.data.object);
+              break;
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted':
               await handleSubscriptionUpdated(event.data.object);
