@@ -442,8 +442,8 @@ export function MessagesOverlay({
           <X className="w-6 h-6" />
         </button>
       </div>
-      <div className="flex-1 min-h-0 md:px-4 md:pb-4 lg:px-6 lg:pb-6">
-        <div className="h-full min-h-0 rounded-t-2xl md:rounded-2xl overflow-hidden bg-white shadow-2xl flex flex-col">
+      <div className="flex-1 min-h-0">
+        <div className="h-full min-h-0 rounded-t-2xl overflow-hidden bg-white shadow-2xl flex flex-col">
           <div className={`flex-1 min-h-0 grid grid-cols-1 ${infoPane && showInfo ? "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr_300px]" : "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr]"}`}>
             {listPane}
             {centerPane}
