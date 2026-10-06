@@ -234,7 +234,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             title="No Photos Yet"
             hint={
               canEdit
-                ? "The first photo you add becomes the one the website leads with."
+                ? "Drag photos here or tap Add Photos. The first one becomes the photo the website leads with."
                 : "Nobody has added photos for this vehicle."
             }
           />
