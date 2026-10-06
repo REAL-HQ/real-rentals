@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import {
   buildReadinessIndex,
   READINESS_APPLICATION_SELECT,
@@ -116,12 +117,7 @@ function shortDate(iso?: string | null) {
 }
 
 export function OverviewPanel() {
-  const [vehiclesAvail, setVehiclesAvail] = useState(0);
-  const [vehiclesTotal, setVehiclesTotal] = useState(0);
-  const [rented, setRented] = useState(0);
-  const [maintOpen, setMaintOpen] = useState(0);
-  const [reserved, setReserved] = useState(0);
-  const [needsSetup, setNeedsSetup] = useState(0);
+  const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   const [newApps, setNewApps] = useState(0);
   const [pendingApps, setPendingApps] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
@@ -147,11 +143,6 @@ export function OverviewPanel() {
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
 
       const [
-        vTotalQ,
-        vAvailQ,
-        vRentedQ,
-        vMaintQ,
-        vReservedQ,
         newAppsQ,
         pendingAppsQ,
         overdueQ,
@@ -163,23 +154,6 @@ export function OverviewPanel() {
         leadDocsQ,
         allVehiclesQ,
       ] = await Promise.all([
-        supabase.from("vehicles").select("id", { count: "exact", head: true }),
-        supabase
-          .from("vehicles")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "available"),
-        supabase
-          .from("vehicles")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "rented"),
-        supabase
-          .from("vehicles")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "maintenance"),
-        supabase
-          .from("vehicles")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "reserved"),
         // New = finished the wizard AND nobody has opened it. Status alone
         // would keep counting work somebody already read and left alone.
         supabase
@@ -236,16 +210,11 @@ export function OverviewPanel() {
         supabase
           .from("vehicles")
           .select(
-            "id, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
+            "id, status, archived_at, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
           ),
       ]);
 
-      setVehiclesTotal(vTotalQ.count ?? 0);
-      setVehiclesAvail(vAvailQ.count ?? 0);
-      setRented(vRentedQ.count ?? 0);
-      setMaintOpen(vMaintQ.count ?? 0);
-      setReserved(vReservedQ.count ?? 0);
-      setNeedsSetup(((allVehiclesQ.data ?? []) as { status: string | null }[]).filter((v) => v.status === "onboarding").length);
+      setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
       const sumAmt = (rows?: any[] | null) =>
@@ -304,9 +273,11 @@ export function OverviewPanel() {
     })();
   }, []);
 
-  const total = vehiclesAvail + rented + reserved + maintOpen + needsSetup;
-  const rentable = Math.max(0, total - maintOpen - needsSetup);
-  const utilPct = rentable > 0 ? Math.round((rented / rentable) * 100) : 0;
+  const { total, rentable, rented, reserved, needsSetup } = fleet;
+  const vehiclesAvail = fleet.available;
+  const maintOpen = fleet.maintenance;
+  const vehiclesTotal = fleet.total;
+  const utilPct = fleet.utilizationPct;
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   // ---- revenue for the selected range -------------------------------------
   // Its own effect, so changing the range refetches two small queries rather
@@ -582,15 +553,15 @@ export function OverviewPanel() {
               </ul>
               <div className="mt-4">
                 <div className="flex items-baseline justify-between mb-1">
-                  <MicroLabel>Utilization {utilPct}% (Of Rentable)</MicroLabel>
+                  <MicroLabel>Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
                   <span className="text-[11px] text-[#9A9AA3] tabular-nums">
-                    {rented}/{rentable}
+                    {rented} of {rentable} rentable
                   </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-[#EDEDF0] overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all"
-                    style={{ width: `${utilPct}%`, background: "#4CD964" }}
+                    style={{ width: `${utilPct ?? 0}%`, background: "#4CD964" }}
                   />
                 </div>
               </div>
@@ -601,8 +572,7 @@ export function OverviewPanel() {
               <OpStat label="Available Now" value={String(vehiclesAvail)} />
               <OpStat
                 label="In Service"
-                value={String(maintOpen)}
-                tone={maintOpen > 0 ? "red" : undefined}
+                value={String(rented)}
               />
               <OpStat label="Next Return" value={shortDate(nextReturn)} />
             </div>
