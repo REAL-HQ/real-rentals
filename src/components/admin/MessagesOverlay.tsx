@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   listConversations, getConversation, markConversationRead, searchMessagePeople, sendStaffMessage,
-  type ConversationSummary, type ThreadMessage, type PersonInfo,
+  type ConversationSummary, type ThreadMessage, type PersonInfo, type RentalInfo,
 } from "@/lib/messages.functions";
 
 function initials(name: string) {
@@ -72,7 +72,7 @@ export function MessagesOverlay({
   const [convs, setConvs] = useState<ConversationSummary[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [thread, setThread] = useState<{ person: PersonInfo; messages: ThreadMessage[] } | null>(null);
+  const [thread, setThread] = useState<{ person: PersonInfo; messages: ThreadMessage[]; rental: RentalInfo | null } | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
   const [mobile, setMobile] = useState<"list" | "thread" | "info">("list");
   const [showInfo, setShowInfo] = useState(true);
@@ -84,6 +84,8 @@ export function MessagesOverlay({
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [chFilter, setChFilter] = useState<"all" | "email" | "sms">("all");
+  const [tab, setTab] = useState<"details" | "rental">("details");
   const endRef = useRef<HTMLDivElement>(null);
 
   const loadList = useCallback(async () => {
@@ -138,10 +140,11 @@ export function MessagesOverlay({
   const shown = useMemo(() => {
     let l = convs ?? [];
     if (filter === "unread") l = l.filter((c) => c.unread > 0);
+    if (chFilter !== "all") l = l.filter((c) => c.lastChannel === chFilter);
     const q = query.trim().toLowerCase();
     if (q) l = l.filter((c) => c.name.toLowerCase().includes(q) || c.lastBody.toLowerCase().includes(q));
     return l;
-  }, [convs, filter, query]);
+  }, [convs, filter, query, chFilter]);
 
   async function submit() {
     if (!thread || !body.trim()) return;
@@ -163,6 +166,7 @@ export function MessagesOverlay({
   const chAvail = person ? (channel === "email" ? person.email_channel : person.sms_channel) : null;
   const noChannel = person && !person.email_channel.available && !person.sms_channel.available;
 
+  const hasBothChannels = !!convs && convs.some((c) => c.lastChannel === "sms") && convs.some((c) => c.lastChannel === "email");
   const listPane = (
     <aside className={`${mobile === "list" ? "flex" : "hidden"} md:flex flex-col min-h-0 border-r border-[#EDEDF0] bg-white`}>
       <div className="pl-4 pr-14 md:pr-3 pt-4 pb-3 border-b border-[#EDEDF0]">
@@ -184,17 +188,22 @@ export function MessagesOverlay({
               className="w-full h-10 pl-9 pr-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] focus:outline-none focus:border-[#C4C4CB]" />
           </div>
         )}
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className={`mt-3 grid gap-2 ${hasBothChannels ? "grid-cols-2" : "grid-cols-1"}`}>
           <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter conversations"
             className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
-            <option value="all">All</option>
+            <option value="all">All Conversations</option>
             <option value="unread">Unread</option>
           </select>
-          <select value="all" onChange={() => {}} aria-label="Channel" disabled
-            className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none disabled:opacity-100">
-            <option value="all">All Channels</option>
-          </select>
+          {hasBothChannels && (
+            <select value={chFilter} onChange={(e) => setChFilter(e.target.value as typeof chFilter)} aria-label="Channel"
+              className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
+              <option value="all">All Channels</option>
+              <option value="sms">Text</option>
+              <option value="email">Email</option>
+            </select>
+          )}
         </div>
+      </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {convs === null ? (
@@ -331,7 +340,7 @@ export function MessagesOverlay({
                   {!chAvail?.available && <p className="text-[11px] text-[#9A9AA3] mb-2">{chAvail?.reason}</p>}
                   <div className="rounded-xl border border-[#E4E4E8] bg-white focus-within:border-[#C4C4CB]">
                     {channel === "email" && chAvail?.available && (
-                      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject (optional)"
+                      <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject — defaults to “A message from REAL RENTALS”"
                         className="w-full h-10 px-4 text-[14px] bg-transparent border-b border-[#F0F0F2] focus:outline-none" />
                     )}
                     <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} disabled={!chAvail?.available}
@@ -355,6 +364,9 @@ export function MessagesOverlay({
                       </button>
                     </div>
                   </div>
+                  {channel === "sms" && body.length > 0 && (
+                    <p className="mt-1.5 text-[11px] text-[#9A9AA3]">{body.length} characters · {body.length <= 160 ? 1 : Math.ceil(body.length / 153)} text segment{body.length > 160 ? "s" : ""}</p>
+                  )}
                   {!person.sms_channel.available && person.sms_channel.reason && channel === "email" && (
                     <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Text unavailable: {person.sms_channel.reason}</p>
                   )}
@@ -375,22 +387,50 @@ export function MessagesOverlay({
         <div className="text-[14px] font-semibold">Info</div>
       </div>
       <div className="hidden md:flex items-center gap-1 px-3 h-14 pr-16 border-b border-[#EDEDF0]">
-        <span className="h-8 px-2.5 rounded-lg bg-[#F4F4F6] text-[13px] font-semibold text-[#111114] inline-flex items-center">Details</span>
+        {(thread?.rental ? (["details", "rental"] as const) : (["details"] as const)).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`h-8 px-2.5 rounded-lg text-[13px] inline-flex items-center ${tab === t || !thread?.rental ? "bg-[#F4F4F6] font-semibold text-[#111114]" : "text-[#55555E] hover:bg-[#F4F4F6]"}`}>
+            {t === "details" ? "Details" : "Rental"}
+          </button>
+        ))}
       </div>
+      {thread?.rental && (
+        <div className="md:hidden flex gap-1 px-3 py-2 border-b border-[#EDEDF0]">
+          {(["details", "rental"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`h-9 px-3 rounded-lg text-[13px] ${tab === t ? "bg-[#F4F4F6] font-semibold" : "text-[#55555E]"}`}>{t === "details" ? "Details" : "Rental"}</button>
+          ))}
+        </div>
+      )}
+      {tab === "rental" && thread?.rental ? (
+        <dl className="p-5 space-y-4 text-[13px]">
+          {([
+            ["Status", <span className="capitalize">{thread.rental.status.replace(/_/g, " ")}</span>],
+            ["Vehicle", thread.rental.vehicle ?? "—"],
+            ["Unit", thread.rental.unitNumber ?? "—"],
+            ["Start", thread.rental.start ? new Date(thread.rental.start + "T00:00").toLocaleDateString() : "—"],
+            ["Expected Return", thread.rental.end ? new Date(thread.rental.end + "T00:00").toLocaleDateString() : "—"],
+            ["Weekly Rate", thread.rental.weeklyRate == null ? "Not Set" : `$${thread.rental.weeklyRate.toLocaleString()}`],
+            ...(thread.rental.balanceDue != null ? [["Balance Due", `$${thread.rental.balanceDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`] as const] : []),
+          ] as const).map(([k, v]) => (
+            <div key={k as string}><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold">{k}</dt><dd className="mt-0.5">{v}</dd></div>
+          ))}
+        </dl>
+      ) : (<>
       <div className="p-5 text-center border-b border-[#EDEDF0]">
         <div className="mx-auto w-fit"><Avatar name={person.name} id={person.applicationId} size={56} /></div>
         <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
         <div className="text-[12px] text-[#9A9AA3] capitalize">{person.status ?? "—"}</div>
         <Link to="/admin" search={{ tab: "drivers", id: person.applicationId }} onClick={onClose}
           className="mt-3 inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-[#EDEDF0] text-[12px] font-medium hover:bg-[#FAFAFB]">
-          Open driver profile <ExternalLink className="w-3.5 h-3.5" />
+          {person.kind === "driver" ? "View Driver" : "View Applicant"} <ExternalLink className="w-3.5 h-3.5" />
         </Link>
       </div>
       <dl className="p-5 space-y-4 text-[13px]">
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text available" : person.sms_channel.reason}</dd></div>
+        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text available" : person.sms_channel.reason}</dd>{person.phone && <dd className="text-[11px] text-[#9A9AA3]">Text consent: {person.smsOptedOut ? "Opted out" : person.smsConsent ? "Yes" : "Not given"}</dd>}</div>
         <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Mail className="w-3 h-3" /> Email</dt><dd className="mt-0.5 break-all">{person.email ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.email_channel.available ? "Email available" : person.email_channel.reason}</dd></div>
         <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Car className="w-3 h-3" /> Vehicle</dt><dd className="mt-0.5">{person.vehicle ?? "None assigned"}</dd></div>
       </dl>
+      </>)}
     </aside>
   ) : null;
 
