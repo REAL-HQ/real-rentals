@@ -111,6 +111,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
     if (ok) toast.success(`${ok} photo${ok === 1 ? "" : "s"} added`);
     if (fileRef.current) fileRef.current.value = "";
     void refresh();
+    if (ok) window.dispatchEvent(new Event("vehicle-profile-refresh"));
   }
 
   type MediaPatch = {
