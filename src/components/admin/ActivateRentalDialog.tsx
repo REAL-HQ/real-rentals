@@ -51,6 +51,7 @@ export function ActivateRentalDialog({
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState("");
   const [depositHeld, setDepositHeld] = useState(false);
+  const [pickupMiles, setPickupMiles] = useState("");
 
   // Re-check whenever the chosen vehicle changes — the blockers are per
   // vehicle, so showing stale ones would be worse than showing none.
@@ -65,6 +66,8 @@ export function ActivateRentalDialog({
         if (r.suggestedWeeklyRate != null && !weeklyRate)
           setWeeklyRate(String(r.suggestedWeeklyRate));
         if (r.suggestedDeposit != null && !deposit) setDeposit(String(r.suggestedDeposit));
+        // Same observation as the pre-delivery inspection — prefilled, never re-entered.
+        setPickupMiles(r.inspectionMileage != null ? String(r.inspectionMileage) : "");
       })
       .catch((e) => !cancelled && toast.error(e?.message ?? "Could not check readiness"))
       .finally(() => !cancelled && setChecking(false));
@@ -85,12 +88,14 @@ export function ActivateRentalDialog({
 
   const rateNum = Number(weeklyRate.replace(/[^\d.]/g, ""));
   const depositNum = Number(deposit.replace(/[^\d.]/g, "")) || 0;
+  const pickupNum = pickupMiles.trim() ? Number(pickupMiles.replace(/[^\d]/g, "")) : null;
 
   const canSubmit =
     !busy &&
     !checking &&
     !!vehicleId &&
     rateNum > 0 &&
+    pickupNum != null && pickupNum >= 0 &&
     !!startDate &&
     hardBlockers.length === 0 &&
     (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= 5));
@@ -107,6 +112,7 @@ export function ActivateRentalDialog({
           startDate,
           endDate: endDate || null,
           depositHeld,
+          pickupMileage: pickupNum,
           overrideBlockers: softBlockers.length > 0 && acknowledged,
           overrideReason: softBlockers.length > 0 && acknowledged ? overrideReason.trim() : undefined,
         },
@@ -262,6 +268,25 @@ export function ActivateRentalDialog({
                 className={`${inputCls} mt-1.5`}
               />
             </div>
+          </div>
+
+          <div>
+            <MicroLabel>Pickup Mileage</MicroLabel>
+            <input
+              value={pickupMiles}
+              onChange={(e) => setPickupMiles(e.target.value)}
+              inputMode="numeric"
+              placeholder="Odometer At Handover"
+              aria-label="Pickup Mileage"
+              className={`${inputCls} mt-1.5`}
+            />
+            <p className="text-[11px] text-[#55555E] mt-1">
+              {readiness?.inspectionMileage != null && String(readiness.inspectionMileage) === pickupMiles.replace(/[^\d]/g, "")
+                ? "From The Pre-Delivery Inspection — Recorded Once."
+                : readiness?.currentMileage != null
+                  ? `Last Reading: ${readiness.currentMileage.toLocaleString("en-US")} mi.`
+                  : "No Mileage On File Yet."}
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
