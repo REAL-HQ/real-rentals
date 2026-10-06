@@ -1786,6 +1786,26 @@ function DriverDetail({
                       value={driver.zip ?? null}
                       onSave={(v) => onUpdate({ zip: v } as any)}
                     />
+                    <TxtField
+                      label="Phone"
+                      value={driver.phone ?? null}
+                      onSave={(v) => onUpdate({ phone: v } as any)}
+                    />
+                    <TxtField
+                      label="License #"
+                      value={driver.license_number ?? null}
+                      onSave={(v) => onUpdate({ license_number: v } as any)}
+                    />
+                    <TxtField
+                      label="License State"
+                      value={driver.license_state ?? null}
+                      onSave={(v) => onUpdate({ license_state: v } as any)}
+                    />
+                    <TxtField
+                      label="License Exp. (YYYY-MM-DD)"
+                      value={driver.license_expiration ?? null}
+                      onSave={(v) => onUpdate({ license_expiration: v } as any)}
+                    />
                   </div>
                   <p className="text-[11px] text-[#9A9AA3] mt-2">
                     Must match the address on their licence. Never fill this in from a guess.
