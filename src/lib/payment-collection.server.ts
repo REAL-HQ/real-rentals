@@ -18,7 +18,7 @@ import { getStripeErrorMessage, type createStripeClient } from "@/lib/stripe.ser
 type Stripe = ReturnType<typeof createStripeClient>;
 
 /** Charge states that still owe money. */
-export const OUTSTANDING_STATUSES = ["pending", "failed", "late", "overdue", "past_due", "unpaid", "collections", "current", "upcoming"] as const;
+export const OUTSTANDING_STATUSES = ["pending", "failed", "late", "overdue", "past_due", "unpaid", "collections", "current"] as const;
 
 /** What is still owed on a charge: its running balance (incl. late fees) or, if never set, its amount. */
 export function owedOn(row: { amount: unknown; balance_due: unknown }): number {
