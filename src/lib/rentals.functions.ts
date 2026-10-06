@@ -286,63 +286,27 @@ export const activateRental = createServerFn({ method: "POST" })
       };
     }
 
-    // 4. The rental itself.
-    const { data: rental, error: rentalErr } = await supabaseAdmin
-      .from("rentals")
-      .insert({
-        driver_id: userId,
-        vehicle_id: data.vehicleId,
-        application_id: data.applicationId,
-        start_date: data.startDate,
-        end_date: data.endDate ?? null,
-        status: "active",
-        weekly_rate: data.weeklyRate,
-        deposit_amount: data.depositAmount,
-        deposit_held: data.depositHeld ?? false,
-        next_payment_due: data.startDate,
-      })
-      .select("id")
-      .single();
-    if (rentalErr) {
-      // The partial unique indexes are the real double-booking guard: the
-      // pre-flight check above is not atomic with this insert, so two
-      // simultaneous activations can both pass it and only one can land here.
-      const msg = String(rentalErr.message);
-      if (msg.includes("rentals_one_active_per_vehicle_idx")) {
-        return {
-          ok: false,
-          blockers: [
-            {
-              code: "vehicle_busy",
-              message: "That vehicle was just activated on another rental. Pick a different one.",
-            },
-          ],
-        };
-      }
-      if (msg.includes("rentals_one_active_per_driver_idx")) {
-        return {
-          ok: false,
-          blockers: [
-            { code: "already_active", message: "This driver already has an active rental." },
-          ],
-        };
-      }
-      throw new Error(rentalErr.message);
+    // 4–6. The authoritative state transition, as ONE database transaction
+    //      (activate_rental_tx): rental row, vehicle → rented, application →
+    //      active + vehicle, agreement → rental link. It row-locks the vehicle,
+    //      so of two simultaneous activations exactly one wins; any failure
+    //      rolls every write back. Never re-split this into separate updates.
+    const { data: rentalId, error: txErr } = await (supabaseAdmin as any).rpc("activate_rental_tx", {
+      _application_id: data.applicationId,
+      _vehicle_id: data.vehicleId,
+      _driver_id: userId,
+      _weekly_rate: data.weeklyRate,
+      _deposit: data.depositAmount,
+      _deposit_held: data.depositHeld ?? false,
+      _start: data.startDate,
+      _end: data.endDate ?? null,
+    });
+    if (txErr) {
+      const blocker = activationTxBlocker(String(txErr.message));
+      if (blocker) return { ok: false, blockers: [blocker] };
+      throw new Error(txErr.message);
     }
-
-    // 5. Reflect the new state on the vehicle and the application.
-    await supabaseAdmin.from("vehicles").update({ status: "rented" }).eq("id", data.vehicleId);
-    await supabaseAdmin
-      .from("applications")
-      .update({ status: "active", vehicle_id: data.vehicleId })
-      .eq("id", data.applicationId);
-
-    // 6. Link any signed agreement to the rental it actually governs.
-    await supabaseAdmin
-      .from("agreements")
-      .update({ rental_id: rental.id })
-      .eq("application_id", data.applicationId)
-      .is("rental_id", null);
+    const rental = { id: rentalId as string };
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
     //    minted during provisioning; an existing one — which is now the normal
