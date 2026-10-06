@@ -1207,7 +1207,7 @@ function DriverDetail({
               </a>
             )}
             <DropdownMenu>
-              <DropdownMenuTrigger className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
+              <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
                 <MoreVertical className="w-4 h-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

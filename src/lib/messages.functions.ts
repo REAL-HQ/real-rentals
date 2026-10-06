@@ -43,6 +43,22 @@ export type PersonInfo = {
   vehicle: string | null;
   email_channel: ChannelAvailability;
   sms_channel: ChannelAvailability;
+  /** "driver" once the person has (had) a rental; otherwise "applicant". */
+  kind: "driver" | "applicant";
+  smsConsent: boolean;
+  smsOptedOut: boolean;
+};
+
+export type RentalInfo = {
+  id: string;
+  status: string;
+  vehicle: string | null;
+  unitNumber: string | null;
+  start: string | null;
+  end: string | null;
+  weeklyRate: number | null;
+  /** Manager+ only; null for Coordinators (finance is withheld server-side). */
+  balanceDue: number | null;
 };
 
 async function admin() {
@@ -120,8 +136,8 @@ export const listConversations = createServerFn({ method: "POST" })
 export const getConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ person: PersonInfo; messages: ThreadMessage[] }> => {
-    await requireStaff(context.userId);
+  .handler(async ({ data, context }): Promise<{ person: PersonInfo; messages: ThreadMessage[]; rental: RentalInfo | null }> => {
+    const actor = await requireStaff(context.userId);
     const sb = await admin();
     const { data: app, error } = await sb
       .from("applications")
@@ -136,6 +152,35 @@ export const getConversation = createServerFn({ method: "POST" })
       if (v) vehicle = [v.unit_number, [v.year, v.make, v.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
     }
     const { email, sms } = await channelsFor(sb, app as any);
+    const { data: rentalRow } = await sb
+      .from("rentals")
+      .select("id, status, vehicle_id, start_date, end_date, weekly_rate")
+      .eq("application_id", app.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    let rental: RentalInfo | null = null;
+    if (rentalRow) {
+      const { data: rv } = rentalRow.vehicle_id
+        ? await sb.from("vehicles").select("unit_number, year, make, model").eq("id", rentalRow.vehicle_id).maybeSingle()
+        : { data: null as any };
+      let balanceDue: number | null = null;
+      if (actor.tier === "manager" || actor.tier === "owner") {
+        // Same outstanding rule as the driver portal balance.
+        const { data: unpaid } = await sb.from("payments").select("amount").eq("rental_id", rentalRow.id).in("status", ["pending", "failed", "past_due"]);
+        balanceDue = (unpaid ?? []).reduce((t: number, p: any) => t + Number(p.amount ?? 0), 0);
+      }
+      rental = {
+        id: rentalRow.id,
+        status: rentalRow.status,
+        vehicle: rv ? [rv.year, rv.make, rv.model].filter(Boolean).join(" ") || null : null,
+        unitNumber: rv?.unit_number ?? null,
+        start: rentalRow.start_date,
+        end: rentalRow.end_date,
+        weeklyRate: rentalRow.weekly_rate == null ? null : Number(rentalRow.weekly_rate),
+        balanceDue,
+      };
+    }
     const { data: msgs } = await sb
       .from("messages")
       .select("id, body, subject, channel, direction, delivery_state, delivery_error, email_delivery_id, to_address, created_at")
@@ -158,7 +203,11 @@ export const getConversation = createServerFn({ method: "POST" })
         vehicle,
         email_channel: email,
         sms_channel: sms,
+        kind: rental ? "driver" : "applicant",
+        smsConsent: !!(app as any).sms_consent,
+        smsOptedOut: !!(app as any).sms_opt_out_at,
       },
+      rental,
       messages: (msgs ?? []).map((m: any) => ({
         id: m.id,
         body: m.body,
