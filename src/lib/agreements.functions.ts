@@ -73,6 +73,14 @@ async function hashToken(token: string): Promise<string> {
 /** What renderTemplate substitutes for a merge field it has no value for. */
 const BLANK = "__________";
 
+/** Merge fields an issuable agreement must carry (mirrors buildMergeData's blockers). */
+const AGREEMENT_REQUIRED_KEYS = [
+  "driver_name", "driver_email", "driver_phone", "driver_address",
+  "license_number", "license_state", "license_expiration",
+  "vehicle", "vehicle_vin", "vehicle_color",
+  "weekly_rate", "deposit_amount", "start_date", "return_date",
+] as const;
+
 function money(v: unknown): string {
   const n = Number(v ?? 0);
   if (!n) return "";
@@ -539,6 +547,17 @@ export const resendAgreement = createServerFn({ method: "POST" })
     if (!ag) throw new Error("Agreement not found");
     if (ag.status === "signed" || ag.status === "voided")
       throw new Error("This agreement can no longer be sent");
+    // A link reissue sends the SAME frozen document again, so it must meet the
+    // same readiness bar as a new send. Documents issued before the gate
+    // existed (blank VIN, licence, etc.) must be voided and re-prepared.
+    {
+      const md = (ag.merge_data ?? {}) as Record<string, string>;
+      const gaps = AGREEMENT_REQUIRED_KEYS.filter((k) => !String(md[k] ?? "").trim());
+      if (gaps.length)
+        throw new Error(
+          `This agreement was prepared without ${gaps.join(", ").replace(/_/g, " ")}. Void it and prepare a new one.`,
+        );
+    }
 
     const token = randomToken();
     const tokenHash = await hashToken(token);
