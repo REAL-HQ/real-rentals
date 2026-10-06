@@ -21,7 +21,7 @@ const ITEM_LABEL: Record<string, string> = {
   needs_attention: "Needs Attention", failed: "Failed", duplicate: "Already uploaded", applied: "Applied",
 };
 const toneOf = (s: string) =>
-  s === "failed" ? "danger" : s === "needs_attention" || s === "conflict" ? "warning" : s === "applied" ? "success" : s === "duplicate" ? "neutral" : "info";
+  s === "failed" ? "red" : s === "needs_attention" || s === "conflict" || s === "partially_applied" ? "amber" : s === "applied" || s === "ready" ? "green" : "neutral";
 
 type Decision = { action: "create" | "match" | "ignore" | null; vehicleId?: string; accept: Set<string>; confirm: Set<string>; applyFinance: boolean };
 
@@ -118,7 +118,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         {batches === null ? (
           <p className="text-sm text-[#9A9AA3]">Loading…</p>
         ) : batches.length === 0 ? (
-          <EmptyState title="No imports yet" description="Uploaded files appear here as an import you can review." />
+          <EmptyState title="No imports yet" hint="Uploaded files appear here as an import you can review." />
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]">
             {batches.map((b) => (
@@ -404,8 +404,8 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
           </div>
         </div>
         {done ? (
-          <StatusPill tone={p.status === "applied" ? "success" : "neutral"}>{p.status === "applied" ? "Applied" : "Ignored"}</StatusPill>
-        ) : p.status === "failed" ? <StatusPill tone="danger">Failed — {p.result?.message ?? ""}</StatusPill> : null}
+          <StatusPill tone={p.status === "applied" ? "green" : "neutral"}>{p.status === "applied" ? "Applied" : "Ignored"}</StatusPill>
+        ) : p.status === "failed" ? <StatusPill tone="red">Failed — {p.result?.message ?? ""}</StatusPill> : null}
       </div>
 
       {(p.issues ?? []).length > 0 && (
