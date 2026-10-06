@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
@@ -31,8 +33,20 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
   const items = visibleSettingsSections(tier);
   const current = items.find((s) => s.id === section) ?? items[0];
   const groups = Array.from(new Set(items.map((s) => s.group)));
+  // Collapsible groups: only the first starts open; the group holding the
+  // active section always opens so deep links never land on a hidden item.
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(
+    () => new Set(groups.slice(1)),
+  );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
   const wide = current.id === "automations" || current.id === "team";
+  const toggleGroup = (g: string) =>
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
@@ -49,10 +63,17 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           </div>
         </div>
         <div className="hidden md:block sticky top-20 space-y-4">
-          {groups.map((g) => (
+          {groups.map((g) => {
+            const containsActive = items.some((s) => s.group === g && s.id === current.id);
+            const open = containsActive || !closedGroups.has(g);
+            return (
             <div key={g}>
-              <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">{g}</div>
-              <div className="space-y-0.5">
+              <button type="button" onClick={() => toggleGroup(g)} aria-expanded={open}
+                className="w-full flex items-center justify-between px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] hover:text-[#55555E]">
+                {g}
+                {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+              {open && <div className="space-y-0.5">
                 {items.filter((s) => s.group === g).map((s) => {
                   const active = s.id === current.id;
                   return (
@@ -63,9 +84,10 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
                     </Link>
                   );
                 })}
-              </div>
+              </div>}
             </div>
-          ))}
+            );
+          })}
         </div>
       </nav>
       <section className={`flex-1 min-w-0 ${wide ? "" : "max-w-3xl"}`}>
