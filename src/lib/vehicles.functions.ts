@@ -610,6 +610,22 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         rentals: rentals.count ?? 0,
         photos: media.count ?? 0,
       },
+      // For the non-blocking Fleet Profile checklist only.
+      profileContext: await (async () => {
+        const [{ data: own }, { data: links }, { count: maintAll }] = await Promise.all([
+          supabaseAdmin.from("documents").select("kind").eq("vehicle_id", data.id),
+          supabaseAdmin.from("document_vehicle_links").select("document_id").eq("vehicle_id", data.id),
+          supabaseAdmin.from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id),
+        ]);
+        const ids = (links ?? []).map((l: any) => l.document_id);
+        const { data: linked } = ids.length
+          ? await supabaseAdmin.from("documents").select("kind").in("id", ids)
+          : { data: [] as any[] };
+        return {
+          docKinds: [...(own ?? []), ...(linked ?? [])].map((d: any) => String(d.kind ?? "")),
+          maintenanceCount: maintAll ?? 0,
+        };
+      })(),
       alerts: alerts.sort((a, b) => a.days - b.days),
       nextService: schedule
         ? {
