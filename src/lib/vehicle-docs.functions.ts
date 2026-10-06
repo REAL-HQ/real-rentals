@@ -68,9 +68,6 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
 
     const out: VehicleDoc[] = [];
     for (const r of (rows ?? []) as any[]) {
-      const { data: signed } = await supabaseAdmin.storage
-        .from(r.storage_bucket || "vehicle-docs")
-        .createSignedUrl(r.storage_path, 3600);
       out.push({
         id: r.id,
         vehicle_id: r.vehicle_id,
@@ -78,14 +75,15 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
         kind_label: labelFor(r.kind),
         label: r.label,
         file_name: r.file_name,
-        storage_path: r.storage_path,
+        // Never sent to the browser; files are streamed via getFleetDocumentFile.
+        storage_path: "",
         expires_at: r.expires_at,
         days_until_expiry: r.expires_at
           ? Math.round((new Date(r.expires_at).getTime() - today.getTime()) / 86400_000)
           : null,
         notes: r.notes,
         created_at: r.created_at,
-        url: signed?.signedUrl ?? null,
+        url: null,
       });
     }
     return out;
