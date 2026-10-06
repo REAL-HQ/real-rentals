@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { FileText, Upload, Trash2, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
 import { getFleetDocumentFile, listVehicleLinkedDocs } from "@/lib/fleet-inbox.functions";
 import { docClassLabel, docGroupOf, DOC_GROUPS } from "@/lib/fleet-inbox";
+import { vehicleDocPresence, type DocSlot } from "@/lib/vehicle-doc-presence";
 import {
   listVehicleDocs,
   registerVehicleDoc,
@@ -116,6 +117,12 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
   }
 
   const byKind = new Map(docs.map((d) => [d.kind, d]));
+  // Canonical presence: a Fleet Inbox document linked to this car satisfies the
+  // matching slot (e.g. the shared insurance PDF → Insurance card on file).
+  const presence = vehicleDocPresence(
+    docs.map((d) => ({ id: d.id, kind: d.kind, created_at: d.created_at })),
+    linked.map((l) => ({ id: l.id, kind: l.kind, created_at: l.created_at, file_name: l.file_name, expires_at: l.expires_at, relatedVehicles: l.relatedVehicles })),
+  );
 
   // `bare` drops the card and heading for callers that already supply their own
   // — the vehicle profile puts this inside a SectionCard, and two nested
@@ -132,13 +139,22 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {presence.documentCount === 0
+              ? "No documents on file yet."
+              : `${presence.documentCount} document${presence.documentCount > 1 ? "s" : ""} on file${presence.sharedCount ? ` · ${presence.sharedCount} shared with other vehicles` : ""}`}
+          </p>
           {VEHICLE_DOC_TYPES.map((t) => {
             const doc = byKind.get(t.value);
+            const ev = presence.bySlot.get(t.value as DocSlot);
+            const evidence = !doc && ev?.source === "linked" ? ev : undefined;
             return (
               <DocRow
                 key={t.value}
                 type={t}
                 doc={doc}
+                evidence={evidence}
+                onOpenEvidence={evidence ? () => openDoc(evidence.id) : undefined}
                 busy={busyKind === t.value}
                 onUpload={(file, expires) => upload(t.value, file, expires)}
                 onOpen={doc ? () => openDoc(doc.id) : undefined}
@@ -151,7 +167,7 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
 
       {linked.filter((l) => l.source === "fleet_inbox" || l.relatedVehicles > 1).length > 0 && (
         <div className="pt-2 space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">From Fleet Inbox</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Related Evidence — From Fleet Inbox</div>
           {[...DOC_GROUPS.map((g) => g.group)].map((group) => {
             const rows = linked.filter((l) => (l.source === "fleet_inbox" || l.relatedVehicles > 1) && docGroupOf(l.kind) === group);
             if (!rows.length) return null;
@@ -190,8 +206,12 @@ function DocRow({
   onUpload,
   onDelete,
   onOpen,
+  evidence,
+  onOpenEvidence,
 }: {
   onOpen?: () => void;
+  evidence?: { file_name?: string | null; relatedVehicles?: number; expires_at?: string | null };
+  onOpenEvidence?: () => void;
   type: (typeof VEHICLE_DOC_TYPES)[number];
   doc?: VehicleDoc;
   busy: boolean;
@@ -234,6 +254,11 @@ function DocRow({
               </>
             )}
           </p>
+        ) : evidence ? (
+          <p className="text-xs text-muted-foreground truncate">
+            <span className="font-medium text-[#1E7B3C]">On file</span> · from Fleet Inbox · {evidence.file_name ?? "linked document"}
+            {(evidence.relatedVehicles ?? 1) > 1 ? ` · shared with ${(evidence.relatedVehicles ?? 1) - 1} other vehicle${(evidence.relatedVehicles ?? 1) > 2 ? "s" : ""}` : ""}
+          </p>
         ) : (
           <p className="text-xs text-muted-foreground">Not on file</p>
         )}
@@ -249,6 +274,12 @@ function DocRow({
           title="Expiry date"
           className="rounded-md border border-border px-2 py-1 text-xs"
         />
+      )}
+
+      {!doc && onOpenEvidence && (
+        <button type="button" onClick={onOpenEvidence} className="inline-flex items-center gap-1 text-xs text-[#D03020] underline">
+          <ExternalLink className="w-3.5 h-3.5" /> Open
+        </button>
       )}
 
       {doc && onOpen && (
