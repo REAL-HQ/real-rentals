@@ -1064,9 +1064,59 @@ export type Database = {
           },
         ]
       }
+      document_vehicle_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          document_id: string
+          id: string
+          page: number | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          document_id: string
+          id?: string
+          page?: number | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          document_id?: string
+          id?: string
+          page?: number | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_vehicle_links_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_vehicle_links_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_vehicle_links_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           category: string
+          content_sha256: string | null
           created_at: string
           driver_id: string | null
           expires_at: string | null
@@ -1077,12 +1127,14 @@ export type Database = {
           label: string | null
           mime_type: string | null
           notes: string | null
+          page_count: number | null
           partner_id: string | null
           review_note: string | null
           review_status: string
           reviewed_at: string | null
           reviewed_by: string | null
           size_bytes: number | null
+          source: string | null
           storage_bucket: string
           storage_path: string
           superseded_by: string | null
@@ -1094,6 +1146,7 @@ export type Database = {
         }
         Insert: {
           category?: string
+          content_sha256?: string | null
           created_at?: string
           driver_id?: string | null
           expires_at?: string | null
@@ -1104,12 +1157,14 @@ export type Database = {
           label?: string | null
           mime_type?: string | null
           notes?: string | null
+          page_count?: number | null
           partner_id?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
           size_bytes?: number | null
+          source?: string | null
           storage_bucket: string
           storage_path: string
           superseded_by?: string | null
@@ -1121,6 +1176,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          content_sha256?: string | null
           created_at?: string
           driver_id?: string | null
           expires_at?: string | null
@@ -1131,12 +1187,14 @@ export type Database = {
           label?: string | null
           mime_type?: string | null
           notes?: string | null
+          page_count?: number | null
           partner_id?: string | null
           review_note?: string | null
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
           size_bytes?: number | null
+          source?: string | null
           storage_bucket?: string
           storage_path?: string
           superseded_by?: string | null
@@ -1442,6 +1500,287 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_import_batches: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      fleet_import_finance_facts: {
+        Row: {
+          confidence: string | null
+          created_at: string
+          field: string
+          id: string
+          item_id: string
+          page: number | null
+          proposal_id: string | null
+          value: string
+        }
+        Insert: {
+          confidence?: string | null
+          created_at?: string
+          field: string
+          id?: string
+          item_id: string
+          page?: number | null
+          proposal_id?: string | null
+          value: string
+        }
+        Update: {
+          confidence?: string | null
+          created_at?: string
+          field?: string
+          id?: string
+          item_id?: string
+          page?: number | null
+          proposal_id?: string | null
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_import_finance_facts_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_finance_facts_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_import_items: {
+        Row: {
+          analyzed_at: string | null
+          attempts: number
+          batch_id: string
+          class_confidence: string | null
+          classified_manually: boolean
+          content_sha256: string | null
+          created_at: string
+          doc_class: string | null
+          document_id: string | null
+          duplicate_of_document_id: string | null
+          error: string | null
+          extraction: Json | null
+          file_name: string
+          id: string
+          mime_type: string | null
+          size_bytes: number | null
+          status: string
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          analyzed_at?: string | null
+          attempts?: number
+          batch_id: string
+          class_confidence?: string | null
+          classified_manually?: boolean
+          content_sha256?: string | null
+          created_at?: string
+          doc_class?: string | null
+          document_id?: string | null
+          duplicate_of_document_id?: string | null
+          error?: string | null
+          extraction?: Json | null
+          file_name: string
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          status?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          analyzed_at?: string | null
+          attempts?: number
+          batch_id?: string
+          class_confidence?: string | null
+          classified_manually?: boolean
+          content_sha256?: string | null
+          created_at?: string
+          doc_class?: string | null
+          document_id?: string | null
+          duplicate_of_document_id?: string | null
+          error?: string | null
+          extraction?: Json | null
+          file_name?: string
+          id?: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          status?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_import_items_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_items_duplicate_of_document_id_fkey"
+            columns: ["duplicate_of_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_import_proposals: {
+        Row: {
+          applied_at: string | null
+          applied_by: string | null
+          applied_vehicle_id: string | null
+          batch_id: string
+          changes: Json
+          created_at: string
+          entry_index: number
+          fields: Json
+          id: string
+          identity: Json
+          issues: Json
+          item_id: string
+          kind: string
+          match_basis: string | null
+          match_vehicle_id: string | null
+          page: number | null
+          result: Json | null
+          status: string
+          updated_at: string
+          vin: string | null
+          vin_check: Json | null
+          vin_raw: string | null
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_by?: string | null
+          applied_vehicle_id?: string | null
+          batch_id: string
+          changes?: Json
+          created_at?: string
+          entry_index: number
+          fields?: Json
+          id?: string
+          identity?: Json
+          issues?: Json
+          item_id: string
+          kind: string
+          match_basis?: string | null
+          match_vehicle_id?: string | null
+          page?: number | null
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          vin?: string | null
+          vin_check?: Json | null
+          vin_raw?: string | null
+        }
+        Update: {
+          applied_at?: string | null
+          applied_by?: string | null
+          applied_vehicle_id?: string | null
+          batch_id?: string
+          changes?: Json
+          created_at?: string
+          entry_index?: number
+          fields?: Json
+          id?: string
+          identity?: Json
+          issues?: Json
+          item_id?: string
+          kind?: string
+          match_basis?: string | null
+          match_vehicle_id?: string | null
+          page?: number | null
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          vin?: string | null
+          vin_check?: Json | null
+          vin_raw?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_import_proposals_applied_vehicle_id_fkey"
+            columns: ["applied_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_proposals_applied_vehicle_id_fkey"
+            columns: ["applied_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_proposals_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_proposals_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_proposals_match_vehicle_id_fkey"
+            columns: ["match_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_proposals_match_vehicle_id_fkey"
+            columns: ["match_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
             referencedColumns: ["id"]
           },
         ]
@@ -3270,6 +3609,89 @@ export type Database = {
             columns: ["vendor_id"]
             isOneToOne: false
             referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_field_provenance: {
+        Row: {
+          authority: number
+          confidence: string | null
+          confirmed_at: string
+          confirmed_by: string | null
+          doc_class: string | null
+          document_id: string | null
+          extracted_at: string | null
+          field: string
+          id: string
+          method: string
+          page: number | null
+          proposal_id: string | null
+          raw_value: string | null
+          value: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          authority?: number
+          confidence?: string | null
+          confirmed_at?: string
+          confirmed_by?: string | null
+          doc_class?: string | null
+          document_id?: string | null
+          extracted_at?: string | null
+          field: string
+          id?: string
+          method?: string
+          page?: number | null
+          proposal_id?: string | null
+          raw_value?: string | null
+          value?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          authority?: number
+          confidence?: string | null
+          confirmed_at?: string
+          confirmed_by?: string | null
+          doc_class?: string | null
+          document_id?: string | null
+          extracted_at?: string | null
+          field?: string
+          id?: string
+          method?: string
+          page?: number | null
+          proposal_id?: string | null
+          raw_value?: string | null
+          value?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_field_provenance_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_field_provenance_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_field_provenance_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_field_provenance_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
             referencedColumns: ["id"]
           },
         ]
