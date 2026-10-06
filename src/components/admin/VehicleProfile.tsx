@@ -549,7 +549,10 @@ function Overview({
                 onClick={() => onOpenTab("documents")}
                 className="inline-flex items-center gap-1 hover:text-[#D03020] transition-colors"
               >
-                {p.counts.documents || "None"} <ArrowUpRight className="w-3 h-3" />
+                {p.counts.documents
+                  ? `${p.counts.documents}${p.counts.sharedDocuments ? ` (${p.counts.sharedDocuments} shared)` : ""}`
+                  : "None"}{" "}
+                <ArrowUpRight className="w-3 h-3" />
               </button>
             }
           />
