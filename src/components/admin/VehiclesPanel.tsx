@@ -175,7 +175,7 @@ export function VehiclesPanel({
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="all">All Statuses</SelectItem>
               {statuses.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
@@ -188,7 +188,7 @@ export function VehiclesPanel({
               <SelectValue placeholder="Body type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All body types</SelectItem>
+              <SelectItem value="all">All Body Types</SelectItem>
               {bodyTypes.map((b) => (
                 <SelectItem key={b} value={b}>
                   {b}
@@ -201,7 +201,7 @@ export function VehiclesPanel({
               <SelectValue placeholder="Partner" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All partners</SelectItem>
+              <SelectItem value="all">All Partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
               {partners.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
