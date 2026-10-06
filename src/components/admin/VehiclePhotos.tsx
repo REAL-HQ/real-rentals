@@ -151,7 +151,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
           ? `Deleted, along with ${res.removedDerivatives} retouched version(s)`
           : "Deleted",
       );
-      await refresh();
+      await refresh(); window.dispatchEvent(new Event("vehicle-profile-refresh"));
     } catch (e: any) {
       toast.error(
         e?.message === "Forbidden"
@@ -169,7 +169,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       const res = await enhanceFn({ data: { mediaId: m.id, mode: mode as any } });
       if (!res.ok) return toast.error(res.error ?? "Enhancement failed.");
       toast.success("Created a retouched version — review it before publishing.");
-      await refresh();
+      await refresh(); window.dispatchEvent(new Event("vehicle-profile-refresh"));
     } catch (e: any) {
       toast.error(
         e?.message === "Forbidden" ? "Enhancement is Manager-only." : "Enhancement failed.",
