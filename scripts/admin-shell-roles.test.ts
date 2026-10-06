@@ -19,8 +19,9 @@ ok(JSON.stringify(ids(visibleApps("owner"))) === '["operations","messages","auto
 ok(JSON.stringify(ids(visibleApps("coordinator"))) === '["operations","messages"]', "Coordinator dock: no Automations");
 ok(!ids(visibleApps("owner")).some((a) => a === "esign" || a === "reports"), "No dead eSign/Reports apps");
 
-ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","message"]', "Coordinator Create: Add Vehicle, Send Message");
-ok(ids(visibleCreateActions("manager")).length === 4, "Manager Create: all four");
+ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files","message"]', "Coordinator Create: Add Vehicle, Upload Fleet Files, Send Message");
+ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five");
+ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 
 ok(appOf("messages") === "messages" && appOf("automations") === "automations" && appOf("drivers") === "operations", "Tab → app mapping");
 ok(!TABS.some((t) => (t.id === "messages" || t.id === "automations") && t.group), "Messages/Automations not duplicated in Operations nav");

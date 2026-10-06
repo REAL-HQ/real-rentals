@@ -3,6 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { FileText, Upload, Trash2, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
+import { getFleetDocumentFile, listVehicleLinkedDocs } from "@/lib/fleet-inbox.functions";
+import { docClassLabel, docGroupOf, DOC_GROUPS } from "@/lib/fleet-inbox";
 import {
   listVehicleDocs,
   registerVehicleDoc,
@@ -25,6 +27,23 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
   const load = useServerFn(listVehicleDocs);
   const register = useServerFn(registerVehicleDoc);
   const remove = useServerFn(deleteVehicleDoc);
+  const loadLinked = useServerFn(listVehicleLinkedDocs);
+  const fileFn = useServerFn(getFleetDocumentFile);
+  const [linked, setLinked] = useState<any[]>([]);
+
+  async function openDoc(id: string) {
+    try {
+      const f = await fileFn({ data: { documentId: id } });
+      const bin = atob(f.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: f.mimeType }));
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      toast.error("Could not open that document.");
+    }
+  }
 
   const [docs, setDocs] = useState<VehicleDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +53,11 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
     setLoading(true);
     try {
       setDocs(await load({ data: { vehicleId } }));
+      try {
+        setLinked(await loadLinked({ data: { vehicleId } }));
+      } catch {
+        setLinked([]);
+      }
     } catch {
       // A coordinator can read these; anyone else lacking access simply gets
       // an empty section rather than an error shouting at them.
@@ -117,8 +141,40 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
                 doc={doc}
                 busy={busyKind === t.value}
                 onUpload={(file, expires) => upload(t.value, file, expires)}
+                onOpen={doc ? () => openDoc(doc.id) : undefined}
                 onDelete={doc ? () => onDelete(doc) : undefined}
               />
+            );
+          })}
+        </div>
+      )}
+
+      {linked.filter((l) => l.source === "fleet_inbox" || l.relatedVehicles > 1).length > 0 && (
+        <div className="pt-2 space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">From Fleet Inbox</div>
+          {[...DOC_GROUPS.map((g) => g.group)].map((group) => {
+            const rows = linked.filter((l) => (l.source === "fleet_inbox" || l.relatedVehicles > 1) && docGroupOf(l.kind) === group);
+            if (!rows.length) return null;
+            return (
+              <div key={group} className="space-y-1.5">
+                <div className="text-[11px] text-muted-foreground">{group}</div>
+                {rows.map((l) => (
+                  <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{l.file_name ?? l.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {docClassLabel(l.kind)} · {new Date(l.created_at).toLocaleDateString()}
+                        {l.page ? ` · page ${l.page}` : ""} · {l.is_current ? "Current" : "Historical"}
+                        {l.relatedVehicles > 1 ? ` · Related vehicles: ${l.relatedVehicles}` : ""}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => openDoc(l.id)} className="inline-flex items-center gap-1 text-xs text-[#D03020] underline min-h-[36px]">
+                      <ExternalLink className="w-3.5 h-3.5" /> Open
+                    </button>
+                  </div>
+                ))}
+              </div>
             );
           })}
         </div>
@@ -133,7 +189,9 @@ function DocRow({
   busy,
   onUpload,
   onDelete,
+  onOpen,
 }: {
+  onOpen?: () => void;
   type: (typeof VEHICLE_DOC_TYPES)[number];
   doc?: VehicleDoc;
   busy: boolean;
@@ -193,15 +251,10 @@ function DocRow({
         />
       )}
 
-      {doc?.url && (
-        <a
-          href={doc.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-[#D03020] underline"
-        >
+      {doc && onOpen && (
+        <button type="button" onClick={onOpen} className="inline-flex items-center gap-1 text-xs text-[#D03020] underline">
           <ExternalLink className="w-3.5 h-3.5" /> Open
-        </a>
+        </button>
       )}
 
       <label className="text-xs rounded-md border border-border px-2.5 py-1.5 cursor-pointer hover:bg-soft inline-flex items-center gap-1.5">

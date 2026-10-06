@@ -124,92 +124,22 @@ export const scanVehicleTitle = createServerFn({ method: "POST" })
 
     const mime = file.type || "image/jpeg";
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const fail = (error: string): TitleScanResult => ({
+      ok: false, documentType: "unreadable", fields: {}, vinCheck: null, warnings: [], error,
+    });
     if (bytes.byteLength > 5 * 1024 * 1024) {
-      return {
-        ok: false,
-        documentType: "unreadable",
-        fields: {},
-        vinCheck: null,
-        warnings: [],
-        error:
-          "That file is too large to scan. Photograph the document rather than scanning it at full resolution.",
-      };
+      return fail("That file is too large to scan. Photograph the document rather than scanning it at full resolution.");
     }
-    let bin = "";
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    const b64 = btoa(bin);
-
-    const block =
-      mime === "application/pdf"
-        ? {
-            type: "document" as const,
-            source: { type: "base64" as const, media_type: "application/pdf", data: b64 },
-          }
-        : {
-            type: "image" as const,
-            source: { type: "base64" as const, media_type: mime.split(";")[0].trim(), data: b64 },
-          };
-
+    // Shared reader adapter (also used by Fleet Inbox).
+    const { readDocument, parseModelJson } = await import("@/lib/document-reader.server");
+    const read = await readDocument({ bytes, mime, system: SYSTEM, prompt: "Transcribe this document. Strict JSON only." });
+    if (!read.ok) return fail(`${read.error} Enter the details by hand.`);
     let parsed: any;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          max_tokens: 1500,
-          system: SYSTEM,
-          messages: [
-            {
-              role: "user",
-              content: [
-                block,
-                { type: "text", text: "Transcribe this document. Strict JSON only." },
-              ],
-            },
-          ],
-        }),
-      });
-      if (!res.ok) {
-        const t = await res.text();
-        console.error("[title-scan] provider error", res.status, t.slice(0, 200));
-        return {
-          ok: false,
-          documentType: "unreadable",
-          fields: {},
-          vinCheck: null,
-          warnings: [],
-          error: `The document reader returned an error (${res.status}). Enter the details by hand.`,
-        };
-      }
-      const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-      const text =
-        json.content
-          ?.filter((b) => b.type === "text")
-          .map((b) => b.text ?? "")
-          .join("\n") ?? "";
-      // Models sometimes fence JSON despite being asked not to.
-      const cleaned = text
-        .trim()
-        .replace(/^```(?:json)?/i, "")
-        .replace(/```$/, "")
-        .trim();
-      parsed = JSON.parse(cleaned);
+      parsed = parseModelJson(read.text);
     } catch (e) {
       console.error("[title-scan] failed", e);
-      return {
-        ok: false,
-        documentType: "unreadable",
-        fields: {},
-        vinCheck: null,
-        warnings: [],
-        error:
-          "The document could not be read. Try a straighter, better-lit photo, or enter the details by hand.",
-      };
+      return fail("The document could not be read. Try a straighter, better-lit photo, or enter the details by hand.");
     }
 
     const fields: TitleScanResult["fields"] = {};
