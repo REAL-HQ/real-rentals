@@ -159,7 +159,22 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     }
   }
 
-  if (!changed) return; // duplicate / stale event — no second receipt
+  // Driver notice, exactly once per outcome. Our own collection flow usually
+  // settles the row before this event arrives (so `changed` is 0), yet the
+  // driver still needs a receipt. Claim the notice atomically instead: only
+  // rows currently IN this outcome, and not already notified for it, qualify.
+  // A duplicate event, or a stale failure for a charge now paid, claims none.
+  const target = ids.length
+    ? ids
+    : ((await admin.from('payments').select('id').eq('stripe_payment_intent_id', pi.id)).data ?? []).map((r: any) => r.id);
+  if (!target.length) return;
+  let claim = admin.from('payments').update({ notified_status: status })
+    .in('id', target).eq('status', status)
+    .or(`notified_status.is.null,notified_status.neq.${status}`);
+  if (status === 'failed' && ids.length === 1) claim = claim.eq('stripe_payment_intent_id', pi.id);
+  const claimed = must(await claim.select('id'));
+  if (!claimed.data?.length) return; // already notified / stale — no second email
+  void changed;
 
   if (status === 'failed' && rentalId) {
     must(await admin.from('rentals').update({ payment_status: 'past_due' }).eq('id', rentalId));

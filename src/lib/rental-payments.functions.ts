@@ -282,10 +282,12 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
       // Verify driver owns rental via authenticated supabase (RLS)
       const { data: rental } = await (context.supabase as any)
         .from('rentals')
-        .select('id, application_id, stripe_customer_id, stripe_payment_method_id')
+        .select('id, driver_id, application_id, stripe_customer_id, stripe_payment_method_id')
         .eq('id', data.rentalId)
         .maybeSingle();
-      if (!rental) throw new Error('Rental not found');
+      // Staff can READ every rental, so RLS alone would let a Coordinator push
+      // a charge through the driver's own pay button. Only the renter pays here.
+      if (!rental || rental.driver_id !== context.userId) throw new Error('Rental not found');
       if (!rental.stripe_customer_id || !rental.stripe_payment_method_id) throw new Error('No card on file');
 
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');

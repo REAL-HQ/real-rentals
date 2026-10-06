@@ -122,15 +122,18 @@ export function PaymentsPanel({ initialFilter }: { initialFilter?: string } = {}
       return sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
     });
 
+  // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
+  // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
+  const OWED = new Set(["pending", "current", "late", "overdue", "past_due", "failed", "unpaid", "collections"]);
   const totalDue = filtered
-    .filter((p) => p.status !== "paid")
-    .reduce((s, p) => s + Number(p.balance_due || p.amount || 0), 0);
+    .filter((p) => OWED.has(p.status as string))
+    .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex flex-wrap gap-2 text-xs">
-          {(["all", "overdue", ...STATUSES] as const).map((s) => (
+          {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
