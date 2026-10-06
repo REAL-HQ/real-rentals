@@ -440,13 +440,17 @@ export type VehicleProfile = {
   } | null;
   partnerName: string | null;
   counts: {
+    /** Distinct physical documents applicable to this car (direct + Fleet Inbox links). */
     documents: number;
+    /** Of those, shared with other vehicles (e.g. one fleet insurance PDF). */
+    sharedDocuments: number;
     openMaintenance: number;
     inspections: number;
     rentals: number;
     photos: number;
+    publishedPhotos: number;
   };
-  profileContext: { docKinds: string[]; maintenanceCount: number };
+  profileContext: { docKinds: string[]; maintenanceCount: number; inspectionCount: number; photoCount: number };
   alerts: Array<{ what: string; expires_on: string; days: number }>;
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */
