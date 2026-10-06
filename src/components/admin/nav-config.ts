@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   Wallet,
   Inbox,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
