@@ -234,6 +234,7 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
         body: data.body,
         subject: data.channel === "email" ? (data.subject || "A message from REAL RENTALS") : null,
         kind: "admin",
+        sender_id: context.userId,
         channel: data.channel,
         direction: "outbound",
         delivery_state: "sending",
