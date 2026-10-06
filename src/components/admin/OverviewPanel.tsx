@@ -283,7 +283,7 @@ export function OverviewPanel() {
         if (!p.paid_date) continue;
         const w = bucketStart(new Date(p.paid_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.amount ?? 0);
+        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
       }
       for (const p of (billed12wQ.data ?? []) as any[]) {
         if (!p.due_date) continue;
