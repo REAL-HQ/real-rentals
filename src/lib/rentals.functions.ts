@@ -35,6 +35,7 @@ export type ActivationBlocker = {
     | "no_email"
     | "not_approved"
     | "already_active"
+    | "invalid_dates"
     /** The application's login belongs to a different identity. Never overridable. */
     | "account_conflict";
   message: string;
