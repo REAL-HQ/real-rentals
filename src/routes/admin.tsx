@@ -477,14 +477,13 @@ function Admin() {
               {createActions.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    aria-label="Create"
+                    aria-label="Add"
                     className="h-10 md:h-9 px-3 rounded-full bg-[#D03020] text-white text-[13px] font-semibold flex items-center gap-1.5 hover:bg-[#B5281A] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D03020]/30"
                   >
                     <Plus className="w-4 h-4" strokeWidth={2.25} />
-                    <span className="hidden sm:inline">Create</span>
+                    <span className="hidden sm:inline">Add</span>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-[#9A9AA3]">Create</DropdownMenuLabel>
+                  <DropdownMenuContent align="end" className="w-44 min-w-[11rem]">
                     {createActions.map((a) => {
                       const Icon = a.icon;
                       return (

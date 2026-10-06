@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   Wallet,
   Inbox,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -95,10 +96,10 @@ export function navOwner(tab: string): string {
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
 export type CreateAction = { id: string; label: string; icon: LucideIcon; tab: string; add: boolean; minTier: StaffTier };
 export const CREATE_ACTIONS: readonly CreateAction[] = [
-  { id: "vehicle", label: "Add Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
-  { id: "fleet_files", label: "Upload Fleet Files", icon: Inbox, tab: "fleet_inbox", add: false, minTier: "coordinator" },
-  { id: "payment", label: "Record Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
-  { id: "expense", label: "Add Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
+  { id: "vehicle", label: "Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
+  { id: "fleet_files", label: "Files", icon: Upload, tab: "fleet_inbox", add: false, minTier: "coordinator" },
+  { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
+  { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];
 
 export function visibleCreateActions(tier: StaffTier | null): CreateAction[] {
