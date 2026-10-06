@@ -4,7 +4,13 @@ import { z } from "zod";
 import { requireStaff, requireManager, type Actor } from "@/lib/roles.server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
-import { notReadyMessage } from "@/lib/vehicle-readiness";
+import { notReadyMessage, hasValidRate } from "@/lib/vehicle-readiness";
+import { normalizeDisplayText } from "@/lib/display-normalize";
+
+async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance: boolean) {
+  const m = await import("@/lib/vehicle-doc-presence.server");
+  return m.loadVehicleDocPresence(sb, vehicleId, includeFinance);
+}
 
 // The vehicle record: creation, identity lookup and the profile aggregate.
 //
@@ -224,6 +230,9 @@ const createInput = z.object({
   ownership_type: z.enum(["owned", "financed", "leased", "partner"]).nullish(),
   partner_id: z.string().uuid().nullish(),
   weekly_rate: z.number().min(0).max(100000).nullish(),
+  deposit: z.number().min(0).max(100000).nullish(),
+  /** Quick Add "Save & Make Available" — an explicit human choice. */
+  make_available: z.boolean().optional(),
 });
 
 export const createVehicle = createServerFn({ method: "POST" })
@@ -294,21 +303,25 @@ export const createVehicle = createServerFn({ method: "POST" })
           unit_number: data.unit_number?.trim() || null,
           vin,
           year: data.year,
-          make: data.make,
-          model: data.model,
-          trim: data.trim || null,
-          color: data.color || null,
+          make: normalizeDisplayText(data.make),
+          model: normalizeDisplayText(data.model),
+          trim: data.trim ? normalizeDisplayText(data.trim) : null,
+          color: data.color ? normalizeDisplayText(data.color) : null,
           body_type: data.body_type || null,
           current_odometer: data.current_odometer ?? null,
           license_plate: data.license_plate?.trim().toUpperCase() || null,
           plate_state: data.plate_state?.trim().toUpperCase() || null,
-          // A brand-new record has no photo yet, so it cannot be Rental Ready
-          // at insert. Asked-for Available/Reserved starts as Needs Setup; the
-          // operator makes it Available once a rate and photo exist.
-          status: ["available", "reserved"].includes(data.status || "available") ? "onboarding" : data.status,
+          // Available only when a human explicitly asked for it (Quick Add's
+          // "Save & Make Available") AND the car is Rental Ready — the status
+          // trigger re-checks this server-side. Otherwise Needs Setup.
+          status: ["available", "reserved"].includes(data.status || "available")
+            ? data.make_available && vin && hasValidRate(data.weekly_rate) ? "available" : "onboarding"
+            : data.status,
           partner_id: data.partner_id || null,
           // Unknown stays unknown: null means "Not Set", never $0.
           weekly_rate: data.weekly_rate ?? null,
+          // Deposit has no hard-coded default: Not Set until a human sets it.
+          deposit: data.deposit ?? null,
         } as any)
         .select("id,unit_number")
         .single();
@@ -440,13 +453,17 @@ export type VehicleProfile = {
   } | null;
   partnerName: string | null;
   counts: {
+    /** Distinct physical documents applicable to this car (direct + Fleet Inbox links). */
     documents: number;
+    /** Of those, shared with other vehicles (e.g. one fleet insurance PDF). */
+    sharedDocuments: number;
     openMaintenance: number;
     inspections: number;
     rentals: number;
     photos: number;
+    publishedPhotos: number;
   };
-  profileContext: { docKinds: string[]; maintenanceCount: number };
+  profileContext: { docKinds: string[]; maintenanceCount: number; inspectionCount: number; photoCount: number };
   alerts: Array<{ what: string; expires_on: string; days: number }>;
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */
@@ -484,7 +501,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     const v = vehicle as any;
     const isManager = actor.tier === "manager" || actor.tier === "owner";
 
-    const [{ data: rental }, { data: partner }, docs, maint, insp, rentals, media] =
+    const [{ data: rental }, { data: partner }, publishedMedia, maint, insp, rentals, media] =
       await Promise.all([
         supabaseAdmin
           .from("rentals")
@@ -496,10 +513,10 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           ? supabaseAdmin.from("partners").select("name").eq("id", v.partner_id).maybeSingle()
           : Promise.resolve({ data: null }),
         supabaseAdmin
-          .from("documents")
+          .from("vehicle_media")
           .select("id", { count: "exact", head: true })
           .eq("vehicle_id", data.id)
-          .eq("is_current", true),
+          .eq("published", true),
         supabaseAdmin
           .from("maintenance_records")
           .select("id", { count: "exact", head: true })
@@ -518,6 +535,10 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           .select("id", { count: "exact", head: true })
           .eq("vehicle_id", data.id),
       ]);
+
+    // Canonical document presence: direct + Fleet Inbox links, one physical
+    // document counted once. Finance paperwork is hidden from Coordinators.
+    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, isManager);
 
     let driverName: string | null = null;
     if (rental?.application_id) {
@@ -605,26 +626,23 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
         : null,
       partnerName: (partner as any)?.name ?? null,
       counts: {
-        documents: docs.count ?? 0,
+        documents: presence.documentCount,
+        sharedDocuments: presence.sharedCount,
         openMaintenance: maint.count ?? 0,
         inspections: insp.count ?? 0,
         rentals: rentals.count ?? 0,
         photos: media.count ?? 0,
+        publishedPhotos: publishedMedia.count ?? 0,
       },
       // For the non-blocking Fleet Profile checklist only.
       profileContext: await (async () => {
-        const [{ data: own }, { data: links }, { count: maintAll }] = await Promise.all([
-          supabaseAdmin.from("documents").select("kind").eq("vehicle_id", data.id),
-          supabaseAdmin.from("document_vehicle_links").select("document_id").eq("vehicle_id", data.id),
-          supabaseAdmin.from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id),
-        ]);
-        const ids = (links ?? []).map((l: any) => l.document_id);
-        const { data: linked } = ids.length
-          ? await supabaseAdmin.from("documents").select("kind").in("id", ids)
-          : { data: [] as any[] };
+        const { count: maintAll } = await supabaseAdmin
+          .from("maintenance_records").select("id", { count: "exact", head: true }).eq("vehicle_id", data.id);
         return {
-          docKinds: [...(own ?? []), ...(linked ?? [])].map((d: any) => String(d.kind ?? "")),
+          docKinds: presence.kinds,
           maintenanceCount: maintAll ?? 0,
+          inspectionCount: insp.count ?? 0,
+          photoCount: media.count ?? 0,
         };
       })(),
       alerts: alerts.sort((a, b) => a.days - b.days),

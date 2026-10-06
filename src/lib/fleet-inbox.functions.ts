@@ -2,6 +2,8 @@
 // AI proposes, the server validates, a person approves. Originals are stored
 // once in the private vehicle-docs bucket and recorded in the existing
 // `documents` vault; document_vehicle_links relates one document to many cars.
+import { isFinanceKind } from "@/lib/vehicle-doc-presence";
+import { normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -416,14 +418,15 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           }
           const val = coerce(f, c.proposed);
           if (val == null) continue;
-          toWrite[f] = val; written.push(c);
+          // Display-only re-casing for descriptive fields; raw text stays in provenance.
+          toWrite[f] = normalizeDisplayField(f, val); written.push(c);
         }
 
         let vehicleId: string;
         if (dec.action === "create") {
           const row: Record<string, unknown> = {
             ...toWrite, vin: fresh.vin,
-            year: coerce("year", entry.fields.year!.value), make: entry.fields.make!.value, model: entry.fields.model!.value,
+            year: coerce("year", entry.fields.year!.value), make: normalizeDisplayText(String(entry.fields.make!.value)), model: normalizeDisplayText(String(entry.fields.model!.value)),
             // Documents never establish a price: rate stays Not Set and the car
             // starts as Needs Setup until a human prices it, adds a photo and
             // chooses Make Available.
@@ -504,10 +507,10 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
-    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category").eq("id", data.documentId).maybeSingle();
+    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category,kind").eq("id", data.documentId).maybeSingle();
     if (!doc || doc.driver_id) throw new Error("Not found");
     // Loan / payoff / purchase paperwork stays inside the finance boundary.
-    if (docGroupOf(doc.category) === "Finance" && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
+    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind)) && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -521,16 +524,21 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
+    const isManager = actor.tier === "manager" || actor.tier === "owner";
     const sb = await admin();
-    const { data: links } = await sb.from("document_vehicle_links").select("document_id,page").eq("vehicle_id", data.vehicleId);
-    const ids = (links ?? []).map((l: any) => l.document_id);
-    if (!ids.length) return [];
-    const { data: docs } = await sb.from("documents").select("id,kind,label,file_name,created_at,is_current,review_status,source,expires_at").in("id", ids).is("driver_id", null);
-    const { data: all } = await sb.from("document_vehicle_links").select("document_id").in("document_id", ids);
-    const count: Record<string, number> = {};
-    for (const l of all ?? []) count[l.document_id] = (count[l.document_id] ?? 0) + 1;
+    // Same canonical loader as the vehicle profile; finance paperwork is
+    // withheld from Coordinators here, not merely hidden in the UI.
+    const { loadVehicleDocPresence } = await import("@/lib/vehicle-doc-presence.server");
+    const pres = await loadVehicleDocPresence(sb, data.vehicleId, isManager);
+    if (!pres.linked.length) return [];
+    const ids = pres.linked.map((d) => d.id);
+    const [{ data: docs }, { data: links }] = await Promise.all([
+      sb.from("documents").select("id,kind,label,file_name,created_at,is_current,review_status,source,expires_at").in("id", ids),
+      sb.from("document_vehicle_links").select("document_id,page").eq("vehicle_id", data.vehicleId),
+    ]);
+    const rel = Object.fromEntries(pres.linked.map((d) => [d.id, d.relatedVehicles ?? 1]));
     const pageBy = Object.fromEntries((links ?? []).map((l: any) => [l.document_id, l.page]));
-    return (docs ?? []).map((d: any) => ({ ...d, page: pageBy[d.id] ?? null, relatedVehicles: count[d.id] ?? 1 }))
+    return (docs ?? []).map((d: any) => ({ ...d, page: pageBy[d.id] ?? null, relatedVehicles: rel[d.id] ?? 1 }))
       .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
   });
