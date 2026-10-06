@@ -264,6 +264,7 @@ function Ledger({
   vehicles,
   from,
   to,
+  autoOpenAdd,
 }: {
   vehicles: VehicleOption[];
   from: string | null;
