@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useVehicleDefaultPrefill } from "./useVehicleDefaults";
+import { bodyTypeLabel, DEFAULT_FIELD_LABELS } from "@/lib/vehicle-defaults";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -154,13 +156,13 @@ function Option({
 
 type Form = {
   unit_number: string; vin: string; year: string; make: string; model: string;
-  trim: string; color: string; body_type: string; current_odometer: string;
+  trim: string; color: string; body_type: string; weekly_rate: string; monthly_rate: string; deposit: string; current_odometer: string;
   license_plate: string; plate_state: string; status: string; ownership_type: string;
 };
 
 const EMPTY: Form = {
   unit_number: "", vin: "", year: "", make: "", model: "", trim: "", color: "",
-  body_type: "", current_odometer: "", license_plate: "", plate_state: "",
+  body_type: "", weekly_rate: "", monthly_rate: "", deposit: "", current_odometer: "", license_plate: "", plate_state: "",
   status: "available", ownership_type: "",
 };
 
@@ -185,6 +187,11 @@ function ManualForm({
     }
     return next;
   });
+  const prefill = useVehicleDefaultPrefill(
+    f.body_type,
+    { weekly_rate: f.weekly_rate, monthly_rate: f.monthly_rate, deposit: f.deposit },
+    (n) => setF((p) => ({ ...p, ...n })),
+  );
   const [decoded, setDecoded] = useState<Record<string, string> | null>(null);
   const [decodeNote, setDecodeNote] = useState<string | null>(null);
   const [decoding, setDecoding] = useState(false);
@@ -265,6 +272,10 @@ function ManualForm({
           trim: f.trim.trim() || null,
           color: f.color.trim() || null,
           body_type: (f.body_type || null) as any,
+          // Visible, editable pre-filled values; blank = explicit Not Set.
+          weekly_rate: f.weekly_rate.trim() === "" ? null : Number(f.weekly_rate),
+          monthly_rate: f.monthly_rate.trim() === "" ? null : Number(f.monthly_rate),
+          deposit: f.deposit.trim() === "" ? null : Number(f.deposit),
           current_odometer: f.current_odometer ? Number(f.current_odometer) : null,
           license_plate: f.license_plate.trim() || null,
           plate_state: f.plate_state.trim() || null,
@@ -371,18 +382,24 @@ function ManualForm({
           <Field label="Make *"><input value={f.make} onChange={(e) => set("make", e.target.value)} className={inputCls()} /></Field>
           <Field label="Model *"><input value={f.model} onChange={(e) => set("model", e.target.value)} className={inputCls()} /></Field>
           <Field label="Trim"><input value={f.trim} onChange={(e) => set("trim", e.target.value)} className={inputCls()} /></Field>
-          <Field label="Colour"><input value={f.color} onChange={(e) => set("color", e.target.value)} className={inputCls()} /></Field>
-          <Field label="Body type">
+          <Field label="Color"><input value={f.color} onChange={(e) => set("color", e.target.value)} className={inputCls()} /></Field>
+          <Field label="Body Type">
             <select value={f.body_type} onChange={(e) => set("body_type", e.target.value)} className={inputCls()}>
               <option value="">—</option>
-              {BODY_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
+              {BODY_TYPES.map((b) => <option key={b} value={b}>{bodyTypeLabel(b)}</option>)}
             </select>
           </Field>
+          {(["weekly_rate", "monthly_rate", "deposit"] as const).map((k) => (
+            <Field key={k} label={DEFAULT_FIELD_LABELS[k]}>
+              <input value={f[k]} inputMode="decimal" placeholder="Not Set" aria-label={DEFAULT_FIELD_LABELS[k]}
+                onChange={(e) => { prefill.markTouched(k); set(k, e.target.value); }} className={inputCls()} />
+            </Field>
+          ))}
           <Field label="Mileage"><input value={f.current_odometer} onChange={(e) => set("current_odometer", e.target.value)} inputMode="numeric" className={inputCls()} /></Field>
           <Field label="Plate" bad={badField === "license_plate"}>
             <input value={f.license_plate} onChange={(e) => set("license_plate", e.target.value.toUpperCase())} className={inputCls(badField === "license_plate")} />
           </Field>
-          <Field label="Plate state"><input value={f.plate_state} onChange={(e) => set("plate_state", e.target.value.toUpperCase())} maxLength={2} className={inputCls()} /></Field>
+          <Field label="Plate State"><input value={f.plate_state} onChange={(e) => set("plate_state", e.target.value.toUpperCase())} maxLength={2} className={inputCls()} /></Field>
         </div>
       </section>
 
