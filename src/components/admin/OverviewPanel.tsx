@@ -85,7 +85,7 @@ const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections"] as const;
+const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
 
 function usd(n: number | undefined | null) {
   if (n == null) return "—";

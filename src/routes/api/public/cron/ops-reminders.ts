@@ -39,7 +39,7 @@ async function handle(request: Request): Promise<Response> {
     .select("id,driver_id,amount,balance_due,due_date,status")
     .lt("due_date", todayStr)
     .not("driver_id", "is", null)
-    .in("status", ["pending", "overdue", "past_due", "unpaid"])
+    .in("status", ["pending", "failed", "overdue", "past_due", "unpaid", "late"])
     .limit(200);
 
   const byDriver = new Map<string, { amount: number; dueDate: string | null }>();

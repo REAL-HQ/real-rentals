@@ -150,7 +150,7 @@ export async function applyLateFees(today?: string): Promise<LateFeeRun> {
     .from("payments")
     .select("id,driver_id,amount,balance_due,late_fees,due_date,status,late_fee_applied_through")
     .lt("due_date", todayStr)
-    .in("status", ["pending", "overdue", "past_due", "unpaid"])
+    .in("status", ["pending", "failed", "overdue", "past_due", "unpaid", "late", "current"])
     .limit(500);
 
   for (const p of overdue ?? []) {

@@ -28,7 +28,7 @@ const STATUSES = [
   "waived",
 ] as const;
 /** Everything the dashboard's Collections card counts: due and not received. */
-const OVERDUE_SET = new Set(["late", "past_due", "collections", "failed"]);
+const OVERDUE_SET = new Set(["late", "past_due", "collections", "failed", "overdue", "unpaid"]);
 const STATUS_LABEL: Record<string, string> = {
   upcoming: "Upcoming",
   current: "Due",

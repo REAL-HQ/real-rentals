@@ -266,6 +266,11 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
 
 // ─── Driver Portal: pay outstanding balance ───────────────────────────────
 
+// Pays the driver's EXISTING outstanding charges (incl. late fees on them).
+// It never creates a new charge: a failed attempt marks those charges failed
+// (still owed) instead of adding a phantom "rent" row, and success marks them
+// paid. The amount is computed server-side; the client's figure is only a
+// confirmation that the driver saw the same balance.
 export const payRentalBalance = createServerFn({ method: 'POST' })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { rentalId: string; amountCents: number; environment: StripeEnv }) => {
@@ -283,31 +288,29 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
       if (!rental) throw new Error('Rental not found');
       if (!rental.stripe_customer_id || !rental.stripe_payment_method_id) throw new Error('No card on file');
 
+      const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+      const { collectRows, owedOn, OUTSTANDING_STATUSES } = await import('@/lib/payment-collection.server');
+      const { data: owed } = await supabaseAdmin
+        .from('payments')
+        .select('id, amount, balance_due, attempt_count')
+        .eq('rental_id', data.rentalId)
+        .in('status', [...OUTSTANDING_STATUSES])
+        .order('due_date', { ascending: true, nullsFirst: true })
+        .limit(12);
+      const rows = (owed ?? []) as any[];
+      if (!rows.length) return { error: 'Nothing is owed on this rental.' };
+      const cents = Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100);
+      if (cents !== Math.round(data.amountCents)) return { error: 'Your balance changed. Refresh and try again.' };
+
       const stripe = createStripeClient(data.environment);
-      const pi = await stripe.paymentIntents.create({
-        amount: data.amountCents,
-        currency: 'usd',
-        customer: rental.stripe_customer_id,
-        payment_method: rental.stripe_payment_method_id,
-        off_session: true,
-        confirm: true,
+      const res = await collectRows(supabaseAdmin, stripe, rows, {
+        customerId: rental.stripe_customer_id,
+        paymentMethodId: rental.stripe_payment_method_id,
         description: 'Rent balance payment',
         metadata: { rentalId: data.rentalId, reason: 'rent', source: 'driver_portal' },
       });
-
-      const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      await supabaseAdmin.from('payments').insert({
-        rental_id: data.rentalId,
-        driver_id: rental.application_id,
-        amount: data.amountCents / 100,
-        type: 'rent',
-        reason: 'rent',
-        status: pi.status === 'succeeded' ? 'paid' : 'pending',
-        stripe_payment_intent_id: pi.id,
-        paid_date: pi.status === 'succeeded' ? new Date().toISOString().slice(0, 10) : null,
-      });
-
-      return { ok: true, paymentIntentId: pi.id };
+      if ('error' in res) return { error: res.error };
+      return { ok: true, paymentIntentId: res.paymentIntentId };
     } catch (error) {
       return { error: getStripeErrorMessage(error) };
     }
