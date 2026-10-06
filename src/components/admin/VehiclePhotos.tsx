@@ -127,6 +127,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       const res = await update({ data: values });
       if (!res.ok) return toast.error(res.error ?? "Could not update that photo.");
       await refresh();
+      // Publishing changes Listing Ready and counts on the profile — keep them in step.
+      window.dispatchEvent(new Event("vehicle-profile-refresh"));
     } catch {
       toast.error("Could not update that photo.");
     } finally {
