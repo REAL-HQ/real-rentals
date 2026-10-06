@@ -434,17 +434,21 @@ export function MessagesOverlay({
   ) : null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-[#0B0B0D]/40" onClick={onClose} />
-      <div className="absolute inset-0 md:inset-6 lg:inset-8 md:rounded-2xl overflow-hidden bg-white shadow-2xl flex flex-col">
+    <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-50 flex flex-col bg-[#0B0B0D]">
+      {/* Dark band above the window; the close button lives here, outside the modal. */}
+      <div className="shrink-0 h-12 md:h-14 flex items-center justify-end px-3 md:px-5" onClick={onClose}>
         <button aria-label="Close messages" onClick={onClose}
-          className="absolute top-2 right-2 md:top-3 md:right-3 z-10 w-11 h-11 grid place-items-center rounded-full bg-white/90 text-[#55555E] hover:bg-[#F4F4F6] hover:text-[#111114]">
-          <X className="w-5 h-5" />
+          className="w-11 h-11 grid place-items-center rounded-full text-white/80 hover:text-white hover:bg-white/10">
+          <X className="w-6 h-6" />
         </button>
-        <div className={`flex-1 min-h-0 grid grid-cols-1 ${infoPane && showInfo ? "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr_300px]" : "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr]"}`}>
-          {listPane}
-          {centerPane}
-          {infoPane}
+      </div>
+      <div className="flex-1 min-h-0 md:px-4 md:pb-4 lg:px-6 lg:pb-6">
+        <div className="h-full min-h-0 rounded-t-2xl md:rounded-2xl overflow-hidden bg-white shadow-2xl flex flex-col">
+          <div className={`flex-1 min-h-0 grid grid-cols-1 ${infoPane && showInfo ? "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr_300px]" : "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr]"}`}>
+            {listPane}
+            {centerPane}
+            {infoPane}
+          </div>
         </div>
       </div>
     </div>
