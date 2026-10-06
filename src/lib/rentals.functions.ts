@@ -417,32 +417,15 @@ export const endRental = createServerFn({ method: "POST" })
 
     const endDate = data.endDate ?? new Date().toISOString().slice(0, 10);
 
-    const { error } = await supabaseAdmin
-      .from("rentals")
-      .update({ status: "closed", end_date: endDate, autopay_active: false })
-      .eq("id", data.rentalId);
+    // One transaction (end_rental_tx): rental closed, vehicle released,
+    // application closed, automations stopped — all or nothing.
+    const { data: outcome, error } = await (supabaseAdmin as any).rpc("end_rental_tx", {
+      _rental_id: data.rentalId,
+      _end: endDate,
+      _vehicle_status: data.vehicleStatus,
+    });
     if (error) throw new Error(error.message);
-
-    await supabaseAdmin
-      .from("vehicles")
-      .update({ status: data.vehicleStatus })
-      .eq("id", rental.vehicle_id);
-
-    if (rental.application_id) {
-      await supabaseAdmin
-        .from("applications")
-        .update({ status: "closed" })
-        .eq("id", rental.application_id);
-    }
-
-    // Stop any automation still running for this driver.
-    if (rental.application_id) {
-      await supabaseAdmin
-        .from("automation_enrollments")
-        .update({ status: "cancelled", cancelled_reason: "rental ended", next_run_at: null })
-        .eq("application_id", rental.application_id)
-        .eq("status", "active");
-    }
+    if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, {
@@ -455,6 +438,23 @@ export const endRental = createServerFn({ method: "POST" })
 
     return { ok: true, alreadyClosed: false };
   });
+
+/** Truthful messages for the reasons activate_rental_tx refuses. */
+export function activationTxBlocker(msg: string): ActivationBlocker | null {
+  if (msg.includes("vehicle_busy"))
+    return { code: "vehicle_busy", message: "That vehicle was just activated on another rental. Pick a different one." };
+  if (msg.includes("already_active"))
+    return { code: "already_active", message: "This driver already has an active rental." };
+  if (msg.includes("account_conflict"))
+    return { code: "account_conflict", message: "This application's login does not match the driver account. Resolve the identity before activating." };
+  if (msg.includes("not_approved"))
+    return { code: "not_approved", message: "Application is not approved. Approve it before activating." };
+  if (msg.includes("vehicle_unavailable") || msg.includes("vehicle_not_found"))
+    return { code: "no_vehicle", message: "That vehicle is no longer in the working fleet." };
+  if (msg.includes("invalid_dates"))
+    return { code: "no_vehicle", message: "The end date must be after the start date." };
+  return null;
+}
 
 function escapeHtml(v: unknown): string {
   return String(v ?? "")
