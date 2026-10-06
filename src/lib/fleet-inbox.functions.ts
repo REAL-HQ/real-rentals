@@ -10,7 +10,7 @@ import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
   DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
-  isFinanceField, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
+  isFinanceField, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 
 const BUCKET = "vehicle-docs";
@@ -497,10 +497,12 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ documentId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
     const sb = await admin();
     const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category").eq("id", data.documentId).maybeSingle();
     if (!doc || doc.driver_id) throw new Error("Not found");
+    // Loan / payoff / purchase paperwork stays inside the finance boundary.
+    if (docGroupOf(doc.category) === "Finance" && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
