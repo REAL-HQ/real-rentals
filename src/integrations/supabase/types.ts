@@ -2365,6 +2365,83 @@ export type Database = {
           },
         ]
       }
+      maintenance_defaults: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          interval_days: number | null
+          interval_miles: number | null
+          is_active: boolean
+          item: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean
+          item: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          interval_days?: number | null
+          interval_miles?: number | null
+          is_active?: boolean
+          item?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      maintenance_record_items: {
+        Row: {
+          amount: number | null
+          category: string
+          created_at: string
+          description: string
+          id: string
+          quantity: number | null
+          record_id: string
+          sort_order: number
+        }
+        Insert: {
+          amount?: number | null
+          category?: string
+          created_at?: string
+          description: string
+          id?: string
+          quantity?: number | null
+          record_id: string
+          sort_order?: number
+        }
+        Update: {
+          amount?: number | null
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          quantity?: number | null
+          record_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_record_items_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maintenance_records: {
         Row: {
           category: string
@@ -2372,25 +2449,42 @@ export type Database = {
           completed_at: string | null
           cost_split: string
           created_at: string
+          created_by: string | null
+          description: string | null
+          document_id: string | null
+          document_page: number | null
           driver_id: string | null
           due_date: string | null
           due_mileage: number | null
           id: string
           invoice_number: string | null
           item: string
+          labor_cost: number | null
           notes: string | null
           odometer: number | null
+          original_extraction: Json | null
+          other_cost: number | null
           partner_id: string | null
           partner_share: number
+          parts_cost: number | null
+          payment_method: string | null
+          payment_status: string | null
           performed_on: string | null
+          priority: string | null
+          proposal_id: string | null
           rental_id: string | null
           schedule_id: string | null
           shop_id: string | null
+          source: string
           status: string
+          tax_amount: number | null
           total_cost: number
           updated_at: string
+          updated_by: string | null
           vehicle_id: string
           vendor_id: string | null
+          vendor_name_raw: string | null
+          warranty_covered: number | null
         }
         Insert: {
           category?: string
@@ -2398,25 +2492,42 @@ export type Database = {
           completed_at?: string | null
           cost_split?: string
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          document_id?: string | null
+          document_page?: number | null
           driver_id?: string | null
           due_date?: string | null
           due_mileage?: number | null
           id?: string
           invoice_number?: string | null
           item: string
+          labor_cost?: number | null
           notes?: string | null
           odometer?: number | null
+          original_extraction?: Json | null
+          other_cost?: number | null
           partner_id?: string | null
           partner_share?: number
+          parts_cost?: number | null
+          payment_method?: string | null
+          payment_status?: string | null
           performed_on?: string | null
+          priority?: string | null
+          proposal_id?: string | null
           rental_id?: string | null
           schedule_id?: string | null
           shop_id?: string | null
+          source?: string
           status?: string
+          tax_amount?: number | null
           total_cost?: number
           updated_at?: string
+          updated_by?: string | null
           vehicle_id: string
           vendor_id?: string | null
+          vendor_name_raw?: string | null
+          warranty_covered?: number | null
         }
         Update: {
           category?: string
@@ -2424,27 +2535,51 @@ export type Database = {
           completed_at?: string | null
           cost_split?: string
           created_at?: string
+          created_by?: string | null
+          description?: string | null
+          document_id?: string | null
+          document_page?: number | null
           driver_id?: string | null
           due_date?: string | null
           due_mileage?: number | null
           id?: string
           invoice_number?: string | null
           item?: string
+          labor_cost?: number | null
           notes?: string | null
           odometer?: number | null
+          original_extraction?: Json | null
+          other_cost?: number | null
           partner_id?: string | null
           partner_share?: number
+          parts_cost?: number | null
+          payment_method?: string | null
+          payment_status?: string | null
           performed_on?: string | null
+          priority?: string | null
+          proposal_id?: string | null
           rental_id?: string | null
           schedule_id?: string | null
           shop_id?: string | null
+          source?: string
           status?: string
+          tax_amount?: number | null
           total_cost?: number
           updated_at?: string
+          updated_by?: string | null
           vehicle_id?: string
           vendor_id?: string | null
+          vendor_name_raw?: string | null
+          warranty_covered?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "maintenance_records_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "maintenance_records_partner_id_fkey"
             columns: ["partner_id"]
@@ -2500,10 +2635,12 @@ export type Database = {
         Row: {
           category: string
           created_at: string
+          default_id: string | null
           id: string
           interval_days: number | null
           interval_miles: number | null
           is_active: boolean
+          is_override: boolean
           item: string
           last_done_miles: number | null
           last_done_on: string | null
@@ -2516,10 +2653,12 @@ export type Database = {
         Insert: {
           category?: string
           created_at?: string
+          default_id?: string | null
           id?: string
           interval_days?: number | null
           interval_miles?: number | null
           is_active?: boolean
+          is_override?: boolean
           item: string
           last_done_miles?: number | null
           last_done_on?: string | null
@@ -2532,10 +2671,12 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string
+          default_id?: string | null
           id?: string
           interval_days?: number | null
           interval_miles?: number | null
           is_active?: boolean
+          is_override?: boolean
           item?: string
           last_done_miles?: number | null
           last_done_on?: string | null
@@ -2546,6 +2687,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "maintenance_schedules_default_id_fkey"
+            columns: ["default_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_defaults"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "maintenance_schedules_vehicle_id_fkey"
             columns: ["vehicle_id"]
@@ -2720,6 +2868,86 @@ export type Database = {
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      odometer_readings: {
+        Row: {
+          created_at: string
+          document_id: string | null
+          document_page: number | null
+          entered_by: string | null
+          evidence_key: string | null
+          id: string
+          mileage: number
+          note: string | null
+          observed_on: string
+          source_id: string | null
+          source_type: string
+          status: string
+          supersedes_id: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id?: string | null
+          document_page?: number | null
+          entered_by?: string | null
+          evidence_key?: string | null
+          id?: string
+          mileage: number
+          note?: string | null
+          observed_on: string
+          source_id?: string | null
+          source_type: string
+          status?: string
+          supersedes_id?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string | null
+          document_page?: number | null
+          entered_by?: string | null
+          evidence_key?: string | null
+          id?: string
+          mileage?: number
+          note?: string | null
+          observed_on?: string
+          source_id?: string | null
+          source_type?: string
+          status?: string
+          supersedes_id?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "odometer_readings_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odometer_readings_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "odometer_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odometer_readings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odometer_readings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
             referencedColumns: ["id"]
           },
         ]
@@ -3589,6 +3817,64 @@ export type Database = {
         }
         Relationships: []
       }
+      vehicle_downtime: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          ended_by: string | null
+          id: string
+          maintenance_record_id: string | null
+          reason: string
+          started_at: string
+          started_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          id?: string
+          maintenance_record_id?: string | null
+          reason?: string
+          started_at?: string
+          started_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          id?: string
+          maintenance_record_id?: string | null
+          reason?: string
+          started_at?: string
+          started_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_downtime_maintenance_record_id_fkey"
+            columns: ["maintenance_record_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_downtime_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_downtime_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_expenses: {
         Row: {
           amount: number
@@ -3599,6 +3885,7 @@ export type Database = {
           id: string
           incurred_on: string
           is_recurring: boolean
+          maintenance_record_id: string | null
           notes: string | null
           payment_method: string | null
           receipt_mime: string | null
@@ -3619,6 +3906,7 @@ export type Database = {
           id?: string
           incurred_on?: string
           is_recurring?: boolean
+          maintenance_record_id?: string | null
           notes?: string | null
           payment_method?: string | null
           receipt_mime?: string | null
@@ -3639,6 +3927,7 @@ export type Database = {
           id?: string
           incurred_on?: string
           is_recurring?: boolean
+          maintenance_record_id?: string | null
           notes?: string | null
           payment_method?: string | null
           receipt_mime?: string | null
@@ -3651,6 +3940,13 @@ export type Database = {
           vendor_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicle_expenses_maintenance_record_id_fkey"
+            columns: ["maintenance_record_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_records"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicle_expenses_rental_id_fkey"
             columns: ["rental_id"]
@@ -4174,6 +4470,7 @@ export type Database = {
           is_active: boolean
           market_id: string | null
           name: string
+          name_key: string | null
           notes: string | null
           phone: string | null
           preferred: boolean
@@ -4198,6 +4495,7 @@ export type Database = {
           is_active?: boolean
           market_id?: string | null
           name: string
+          name_key?: string | null
           notes?: string | null
           phone?: string | null
           preferred?: boolean
@@ -4222,6 +4520,7 @@ export type Database = {
           is_active?: boolean
           market_id?: string | null
           name?: string
+          name_key?: string | null
           notes?: string | null
           phone?: string | null
           preferred?: boolean

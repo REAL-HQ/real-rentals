@@ -199,8 +199,8 @@ export function buildProposal(
     issues.push(`VIN conflict: vehicle on file has ${vinConflict.vin}, document says ${vin}.`);
   }
   const conflict = !!vinConflict || changes.some((c) => c.kind === "conflict");
-  if (changes.some((c) => c.field === "current_odometer" && c.kind === "conflict")) {
-    issues.push("Possible odometer or extraction issue: mileage is lower than the value on file.");
+  if (changes.some((c) => c.field === "current_odometer" && Number(c.proposed) < Number(c.current ?? 0))) {
+    issues.push("Mileage is lower than the value on file — it will be checked against the reading dates.");
   }
   return {
     kind: conflict ? "conflict" : "match", vin, vinRaw, vinCheck,
@@ -228,7 +228,7 @@ function proposedFills(
     let note: string | undefined;
     if (current != null) {
       if (IDENTITY.has(field)) { kind = "conflict"; note = "Differs from the identity on file."; }
-      else if (field === "current_odometer" && Number(proposed) < Number(current)) { kind = "conflict"; note = "Lower than the mileage on file."; }
+      else if (field === "current_odometer") { kind = "update"; note = Number(proposed) < Number(current) ? "Lower than current mileage — kept in mileage history by its date; current mileage only changes if this reading is newer." : "Recorded in mileage history."; }
       else if (currentAuthority != null && authority < currentAuthority) { kind = "conflict"; note = "Current value comes from a higher-authority source."; }
     }
     const safe = kind !== "conflict" && risk === "normal" && ef.confidence !== "low";
