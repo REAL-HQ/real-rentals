@@ -262,7 +262,7 @@ export function VehiclesPanel({
                 <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">
                   {[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ")}
                 </div>
-                <dl className="mt-2.5 grid grid-cols-[44px_1fr] gap-y-1 text-[13px]">
+                <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                   <dt className="text-muted-foreground">Plate</dt>
                   <dd className="truncate font-mono">{(v as any).license_plate || <span className="text-muted-foreground">—</span>}</dd>
                   <dt className="text-muted-foreground">VIN</dt>
