@@ -169,7 +169,7 @@ export function MessagesOverlay({
   const hasBothChannels = !!convs && convs.some((c) => c.lastChannel === "sms") && convs.some((c) => c.lastChannel === "email");
   const listPane = (
     <aside className={`${mobile === "list" ? "flex" : "hidden"} md:flex flex-col min-h-0 border-r border-[#EDEDF0] bg-white`}>
-      <div className="pl-4 pr-14 md:pr-3 pt-4 pb-3 border-b border-[#EDEDF0]">
+      <div className="px-4 md:px-3 pt-4 pb-3 border-b border-[#EDEDF0]">
         <div className="flex items-center gap-1">
           <h2 className="text-[17px] font-semibold text-[#111114] mr-auto">Messages</h2>
           <button aria-label="Search conversations" title="Search" onClick={() => setSearchOpen((v) => !v)}
@@ -283,7 +283,7 @@ export function MessagesOverlay({
         <div className="flex-1 grid place-items-center text-[13px] text-[#9A9AA3]">Select a conversation or start a new one.</div>
       ) : (
         <>
-          <header className="flex items-center gap-3 pl-4 pr-14 h-[72px] border-b border-[#EDEDF0] bg-white shrink-0">
+          <header className="flex items-center gap-3 px-4 h-[72px] border-b border-[#EDEDF0] bg-white shrink-0">
             <button aria-label="Back to conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
             <Avatar name={person?.name ?? "?"} id={applicationId} size={34} />
             <div className="min-w-0 flex-1">
@@ -381,11 +381,11 @@ export function MessagesOverlay({
 
   const infoPane = person && applicationId ? (
     <aside className={`${mobile === "info" ? "flex" : "hidden"} md:hidden ${showInfo ? "xl:flex" : ""} flex-col min-h-0 border-l border-[#EDEDF0] bg-white overflow-y-auto`}>
-      <div className="flex items-center gap-2 pl-4 pr-14 h-14 border-b border-[#EDEDF0] md:hidden">
+      <div className="flex items-center gap-2 px-4 h-14 border-b border-[#EDEDF0] md:hidden">
         <button aria-label="Back to conversation" onClick={() => setMobile("thread")} className="w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
         <div className="text-[14px] font-semibold">Info</div>
       </div>
-      <div className="hidden md:flex items-center gap-1 px-3 h-14 pr-16 border-b border-[#EDEDF0]">
+      <div className="hidden md:flex items-center gap-1 px-3 h-14 border-b border-[#EDEDF0]">
         {(thread?.rental ? (["details", "rental"] as const) : (["details"] as const)).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`h-8 px-2.5 rounded-lg text-[13px] inline-flex items-center ${tab === t || !thread?.rental ? "bg-[#F4F4F6] font-semibold text-[#111114]" : "text-[#55555E] hover:bg-[#F4F4F6]"}`}>
