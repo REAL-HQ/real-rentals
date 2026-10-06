@@ -73,6 +73,8 @@ async function evaluateReadiness(
 ): Promise<ActivationReadiness> {
   const blockers: ActivationBlocker[] = [];
   const warnings: string[] = [];
+  let inspectionMileage: number | null = null;
+  let currentMileage: number | null = null;
 
   const { data: app } = await admin
     .from("applications")
@@ -121,7 +123,7 @@ async function evaluateReadiness(
     const { data: v } = await admin
       .from("vehicles")
       .select(
-        "id,year,make,model,status,weekly_rate,deposit,license_plate,registration_expires_on,insurance_expires_on",
+        "id,year,make,model,status,weekly_rate,deposit,license_plate,registration_expires_on,insurance_expires_on,current_odometer",
       )
       .eq("id", vehicleId)
       .maybeSingle();
