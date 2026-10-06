@@ -250,7 +250,7 @@ export function MessagesOverlay({
         <div className="flex-1 grid place-items-center text-[13px] text-[#9A9AA3]">Select a conversation or start a new one.</div>
       ) : (
         <>
-          <header className="flex items-center gap-3 px-4 h-14 border-b border-[#EDEDF0] bg-white shrink-0">
+          <header className="flex items-center gap-3 pl-4 pr-14 h-14 border-b border-[#EDEDF0] bg-white shrink-0">
             <button aria-label="Back to conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
             <div className="w-9 h-9 rounded-full bg-[#F4F4F6] text-[#55555E] grid place-items-center text-[12px] font-semibold shrink-0">{initials(person?.name ?? "?")}</div>
             <div className="min-w-0 flex-1">
@@ -258,6 +258,7 @@ export function MessagesOverlay({
               <div className="text-[11px] text-[#9A9AA3] truncate capitalize">{person?.status ?? ""}</div>
             </div>
             <button aria-label="Conversation info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
+              title="Conversation info"
               className="w-11 h-11 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><Info className="w-5 h-5" /></button>
           </header>
           <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
@@ -343,12 +344,12 @@ export function MessagesOverlay({
   );
 
   const infoPane = person && applicationId ? (
-    <aside className={`${mobile === "info" ? "flex" : "hidden"} ${showInfo ? "md:flex" : "md:hidden"} flex-col min-h-0 border-l border-[#EDEDF0] bg-white overflow-y-auto`}>
-      <div className="flex items-center gap-2 px-4 h-14 border-b border-[#EDEDF0] md:hidden">
+    <aside className={`${mobile === "info" ? "flex" : "hidden"} md:hidden ${showInfo ? "xl:flex" : ""} flex-col min-h-0 border-l border-[#EDEDF0] bg-white overflow-y-auto`}>
+      <div className="flex items-center gap-2 pl-4 pr-14 h-14 border-b border-[#EDEDF0] md:hidden">
         <button aria-label="Back to conversation" onClick={() => setMobile("thread")} className="w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
         <div className="text-[14px] font-semibold">Info</div>
       </div>
-      <div className="p-5 text-center border-b border-[#EDEDF0]">
+      <div className="p-5 pt-14 md:pt-14 text-center border-b border-[#EDEDF0]">
         <div className="w-14 h-14 mx-auto rounded-full bg-[#F4F4F6] text-[#55555E] grid place-items-center text-[16px] font-semibold">{initials(person.name)}</div>
         <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
         <div className="text-[12px] text-[#9A9AA3] capitalize">{person.status ?? "—"}</div>
@@ -376,7 +377,7 @@ export function MessagesOverlay({
         <div className={`flex-1 min-h-0 grid grid-cols-1 ${infoPane && showInfo ? "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr_300px]" : "md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr]"}`}>
           {listPane}
           {centerPane}
-          {infoPane && <div className="contents xl:contents [&>aside]:md:hidden [&>aside]:xl:flex">{infoPane}</div>}
+          {infoPane}
         </div>
       </div>
     </div>
