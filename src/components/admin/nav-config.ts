@@ -82,6 +82,10 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+export function visibleTabs(tier: StaffTier | null): TabDef[] {
+  return TABS.filter((t) => tierAllows(tier, t.minTier));
+}
+
 /** Which nav entry is highlighted for a tab (Repair Shops highlights Vendors). */
 export function navOwner(tab: string): string {
   return tab === "shops" ? "vendors" : tab;
