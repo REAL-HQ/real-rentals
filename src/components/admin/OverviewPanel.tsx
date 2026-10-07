@@ -451,17 +451,20 @@ export function OverviewPanel() {
                   search={{ tab: "drivers", id: app.id }}
                   className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
                 >
-                  <span className="flex items-start justify-between gap-2 min-w-0">
-                    <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-2 min-w-0">
                       <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
                         {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
                       </span>
-                      <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
-                        <CalendarDays className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{appliedLine(app.created_at)}</span>
-                      </span>
+                      <ReadinessStatePill state={readiness.state} short />
                     </span>
-                    <ReadinessStatePill state={readiness.state} short />
+                    {/* Full width of the card: at phone width the badge and the
+                        name share the row above, so this line gets the room it
+                        needs instead of ending in an ellipsis. */}
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
+                      <CalendarDays className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{appliedLine(app.created_at)}</span>
+                    </span>
                   </span>
                   <ReadinessMetrics result={readiness} />
                   {readiness.positives.length > 0 && (
