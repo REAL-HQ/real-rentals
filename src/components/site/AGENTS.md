@@ -1,0 +1,1 @@
+- Public phone links use PhoneLink / trackCallClick (src/components/site/PhoneLink.tsx), which read Settings Business Phone and send one click_to_call event; a click is never a conversion and the click id (gclid) is never sent — so the number has one source and clicks are not double-counted.
