@@ -422,10 +422,10 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   let state: ServiceTxDraft["financial"]["payment"]["state"] = "unknown";
   if (amount != null && total != null) state = close(amount, total) ? "corroborated" : amount < total ? "partial" : "overpayment";
   if (amount != null && total != null && !close(amount, total)) {
-    // A slip that equals the invoice SUBTOTAL plus tax is a different representation, not a second charge.
-    state = "conflict";
-    finIssues.push(`Payment ${amount.toFixed(2)} does not equal the invoice total ${total.toFixed(2)} — Payment Conflict, Financial Review Required.`);
+    finIssues.push(`Payment ${amount.toFixed(2)} vs invoice total ${total.toFixed(2)} — ${state === "partial" ? "Partial Payment" : "Overpayment"}? Financial Review Required (one may be a subtotal).`);
   }
+  if (new Set(payAmounts.map((x) => x.v!.toFixed(2))).size > 1) { state = "conflict"; finIssues.push(`Payment evidence shows different amounts (${payAmounts.map((x) => `${x.file}: ${x.v!.toFixed(2)}`).join(", ")}) — Payment Conflict.`); }
+  if (amount == null && total != null && (payItems.length || possItems.length)) finIssues.push("Payment evidence present but the amount could not be read.");
   const methodSrc: { file: string; value: string }[] = [];
   for (const p of payItems) { const m = p.service.payment?.method?.value || p.service.payment?.cardType?.value; if (m) methodSrc.push({ file: `${p.fileName} (payment receipt)`, value: m }); }
   for (const p of g.items) { const m = p.service.payment?.invoicePaymentField?.value; if (m) methodSrc.push({ file: `${p.fileName} (invoice PAYMENT field)`, value: m }); }
