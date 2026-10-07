@@ -238,11 +238,17 @@ export const searchMessagePeople = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await requireStaff(context.userId);
     const sb = await admin();
-    const q = data.q.replace(/[%,()]/g, " ");
+    // Strict allowlist: letters, digits, space and the few characters names,
+    // emails and phones use. Anything that could alter PostgREST filter
+    // syntax (commas, parens, quotes, %, *, backslash, colon) is dropped.
+    const q = data.q.replace(/[^\p{L}\p{N} @._+-]/gu, " ").replace(/\s+/g, " ").trim();
+    if (q.length < 2) return [];
+    const pattern = "%" + q + "%";
+    const filter = ["full_name", "email", "phone"].map((col) => col + ".ilike." + pattern).join(",");
     const { data: rows } = await sb
       .from("applications")
       .select("id, full_name, email, phone, status")
-      .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
+      .or(filter)
       .order("created_at", { ascending: false })
       .limit(10);
     return (rows ?? []).map((r: any) => ({ id: r.id as string, name: (r.full_name || r.email || "Unnamed") as string, status: r.status as string | null, hasEmail: !!r.email, hasPhone: !!r.phone }));
