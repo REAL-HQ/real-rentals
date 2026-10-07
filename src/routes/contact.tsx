@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useBusinessPhone } from "@/lib/company.functions";
+import { trackCallClick } from "@/components/site/PhoneLink";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,7 +70,7 @@ function Contact() {
         </FadeUp>
         <FadeUp delay={80}>
           <div className="space-y-6">
-            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} />
+            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} onClick={() => trackCallClick("contact", phone.e164)} />
             <Item I={Mail} label="Email" v="team@drivereal.com" href="mailto:team@drivereal.com" />
           </div>
         </FadeUp>
@@ -87,9 +88,9 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   );
 }
 
-function Item({ I, label, v, href }: { I: any; label: string; v: string; href?: string }) {
+function Item({ I, label, v, href, onClick }: { I: any; label: string; v: string; href?: string; onClick?: () => void }) {
   const valueNode = href ? (
-    <a href={href} className="mt-1 font-medium hover:text-real-red transition-colors">{v}</a>
+    <a href={href} onClick={onClick} className="mt-1 font-medium hover:text-real-red transition-colors">{v}</a>
   ) : (
     <div className="mt-1 font-medium">{v}</div>
   );

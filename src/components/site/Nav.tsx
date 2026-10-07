@@ -2,6 +2,8 @@ import { Link, useLocation, useMatch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Menu, X, User, LogOut, Shield, MessageSquare, Bell, HelpCircle, Car, Handshake, BookOpen, Rocket, MessageCircle, Mail } from "lucide-react";
 import { Logo } from "./Logo";
+import { PhoneLink } from "./PhoneLink";
+import { Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -113,6 +115,19 @@ export function Nav() {
           {location.pathname !== "/admin" && <Logo />}
         </div>
         <div className="flex items-center gap-3">
+          {!session && !isCityPage && (
+            <PhoneLink
+              placement="header"
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+            >
+              {(d) => (
+                <>
+                  <Phone className="w-4 h-4" strokeWidth={1.8} />
+                  <span className="hidden md:inline">{d}</span>
+                </>
+              )}
+            </PhoneLink>
+          )}
           {authReady && session ? (
             <>
               {(isPartner || isDriver) && (

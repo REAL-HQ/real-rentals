@@ -1,5 +1,6 @@
 import { Phone, ArrowRight } from "lucide-react";
 import { useBusinessPhone } from "@/lib/company.functions";
+import { trackCallClick } from "./PhoneLink";
 
 export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
   const phone = useBusinessPhone();
@@ -8,6 +9,7 @@ export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
       <div className="grid grid-cols-2 gap-2 p-2">
         <a
           href={phone.tel}
+          onClick={() => trackCallClick(window.location.pathname === "/" ? "hero" : "paid_landing", phone.e164)}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-real-red px-3 py-3 text-sm font-semibold text-real-red active:scale-95 transition"
           aria-label="Call REAL RENTALS"
         >
