@@ -49,7 +49,7 @@ export const listImportBatches = createServerFn({ method: "POST" })
       const its = (items ?? []).filter((i: any) => i.batch_id === b.id);
       const ps = (props ?? []).filter((p: any) => p.batch_id === b.id);
       return {
-        id: b.id, label: b.label, status: b.status, created_at: b.created_at,
+        id: b.id, label: b.label, status: b.status, created_at: b.created_at, source: b.source_channel ?? "fleet_inbox",
         files: its.length, vehicles: ps.length,
         newVehicles: ps.filter((p: any) => p.kind === "new").length,
         conflicts: ps.filter((p: any) => p.kind === "conflict").length,
@@ -387,7 +387,18 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const transactions = canFinance ? txs ?? [] : (txs ?? []).map(operationalView);
     const serviceItemIds = new Set((txs ?? []).flatMap((t: any) => t.item_ids ?? []));
     const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
-    return { batch, items: itemsOut, proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance };
+    // Email source: Managers/Owners see the preserved body; Coordinators get envelope only, money redacted.
+    let email: any = null;
+    if (batch.inbound_email_id) {
+      const { data: em } = await sb.from("inbound_emails").select("from_address,from_name,intake_address,subject,received_at,text_body,attachments,status").eq("id", batch.inbound_email_id).maybeSingle();
+      if (em) {
+        const redact = (s: string | null) => (s ? s.replace(/\$\s?[\d,]+(\.\d+)?/g, "$•••") : s);
+        email = canFinance
+          ? { ...em, text_body: em.text_body ? String(em.text_body).slice(0, 20000) : null }
+          : { ...em, subject: redact(em.subject), text_body: null, attachments: (em.attachments ?? []).map((a: any) => ({ file_name: a.file_name, outcome: a.outcome })) };
+      }
+    }
+    return { batch, items: itemsOut, proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email };
   });
 
 // ---------------------------------------------------------------- apply
