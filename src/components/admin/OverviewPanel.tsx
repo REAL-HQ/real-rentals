@@ -135,7 +135,7 @@ function appliedAgo(iso?: string | null) {
   );
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
-  return `${days} days ago`;
+  return `${days} Days Ago`;
 }
 /**
  * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
