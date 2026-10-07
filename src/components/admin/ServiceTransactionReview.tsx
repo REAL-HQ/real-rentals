@@ -57,6 +57,9 @@ export function ServiceTransactionReview({ d, isManager, reload, openFile }: { d
     <section className="rounded-xl border border-[#EDEDF0] bg-white">
       <header className="px-4 py-3 border-b border-[#EDEDF0] flex flex-wrap items-center gap-2 justify-between">
         <div className="text-[13px] font-semibold inline-flex items-center gap-1.5"><Wrench className="w-4 h-4" /> Service Transactions ({txs.length})</div>
+        {isManager && txs.length > 0 && (
+          <button disabled={!!busy} onClick={async () => { setBusy("Grouping evidence…"); try { await rebuild({ data: { batchId: d.batch.id } }); await reload(); } finally { setBusy(null); } }} className="min-h-[36px] px-3 rounded-lg border border-[#EDEDF0] text-xs hover:bg-[#F7F7F8] disabled:opacity-60">Regroup Evidence</button>
+        )}
         {isManager && serviceItems.length > 0 && (
           <button disabled={!!busy} onClick={reprocessAll} className="min-h-[36px] px-3 rounded-lg border border-[#EDEDF0] text-xs inline-flex items-center gap-1.5 hover:bg-[#F7F7F8] disabled:opacity-60">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />} {busy ?? "Reprocess Service Files"}
