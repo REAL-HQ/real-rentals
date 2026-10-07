@@ -1614,7 +1614,7 @@ function DriverDetail({
                 </div>
               </TabsContent>
 
-              <TabsContent value="documents" className="mt-4 space-y-4">
+              <TabsContent value="documents" className="mt-0 space-y-4">
                 <AgreementsCard applicationId={driver.id} />
                 <SectionCard
                   title="Documents"
@@ -1638,7 +1638,7 @@ function DriverDetail({
                 </SectionCard>
               </TabsContent>
 
-              <TabsContent value="screening" className="mt-4 space-y-4">
+              <TabsContent value="screening" className="mt-0 space-y-4">
                 <ScreeningPipeline
                   screening={screening}
                   docCount={vaultDocCount}
@@ -1658,7 +1658,7 @@ function DriverDetail({
                 <AISnapshotCard driver={driver} />
               </TabsContent>
 
-              <TabsContent value="application" className="mt-4 space-y-4">
+              <TabsContent value="application" className="mt-0 space-y-4">
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <Field label="DOB" value={driver.dob} />
@@ -1743,7 +1743,7 @@ function DriverDetail({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="rental" className="mt-4">
+              <TabsContent value="rental" className="mt-0">
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
@@ -1769,7 +1769,7 @@ function DriverDetail({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="payments" className="mt-4 space-y-4">
+              <TabsContent value="payments" className="mt-0 space-y-4">
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField
@@ -1879,7 +1879,7 @@ function DriverDetail({
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>
 
-              <TabsContent value="notes" className="mt-4">
+              <TabsContent value="notes" className="mt-0">
                 <Card title="Internal Notes" icon={<FileText className="w-4 h-4" />}>
                   <textarea
                     defaultValue={driver.notes || ""}
