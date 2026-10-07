@@ -1127,13 +1127,13 @@ function DriverDetail({
     : !docsComplete
       ? {
           label: "Review Documents",
-          onClick: () => document.getElementById("tab-documents")?.click(),
+          onClick: () => setTab("documents"),
           icon: FileText,
         }
       : !insuranceOk
         ? {
             label: "Verify Insurance",
-            onClick: () => document.getElementById("tab-screening")?.click(),
+            onClick: () => setTab("screening"),
             icon: ShieldCheck,
           }
         : !approved
@@ -1146,7 +1146,7 @@ function DriverDetail({
             ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
             : {
                 label: "View Rental",
-                onClick: () => document.getElementById("tab-rental")?.click(),
+                onClick: () => setTab("rental"),
                 icon: Car,
               };
   const PrimaryIcon = primaryAction.icon;
@@ -1173,401 +1173,448 @@ function DriverDetail({
     });
   }, [readiness]);
 
-  return (
-    <div className="-mx-8 -my-8 min-h-full bg-[#FAFAFB]">
-      {/* Compact header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
-        <div className="px-8 pt-3">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Drivers
-          </button>
-        </div>
-        {/* Identity strip: avatar + name on the left, actions vertically centered on the right */}
-        <div className="px-8 py-4 flex items-center gap-4">
-          <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-[18px] font-semibold text-[#111114] truncate">
-                {driver.full_name || "Unnamed"}
-              </h2>
-              <StatusPill status={driver.status} />
-              {driver.gclid && (
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
-                  Google Ads
-                </span>
-              )}
-              {(driver.resubmission_count ?? 0) > 0 && (
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E] bg-[#F4F4F6] rounded px-1.5 py-0.5">
-                  Merged {driver.resubmission_count} Duplicate
-                  {driver.resubmission_count === 1 ? "" : "(s)"}
-                </span>
-              )}
+  // Where the person is in the journey decides what Overview leads with.
+  // Derived from the same flags the lifecycle rail uses — no new state.
+  const phase: "screening" | "pickup" | "active" =
+    driver.status === "active" ? "active" : approved ? "pickup" : "screening";
+
+  const stageTargets: Partial<Record<string, () => void>> = {
+    screening: () => setTab("screening"),
+    docs: () => setTab("documents"),
+    insurance: () => setTab("screening"),
+    approved: () => setTab("application"),
+    pickup: () => setTab("rental"),
+    active: () => setTab("rental"),
+  };
+
+  const btnSecondary =
+    "inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors";
+
+  // Remedy buttons live inside Next Steps, beside the gap they close. The
+  // header keeps the single primary CTA; anything it already covers is not
+  // repeated as a red button here.
+  const remedyActions: Record<string, React.ReactNode> = Object.fromEntries(
+    readinessActions.map((a) => {
+      const remedy =
+        a.label === "Complete Interview"
+          ? "interview"
+          : a.label === "Review Documents"
+            ? "request_document"
+            : a.label === "Verify Insurance"
+              ? "verify"
+              : "applicant";
+      return [
+        remedy,
+        <button key={a.label} onClick={a.onClick} className={btnSecondary}>
+          {a.label}
+        </button>,
+      ];
+    }),
+  );
+
+  // Real, timestamped events only — nothing inferred, nothing scheduled.
+  const activity = useMemo(() => {
+    const ev: { at: string; label: string; detail?: string }[] = [];
+    const push = (at: unknown, label: string, detail?: string) => {
+      if (typeof at === "string" && !Number.isNaN(new Date(at).getTime())) ev.push({ at, label, detail });
+    };
+    push(driver.created_at, "Application Submitted", driver.gclid ? "Google Ads" : driver.utm_source || undefined);
+    push(driver.contacted_at, "Contacted");
+    push((screening as any)?.created_at, "Screening Started");
+    push((driver as any).documents_requested_at, "Documents Requested");
+    for (const d of vaultDocs) {
+      push(d.created_at, "Document Received", d.label || d.category.replace(/_/g, " "));
+      if (d.reviewed_at && d.review_status !== "uploaded") {
+        push(d.reviewed_at, d.review_status === "verified" ? "Document Verified" : "Replacement Requested", d.label || d.category.replace(/_/g, " "));
+      }
+    }
+    push((driver as any).approved_at, "Approved");
+    push((driver as any).agreement_signed_at, "Agreement Signed");
+    push((driver as any).pickup_at, "Vehicle Picked Up");
+    push((driver as any).return_at, "Vehicle Returned");
+    return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
+  }, [driver, screening, vaultDocs]);
+
+  const requirements: { ok: boolean; label: string }[] = [
+    { ok: screeningDone, label: "Interview Complete" },
+    { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
+    { ok: !!driver.license_photo_url || !!driver.license_valid, label: "License Uploaded" },
+    { ok: insuranceOk, label: "Insurance Verified" },
+    { ok: !!(screening as any)?.mvr_authorized, label: "MVR Authorized" },
+    { ok: !!driver.card_last4, label: "Card On File" },
+    { ok: approved, label: "Approved" },
+    { ok: !!(driver as any).agreement_signed_at, label: "Agreement Signed" },
+    { ok: !!(driver as any).pickup_at, label: "Pickup Scheduled" },
+  ];
+  const reqDone = requirements.filter((r) => r.ok).length;
+
+  const summaryRow = (
+    <div className="grid gap-4 md:grid-cols-3">
+      <SectionCard title="Driver Summary">
+        <div className="space-y-2 text-[12px]">
+          {driver.phone && (
+            <div className="flex items-center gap-2 text-[#111114]">
+              <Phone className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" /> {formatPhone(driver.phone)}
             </div>
-            <div className="mt-1 flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
-              {(driver.city || driver.state) && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-[#9A9AA3]" />{" "}
-                  {[driver.city, driver.state].filter(Boolean).join(", ")}
-                </span>
+          )}
+          {driver.email && (
+            <div className="flex items-center gap-2 text-[#111114] min-w-0">
+              <Mail className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" /> <span className="truncate">{driver.email}</span>
+            </div>
+          )}
+          {(driver.city || driver.state) && (
+            <div className="flex items-center gap-2 text-[#111114]">
+              <MapPin className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" />{" "}
+              {[driver.city, driver.state].filter(Boolean).join(", ")}
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-[#55555E]">
+            <Globe className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" />{" "}
+            {driver.gclid ? "Google Ads" : driver.utm_source || "Direct"}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Rental Need">
+        <dl className="space-y-2 text-[12px]">
+          <Row2
+            label="Needed By"
+            value={
+              (screening as any)?.needed_by_date
+                ? new Date((screening as any).needed_by_date).toLocaleDateString()
+                : "—"
+            }
+          />
+          <Row2
+            label="Weekly Rate"
+            value={driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "$350"}
+          />
+          <Row2
+            label="Drive Type"
+            value={
+              ((screening as any)?.drive_type as string | undefined)?.replace("_", " ") ??
+              ((driver as any).drive_type as string | null)?.replace("_", " ") ??
+              "—"
+            }
+          />
+          <Row2
+            label="Expected Duration"
+            value={
+              (driver as any).expected_duration
+                ? (DURATION_LABEL[(driver as any).expected_duration as string] ??
+                  ((driver as any).expected_duration as string))
+                : "—"
+            }
+          />
+          <Row2
+            label="Current Vehicle"
+            value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
+          />
+        </dl>
+      </SectionCard>
+
+      {/* The one operational checklist. Replaces the separate Readiness
+          Signals card and Requirements Checklist, which showed the same state twice. */}
+      <SectionCard
+        title="Rental Readiness"
+        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
+      >
+        <dl className="space-y-2 text-[12px]">
+          {requirements.map((r) => (
+            <SignalRow key={r.label} label={r.label} ok={r.ok} />
+          ))}
+        </dl>
+      </SectionCard>
+    </div>
+  );
+
+  const readinessCard = <ReadinessSummary result={readiness} remedyActions={remedyActions} />;
+
+  const docsPreview = (
+    <DocumentsStrip docs={vaultDocs} loading={vaultLoading} onOpen={() => setTab("documents")} />
+  );
+
+  const factsCard = (
+    <SectionCard title="Driver Facts">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Fact
+          label="Platforms"
+          value={
+            (driver.platforms?.length
+              ? driver.platforms.join(", ")
+              : (screening as any)?.gig_apps?.join(", ")) || "—"
+          }
+        />
+        <Fact
+          label="Trips"
+          value={Number.isNaN(trips) || !driver.trips_completed ? "—" : trips.toLocaleString()}
+        />
+        <Fact label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
+        <Fact label="Years Licensed" value={driver.years_licensed ?? "—"} />
+        <Fact label="Weekly Hours" value={driver.weekly_hours ?? "—"} />
+        <Fact label="Accidents (3y)" value={(screening as any)?.accidents_last_3yr ?? "—"} />
+        <Fact label="License Points" value={(screening as any)?.license_points ?? "—"} />
+        <Fact label="Card On File" value={driver.card_last4 ? `····${driver.card_last4}` : "Not Saved"} />
+      </div>
+    </SectionCard>
+  );
+
+  // Secondary actions not already the header CTA or a Next Steps button.
+  const moreActions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9A9AA3] mr-1">Actions</span>
+      <button className={btnSecondary} onClick={() => setTab("documents")}>
+        <FileText className="w-3.5 h-3.5" /> Request Documents
+      </button>
+      <button className={btnSecondary} onClick={() => setTab("screening")}>
+        <ShieldCheck className="w-3.5 h-3.5" /> Verify Insurance
+      </button>
+      <button className={btnSecondary} onClick={() => setTab("rental")}>
+        <Car className="w-3.5 h-3.5" /> Assign Vehicle
+      </button>
+      <button className={btnSecondary} onClick={() => setTab("notes")}>
+        <FileText className="w-3.5 h-3.5" /> Add Note
+      </button>
+      {activeRentalId ? (
+        <>
+          <button className={btnSecondary} onClick={() => setDepositRentalId(activeRentalId)}>
+            <Wallet className="w-3.5 h-3.5" /> Deposit Disposition
+          </button>
+          {driver.status === "active" ? (
+            <button className={btnSecondary} onClick={doEndRental}>
+              <Car className="w-3.5 h-3.5" /> End Rental
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+
+  const activityCard = (
+    <SectionCard title="Recent Activity">
+      {activity.length === 0 ? (
+        <p className="text-[12px] text-[#9A9AA3]">No recorded activity yet.</p>
+      ) : (
+        <ol className="space-y-2.5">
+          {activity.map((e, i) => (
+            <li key={`${e.at}-${i}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-[12px]">
+              <span className="text-[#9A9AA3] tabular-nums">
+                {new Date(e.at).toLocaleDateString([], { month: "short", day: "numeric" })}
+              </span>
+              <span className="min-w-0 text-[#111114]">
+                {e.label}
+                {e.detail && <span className="text-[#9A9AA3] capitalize"> · {e.detail}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </SectionCard>
+  );
+
+  const tabs = [
+    ["overview", "Overview"],
+    ["application", "Application"],
+    ["documents", "Documents"],
+    ["screening", "Screening"],
+    ["rental", "Rental"],
+    ["payments", "Payments"],
+    ["notes", "Notes"],
+  ] as const;
+
+  return (
+    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        {/* Header + record navigation, sticky together */}
+        <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
+          <div className="px-4 sm:px-8 pt-3">
+            <button
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Drivers
+            </button>
+          </div>
+          <div className="px-4 sm:px-8 py-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex">
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-[18px] font-semibold text-[#111114] truncate">
+                    {driver.full_name || "Unnamed"}
+                  </h2>
+                  <StatusPill status={driver.status} />
+                  {driver.gclid && (
+                    <span className="text-[10px] font-semibold tracking-[0.04em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
+                      Google Ads
+                    </span>
+                  )}
+                  {(driver.resubmission_count ?? 0) > 0 && (
+                    <span className="text-[10px] font-semibold text-[#55555E] bg-[#F4F4F6] rounded px-1.5 py-0.5">
+                      Merged {driver.resubmission_count} Duplicate
+                      {driver.resubmission_count === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 hidden sm:flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
+                  {(driver.city || driver.state) && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-[#9A9AA3]" />{" "}
+                      {[driver.city, driver.state].filter(Boolean).join(", ")}
+                    </span>
+                  )}
+                  {driver.phone && (
+                    <span className="inline-flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-[#9A9AA3]" /> {formatPhone(driver.phone)}
+                    </span>
+                  )}
+                  {driver.email && (
+                    <span className="inline-flex items-center gap-1 truncate max-w-[240px]">
+                      <Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}
+                    </span>
+                  )}
+                  {driver.created_at && (
+                    <span className="text-[#9A9AA3]">
+                      Applied {new Date(driver.created_at).toLocaleDateString()}
+                    </span>
+                  )}
+                  {driver.contacted_at && (
+                    <span className="text-[#9A9AA3]">
+                      · Last Contact {new Date(driver.contacted_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <button
+                onClick={primaryAction.onClick}
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+              >
+                <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
+              </button>
+              {driver.phone && (
+                <a
+                  href={`tel:${driver.phone}`}
+                  className="hidden sm:inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
+                  title="Call"
+                  aria-label="Call"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </a>
               )}
               {driver.phone && (
-                <span className="inline-flex items-center gap-1">
-                  <Phone className="w-3 h-3 text-[#9A9AA3]" /> {formatPhone(driver.phone)}
-                </span>
+                <a
+                  href={smsHref(driver.phone)}
+                  className="hidden sm:inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
+                  title="Text"
+                  aria-label="Text"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                </a>
               )}
               {driver.email && (
-                <span className="inline-flex items-center gap-1 truncate max-w-[240px]">
-                  <Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}
-                </span>
+                <a
+                  href={`mailto:${driver.email}`}
+                  className="hidden sm:inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
+                  title="Email"
+                  aria-label="Email"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                </a>
               )}
-              {driver.created_at && (
-                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">
-                  Applied {new Date(driver.created_at).toLocaleDateString()}
-                </span>
-              )}
-              {driver.contacted_at && (
-                <span className="inline-flex items-center gap-1 text-[#9A9AA3]">
-                  · Last contact {new Date(driver.contacted_at).toLocaleDateString()}
-                </span>
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
+                  <MoreVertical className="w-4 h-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {driver.phone && (
+                    <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `tel:${driver.phone}`)}>
+                      <Phone className="w-4 h-4 mr-2" /> Call
+                    </DropdownMenuItem>
+                  )}
+                  {driver.email && (
+                    <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `mailto:${driver.email}`)}>
+                      <Mail className="w-4 h-4 mr-2" /> Email
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
+                    <MessageSquare className="w-4 h-4 mr-2" /> Open In Messages
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
+                    <ClipboardList className="w-4 h-4 mr-2" /> Edit Interview
+                  </DropdownMenuItem>
+                  <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                  <ReissueLinkAction applicationId={driver.id} />
+                  <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+                  <DropdownMenuItem
+                    className="text-[#D03020] focus:text-[#D03020]"
+                    onClick={onDelete}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete Driver
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Mobile primary action: full width under identity */}
+          <div className="px-4 pb-3 sm:hidden">
             <button
               onClick={primaryAction.onClick}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+              className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
             >
               <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
             </button>
-            {driver.phone && (
-              <a
-                href={`tel:${driver.phone}`}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
-                title="Call"
-              >
-                <Phone className="w-3.5 h-3.5" />
-              </a>
-            )}
-            {driver.phone && (
-              <a
-                href={smsHref(driver.phone)}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
-                title="Text"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-              </a>
-            )}
-            {driver.email && (
-              <a
-                href={`mailto:${driver.email}`}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
-                title="Email"
-              >
-                <Mail className="w-3.5 h-3.5" />
-              </a>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
-                <MoreVertical className="w-4 h-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
-                  <MessageSquare className="w-4 h-4 mr-2" /> Open in Messages
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
-                  <ClipboardList className="w-4 h-4 mr-2" /> Edit interview
-                </DropdownMenuItem>
-                <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
-                <ReissueLinkAction applicationId={driver.id} />
-                <CardOnFileActions driver={driver} onUpdate={onUpdate} />
-                <DropdownMenuItem
-                  className="text-[#D03020] focus:text-[#D03020]"
-                  onClick={onDelete}
+          </div>
+          {/* Primary record navigation */}
+          <div className="px-4 sm:px-8 overflow-x-auto [scrollbar-width:none]">
+            <TabsList className="h-auto bg-transparent p-0 gap-5 rounded-none flex w-max">
+              {tabs.map(([value, label]) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  id={`tab-${value}`}
+                  className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-1 text-[13px] font-medium text-[#77777F] shadow-none data-[state=active]:border-[#D03020] data-[state=active]:text-[#111114] data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Driver
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </div>
         </div>
-      </div>
 
-      <div className="px-8 py-6 space-y-6">
-        <LifecycleRail
-          stages={lifecycle}
-          percent={percentComplete}
-          timeInStage={timeInStage}
-          blocker={readiness.disqualifiers[0]}
-        />
-
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-          {/* Sidebar */}
-          <aside className="space-y-4 lg:sticky lg:top-32 lg:self-start">
-            <SectionCard title="Driver Summary">
-              <div className="space-y-1.5 text-[12px]">
-                {driver.phone && (
-                  <div className="flex items-center gap-2 text-[#111114]">
-                    <Phone className="w-3.5 h-3.5 text-[#9A9AA3]" /> {formatPhone(driver.phone)}
-                  </div>
-                )}
-                {driver.email && (
-                  <div className="flex items-center gap-2 text-[#111114] break-all">
-                    <Mail className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" /> {driver.email}
-                  </div>
-                )}
-                {(driver.city || driver.state) && (
-                  <div className="flex items-center gap-2 text-[#111114]">
-                    <MapPin className="w-3.5 h-3.5 text-[#9A9AA3]" />{" "}
-                    {[driver.city, driver.state].filter(Boolean).join(", ")}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-[#55555E]">
-                  <Globe className="w-3.5 h-3.5 text-[#9A9AA3]" />{" "}
-                  {driver.gclid ? "Google Ads" : driver.utm_source || "Direct"}
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Rental Need">
-              <dl className="space-y-2.5 text-[12px]">
-                <Row2
-                  label="Needed By"
-                  value={
-                    (screening as any)?.needed_by_date
-                      ? new Date((screening as any).needed_by_date).toLocaleDateString()
-                      : "—"
-                  }
+        <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
+              <TabsContent value="overview" className="mt-0 space-y-5">
+                <LifecycleRail
+                  stages={lifecycle}
+                  percent={percentComplete}
+                  timeInStage={timeInStage}
+                  blocker={readiness.disqualifiers[0]}
+                  onStageClick={stageTargets}
                 />
-                <Row2
-                  label="Weekly Rate"
-                  value={
-                    driver.weekly_rent ? `$${Number(driver.weekly_rent).toLocaleString()}` : "$350"
-                  }
-                />
-                <Row2
-                  label="Drive Type"
-                  value={
-                    // Staff answer first, then the applicant's own, so the row
-                    // is not blank just because nobody has run an interview.
-                    ((screening as any)?.drive_type as string | undefined)?.replace("_", " ") ??
-                    ((driver as any).drive_type as string | null)?.replace("_", " ") ??
-                    "—"
-                  }
-                />
-                <Row2
-                  label="Expected Duration"
-                  value={
-                    (driver as any).expected_duration
-                      ? (DURATION_LABEL[(driver as any).expected_duration as string] ??
-                        ((driver as any).expected_duration as string))
-                      : "—"
-                  }
-                />
-                <Row2
-                  label="Current Vehicle"
-                  value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
-                />
-                <Row2
-                  label="Card on File"
-                  value={driver.card_last4 ? `····${driver.card_last4}` : "Not saved"}
-                />
-              </dl>
-            </SectionCard>
-
-            <SectionCard title="Readiness Signals">
-              <dl className="space-y-2.5 text-[12px]">
-                <SignalRow label="Interview" ok={screeningDone} />
-                <SignalRow
-                  label="Documents"
-                  ok={docsComplete}
-                  detail={`${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}`}
-                />
-                <SignalRow label="Insurance" ok={insuranceOk} />
-                <SignalRow label="Card on File" ok={!!driver.card_last4} />
-                <SignalRow label="Approved" ok={approved} />
-              </dl>
-            </SectionCard>
-
-            <SectionCard title="Quick Actions">
-              <div className="space-y-1.5">
-                <QuickAction
-                  icon={ClipboardList}
-                  label="Continue Interview"
-                  onClick={() => setInterviewOpen(true)}
-                />
-                <QuickAction
-                  icon={FileText}
-                  label="Request Documents"
-                  onClick={() =>
-                    (document.getElementById("tab-documents") as HTMLElement | null)?.click()
-                  }
-                />
-                <QuickAction
-                  icon={ShieldCheck}
-                  label="Verify Insurance"
-                  onClick={() =>
-                    (document.getElementById("tab-screening") as HTMLElement | null)?.click()
-                  }
-                />
-                <QuickAction
-                  icon={Car}
-                  label="Assign Vehicle"
-                  onClick={() =>
-                    (document.getElementById("tab-rental") as HTMLElement | null)?.click()
-                  }
-                />
-                <QuickAction
-                  icon={FileText}
-                  label="Add Note"
-                  onClick={() =>
-                    (document.getElementById("tab-notes") as HTMLElement | null)?.click()
-                  }
-                />
-                {activeRentalId ? (
+                {phase === "screening" ? (
                   <>
-                    <QuickAction
-                      icon={Wallet}
-                      label="Deposit Disposition"
-                      onClick={() => setDepositRentalId(activeRentalId)}
-                    />
-                    {driver.status === "active" ? (
-                      <QuickAction icon={Car} label="End Rental" onClick={doEndRental} />
-                    ) : null}
+                    {readinessCard}
+                    {summaryRow}
+                    {docsPreview}
                   </>
-                ) : null}
-              </div>
-            </SectionCard>
-          </aside>
-
-          {/* Main workspace */}
-          <div className="min-w-0 space-y-6">
-            <ReadinessSummary
-              result={readiness}
-              actions={readinessActions.map((a) => (
-                <button
-                  key={a.label}
-                  onClick={a.onClick}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] transition-colors"
-                >
-                  {a.label}
-                  <span className="text-[#9A9AA3] tabular-nums">+{a.coverageGain}%</span>
-                </button>
-              ))}
-              primary={
-                <button
-                  onClick={primaryAction.onClick}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
-                >
-                  <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
-                </button>
-              }
-            />
-
-            {/* What did this applicant send us? Answered before the operator
-                has to guess which tab to open. The readiness panel above says
-                what is still outstanding; this says what arrived, and goes
-                straight to it. One strip, no second document system — it
-                reads the same vault rows the Documents tab renders. */}
-            <DocumentsStrip
-              docs={vaultDocs}
-              loading={vaultLoading}
-              onOpen={() => setTab("documents")}
-            />
-
-            <Tabs value={tab} onValueChange={setTab} className="w-full">
-              <TabsList className="bg-white border border-[#EDEDF0]">
-                <TabsTrigger value="overview" id="tab-overview">
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="application" id="tab-application">
-                  Application
-                </TabsTrigger>
-                <TabsTrigger value="documents" id="tab-documents">
-                  Documents
-                </TabsTrigger>
-                <TabsTrigger value="screening" id="tab-screening">
-                  Screening
-                </TabsTrigger>
-                <TabsTrigger value="rental" id="tab-rental">
-                  Rental
-                </TabsTrigger>
-                <TabsTrigger value="payments" id="tab-payments">
-                  Payments
-                </TabsTrigger>
-                <TabsTrigger value="notes" id="tab-notes">
-                  Notes
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="mt-4 space-y-4">
-                <SectionCard title="Driver Facts">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <Fact
-                      label="Platforms"
-                      value={
-                        (driver.platforms?.length
-                          ? driver.platforms.join(", ")
-                          : (screening as any)?.gig_apps?.join(", ")) || "—"
-                      }
-                    />
-                    <Fact
-                      label="Trips"
-                      value={
-                        Number.isNaN(trips) || !driver.trips_completed
-                          ? "—"
-                          : trips.toLocaleString()
-                      }
-                    />
-                    <Fact label="Rating" value={driver.rating ? `${driver.rating}/5` : "—"} />
-                    <Fact label="Years Licensed" value={driver.years_licensed ?? "—"} />
-                    <Fact label="Weekly Hours" value={driver.weekly_hours ?? "—"} />
-                    <Fact
-                      label="Accidents (3y)"
-                      value={(screening as any)?.accidents_last_3yr ?? "—"}
-                    />
-                    <Fact
-                      label="License Points"
-                      value={(screening as any)?.license_points ?? "—"}
-                    />
-                    <Fact
-                      label="Drive Type"
-                      value={(screening as any)?.drive_type?.replace("_", " ") ?? "—"}
-                    />
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Requirements Checklist">
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <ReqRow ok={screeningDone} label="Interview Complete" />
-                    <ReqRow
-                      ok={!!driver.license_photo_url || !!driver.license_valid}
-                      label="License Uploaded"
-                    />
-                    <ReqRow ok={insuranceOk} label="Insurance Verified" />
-                    <ReqRow ok={!!(screening as any)?.mvr_authorized} label="MVR Authorized" />
-                    <ReqRow ok={!!driver.card_last4} label="Card on File" />
-                    <ReqRow ok={!!(driver as any).agreement_signed_at} label="Agreement Signed" />
-                    <ReqRow ok={!!(driver as any).pickup_at} label="Pickup Scheduled" />
-                    <ReqRow ok={docsComplete} label="All Documents Received" />
-                  </ul>
-                </SectionCard>
-
-                <SectionCard title="Recent Activity" padded={false}>
-                  <div className="p-5">
-                    <Timeline
-                      steps={buildDriverTimeline(driver, screening)}
-                      title="Rental Timeline"
-                    />
-                  </div>
-                </SectionCard>
+                ) : (
+                  <>
+                    {summaryRow}
+                    {docsPreview}
+                    {readinessCard}
+                  </>
+                )}
+                {moreActions}
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+                  {factsCard}
+                  {activityCard}
+                </div>
               </TabsContent>
 
-              <TabsContent value="documents" className="mt-4 space-y-4">
+              <TabsContent value="documents" className="mt-0 space-y-4">
                 <AgreementsCard applicationId={driver.id} />
                 <SectionCard
                   title="Documents"
@@ -1591,7 +1638,7 @@ function DriverDetail({
                 </SectionCard>
               </TabsContent>
 
-              <TabsContent value="screening" className="mt-4 space-y-4">
+              <TabsContent value="screening" className="mt-0 space-y-4">
                 <ScreeningPipeline
                   screening={screening}
                   docCount={vaultDocCount}
@@ -1611,7 +1658,7 @@ function DriverDetail({
                 <AISnapshotCard driver={driver} />
               </TabsContent>
 
-              <TabsContent value="application" className="mt-4 space-y-4">
+              <TabsContent value="application" className="mt-0 space-y-4">
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <Field label="DOB" value={driver.dob} />
@@ -1696,7 +1743,7 @@ function DriverDetail({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="rental" className="mt-4">
+              <TabsContent value="rental" className="mt-0">
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
@@ -1722,7 +1769,7 @@ function DriverDetail({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="payments" className="mt-4 space-y-4">
+              <TabsContent value="payments" className="mt-0 space-y-4">
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField
@@ -1832,7 +1879,7 @@ function DriverDetail({
                 <CardOnFileCard driver={driver} onUpdate={onUpdate} />
               </TabsContent>
 
-              <TabsContent value="notes" className="mt-4">
+              <TabsContent value="notes" className="mt-0">
                 <Card title="Internal Notes" icon={<FileText className="w-4 h-4" />}>
                   <textarea
                     defaultValue={driver.notes || ""}
@@ -1846,10 +1893,8 @@ function DriverDetail({
                   </p>
                 </Card>
               </TabsContent>
-            </Tabs>
-          </div>
         </div>
-      </div>
+      </Tabs>
 
       <InterviewDrawer
         open={interviewOpen}
