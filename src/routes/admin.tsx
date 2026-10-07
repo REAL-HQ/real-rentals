@@ -30,6 +30,9 @@ import {
   visibleTabs,
   visibleCreateActions,
   navOwner,
+  railEntries,
+  WORKSPACE_TABS,
+  visibleWorkspaceTabs,
   LEGACY_TABS,
   type TabDef,
 } from "@/components/admin/nav-config";
@@ -39,14 +42,12 @@ import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
-import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
-import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
@@ -375,10 +376,12 @@ function Admin() {
 
   const createActions = visibleCreateActions(tier);
   const ownerTab = navOwner(tab);
-  const appTabs = navTabs.filter((t) => t.group);
+  const appTabs = railEntries(tier);
+  const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, tier) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
-  const navLink = (t: TabDef, onClick?: () => void) => {
+  const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
     const Icon = t.icon;
     const active = ownerTab === t.id;
     return (
@@ -387,7 +390,7 @@ function Admin() {
         to="/admin"
         // A root destination: the tab and nothing else, so "Drivers" always
         // lands on the list and drops any selected record.
-        search={rootSearch(t.id)}
+        search={rootSearch(t.href ?? t.id)}
         onClick={onClick}
         aria-current={active ? "page" : undefined}
         className={`relative w-full flex items-center gap-3 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
@@ -432,7 +435,7 @@ function Admin() {
             <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
               {(() => {
                 // Drawer always lists Operations destinations.
-                const ops = navTabs.filter((t) => t.group);
+                const ops = appTabs;
                 return GROUP_ORDER.map((group) => {
                   const items = ops.filter((t) => t.group === group);
                   if (!items.length) return null;
@@ -588,7 +591,7 @@ function Admin() {
                   {tierAllows(tier, "manager") && (
                     <>
                       <DropdownMenuItem
-                        onSelect={() => void navigate({ to: "/admin", search: rootSearch("activity") })}
+                        onSelect={() => void navigate({ to: "/admin", search: { tab: "settings", section: "activity" } })}
                         className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
                       >
                         <HistoryIcon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
@@ -620,24 +623,26 @@ function Admin() {
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
             {tab !== "overview" && !recordParent && (
               <div className="mb-5">
-                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{current.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{current.description}</p>
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
               </div>
             )}
-            {(tab === "vendors" || tab === "shops") && tierAllows(tier, "manager") && (
-              <div role="tablist" aria-label="Vendor type" className="mb-5 inline-flex rounded-lg bg-[#F0F0F2] p-0.5">
-                {[{ id: "vendors", label: "All Vendors" }, { id: "shops", label: "Repair Shops" }].map((v) => (
-                  <Link
-                    key={v.id}
-                    to="/admin"
-                    search={rootSearch(v.id)}
-                    role="tab"
-                    aria-selected={tab === v.id}
-                    className={`px-3 py-1.5 rounded-md text-[13px] font-medium ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
-                  >
-                    {v.label}
-                  </Link>
-                ))}
+            {workspaceTabs.length > 1 && !recordParent && (
+              <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-5 overflow-x-auto">
+                <div role="tablist" aria-label={`${workspace.label} sections`} className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max">
+                  {workspaceTabs.map((v) => (
+                    <Link
+                      key={v.id}
+                      to="/admin"
+                      search={rootSearch(v.id)}
+                      role="tab"
+                      aria-selected={tab === v.id}
+                      className={`px-3 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
+                    >
+                      {v.label}
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
             {tab === "overview" && <OverviewPanel />}
@@ -654,9 +659,7 @@ function Admin() {
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
             {tab === "incidents" && <IncidentsPanel />}
-            {tab === "websites" && <WebsitesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
-            {tab === "activity" && <ActivityPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
