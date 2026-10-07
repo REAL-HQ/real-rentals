@@ -15,10 +15,12 @@ ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Setting
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
 for (const t of ["payments", "charges", "expenses", "settings", "activity", "partners", "shops"])
   ok(!coord.includes(t), `Coordinator: no ${t}`);
-ok(["overview", "drivers", "waitlist", "vehicles", "inspections", "vendors"].every((t) => coord.includes(t)), "Coordinator: operational screens");
+ok(["overview", "drivers", "vehicles", "inspections", "vendors"].every((t) => coord.includes(t)), "Coordinator: operational screens");
 ok(visibleTabs(null).length === 0, "No tier: nothing");
 
 ok(!TABS.some((t) => ["messages", "automations", "team"].includes(t.id)), "No Messages/Automations/Team in main nav");
+ok(LEGACY_TABS.waitlist.tab === "drivers" && LEGACY_TABS.waitlist.filter === "waitlist", "Old Waitlist bookmark → Drivers → Waitlist");
+ok(!TABS.some((t) => t.id === "waitlist"), "No Waitlist in main nav");
 ok(LEGACY_TABS.automations.section === "automations" && LEGACY_TABS.team.section === "team" && LEGACY_TABS.messages.messages === true, "Old bookmarks resolve");
 
 ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files"]', "Coordinator Create: Add Vehicle, Upload Fleet Files");

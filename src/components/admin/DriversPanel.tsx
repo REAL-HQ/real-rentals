@@ -109,6 +109,8 @@ import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.fu
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
+import { WaitlistPanel } from "./WaitlistPanel";
+import { listWaitlist } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -283,9 +285,12 @@ export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  urlFilter,
 }: {
   externalSearch?: string;
   initialOpenId?: string;
+  /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
+  urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
 } = {}) {
@@ -319,7 +324,28 @@ export function DriversPanel({
       }),
     [navigate],
   );
-  const [filter, setFilter] = useState<string>("all");
+  const [localFilter, setLocalFilter] = useState<string>("all");
+  // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
+  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  const setFilter = useCallback(
+    (f: string) => {
+      if (f === "waitlist") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
+        return;
+      }
+      setLocalFilter(f);
+      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+    },
+    [navigate, urlFilter],
+  );
+  // Live waitlist size (entries not yet promoted) — never hard-coded.
+  const loadWaitlist = useServerFn(listWaitlist);
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+  useEffect(() => {
+    loadWaitlist()
+      .then((r) => setWaitlistCount(r.entries.filter((e) => e.status !== "promoted").length))
+      .catch(() => setWaitlistCount(null));
+  }, [loadWaitlist]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
@@ -608,19 +634,55 @@ export function DriversPanel({
     );
   }
 
+  const FILTER_LABEL: Record<string, string> = {
+    all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
+    active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
+  };
+  const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
+  const filterCount = (s: string) =>
+    s === "waitlist"
+      ? waitlistCount ?? "…"
+      : s === "all"
+        ? drivers.length
+        : drivers.filter((a) => a.status === s).length;
+  const filterButtons = FILTER_ORDER.map((s) => (
+    <button
+      key={s}
+      onClick={() => setFilter(s)}
+      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}
+    >
+      {FILTER_LABEL[s]} ({filterCount(s)})
+    </button>
+  ));
+
+  if (filter === "waitlist") {
+    return (
+      <div>
+        <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">{filterButtons}</div>
+        <div className="mb-4">
+          <h2 className="text-[15px] font-semibold text-[#111114]">Waitlist</h2>
+          <p className="text-[12px] text-[#55555E] mt-0.5">Drivers Waiting When No Cars Are Available</p>
+        </div>
+        <WaitlistPanel
+          onEntriesChange={(n) => setWaitlistCount(n)}
+          onPromoted={() =>
+            void supabase
+              .from("applications")
+              .select("*")
+              .neq("status", "duplicate")
+              .order("created_at", { ascending: false })
+              .then(({ data }) => data && setDrivers(data))
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4 text-xs">
-        {(["all", ...DRIVER_STATUSES] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-md capitalize ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}
-          >
-            {s} ({s === "all" ? drivers.length : drivers.filter((a) => a.status === s).length})
-          </button>
-        ))}
-        <div className="ml-auto">
+      <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
+        {filterButtons}
+        <div className="ml-auto shrink-0">
           <button
             onClick={handleMerge}
             disabled={merging}

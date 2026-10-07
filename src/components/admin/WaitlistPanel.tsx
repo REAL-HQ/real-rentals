@@ -27,7 +27,14 @@ import {
 // where the queue lives, and where a 0→available opening offers to email the
 // top of the queue before the news goes anywhere else.
 
-export function WaitlistPanel() {
+export function WaitlistPanel({
+  onEntriesChange,
+  onPromoted,
+}: {
+  /** Reports the live count of entries not yet promoted (for the Drivers filter). */
+  onEntriesChange?: (n: number) => void;
+  onPromoted?: () => void;
+} = {}) {
   const list = useServerFn(listWaitlist);
   const saveAvailability = useServerFn(setCarsAvailable);
   const notifyTop = useServerFn(notifyWaitlistTop);
@@ -45,7 +52,9 @@ export function WaitlistPanel() {
     const r = await list();
     setEntries(r.entries);
     setCarsAvailableState(r.carsAvailable);
+    onEntriesChange?.(r.entries.filter((e) => e.status !== "promoted").length);
     return r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
   useEffect(() => {
@@ -116,8 +125,9 @@ export function WaitlistPanel() {
     try {
       const res = await promote({ data: { entryId: entry.id } });
       if (!res.ok) throw new Error(res.error);
-      toast.success(`${entry.full_name} is now an applicant — you'll find them in Drivers.`);
+      toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
       await refresh();
+      onPromoted?.();
     } catch (e: any) {
       toast.error(e?.message ?? "Could not promote.");
     } finally {
