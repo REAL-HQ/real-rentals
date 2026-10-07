@@ -68,7 +68,7 @@ function TermsPage() {
             <h2 className="text-xl font-semibold text-foreground">SMS Text Messaging</h2>
             <ul className="mt-3 list-disc pl-6 space-y-1.5">
               <li>REAL RENTALS is the sender of these messages, from our business number {phone.display}.</li>
-              <li>If you opt in, we send transactional and customer-care messages about your application, rental, payments, vehicle pickup and return, service, and support. We do not send promotional messages.</li>
+              <li>If you opt in, we send transactional and customer-care messages only: application status and required documents, rental details, payment and account reminders and receipts, vehicle pickup and return scheduling, maintenance and service, and replies to your support questions. We do not send marketing or promotional messages.</li>
               <li>Message frequency varies. Message and data rates may apply.</li>
               <li>Reply STOP to cancel at any time. Reply HELP for help, or call {phone.display} or email <a href="mailto:team@drivereal.com" className="text-real-red underline">team@drivereal.com</a>.</li>
               <li>Consent to receive text messages is optional and is not a condition of renting a vehicle or making any purchase.</li>

@@ -135,7 +135,19 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
     return { ok: false, skipped: true, reason: "opted_out" };
   }
 
-  // 2. Marketing/automated messages additionally require a recorded opt-in.
+  // 2. Ordinary messages require a recorded opt-in on a known applicant.
+  //    No applicant record means no consent record, so nothing is sent.
+  if (requireConsent && !args.applicationId) {
+    await logMessage(supabaseAdmin, {
+      channel: "sms",
+      to_address: to,
+      body: args.body,
+      status: "skipped",
+      error: "no SMS consent record (no applicant)",
+      kind: args.kind ?? null,
+    });
+    return { ok: false, skipped: true, reason: "no_consent" };
+  }
   if (requireConsent && args.applicationId) {
     const { data: app } = await supabaseAdmin
       .from("applications")
