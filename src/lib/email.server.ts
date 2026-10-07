@@ -83,7 +83,14 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html, from, replyTo, track }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track }: SendArgs): Promise<SendResult> {
+  // Company phone in templates resolves from Settings → Business Phone.
+  let html = rawHtml;
+  if (html.includes("{{company_phone}}")) {
+    const { getBusinessPhone } = await import("@/lib/company.server");
+    const phone = await getBusinessPhone();
+    html = html.split("{{company_phone}}").join(`<a href="${phone.tel}" style="color:#999">${phone.display}</a>`);
+  }
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
@@ -375,7 +382,7 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
       <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
+      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call {{company_phone}}.</p>
     </div>
   </div>
 </body></html>`;
@@ -395,7 +402,7 @@ function shell(body: string): string {
       <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">REAL RENTALS</div>
       ${body}
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call (813) 940-3251.</p>
+      <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call {{company_phone}}.</p>
     </div>
   </div>
 </body></html>`;
