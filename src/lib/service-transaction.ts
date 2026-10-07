@@ -207,6 +207,20 @@ export function groupServiceEvidence(items: SourceItem[]): { groups: Group[]; or
       if (!g.vin && vin && vin.length === 17) g.vin = vin;
     } else groups.push({ key: invoiceKey(s.vendor?.value, inv || it.itemId), vendor: s.vendor?.value ?? null, inv, vin: vin && vin.length === 17 ? vin : null, items: [it], payments: [], possible: [] });
   }
+  // Second pass: a partly covered photo can lose its invoice number (or the reader can put a VIN
+  // fragment there). Merge it into a group from the SAME vendor when its partial VIN matches the tail
+  // of that group's VIN, or its printed final total equals that group's final total.
+  for (const g of [...groups]) {
+    if (g.items.length !== 1 || !groups.includes(g)) continue;
+    const s = g.items[0].service;
+    const frags = [s.vehicle?.vin?.value, s.invoiceNumber?.value].map((x) => up(x).replace(/[^A-Z0-9]/g, "")).filter((x) => x.length >= 6);
+    const ownTotal = s.summary?.totalKind === "final_total" ? money(s.summary?.total) : null;
+    const host = groups.find((o) => o !== g && vendorKey(o.vendor) === vendorKey(g.vendor) && vendorKey(g.vendor) && (
+      (o.vin && frags.some((fr) => { const tail = fr.slice(-8); return tail.length >= 6 && o.vin!.endsWith(tail.replace(/O/g, "0")); })) ||
+      (ownTotal != null && close(ownTotal, groupFinalTotal(o)))
+    ));
+    if (host) { host.items.push(g.items[0]); groups.splice(groups.indexOf(g), 1); }
+  }
   const orphanPayments: SourceItem[] = [];
   for (const r of receipts) {
     const amt = money(r.service.payment?.amount);
@@ -239,7 +253,10 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   const evidence: EvidenceRow[] = [];
   const byPage = new Map<string, SourceItem[]>();
   for (const it of g.items) {
-    const pn = it.service.pageNumber ?? (it.service.pageCount === 1 || it.service.pageCount == null ? 1 : null);
+    // Page-less photo that carries the final total = alternate image of the final-total page.
+    const finalPage = it.service.pageNumber == null && it.service.summary?.totalKind === "final_total"
+      ? g.items.find((o) => o !== it && o.service.pageNumber != null && o.service.summary?.totalKind === "final_total")?.service.pageNumber ?? null : null;
+    const pn = it.service.pageNumber ?? finalPage ?? (g.items.length === 1 || it.service.pageCount === 1 ? 1 : g.items.some((o) => o !== it && o.service.pageNumber != null) ? null : 1);
     const k = pn == null ? `x:${it.itemId}` : `p:${pn}`;
     byPage.set(k, [...(byPage.get(k) ?? []), it]);
   }

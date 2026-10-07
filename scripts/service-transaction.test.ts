@@ -20,13 +20,13 @@ const header = (o: any = {}) => ({
   ...o,
 });
 const B: SourceItem[] = [
-  { itemId: "8", documentId: "d8", fileName: "IMG_0008.JPG", service: { role: "invoice_with_payment", legibility: "partial", obscured: true, ...header({ invoiceNumber: f("1441"), vehicle: { vin: f("17ODR102837"), license: f("154782", "LICENSE") }, mileage: { in: f("101957", "MILEAGE") } }), pageNumber: 4,
+  { itemId: "8", documentId: "d8", fileName: "IMG_0008.JPG", service: { role: "invoice_with_payment", legibility: "partial", obscured: true, ...header({ invoiceNumber: f("17ODR102837"), vehicle: { vin: f("17ODR102837"), license: f("154782", "LICENSE") }, mileage: { in: f("101957", "MILEAGE") } }), pageNumber: null,
     payment: { amount: f("1334.26"), method: f("DEBIT"), cardType: f("VISA"), date: f("2026-10-05"), time: f("11:32") },
-    summary: { labor: f("827.61"), parts: f("345.67"), misc: f("68.30"), tax: f("93.08"), total: f("1334.26"), totalKind: "final_total" },
+    summary: { labor: f("827.61"), parts: f("345.27"), misc: f("68.30"), tax: f("93.08"), total: f("1334.26"), totalKind: "final_total" },
     operations: [{ heading: "LABOR AMOUNT", lineTotal: "827.61" }, { heading: "TOTAL CHARGES", lineTotal: "1334.26" }] } },
   { itemId: "9", documentId: "d9", fileName: "IMG_0009.JPG", service: { role: "invoice_page", legibility: "clear", ...header({ vehicle: { vin: f(VIN), year: f("13", "vehicle_year"), make: f("FORD"), model: f("FUSION"), color: f("BLACK"), license: f("154782", "LICENSE") } }), pageNumber: 4,
     payment: { invoicePaymentField: f("CASH") },
-    summary: { labor: f("827.61"), parts: f("345.27"), misc: f("68.30"), tax: f("93.08"), total: f("1334.26"), totalKind: "final_total" },
+    summary: { labor: f("827.61"), parts: f("438.27"), misc: f("68.30"), tax: f("93.08"), total: f("1334.26"), totalKind: "final_total" },
     operations: [{ code: "E", heading: "REPLACE PURGE VALVE", parts: [{ description: "VALVE", amount: "93.53" }], labor: "298.56" }] } },
   { itemId: "10", documentId: "d10", fileName: "IMG_0010.JPG", service: { role: "invoice_page", legibility: "clear", ...header(), pageNumber: 1,
     summary: { total: f("0"), totalKind: "page_subtotal" },
@@ -50,7 +50,7 @@ ok(!b.financial.operations.some((o) => /LABOR AMOUNT|TOTAL CHARGES/.test(o.headi
 const belt = b.financial.operations.find((o) => /BELT/.test(o.heading));
 ok(!!belt && belt.cost === 611.19 && belt.partsAmount === 212.09 && belt.laborAmount === 399.1, "B. seat belt parts + labor stay one operation (611.19)");
 ok(b.financial.operations.filter((o) => o.chargeType === "recall").length === 2, "B. recalls kept as no-cost history");
-ok(b.financial.summary.total === 1334.26 && b.financial.summarySource === "IMG_0009.JPG" && b.financial.summary.parts === 345.27, "B. one financial summary from the clear page");
+ok(b.financial.summary.total === 1334.26 && b.financial.summarySource === "IMG_0008.JPG" && b.financial.summary.parts === 345.27, "B. one financial summary from the clear page");
 ok(b.financial.reconciliation.status === "reconciled", "B. paid operations + summary reconcile");
 ok(b.financial.payment.state === "corroborated" && b.financial.payment.methodState === "conflict", "B. payment corroborated; CASH vs DEBIT flagged");
 ok(b.operational.applyPreview.expenses === 1 && b.operational.applyPreview.serviceRecords === 1 && b.financial.actualCost === 1334.26, "B. one service record, one expense of 1334.26");
