@@ -1,6 +1,6 @@
 // Role matrix for the back-office shell (run: bun scripts/admin-shell-roles.test.ts).
 // Visibility only — server functions and RLS remain the enforcement.
-import { visibleTabs, visibleCreateActions, navOwner, TABS, LEGACY_TABS, visibleSettingsSections } from "../src/components/admin/nav-config";
+import { railEntries, visibleWorkspaceTabs, visibleTabs, visibleCreateActions, navOwner, TABS, LEGACY_TABS, visibleSettingsSections } from "../src/components/admin/nav-config";
 
 let fail = 0;
 const ok = (c: boolean, m: string) => { console.log(`${c ? "  PASS" : "  FAIL"}  ${m}`); if (!c) fail++; };
@@ -9,7 +9,7 @@ const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
 ok(owner.length === TABS.length, "Owner sees every destination");
 ok(mgr.includes("settings"), "Manager: Settings (for Automations)");
-ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["vehicle_defaults","maintenance","automations"]', "Manager Settings: Vehicle Defaults + Maintenance (view) + Automations");
+ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","vehicle_defaults","maintenance","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
 ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Settings sections");
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
@@ -26,7 +26,15 @@ ok(LEGACY_TABS.automations.section === "automations" && LEGACY_TABS.team.section
 ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files"]', "Coordinator Create: Add Vehicle, Upload Fleet Files");
 ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five (incl. Service)");
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
-ok(navOwner("shops") === "vendors" && !TABS.find((t) => t.id === "shops")!.group, "Repair Shops lives under Vendors");
+ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
+const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
+ok(rail("owner") === "Overview,Drivers,Payments,Vehicles,Fleet Inbox,Service,Incidents,Expenses,Partners,Settings", "Owner rail matches target: " + rail("owner"));
+ok(rail("coordinator") === "Overview,Drivers,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
+ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");
+ok(JSON.stringify(visibleWorkspaceTabs("partners", "coordinator").map((k) => k.id)) === '["vendors"]', "Coordinator Partners: Vendors only");
+ok(railEntries("coordinator").find((e) => e.id === "maintenance")!.href === "inspections", "Coordinator Service link opens Inspections");
+ok(visibleWorkspaceTabs("payments", "coordinator").length === 0, "Coordinator: no Payments/Charges");
+ok(LEGACY_TABS.websites.section === "website" && LEGACY_TABS.activity.section === "activity", "Websites/Activity bookmarks → Settings");
 
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");
 process.exit(fail ? 1 : 0);
