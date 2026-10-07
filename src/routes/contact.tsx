@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useBusinessPhone } from "@/lib/company.functions";
+import { trackCallClick } from "@/components/site/PhoneLink";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,7 +70,7 @@ function Contact() {
         </FadeUp>
         <FadeUp delay={80}>
           <div className="space-y-6">
-            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} />
+            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} onClick={() => trackCallClick("contact", phone.e164)} />
             <Item I={Mail} label="Email" v="team@drivereal.com" href="mailto:team@drivereal.com" />
           </div>
         </FadeUp>

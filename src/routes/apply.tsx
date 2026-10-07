@@ -10,6 +10,7 @@ import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
+import { PhoneLink } from "@/components/site/PhoneLink";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -215,6 +216,11 @@ function ContactStep({
             <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
             <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
           </p>
+        </div>
+        <div className="mt-5 text-center text-[13px] text-muted-foreground">
+          <span className="font-medium text-foreground">Need Help Applying?</span>{" "}
+          Questions about availability, pricing, deposits or your application? Call{" "}
+          <PhoneLink placement="application_help" className="font-medium text-foreground underline-offset-4 hover:underline" />.
         </div>
       </div>
     </FadeUp>

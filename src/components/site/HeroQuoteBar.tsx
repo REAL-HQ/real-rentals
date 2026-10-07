@@ -1,3 +1,4 @@
+import { PhoneLink } from "./PhoneLink";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -98,6 +99,10 @@ export function HeroQuoteBar({
           </div>
           <p className="mt-4 text-center text-xs md:text-sm text-muted-foreground">
             Quick quote — unlimited miles, no deposit, no credit check. We'll confirm your car on a fast call.
+          </p>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Questions? Call{" "}
+            <PhoneLink placement="hero" className="font-medium text-foreground/80 underline-offset-4 hover:text-foreground hover:underline" />
           </p>
         </div>
       </FadeUp>
