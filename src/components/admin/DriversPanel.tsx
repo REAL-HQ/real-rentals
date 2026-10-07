@@ -1603,11 +1603,11 @@ function DriverDetail({
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
-                    <MessageSquare className="w-4 h-4 mr-2" /> Open In Messages
+                  <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
+                    <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
-                    <ClipboardList className="w-4 h-4 mr-2" /> Edit Interview
+                  <DropdownMenuItem title="Edit Interview" aria-label="Edit Interview" onClick={() => setInterviewOpen(true)}>
+                    <ClipboardList className="w-4 h-4 mr-2" /> Interview
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
                   <ReissueLinkAction applicationId={driver.id} />
@@ -2544,6 +2544,8 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   const [busy, setBusy] = useState(false);
   return (
     <DropdownMenuItem
+      title="Copy a fresh application link (older links are revoked)"
+      aria-label="Copy a fresh application link"
       onSelect={async (e) => {
         e.preventDefault();
         if (busy) return;
@@ -2563,7 +2565,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
         }
       }}
     >
-      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy a fresh application link"}
+      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy Link"}
     </DropdownMenuItem>
   );
 }
@@ -2611,9 +2613,9 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors cursor-pointer">
+        <DropdownMenuTrigger title="Card On File" aria-label="Card On File" className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors cursor-pointer">
           <CreditCard className="w-4 h-4 mr-2" />
-          {hasCard ? `Card ····${driver.card_last4}` : "Card On File"}
+          {hasCard ? `Card ····${driver.card_last4}` : "Payment Card"}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {hasCard && (
@@ -2985,7 +2987,7 @@ function RequestDocumentsAction({
         className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <FileText className="w-3.5 h-3.5" />
-        {sentAt ? "Re-request Docs" : "Request Documents"}
+        {sentAt ? "Re-request Docs" : "Request Docs"}
       </button>
 
       {sentAt && (
