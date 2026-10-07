@@ -16,7 +16,7 @@
 - Phase 1+ per audit (ledger, ROI, dock/nav, documents, Fleet Inbox, View-As)
 
 ## Phase 2A closure (preview only — not published)
-- [x] Coordinator cost privacy (Fleet Inbox proposals/provenance, service, timeline)
+- [ ] Coordinator cost privacy: structured fields stripped; Test A found an amount in unfiltered warnings (repair deferred until Test B comparison)
 - [x] Pickup/return mileage via rental tx, inspection reuse, Miles Driven, validation
 - [x] Same-date ordering, net service cost (warranty/vendor credit), Overview Service card
 - [x] Test A real receipts → Fleet Inbox Review; stopped without Apply (REPAIRS REQUIRED: separate proposals, conflicting extraction, missing payment cross-check)
