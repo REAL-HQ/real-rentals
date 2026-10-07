@@ -128,7 +128,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-[#111114] truncate">{b.label}</div>
                   <div className="text-xs text-[#9A9AA3]">
-                    {b.files} file{b.files === 1 ? "" : "s"} · {b.vehicles} vehicle entr{b.vehicles === 1 ? "y" : "ies"}
+                    {b.source === "email" ? "Email · " : "Upload · "}{b.files} file{b.files === 1 ? "" : "s"} · {b.vehicles} vehicle entr{b.vehicles === 1 ? "y" : "ies"}
                     {b.newVehicles ? ` · ${b.newVehicles} new` : ""}{b.conflicts ? ` · ${b.conflicts} conflicts` : ""}
                   </div>
                 </div>
@@ -176,6 +176,15 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     const t = setInterval(() => void load(), 3000);
     return () => clearInterval(t);
   }, [d, load]);
+  // Email-delivered files arrive "waiting to analyze"; run the normal analysis once when staff open the import.
+  const kicked = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!d || d.batch.source_channel !== "email") return;
+    const waiting = d.items.filter((i: any) => i.status === "uploaded" && !kicked.current.has(i.id));
+    if (!waiting.length) return;
+    waiting.forEach((i: any) => kicked.current.add(i.id));
+    void (async () => { for (const i of waiting) { try { await analyze({ data: { itemId: i.id } }); } catch { /* shown as Failed */ } } void load(); })();
+  }, [d, analyze, load]);
 
   const setOne = (id: string, patch: Partial<Decision>) => setDec((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
 
@@ -269,6 +278,25 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
           </div>
         ))}
       </div>
+
+      {d.email && (
+        <section className="rounded-xl border border-[#EDEDF0] bg-white">
+          <header className="px-4 py-3 border-b border-[#EDEDF0] text-[13px] font-semibold">Received by Email</header>
+          <div className="px-4 py-3 space-y-1 text-sm">
+            <div><span className="text-[#9A9AA3]">From:</span> {d.email.from_name ? `${d.email.from_name} <${d.email.from_address}>` : d.email.from_address}</div>
+            <div><span className="text-[#9A9AA3]">Subject:</span> {d.email.subject || "(No Subject)"}</div>
+            <div><span className="text-[#9A9AA3]">Received:</span> {new Date(d.email.received_at).toLocaleString("en-US", { timeZone: "America/New_York" })}</div>
+            {(d.email.attachments ?? []).filter((a: any) => a.outcome && a.outcome !== "stored" && a.outcome !== "duplicate_of_existing").map((a: any, i: number) => (
+              <div key={i} className="text-xs text-[#B45309]">{a.file_name ?? "Attachment"} — Not Imported ({String(a.outcome).replace(/_/g, " ")})</div>
+            ))}
+            {d.email.text_body && (
+              <details className="pt-1"><summary className="cursor-pointer text-xs text-[#55555E]">Show Email Body</summary>
+                <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-[#33333A] max-h-80 overflow-auto bg-[#FAFAFB] rounded-md p-3">{d.email.text_body}</pre>
+              </details>
+            )}
+          </div>
+        </section>
+      )}
 
       <ServiceTransactionReview d={d} isManager={isManager} reload={load} openFile={openFile} />
 
