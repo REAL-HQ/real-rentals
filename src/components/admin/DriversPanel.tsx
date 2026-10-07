@@ -1423,7 +1423,7 @@ function DriverDetail({
   ] as const;
 
   return (
-    <div className="-mx-8 -my-8 min-h-full bg-[#FAFAFB]">
+    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
         <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
