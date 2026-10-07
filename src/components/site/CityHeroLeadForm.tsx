@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { ArrowRight, Check } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
