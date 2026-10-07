@@ -266,12 +266,15 @@ export function LifecycleRail({
   timeInStage,
   blocker,
   className = "",
+  onStageClick,
 }: {
   stages: LifecycleStage[];
   percent?: number;
   timeInStage?: string;
   blocker?: string;
   className?: string;
+  /** Only stages with a real destination get a handler; others stay static. */
+  onStageClick?: Partial<Record<string, () => void>>;
 }) {
   const currentIdx = Math.max(
     0,
@@ -311,7 +314,7 @@ export function LifecycleRail({
           const cur = s.state === "current";
           return (
             <li key={s.key} className="flex items-center gap-1.5 shrink-0">
-              <div className="flex flex-col items-center gap-1.5">
+              <StageWrap onClick={onStageClick?.[s.key]} label={s.label}>
                 <span
                   className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
                     done
@@ -330,7 +333,7 @@ export function LifecycleRail({
                 >
                   {s.label}
                 </span>
-              </div>
+              </StageWrap>
               {i < stages.length - 1 && (
                 <span
                   className="h-[2px] w-8 mt-[-14px] rounded"
@@ -342,6 +345,20 @@ export function LifecycleRail({
         })}
       </ol>
     </section>
+  );
+}
+
+function StageWrap({ onClick, label, children }: { onClick?: () => void; label: string; children: ReactNode }) {
+  if (!onClick) return <div className="flex flex-col items-center gap-1.5">{children}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Open ${label}`}
+      className="flex flex-col items-center gap-1.5 rounded-md px-1 hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -497,10 +514,13 @@ export function ReadinessSummary({
   result,
   actions,
   primary,
+  remedyActions,
 }: {
   result: ReadinessResult;
   actions?: ReactNode;
   primary?: ReactNode;
+  /** Buttons keyed by remedy, rendered inside Next Steps beside the gap they close. */
+  remedyActions?: Partial<Record<string, ReactNode>>;
 }) {
   const gaps = nextActions(result);
   return (
@@ -573,7 +593,7 @@ export function ReadinessSummary({
         </div>
 
         <div className="p-5">
-          <MicroLabel className="mb-2">Still Needed</MicroLabel>
+          <MicroLabel className="mb-2">Next Steps</MicroLabel>
           {gaps.length === 0 ? (
             <div className="text-[12px] text-[#9A9AA3]">Nothing outstanding.</div>
           ) : (
@@ -590,6 +610,7 @@ export function ReadinessSummary({
                     <HelpCircle className="w-3.5 h-3.5 mt-0.5 text-[#C4C4CB] shrink-0" />
                     <span className="min-w-0">{g.factors.map((f) => f.label).join(", ")}</span>
                   </div>
+                  {remedyActions?.[g.remedy] && <div className="mt-1.5">{remedyActions[g.remedy]}</div>}
                 </li>
               ))}
             </ul>
