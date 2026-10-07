@@ -1,0 +1,3 @@
+- Vehicle display text: descriptive fields (make/model/trim/color) are re-cased via src/lib/display-normalize.ts at write time; identifiers are never re-cased and raw extracted text stays in vehicle_field_provenance.
+- Fleet counts: every Overview fleet number comes from src/lib/fleet-summary.ts — because separate status queries disagreed.
+- Vehicle Defaults: new-vehicle pricing resolves only via src/lib/vehicle-defaults.ts (explicit → type default → Not Set), Owner-write + audited, copied at create, never retroactive or from documents — pricing must be a human-confirmed snapshot.
