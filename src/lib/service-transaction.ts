@@ -286,7 +286,7 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   // ---- mileage: only from labeled mileage fields; never from advisor / tag / RO / plate numbers.
   const forbidden = new Set<string>();
   for (const { s } of pages) {
-    for (const n of [s.advisor?.number, s.vehicle?.tag?.value, s.invoiceNumber?.value, s.vehicle?.license?.value, ...(s.otherNumbers ?? []).map((o) => o.value)]) {
+    for (const n of [s.advisor?.number, s.vehicle?.tag?.value, s.invoiceNumber?.value, ...(s.otherNumbers ?? []).filter((o) => !/mile|odo/i.test(o.label)).map((o) => o.value)]) {
       const d = digits(n); if (d.length >= 3) forbidden.add(d);
     }
   }
@@ -301,7 +301,7 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
     return { file: it.fileName, value: String(n), label: f?.label, w: w * (f?.confidence === "low" ? 0.3 : 1) };
   });
   const rejectedMileage = pages.flatMap(({ it, s }) => (["in", "out"] as const).filter((k) => { const d = digits(s.mileage?.[k]?.value); return d && forbidden.has(d); }).map((k) => `${it.fileName} (${k})`));
-  if (rejectedMileage.length) issues.push(`Rejected mileage readings that match a non-mileage number (advisor, tag, plate or invoice): ${rejectedMileage.join(", ")}.`);
+  if (rejectedMileage.length) issues.push(`Rejected mileage readings that match a non-mileage number (advisor, tag or invoice): ${rejectedMileage.join(", ")}.`);
   const inDec = decide(mileCand("in"), (a) => digits(a));
   const outDec = decide(mileCand("out"), (a) => digits(a));
   let canonical: number | null = null; let canonicalSource: string | null = null;
