@@ -279,6 +279,7 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
     if (!rows?.length) return { ok: true as const, notified: 0 };
 
     const { sendEmail } = await import("@/lib/email.server");
+    const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display;
     let sent = 0;
     for (const r of rows as any[]) {
       const res = await sendEmail({

@@ -296,6 +296,7 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
 }
 
 function Stub({ label }: { label: string }) {
+  const businessPhone = useBusinessPhone();
   return (
     <div className="rounded-2xl border border-border p-10 text-center">
       <h2 className="text-lg font-semibold">{label}</h2>
@@ -1037,6 +1038,7 @@ function SettingsView() {
 }
 
 function IssuesViewInner() {
+  const businessPhone = useBusinessPhone();
   const fetchIssues = useServerFn(getDriverIssues);
   const submitIssue = useServerFn(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
@@ -1366,6 +1368,7 @@ function DashboardView({
   const { rental, vehicle, payments, maintenance, notifications } = data;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
+  const businessPhone = useBusinessPhone();
 
   return (
     <div className="space-y-6">
