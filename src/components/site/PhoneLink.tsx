@@ -17,7 +17,7 @@ export function trackCallClick(placement: CallPlacement, phoneE164: string) {
   const path = window.location.pathname;
   gtag("event", "click_to_call", {
     page_path: path,
-    page_type: path === "/" ? "home" : path.startsWith("/apply") ? "application" : path.split("/")[1] || "home",
+    page_type: path === "/" ? "home" : path.startsWith("/apply") ? "application" : ["contact", "faq", "fleet", "how-it-works", "partners", "investors", "terms", "privacy"].includes(path.split("/")[1]) ? path.split("/")[1] : "city",
     phone_number: phoneE164,
     placement,
     campaign_source: a.utm_source ?? undefined,
