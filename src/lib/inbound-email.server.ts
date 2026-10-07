@@ -66,8 +66,9 @@ function parseFrom(from: string | null | undefined) {
 }
 
 async function resendGet(path: string): Promise<any> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) throw new Error("RESEND_API_KEY missing");
+  // Receiving needs a full-access key; the sending key (RESEND_API_KEY) is send-only by design.
+  const key = process.env.RESEND_INBOUND_API_KEY;
+  if (!key) throw new Error("RESEND_INBOUND_API_KEY missing");
   const r = await fetch(`${RESEND_API}${path}`, { headers: { Authorization: `Bearer ${key}` } });
   if (!r.ok) throw new Error(`provider ${r.status}`);
   return r.json();
@@ -95,7 +96,8 @@ export async function ingestResendEmail(eventId: string | null, data: any): Prom
 
   // Full content comes from the provider API, not the webhook payload.
   let full: any = {};
-  try { full = (await resendGet(`/emails/receiving/${encodeURIComponent(emailId)}`)) ?? {}; } catch (e) { console.error("[inbound] content fetch failed", String(e)); }
+  const fetchErrors: string[] = [];
+  try { full = (await resendGet(`/emails/receiving/${encodeURIComponent(emailId)}`)) ?? {}; } catch (e) { fetchErrors.push(`content: ${String(e).slice(0, 120)}`); console.error("[inbound] content fetch failed", String(e).slice(0, 120)); }
   const headers = full.headers ?? {};
   const h = (k: string) => { const v = headers[k] ?? headers[k.toLowerCase()]; return v ? String(v).slice(0, 2000) : null; };
   const html = typeof full.html === "string" ? full.html : null;
@@ -125,7 +127,7 @@ export async function ingestResendEmail(eventId: string | null, data: any): Prom
 
   let list: any[] = [];
   try { const r = await resendGet(`/emails/receiving/${encodeURIComponent(emailId)}/attachments`); list = Array.isArray(r?.data) ? r.data : []; }
-  catch (e) { console.error("[inbound] attachment list failed", String(e)); list = []; }
+  catch (e) { fetchErrors.push(`attachments: ${String(e).slice(0, 120)}`); console.error("[inbound] attachment list failed", String(e).slice(0, 120)); list = []; }
 
   const manifest: any[] = [];
   let stored = 0;
@@ -177,6 +179,6 @@ export async function ingestResendEmail(eventId: string | null, data: any): Prom
   if (list.length > MAX_ATTACHMENTS) manifest.push({ outcome: "rejected_over_limit", count: list.length - MAX_ATTACHMENTS });
 
   await sb.from("fleet_import_batches").update({ status: stored ? "processing" : "needs_attention" }).eq("id", batchId);
-  await sb.from("inbound_emails").update({ attachments: manifest, batch_id: batchId, status: stored ? "ready_for_analysis" : "needs_review" }).eq("id", inboundId);
+  await sb.from("inbound_emails").update({ attachments: manifest, batch_id: batchId, status: fetchErrors.length ? "fetch_failed" : stored ? "ready_for_analysis" : "needs_review", error: fetchErrors.join("; ") || null }).eq("id", inboundId);
   return { status: "stored", inboundId, batchId };
 }
