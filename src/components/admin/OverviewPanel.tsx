@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { displayPersonName } from "@/lib/display-normalize";
+import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
@@ -430,7 +430,7 @@ export function OverviewPanel() {
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
               {hot.length}
             </span>
-            <span className="text-[11px] text-[#9A9AA3]">Worth following up first</span>
+            <span className="text-[11px] text-[#9A9AA3]">Worth Following Up First</span>
             <Link
               to="/admin"
               search={{ tab: "drivers" }}
@@ -471,7 +471,7 @@ export function OverviewPanel() {
                     <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
                       {readiness.positives
                         .slice(0, 2)
-                        .map((f) => f.detail)
+                        .map((f) => displayTitleCase(f.detail))
                         .join(" · ")}
                     </span>
                   )}
