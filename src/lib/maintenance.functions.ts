@@ -10,6 +10,7 @@ import {
   dueStatus, sortTimeline, netServiceCost, milesDriven, categoryLabel, normalizeCategory, SOURCE_LABELS,
   type DueResult, type TimelineEvent,
 } from "@/lib/maintenance-rules";
+import { scrubMoney } from "@/lib/service-transaction";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -74,10 +75,19 @@ export const getVehicleService = createServerFn({ method: "POST" })
       sb.from("odometer_readings").select("*").eq("vehicle_id", data.vehicleId).order("observed_on", { ascending: false }).order("mileage", { ascending: false }).limit(500),
       sb.from("vehicle_downtime").select("*").eq("vehicle_id", data.vehicleId).order("started_at", { ascending: false }).limit(50),
     ]);
+    const docIds = ((recs ?? []) as any[]).map((r) => r.document_id).concat(((readings ?? []) as any[]).map((r) => r.document_id)).filter(Boolean);
+    const { data: rdocs } = docIds.length ? await sb.from("documents").select("id,evidence_class").in("id", docIds) : { data: [] as any[] };
+    const restricted = new Set((rdocs ?? []).filter((d: any) => d.evidence_class !== "operational").map((d: any) => d.id));
     const records = ((recs ?? []) as any[]).map((r) => {
       const base = { ...r, vendor_name: r.vendors?.name ?? r.vendor_name_raw ?? null, items: (r.maintenance_record_items ?? []).sort((a: any, b: any) => a.sort_order - b.sort_order) };
       delete base.vendors; delete base.maintenance_record_items; delete base.original_extraction;
-      if (!canCost) base.items = base.items.map((i: any) => ({ ...i, amount: null }));
+      if (!canCost) {
+        // Coordinators get operational facts only: free text from priced invoices can embed amounts,
+        // so descriptions/notes/work text and the priced original are withheld, not hidden in the UI.
+        base.items = base.items.map((i: any) => ({ id: i.id, record_id: i.record_id, sort_order: i.sort_order, category: i.category, charge_type: i.charge_type, quantity: null, amount: null, description: scrubMoney(i.original_heading ?? i.description ?? "") }));
+        delete base.description; delete base.notes;
+        if (base.document_id && restricted.has(base.document_id)) base.document_id = null;
+      }
       return canCost ? base : stripCosts(base);
     });
     const current = v?.current_odometer ?? null;
@@ -87,7 +97,7 @@ export const getVehicleService = createServerFn({ method: "POST" })
     return {
       canCost, canManage: tierAllows(actor.tier, "manager"),
       currentMileage: current, mileageAsOf: v?.odometer_updated_at ?? null,
-      records, readings: readings ?? [], schedules, downtime: down ?? [], downtimeDays: Math.round(downtimeDays * 10) / 10, spend,
+      records, readings: canCost ? readings ?? [] : (readings ?? []).map((r: any) => (r.document_id && restricted.has(r.document_id) ? { ...r, document_id: null } : r)), schedules, downtime: down ?? [], downtimeDays: Math.round(downtimeDays * 10) / 10, spend,
     };
   });
 
@@ -100,7 +110,7 @@ const ServiceInput = z.object({
   vendorName: z.string().trim().max(160).nullable().optional(),
   invoiceNumber: z.string().trim().max(80).nullable().optional(),
   description: z.string().trim().max(2000).nullable().optional(),
-  items: z.array(z.object({ description: z.string().trim().min(1).max(300), category: z.string().max(40).nullable().optional(), amount: money })).max(50).default([]),
+  items: z.array(z.object({ description: z.string().trim().min(1).max(4000), category: z.string().max(40).nullable().optional(), amount: money })).max(50).default([]),
   laborCost: money, partsCost: money, taxAmount: money, otherCost: money, totalCost: money, warrantyCovered: money,
   paymentMethod: z.string().max(20).nullable().optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).nullable().optional(),
@@ -371,13 +381,17 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
     ]);
     const ev: TimelineEvent[] = [];
     if (veh.data) ev.push({ id: `v:${id}`, kind: "vehicle", at: veh.data.created_at ?? "", title: "Vehicle Added", ref: { table: "vehicles", id } });
-    const directDocs = await sb.from("documents").select("id,kind,label,file_name,created_at").eq("vehicle_id", id).is("driver_id", null);
+    const directDocs = await sb.from("documents").select("id,kind,label,file_name,created_at,evidence_class").eq("vehicle_id", id).is("driver_id", null);
+    const evIds = [...((links.data ?? []) as any[]).map((l) => l.document_id), ...((recs.data ?? []) as any[]).map((r) => r.document_id), ...((reads.data ?? []) as any[]).map((r) => r.document_id)].filter(Boolean);
+    const { data: evDocs } = evIds.length ? await sb.from("documents").select("id,evidence_class").in("id", evIds) : { data: [] as any[] };
+    const restrictedDoc = new Set((evDocs ?? []).filter((d: any) => d.evidence_class !== "operational").map((d: any) => d.id));
+    const evRef = (docId: string | null | undefined) => (!docId ? null : !isManager && restrictedDoc.has(docId) ? null : docId);
     const seenDocs = new Set<string>();
     const pushDoc = (docId: string, d: any, at: string) => {
       if (seenDocs.has(docId) || !d) return; seenDocs.add(docId);
       const { isFinanceKind } = { isFinanceKind: (k: string) => /loan|payoff|purchase|lender/.test(k ?? "") };
       if (!isManager && isFinanceKind(d.kind)) return;
-      ev.push({ id: `d:${docId}`, kind: "document", at, title: "Document Added", detail: d.label || d.file_name, ref: { table: "documents", id: docId }, evidenceDocumentId: docId });
+      ev.push({ id: `d:${docId}`, kind: "document", at, title: "Document Added", detail: d.label || d.file_name, ref: { table: "documents", id: docId }, evidenceDocumentId: evRef(docId) });
     };
     for (const l of (links.data ?? []) as any[]) pushDoc(l.document_id, l.documents, l.documents?.created_at ?? l.created_at);
     for (const d of (directDocs.data ?? []) as any[]) pushDoc(d.id, d, d.created_at);
@@ -385,12 +399,12 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
       id: `m:${r.id}`, kind: "service", at: r.performed_on ?? r.created_at,
       title: r.status === "completed" ? "Service Completed" : "Service Opened",
       detail: [r.item, r.vendors?.name ?? r.vendor_name_raw, r.odometer != null ? `${Number(r.odometer).toLocaleString("en-US")} mi` : null].filter(Boolean).join(" · "),
-      ref: { table: "maintenance_records", id: r.id }, evidenceDocumentId: r.document_id,
+      ref: { table: "maintenance_records", id: r.id }, evidenceDocumentId: evRef(r.document_id),
     });
     for (const r of (reads.data ?? []) as any[]) if (r.source_type !== "service") ev.push({
       id: `o:${r.id}`, kind: "mileage", at: r.observed_on, title: "Mileage Recorded",
       detail: `${Number(r.mileage).toLocaleString("en-US")} mi · ${SOURCE_LABELS[r.source_type] ?? r.source_type}${r.status === "conflict" ? " · Needs Review" : r.status === "superseded" ? " · Corrected" : ""}`,
-      ref: { table: "odometer_readings", id: r.id }, evidenceDocumentId: r.document_id,
+      ref: { table: "odometer_readings", id: r.id }, evidenceDocumentId: evRef(r.document_id),
     });
     for (const i of (insp.data ?? []) as any[]) if (i.completed_at) ev.push({ id: `i:${i.id}`, kind: "inspection", at: i.completed_at, title: "Inspection Completed", detail: [categoryLabel(i.inspection_type), i.odometer ? `${Number(i.odometer).toLocaleString("en-US")} mi` : null].filter(Boolean).join(" · "), ref: { table: "inspections", id: i.id } });
     for (const r of (rents.data ?? []) as any[]) {

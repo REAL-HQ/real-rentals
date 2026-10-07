@@ -236,6 +236,10 @@ async function refreshBatchStatus(batchId: string) {
     else if (done.some((p: any) => p.status === "applied")) status = "partially_applied";
     else if (st.some((s: string) => s === "failed" || s === "needs_attention") || ps.some((p: any) => p.kind === "conflict" || p.kind === "unidentified")) status = "needs_attention";
   }
+  const { data: txs } = await sb.from("fleet_service_transactions").select("status,kind").eq("batch_id", batchId).neq("status", "superseded");
+  const openTx = (txs ?? []).filter((t: any) => t.status === "pending" || t.status === "failed");
+  if (status !== "processing" && openTx.some((t: any) => t.kind !== "match")) status = "needs_attention";
+  else if (status === "ready" && (txs ?? []).some((t: any) => t.status === "applied") && !openTx.length) status = "applied";
   await sb.from("fleet_import_batches").update({ status }).eq("id", batchId);
 }
 
