@@ -42,3 +42,12 @@ export function displayVehicleWord(value: string): string {
   if (s && s === s.toLowerCase() && /[a-z]/.test(s)) return normalizeDisplayText(s.toUpperCase());
   return normalizeDisplayText(s);
 }
+
+/** Display-only person name: "khalique branch" → "Khalique Branch". Mixed-case input is assumed intentional. Never used for identifiers. */
+export function displayPersonName(value: string): string {
+  const s = value.trim().replace(/\s+/g, " ");
+  if (s && s === s.toLowerCase() && /[a-z]/.test(s)) {
+    return s.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }
+  return s;
+}

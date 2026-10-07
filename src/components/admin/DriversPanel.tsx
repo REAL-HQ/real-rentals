@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { displayPersonName } from "@/lib/display-normalize";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
@@ -740,7 +741,7 @@ export function DriversPanel({
                   >
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
-                        <span>{a.full_name}</span>
+                        <span>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
                       <SourceBadge
                         source={a.gclid ? "google" : "organic"}
@@ -1506,7 +1507,7 @@ function DriverDetail({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-[18px] font-semibold text-[#111114] truncate">
-                    {driver.full_name || "Unnamed"}
+                    {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
@@ -2710,7 +2711,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
       >
         <h2 className="text-lg font-semibold mb-1">Charge Card on File</h2>
         <p className="text-xs text-muted-foreground mb-4">
-          {driver.card_brand} ····{driver.card_last4} — {driver.full_name}
+          {driver.card_brand} ····{driver.card_last4} — {driver.full_name ? displayPersonName(driver.full_name) : ""}
         </p>
         {!rentalId && (
           <p className="text-xs text-real-red mb-3">No active rental linked to this driver.</p>

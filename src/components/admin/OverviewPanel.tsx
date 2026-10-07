@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { displayPersonName } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
@@ -417,7 +418,7 @@ export function OverviewPanel() {
                 >
                   <span className="flex items-start justify-between gap-2 min-w-0">
                     <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                      {app.full_name || "Unnamed"}
+                      {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
                     </span>
                     <ReadinessStatePill state={readiness.state} short />
                   </span>
@@ -655,7 +656,7 @@ export function OverviewPanel() {
                               title="Not Yet Opened"
                             />
                           )}
-                          <span className="truncate">{a.full_name || "Unnamed Driver"}</span>
+                          <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
                         </div>
                         <div className="text-[11px] text-[#9A9AA3] mt-0.5 truncate">
                           {timeAgo(a.created_at)}
