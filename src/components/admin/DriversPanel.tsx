@@ -1426,16 +1426,17 @@ function DriverDetail({
     <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
-        <div className="sticky top-0 z-10 bg-white border-b border-[#EDEDF0]">
-          <div className="px-4 sm:px-8 pt-3">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" /> Drivers
-            </button>
-          </div>
-          <div className="px-4 sm:px-8 py-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex">
+        <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Drivers
+          </button>
+          {/* Identity: its own box, with the record tabs directly below it */}
+          <div className="mt-3 rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex">
+
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
                 {initials}
@@ -1558,30 +1559,33 @@ function DriverDetail({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            </div>
+            {/* Mobile primary action: full width under identity */}
+            <div className="pt-3 sm:hidden">
+              <button
+                onClick={primaryAction.onClick}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
+              >
+                <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
+              </button>
+            </div>
           </div>
-          {/* Mobile primary action: full width under identity */}
-          <div className="px-4 pb-3 sm:hidden">
-            <button
-              onClick={primaryAction.onClick}
-              className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
-            >
-              <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
-            </button>
-          </div>
-          {/* Primary record navigation */}
-          <div className="px-4 sm:px-8 overflow-x-auto [scrollbar-width:none]">
-            <TabsList className="h-auto bg-transparent p-0 gap-5 rounded-none flex w-max">
+          {/* Primary record navigation: one button per tab, below the identity box */}
+          <div className="mt-3 overflow-x-auto [scrollbar-width:none]">
+
+            <TabsList className="h-auto bg-transparent p-0 gap-2 rounded-none flex w-max">
               {tabs.map(([value, label]) => (
                 <TabsTrigger
                   key={value}
                   value={value}
                   id={`tab-${value}`}
-                  className="rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2.5 pt-1 text-[13px] font-medium text-[#77777F] shadow-none data-[state=active]:border-[#D03020] data-[state=active]:text-[#111114] data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                  className="rounded-lg border border-[#E4E4E9] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[#55555E] shadow-none transition-colors hover:border-[#C9C9D2] hover:text-[#111114] data-[state=active]:border-[#111114] data-[state=active]:bg-[#111114] data-[state=active]:text-white data-[state=active]:shadow-none"
                 >
                   {label}
                 </TabsTrigger>
               ))}
             </TabsList>
+
           </div>
         </div>
 
