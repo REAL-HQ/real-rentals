@@ -253,6 +253,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         city: app?.city ?? "your area",
         phone: app?.phone ?? "",
         email: app?.email ?? "",
+        company_phone: (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display,
       };
       const body = renderTemplate(step.body, vars);
 
