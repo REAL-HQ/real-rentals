@@ -53,7 +53,8 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<VehicleDoc[]> => {
     // Staff, not managers: a coordinator checking whether a car's registration
     // is current is doing their job, and none of this is financial.
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
+    const isManager = actor.tier === "manager" || actor.tier === "owner";
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rows } = await supabaseAdmin
@@ -81,7 +82,8 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
         days_until_expiry: r.expires_at
           ? Math.round((new Date(r.expires_at).getTime() - today.getTime()) / 86400_000)
           : null,
-        notes: r.notes,
+        // Notes on priced evidence can carry amounts; Coordinators get none (the original is Manager-only too).
+        notes: !isManager && r.evidence_class && r.evidence_class !== "operational" ? null : r.notes,
         created_at: r.created_at,
         url: null,
       });
