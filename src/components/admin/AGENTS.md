@@ -2,3 +2,4 @@
 - Messages: the staff inbox is a person-keyed (application) overlay; every send goes through src/lib/messages.functions.ts → canonical sendEmail/sendSms, and a message's delivery state is only what the provider/webhook reported — never assumed.
 
 - Back-office modals: new/updated dialogs use src/components/admin/modal.tsx (ModalShell sizes sm/md/lg/workspace, header/body/footer, UploadDropzone, ReadinessStatus, ConfirmDialog) — one consistent visual behavior (Esc, backdrop, scroll, mobile sheet) instead of hand-styled overlays.
+- Back-office nav: consolidated workspaces live in nav-config WORKSPACE_TABS; each tab keeps its own id, minTier and panel, and old tab ids stay valid — UI grouping must never broaden access or break deep links.
