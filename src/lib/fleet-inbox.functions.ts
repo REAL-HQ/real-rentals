@@ -395,7 +395,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
         const redact = (s: string | null) => (s ? s.replace(/\$\s?[\d,]+(\.\d+)?/g, "$•••") : s);
         email = canFinance
           ? { ...em, text_body: em.text_body ? String(em.text_body).slice(0, 20000) : null }
-          : { ...em, subject: redact(em.subject), text_body: null, attachments: (em.attachments ?? []).map((a: any) => ({ file_name: a.file_name, outcome: a.outcome })) };
+          : { ...em, subject: redact(em.subject), text_body: null, attachments: ((em.attachments as any[]) ?? []).map((a: any) => ({ file_name: a.file_name, outcome: a.outcome })) };
       }
     }
     return { batch, items: itemsOut, proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email };
