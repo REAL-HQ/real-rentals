@@ -51,3 +51,20 @@ export function displayPersonName(value: string): string {
   }
   return s;
 }
+
+// Short words that stay lower-case mid-phrase in Title Case.
+const TITLE_SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "per", "the", "to", "up", "vs", "yet"]);
+
+/** Display-only Title Case for UI phrases: "Already driving" → "Already Driving". First/last words are always capitalized; small joiner words stay lower-case mid-phrase. */
+export function displayTitleCase(value: string): string {
+  const s = value.trim().replace(/\s+/g, " ");
+  if (!s) return s;
+  const words = s.split(" ");
+  return words
+    .map((w, i) => {
+      const lower = w.toLowerCase();
+      if (i > 0 && i < words.length - 1 && TITLE_SMALL.has(lower)) return lower;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
