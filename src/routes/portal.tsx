@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { useBusinessPhone } from "@/lib/company.functions";
 import {
   getDriverDashboard,
   getDriverDocuments,
@@ -295,6 +296,7 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
 }
 
 function Stub({ label }: { label: string }) {
+  const businessPhone = useBusinessPhone();
   return (
     <div className="rounded-2xl border border-border p-10 text-center">
       <h2 className="text-lg font-semibold">{label}</h2>
@@ -303,7 +305,7 @@ function Stub({ label }: { label: string }) {
       </p>
       <div className="mt-5 flex items-center justify-center gap-2">
         <a
-          href="tel:+18136999118"
+          href={businessPhone.tel}
           className="inline-flex items-center gap-1.5 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium"
         >
           <Phone className="w-4 h-4" /> Call Support
@@ -1036,6 +1038,7 @@ function SettingsView() {
 }
 
 function IssuesViewInner() {
+  const businessPhone = useBusinessPhone();
   const fetchIssues = useServerFn(getDriverIssues);
   const submitIssue = useServerFn(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
@@ -1124,8 +1127,8 @@ function IssuesViewInner() {
         </button>
         <p className="mt-3 text-xs text-muted-foreground">
           If the vehicle is unsafe to drive, call us right away at{" "}
-          <a href="tel:+18136999118" className="text-real-red hover:underline">
-            (813) 699-9118
+          <a href={businessPhone.tel} className="text-real-red hover:underline">
+            {businessPhone.display}
           </a>
           .
         </p>
@@ -1365,6 +1368,7 @@ function DashboardView({
   const { rental, vehicle, payments, maintenance, notifications } = data;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
+  const businessPhone = useBusinessPhone();
 
   return (
     <div className="space-y-6">
@@ -1522,7 +1526,7 @@ function DashboardView({
             offers in your market.
           </p>
           <a
-            href="tel:+18136999118"
+            href={businessPhone.tel}
             className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-real-red text-real-red px-5 py-2.5 text-sm font-semibold hover:bg-real-red hover:text-white transition"
           >
             <Phone className="w-4 h-4" /> Ask About Prepay

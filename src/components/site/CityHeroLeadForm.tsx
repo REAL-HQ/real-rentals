@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { ArrowRight, Check } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -92,8 +93,7 @@ export function CityHeroLeadForm({
     if (!z.string().email().safeParse(form.email).success) next.email = "Invalid Email";
     if (!/^\d{7,}$/.test(form.phone.replace(/\D/g, ""))) next.phone = "Invalid Phone";
     if (!form.pickup_date) next.pickup_date = "Required";
-    // SMS consent only covers application texts; the waitlist stores none.
-    if (!waitlistMode && !form.sms_consent) next.sms_consent = "Required";
+    // SMS consent is optional and never blocks submission.
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -131,6 +131,7 @@ export function CityHeroLeadForm({
       const payload = {
         ...shared,
         sms_consent: form.sms_consent,
+        consent_page: typeof window !== "undefined" ? window.location.pathname : null,
         source: "city_lp" as const,
       };
       const data = await saveApplication({ data: payload });
@@ -235,20 +236,7 @@ export function CityHeroLeadForm({
                   </p>
                 ) : (
                   <>
-                    <label className="mt-5 flex items-start gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.sms_consent}
-                        onChange={(e) => update("sms_consent", e.target.checked)}
-                        className="mt-0.5 h-4 w-4 accent-real-red shrink-0"
-                      />
-                      <span className="text-[11px] leading-snug text-muted-foreground">
-                        By checking this box, I agree to receive SMS text messages from REAL RENTALS about my application, rental updates, and scheduling at the number provided. Message and data rates may apply. Reply STOP to opt out. See our{" "}
-                        <Link to="/sms-consent" className="underline hover:text-foreground">SMS Consent</Link> and{" "}
-                        <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
-                      </span>
-                    </label>
-                    {errors.sms_consent && <div className="mt-2 text-sm text-real-red">{errors.sms_consent}</div>}
+                    <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
                   </>
                 )}
 

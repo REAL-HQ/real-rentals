@@ -399,6 +399,12 @@ export type Database = {
           score: number
           scored_at: string | null
           sms_consent: boolean | null
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
           sms_opt_out_at: string | null
           source: string | null
           start_date: string | null
@@ -508,6 +514,12 @@ export type Database = {
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           sms_opt_out_at?: string | null
           source?: string | null
           start_date?: string | null
@@ -617,6 +629,12 @@ export type Database = {
           score?: number
           scored_at?: string | null
           sms_consent?: boolean | null
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           sms_opt_out_at?: string | null
           source?: string | null
           start_date?: string | null

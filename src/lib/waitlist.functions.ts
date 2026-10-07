@@ -119,6 +119,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
     const cityLabel = marketName ?? [data.city, data.state].filter(Boolean).join(", ") ?? null;
 
     const { sendEmail } = await import("@/lib/email.server");
+    const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone()).display;
     void sendEmail({
       to: data.email,
       subject: "You're on the REAL RENTALS waitlist",
@@ -126,7 +127,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
         <p style="font-size:15px;line-height:1.6">Hi ${escapeHtml(data.full_name.split(" ")[0])},</p>
         <p style="font-size:15px;line-height:1.6">You're on the list${cityLabel ? ` for a car in <strong>${escapeHtml(cityLabel)}</strong>` : ""}. Every car that opens up goes to the next person on the list first — you'll get an email the moment it's your turn.</p>
         <p style="font-size:14px;line-height:1.6;color:#555">No deposit, no obligation while you wait. If you find a car elsewhere in the meantime, you can leave the list by replying to this email.</p>
-        <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · +1 (813) 699-9118</p>
+        <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${escapeHtml(companyPhone)}</p>
       </div>`,
     }).catch((e) => console.error("[waitlist] confirmation email failed", e));
 
@@ -278,6 +279,7 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
     if (!rows?.length) return { ok: true as const, notified: 0 };
 
     const { sendEmail } = await import("@/lib/email.server");
+    const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display;
     let sent = 0;
     for (const r of rows as any[]) {
       const res = await sendEmail({
@@ -290,7 +292,7 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
             <a href="${siteOrigin()}/apply" style="background:#D03020;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">Claim it — finish your application</a>
           </p>
           <p style="font-size:13px;line-height:1.6;color:#666">This link takes you straight into the application you started. If the car has already been claimed, you stay at the top of the list for the next one.</p>
-          <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · +1 (813) 699-9118</p>
+          <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${escapeHtml(companyPhone)}</p>
         </div>`,
       });
       if (res.ok) sent += 1;

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
+import { useBusinessPhone } from "@/lib/company.functions";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -17,12 +18,13 @@ export const Route = createFileRoute("/terms")({
 });
 
 function TermsPage() {
+  const phone = useBusinessPhone();
   return (
     <SiteLayout>
       <section className="container-real py-14 md:py-20 max-w-3xl">
         <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Legal</div>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">Terms of Service</h1>
-        <p className="mt-3 text-sm text-muted-foreground">Last updated: June 2026</p>
+        <p className="mt-3 text-sm text-muted-foreground">Last updated: October 2026</p>
 
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
           <p>By accessing this website or submitting an application, you agree to these Terms of Service.</p>
@@ -60,6 +62,18 @@ function TermsPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">Insurance</h2>
             <p className="mt-3">Insurance options are available with every rental. Coverage terms, limits, exclusions, and the named insured party are described in your rental agreement and any insurance enrollment documents. Coverage during commercial or rideshare use depends on the option selected; ask our team for current details before you sign.</p>
+          </div>
+
+          <div id="sms" className="scroll-mt-24">
+            <h2 className="text-xl font-semibold text-foreground">SMS Text Messaging</h2>
+            <ul className="mt-3 list-disc pl-6 space-y-1.5">
+              <li>REAL RENTALS is the sender of these messages, from our business number {phone.display}.</li>
+              <li>If you opt in, we send transactional and customer-care messages about your application, rental, payments, vehicle pickup and return, service, and support. We do not send promotional messages.</li>
+              <li>Message frequency varies. Message and data rates may apply.</li>
+              <li>Reply STOP to cancel at any time. Reply HELP for help, or call {phone.display} or email <a href="mailto:team@drivereal.com" className="text-real-red underline">team@drivereal.com</a>.</li>
+              <li>Consent to receive text messages is optional and is not a condition of renting a vehicle or making any purchase.</li>
+              <li>Carriers are not liable for delayed or undelivered messages. See our <Link to="/privacy" hash="sms" className="text-real-red underline">Privacy Policy</Link>.</li>
+            </ul>
           </div>
 
           <div>

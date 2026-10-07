@@ -148,6 +148,8 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         phone: applicantPhone,
         email: z.string().trim().email().max(160),
         sms_consent: z.boolean(),
+        /** Page path where the applicant saw the SMS opt-in. Evidence only. */
+        consent_page: z.string().trim().max(200).regex(/^\/[A-Za-z0-9\-_/]*$/).nullable().optional(),
         market_id: nullableUuid,
         city: nullableString,
         state: nullableString,
@@ -337,11 +339,40 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       return { id: null as string | null, token: null as string | null, existing: true as const };
     }
 
+    /*
+     * SMS consent evidence. Only an affirmative, unchecked-by-default opt-in
+     * writes evidence; the wording and version come from the server-side
+     * module, never from the browser. Declining stores sms_consent=false and
+     * no evidence.
+     */
+    const { consent_page, ...insertFields } = data;
+    const {
+      SMS_CONSENT_TEXT, SMS_CONSENT_VERSION, SMS_CONSENT_SOURCE_WEB,
+    } = await import("@/lib/sms-consent");
+    const { businessPhoneE164 } = await import("@/lib/company");
+    const consentEvidence = data.sms_consent
+      ? {
+          sms_consent: true,
+          sms_consent_at: new Date().toISOString(),
+          sms_consent_source: SMS_CONSENT_SOURCE_WEB,
+          sms_consent_version: SMS_CONSENT_VERSION,
+          sms_consent_text: SMS_CONSENT_TEXT,
+          sms_consent_phone: businessPhoneE164(data.phone),
+          sms_consent_page: consent_page ?? (data.source === "homepage" ? "/apply" : null),
+        }
+      : { sms_consent: false };
+
     const { data: row, error } = await supabaseAdmin
       .from("applications")
       // Stored lowercased so detection, merging and delivery all agree on
       // what "the same address" means.
-      .insert({ ...data, email: emailLower, status: "partial", current_step: "rental" })
+      .insert({
+        ...insertFields,
+        email: emailLower,
+        status: "partial",
+        current_step: "rental",
+        ...consentEvidence,
+      } as any)
       .select("id")
       .single();
     if (error) throw new Error(error.message);

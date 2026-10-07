@@ -247,8 +247,11 @@ async function buildMergeData(
     marketName = m ? [m.name, m.state].filter(Boolean).join(", ") : null;
   }
 
+  const { getBusinessPhone } = await import("@/lib/company.server");
+  const companyPhone = (await getBusinessPhone(admin)).display;
   const data: MergeData = {
     ...COMPANY_DEFAULTS,
+    company_phone: companyPhone,
     driver_name: app.full_name ?? "",
     driver_email: app.email ?? "",
     driver_phone: app.phone ?? "",

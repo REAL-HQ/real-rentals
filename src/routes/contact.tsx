@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { useBusinessPhone } from "@/lib/company.functions";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/contact")({
 });
 
 function Contact() {
+  const phone = useBusinessPhone();
   const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,7 @@ function Contact() {
         </FadeUp>
         <FadeUp delay={80}>
           <div className="space-y-6">
-            <Item I={Phone} label="Phone" v="+1 (813) 699-9118" href="tel:+18136999118" />
+            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} />
             <Item I={Mail} label="Email" v="team@drivereal.com" href="mailto:team@drivereal.com" />
           </div>
         </FadeUp>
