@@ -51,6 +51,8 @@ const SECTIONS: {
   ]},
   { key: "system_preferences", title: "System Preferences", fields: [
     { key: "company_name", label: "Company Name", type: "text" },
+    { key: "business_phone", label: "Business Phone", type: "text",
+      hint: "Public REAL RENTALS number shown on the website, portal, agreements, emails and SMS HELP replies. Not a telecom provider ID." },
     { key: "support_email", label: "Support Email", type: "text" },
   ]},
 ];

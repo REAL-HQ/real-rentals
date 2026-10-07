@@ -12,6 +12,7 @@ import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import { GigLogoMarquee } from "@/components/site/GigLogoMarquee";
 import { HeroQuoteBar } from "@/components/site/HeroQuoteBar";
 import { StickyCallBar } from "@/components/site/StickyCallBar";
+import { DEFAULT_BUSINESS_PHONE } from "@/lib/company";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 
 const FAQS = [
@@ -37,7 +38,7 @@ const STRUCTURED_DATA = {
       name: "REAL RENTALS",
       url: "https://drivereal.com",
       email: "team@drivereal.com",
-      telephone: "+1-813-699-9118",
+      telephone: DEFAULT_BUSINESS_PHONE,
       description:
         "Rideshare and delivery vehicle rentals for Uber, Lyft, DoorDash and gig drivers. Unlimited miles, no deposit, maintenance included.",
     },

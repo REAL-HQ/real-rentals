@@ -158,9 +158,9 @@ async function handle(request: Request): Promise<Response> {
   }
 
   if (intent === "help") {
-    return twiml(
-      "REAL RENTALS: rental support at (813) 699-9118 or team@drivereal.com. Reply STOP to opt out.",
-    );
+    const { getBusinessPhone } = await import("@/lib/company.server");
+    const { smsHelpReply } = await import("@/lib/sms-consent");
+    return twiml(smsHelpReply((await getBusinessPhone(supabaseAdmin)).display));
   }
 
   // A real reply — stop the drip so a human can take over the conversation.

@@ -36,7 +36,8 @@ export function renderTemplate(body: string, data: MergeData): string {
 export const COMPANY_DEFAULTS: MergeData = {
   company_name: "REAL RENTALS",
   company_address: "Tampa, FL",
-  company_phone: "+1 (813) 699-9118",
+  // Fallback only; buildMergeData overwrites with Settings → Business Phone.
+  company_phone: "(888) 833-8280",
   company_email: "team@drivereal.com",
 };
 

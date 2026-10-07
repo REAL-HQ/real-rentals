@@ -67,7 +67,7 @@ function Contact() {
         </FadeUp>
         <FadeUp delay={80}>
           <div className="space-y-6">
-            <Item I={Phone} label="Phone" v="+1 (813) 699-9118" href="tel:+18136999118" />
+            <Item I={Phone} label="Phone" v={phone.display} href={phone.tel} />
             <Item I={Mail} label="Email" v="team@drivereal.com" href="mailto:team@drivereal.com" />
           </div>
         </FadeUp>
