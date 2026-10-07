@@ -151,7 +151,17 @@ async function handle(request: Request): Promise<Response> {
     if (appIds.length) {
       await supabaseAdmin
         .from("applications")
-        .update({ sms_opt_out_at: null, sms_consent: true })
+        .update({
+          sms_opt_out_at: null,
+          sms_consent: true,
+          // Re-consent by texting START: recorded as its own source.
+          sms_consent_at: new Date().toISOString(),
+          sms_consent_source: "sms_keyword_start",
+          sms_consent_version: null,
+          sms_consent_text: body.trim().slice(0, 40),
+          sms_consent_phone: from,
+          sms_consent_page: null,
+        } as any)
         .in("id", appIds);
     }
     return twiml();
