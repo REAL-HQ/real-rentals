@@ -109,6 +109,8 @@ import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.fu
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
+import { WaitlistPanel } from "./WaitlistPanel";
+import { listWaitlist } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -663,7 +665,14 @@ export function DriversPanel({
         </div>
         <WaitlistPanel
           onEntriesChange={(n) => setWaitlistCount(n)}
-          onPromoted={() => void load()}
+          onPromoted={() =>
+            void supabase
+              .from("applications")
+              .select("*")
+              .neq("status", "duplicate")
+              .order("created_at", { ascending: false })
+              .then(({ data }) => data && setDrivers(data))
+          }
         />
       </div>
     );

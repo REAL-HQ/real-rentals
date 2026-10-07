@@ -11,7 +11,6 @@ import {
   Wrench,
   Globe,
   LayoutDashboard,
-  Hourglass,
   ClipboardCheck,
   Truck,
   Receipt,
@@ -40,7 +39,6 @@ export type Group = (typeof GROUP_ORDER)[number];
 export const TABS: readonly TabDef[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
   { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
-  { id: "waitlist", label: "Waitlist", icon: Hourglass, minTier: "coordinator", group: "PEOPLE", description: "Drivers Waiting When No Cars Are Available" },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits And Balances" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", group: "RENTALS", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
@@ -60,10 +58,11 @@ export const TABS: readonly TabDef[] = [
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */
-export const LEGACY_TABS: Record<string, { tab: string; section?: string; messages?: true }> = {
+export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter?: string; messages?: true }> = {
   automations: { tab: "settings", section: "automations" },
   team: { tab: "settings", section: "team" },
   messages: { tab: "overview", messages: true },
+  waitlist: { tab: "drivers", filter: "waitlist" },
 };
 
 /** Settings workspace menu. Only sections with real settings/functionality. */

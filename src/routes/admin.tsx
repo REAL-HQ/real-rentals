@@ -4,7 +4,6 @@ import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
 import { DriversPanel } from "@/components/admin/DriversPanel";
-import { WaitlistPanel } from "@/components/admin/WaitlistPanel";
 import { PartnersPanel } from "@/components/admin/PartnersPanel";
 import { PaymentsPanel } from "@/components/admin/PaymentsPanel";
 import { Logo } from "@/components/site/Logo";
@@ -87,7 +86,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // A selected record. Only tabs that can show one.
   id: ["drivers", "vehicles"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments"],
+  filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
@@ -238,6 +237,7 @@ function Admin() {
     if (legacy) {
       const next: AdminSearch = { tab: legacy.tab };
       if (legacy.section) next.section = legacy.section;
+      if (legacy.filter) next.filter = legacy.filter;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
       void navigate({ to: "/admin", search: next, replace: true });
       return;
@@ -642,9 +642,8 @@ function Admin() {
             )}
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && (
-              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} />
+              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "waitlist" && <WaitlistPanel />}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} />}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}

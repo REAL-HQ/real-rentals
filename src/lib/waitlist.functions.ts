@@ -324,7 +324,7 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
 
     const { data: entry } = await supabaseAdmin
       .from("waitlist")
-      .select("id,full_name,email,phone,city,state,market_id,pickup_date,status,utm_source,utm_medium,utm_campaign,utm_content,utm_term,gclid")
+      .select("id,full_name,email,phone,city,state,market_id,pickup_date,status,promoted_application_id,utm_source,utm_medium,utm_campaign,utm_content,utm_term,gclid")
       .eq("id", data.entryId)
       .maybeSingle();
     if (!entry) return { ok: false as const, error: "That waitlist entry no longer exists." };
