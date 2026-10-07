@@ -88,9 +88,9 @@ function Field({ label, value, onChange, type = "text", required }: { label: str
   );
 }
 
-function Item({ I, label, v, href }: { I: any; label: string; v: string; href?: string }) {
+function Item({ I, label, v, href, onClick }: { I: any; label: string; v: string; href?: string; onClick?: () => void }) {
   const valueNode = href ? (
-    <a href={href} className="mt-1 font-medium hover:text-real-red transition-colors">{v}</a>
+    <a href={href} onClick={onClick} className="mt-1 font-medium hover:text-real-red transition-colors">{v}</a>
   ) : (
     <div className="mt-1 font-medium">{v}</div>
   );
