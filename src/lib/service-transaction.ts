@@ -376,7 +376,7 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   // ---- financial summary: ONE, from the final-total page (clearest image wins), never per-page subtotals.
   const sumPages = pages.filter(({ s }) => s.summary && money(s.summary.total) != null)
     .sort((a, b) => (Number(b.s.summary?.totalKind === "final_total") - Number(a.s.summary?.totalKind === "final_total")) || (legScore(b.s) - legScore(a.s)));
-  const summaryOf = (s: ServicePageExtraction) => ({
+  const summaryOf = (s: ServicePageExtraction): Record<string, number | null> => ({
     labor: money(s.summary?.labor), parts: money(s.summary?.parts), misc: money(s.summary?.misc), shopSupplies: money(s.summary?.shopSupplies),
     tax: money(s.summary?.tax), warrantyCredit: money(s.summary?.warrantyCredit), vendorCredit: money(s.summary?.vendorCredit), other: money(s.summary?.other), total: money(s.summary?.total),
   });
