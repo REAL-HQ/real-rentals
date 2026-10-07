@@ -295,12 +295,13 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
     const d = digits(f?.value);
     const labelOk = !f?.label || /mile|odo|in|out|km/i.test(f.label);
     if (!d || !labelOk) return { file: it.fileName, value: null, w };
-    if (forbidden.has(d)) return { file: it.fileName, value: null, w };
+    // Exact or one-digit-off copies of an advisor/tag/RO number are OCR misreads, not odometer values.
+    if (forbidden.has(d) || [...forbidden].some((x) => x.length === d.length && [...x].filter((ch, i) => ch !== d[i]).length === 1)) return { file: it.fileName, value: null, w };
     const n = Number(d);
     if (n < 1 || n >= 2_000_000) return { file: it.fileName, value: null, w };
     return { file: it.fileName, value: String(n), label: f?.label, w: w * (f?.confidence === "low" ? 0.3 : 1) };
   });
-  const rejectedMileage = pages.flatMap(({ it, s }) => (["in", "out"] as const).filter((k) => { const d = digits(s.mileage?.[k]?.value); return d && forbidden.has(d); }).map((k) => `${it.fileName} (${k})`));
+  const rejectedMileage = pages.flatMap(({ it, s }) => (["in", "out"] as const).filter((k) => { const d = digits(s.mileage?.[k]?.value); return d && (forbidden.has(d) || [...forbidden].some((x) => x.length === d.length && [...x].filter((ch, i) => ch !== d[i]).length === 1)); }).map((k) => `${it.fileName} (${k})`));
   if (rejectedMileage.length) issues.push(`Rejected mileage readings that match a non-mileage number (advisor, tag or invoice): ${rejectedMileage.join(", ")}.`);
   const inDec = decide(mileCand("in"), (a) => digits(a));
   const outDec = decide(mileCand("out"), (a) => digits(a));
