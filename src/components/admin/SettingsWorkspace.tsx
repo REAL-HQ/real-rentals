@@ -6,11 +6,15 @@ import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
+import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
+import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
 const DESCRIPTIONS: Record<string, string> = {
   company: "Company name and support contact.",
+  website: "Market-specific marketing sites and their waitlist demand.",
+  activity: "Who did what, and what is about to expire.",
   vehicle_defaults: "Set standard pricing for each vehicle type. These values pre-fill new vehicles and can always be changed before saving. Existing vehicles never change.",
   maintenance: "Company maintenance intervals by miles, time or both. A vehicle can override an interval from its Service tab.",
   rental_terms: "Minimum term, return notice and the terms text.",
@@ -39,7 +43,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = current.id === "automations" || current.id === "team";
+  const wide = ["automations", "team", "website", "activity"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -101,6 +105,10 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <VehicleDefaultsPanel />
         ) : current.id === "maintenance" ? (
           <MaintenanceDefaultsPanel />
+        ) : current.id === "website" ? (
+          <WebsitesPanel />
+        ) : current.id === "activity" ? (
+          <ActivityPanel />
         ) : current.id === "team" ? (
           <TeamPanel />
         ) : (
