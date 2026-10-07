@@ -1530,7 +1530,9 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          inbound_email_id: string | null
           label: string
+          source_channel: string
           status: string
           updated_at: string
         }
@@ -1538,7 +1540,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          inbound_email_id?: string | null
           label: string
+          source_channel?: string
           status?: string
           updated_at?: string
         }
@@ -1546,11 +1550,21 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          inbound_email_id?: string | null
           label?: string
+          source_channel?: string
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fleet_import_batches_inbound_email_id_fkey"
+            columns: ["inbound_email_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_emails"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fleet_import_finance_facts: {
         Row: {
@@ -1616,8 +1630,11 @@ export type Database = {
           extraction: Json | null
           file_name: string
           id: string
+          inbound_email_id: string | null
           mime_type: string | null
           size_bytes: number | null
+          source_attachment_id: string | null
+          source_channel: string
           status: string
           updated_at: string
           warnings: Json
@@ -1637,8 +1654,11 @@ export type Database = {
           extraction?: Json | null
           file_name: string
           id?: string
+          inbound_email_id?: string | null
           mime_type?: string | null
           size_bytes?: number | null
+          source_attachment_id?: string | null
+          source_channel?: string
           status?: string
           updated_at?: string
           warnings?: Json
@@ -1658,8 +1678,11 @@ export type Database = {
           extraction?: Json | null
           file_name?: string
           id?: string
+          inbound_email_id?: string | null
           mime_type?: string | null
           size_bytes?: number | null
+          source_attachment_id?: string | null
+          source_channel?: string
           status?: string
           updated_at?: string
           warnings?: Json
@@ -1684,6 +1707,13 @@ export type Database = {
             columns: ["duplicate_of_document_id"]
             isOneToOne: false
             referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_import_items_inbound_email_id_fkey"
+            columns: ["inbound_email_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_emails"
             referencedColumns: ["id"]
           },
         ]
@@ -1967,6 +1997,86 @@ export type Database = {
             columns: ["match_vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbound_emails: {
+        Row: {
+          attachments: Json
+          batch_id: string | null
+          created_at: string
+          error: string | null
+          from_address: string | null
+          from_name: string | null
+          html_sanitized: string | null
+          id: string
+          in_reply_to: string | null
+          intake_address: string | null
+          message_id: string | null
+          provider: string
+          provider_email_id: string
+          provider_event_id: string | null
+          received_at: string
+          references_header: string | null
+          status: string
+          subject: string | null
+          text_body: string | null
+          to_addresses: string[]
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json
+          batch_id?: string | null
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          from_name?: string | null
+          html_sanitized?: string | null
+          id?: string
+          in_reply_to?: string | null
+          intake_address?: string | null
+          message_id?: string | null
+          provider?: string
+          provider_email_id: string
+          provider_event_id?: string | null
+          received_at?: string
+          references_header?: string | null
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          to_addresses?: string[]
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json
+          batch_id?: string | null
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          from_name?: string | null
+          html_sanitized?: string | null
+          id?: string
+          in_reply_to?: string | null
+          intake_address?: string | null
+          message_id?: string | null
+          provider?: string
+          provider_email_id?: string
+          provider_event_id?: string | null
+          received_at?: string
+          references_header?: string | null
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          to_addresses?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_emails_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_batches"
             referencedColumns: ["id"]
           },
         ]

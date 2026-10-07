@@ -30,3 +30,9 @@
 - [x] Operations grouping, full text, summary rows excluded, financial + payment reconciliation
 - [x] Coordinator privacy: operational vs financial payloads; mixed-evidence file access blocked server + storage
 - [x] Reprocess Test A + Test B from originals; stop at Review; report
+
+## Email-to-Evidence Phase 1 (preview only; not published)
+- [x] Inbound email record, signed intake endpoint, attachment store/dedupe into Fleet Inbox, email card in Review
+- [ ] Mail routing for inbox@ + receiving secret (blocked: user DNS/provider setup)
+- [ ] Real forwarded-email E2E (blocked on routing)
+- [ ] Body-only email fact extraction (deferred)
