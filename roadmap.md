@@ -16,8 +16,9 @@
 - Phase 1+ per audit (ledger, ROI, dock/nav, documents, Fleet Inbox, View-As)
 
 ## Phase 2A closure (preview only — not published)
-- [ ] Coordinator cost privacy: structured fields stripped; Test A found an amount in unfiltered warnings (repair deferred until Test B comparison)
+- [ ] Coordinator cost privacy: structured fields stripped; Tests A/B expose amounts in warnings/descriptions and Maintenance original access; repairs await approval
 - [x] Pickup/return mileage via rental tx, inspection reuse, Miles Driven, validation
 - [x] Same-date ordering, net service cost (warranty/vendor credit), Overview Service card
 - [x] Test A real receipts → Fleet Inbox Review; stopped without Apply (REPAIRS REQUIRED: separate proposals, conflicting extraction, missing payment cross-check)
+- [x] Test B five originals → independent Review; both tests compared (REPAIRS REQUIRED: grouping, header/date/mileage extraction, reconciliation, privacy); no Apply or publication
 - [ ] Real Coordinator session E2E (no Coordinator account exists)
