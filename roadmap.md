@@ -19,5 +19,5 @@
 - [x] Coordinator cost privacy (Fleet Inbox proposals/provenance, service, timeline)
 - [x] Pickup/return mileage via rental tx, inspection reuse, Miles Driven, validation
 - [x] Same-date ordering, net service cost (warranty/vendor credit), Overview Service card
-- [ ] Real service receipt → Fleet Inbox Review (waiting on user's receipt)
+- [x] Test A real receipts → Fleet Inbox Review; stopped without Apply (REPAIRS REQUIRED: separate proposals, conflicting extraction, missing payment cross-check)
 - [ ] Real Coordinator session E2E (no Coordinator account exists)
