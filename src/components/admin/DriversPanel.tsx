@@ -1603,11 +1603,11 @@ function DriverDetail({
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
-                    <MessageSquare className="w-4 h-4 mr-2" /> Open In Messages
+                  <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
+                    <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setInterviewOpen(true)}>
-                    <ClipboardList className="w-4 h-4 mr-2" /> Edit Interview
+                  <DropdownMenuItem title="Edit Interview" aria-label="Edit Interview" onClick={() => setInterviewOpen(true)}>
+                    <ClipboardList className="w-4 h-4 mr-2" /> Interview
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
                   <ReissueLinkAction applicationId={driver.id} />
@@ -2563,7 +2563,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
         }
       }}
     >
-      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy a fresh application link"}
+      <LinkIcon className="w-4 h-4 mr-2" /> {busy ? "Reissuing…" : "Copy Link"}
     </DropdownMenuItem>
   );
 }
