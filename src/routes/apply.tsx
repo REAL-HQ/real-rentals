@@ -9,6 +9,7 @@ import { savePartialApplication } from "@/lib/applications.functions";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { useResumeToken } from "@/lib/resume-token";
+import { SmsConsentField } from "@/components/site/SmsConsentField";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -137,7 +138,6 @@ function ContactStep({
     if (!z.string().min(2).safeParse(form.full_name).success) e.full_name = "Required";
     if (!z.string().email().safeParse(form.email).success) e.email = "Invalid email";
     if (!/^\d{7,}$/.test(form.phone.replace(/\D/g, ""))) e.phone = "Invalid phone";
-    if (!form.sms_consent) e.sms_consent = "Required";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -156,6 +156,7 @@ function ContactStep({
           phone: form.phone,
           email: form.email,
           sms_consent: form.sms_consent,
+          consent_page: "/apply",
           market_id: market?.id ?? null,
           city: market?.name ?? preCity ?? null,
           state: market?.state ?? null,
@@ -196,23 +197,10 @@ function ContactStep({
           <div className="grid grid-cols-1 gap-5">
             <In label="Full Name" v={form.full_name} e={errors.full_name} on={(v) => update("full_name", v)} />
             <In label="Email" type="email" v={form.email} e={errors.email} on={(v) => update("email", v)} />
-            <In label="Phone" v={form.phone} e={errors.phone} on={(v) => update("phone", v)} />
+            <In label="Mobile Phone" v={form.phone} e={errors.phone} on={(v) => update("phone", v)} />
           </div>
 
-          <label className="mt-5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.sms_consent}
-              onChange={(e) => update("sms_consent", e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-real-red shrink-0"
-            />
-            <span className="text-[11px] leading-snug text-muted-foreground">
-              By checking this box, I agree to receive SMS text messages from REAL RENTALS about my application, rental updates, and scheduling at the number provided. Msg & data rates may apply. Reply STOP to opt out. See our{" "}
-              <Link to="/sms-consent" className="underline hover:text-foreground">SMS Consent</Link> and{" "}
-              <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
-            </span>
-          </label>
-          {errors.sms_consent && <div className="mt-2 text-sm text-real-red">{errors.sms_consent}</div>}
+          <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
           <button
             type="button"
