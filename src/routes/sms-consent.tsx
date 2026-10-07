@@ -22,12 +22,12 @@ function SmsConsentPage() {
       <section className="container-real py-14 md:py-20 max-w-3xl">
         <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Legal</div>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">SMS Consent Policy</h1>
-        <p className="mt-3 text-sm text-muted-foreground">Last updated: June 2026</p>
+        <p className="mt-3 text-sm text-muted-foreground">Last updated: October 2026</p>
 
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
           <div>
             <h2 className="text-xl font-semibold text-foreground">Opt-In</h2>
-            <p className="mt-3">By submitting an application or quote request and checking the SMS consent box, you agree to receive text messages from REAL RENTALS at the mobile number you provide. Messages may include rental updates, application status, scheduling, and occasional promotions.</p>
+            <p className="mt-3">On our rental application you may check an optional, unchecked SMS box to receive recurring transactional text messages from REAL RENTALS at the mobile number you provide, about your application, rental, payments, vehicle pickup and return, service, and customer support. We do not send promotional messages. Consent is not a condition of renting a vehicle.</p>
           </div>
 
           <div>
