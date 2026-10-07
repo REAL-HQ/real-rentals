@@ -12,6 +12,7 @@ import {
   ChevronDown,
   TrendingUp,
   Receipt,
+  CalendarDays,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -116,6 +117,40 @@ function initials(name?: string | null) {
 function shortDate(iso?: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+/**
+ * How long ago the person applied, counted in whole calendar days so an
+ * application filed at 11pm still reads "Today" a few minutes later and
+ * "Yesterday" the next morning.
+ */
+function appliedAgo(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  const days = Math.floor(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
+      86_400_000,
+  );
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
+/**
+ * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
+ * from the application's own created_at — never reviewed_at or last contact —
+ * and says so plainly when that date is missing instead of guessing.
+ */
+function appliedLine(iso?: string | null) {
+  const rel = appliedAgo(iso);
+  if (!rel) return "Date Unknown";
+  const d = new Date(iso as string);
+  return `Applied ${d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })} · ${rel}`;
 }
 
 export function OverviewPanel() {
@@ -417,8 +452,14 @@ export function OverviewPanel() {
                   className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
                 >
                   <span className="flex items-start justify-between gap-2 min-w-0">
-                    <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                      {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
+                        {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
+                      </span>
+                      <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
+                        <CalendarDays className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{appliedLine(app.created_at)}</span>
+                      </span>
                     </span>
                     <ReadinessStatePill state={readiness.state} short />
                   </span>
