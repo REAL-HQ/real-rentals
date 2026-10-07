@@ -22,3 +22,11 @@
 - [x] Test A real receipts → Fleet Inbox Review; stopped without Apply (REPAIRS REQUIRED: separate proposals, conflicting extraction, missing payment cross-check)
 - [x] Test B five originals → independent Review; both tests compared (REPAIRS REQUIRED: grouping, header/date/mileage extraction, reconciliation, privacy); no Apply or publication
 - [ ] Real Coordinator session E2E (no Coordinator account exists)
+
+## Phase 2A Repair — multi-file service transactions (preview only; no Apply, no publish)
+- [ ] Real Coordinator session E2E of the privacy repair (no Coordinator account exists)
+- [x] Service transaction model (group pages/duplicates/payment; one tx → one expense, one mileage)
+- [x] Semantic extraction (mileage in/out, plate vs tag, advisor, year normalization, unit never from docs)
+- [x] Operations grouping, full text, summary rows excluded, financial + payment reconciliation
+- [x] Coordinator privacy: operational vs financial payloads; mixed-evidence file access blocked server + storage
+- [x] Reprocess Test A + Test B from originals; stop at Review; report

@@ -1119,6 +1119,7 @@ export type Database = {
           content_sha256: string | null
           created_at: string
           driver_id: string | null
+          evidence_class: string
           expires_at: string | null
           file_name: string | null
           id: string
@@ -1149,6 +1150,7 @@ export type Database = {
           content_sha256?: string | null
           created_at?: string
           driver_id?: string | null
+          evidence_class?: string
           expires_at?: string | null
           file_name?: string | null
           id?: string
@@ -1179,6 +1181,7 @@ export type Database = {
           content_sha256?: string | null
           created_at?: string
           driver_id?: string | null
+          evidence_class?: string
           expires_at?: string | null
           file_name?: string | null
           id?: string
@@ -1854,6 +1857,102 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_service_transactions: {
+        Row: {
+          applied_at: string | null
+          applied_by: string | null
+          applied_vehicle_id: string | null
+          batch_id: string
+          created_at: string
+          evidence: Json
+          financial: Json
+          group_key: string
+          id: string
+          item_ids: string[]
+          kind: string
+          match_basis: string | null
+          match_vehicle_id: string | null
+          operational: Json
+          result: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          applied_by?: string | null
+          applied_vehicle_id?: string | null
+          batch_id: string
+          created_at?: string
+          evidence?: Json
+          financial?: Json
+          group_key: string
+          id?: string
+          item_ids?: string[]
+          kind?: string
+          match_basis?: string | null
+          match_vehicle_id?: string | null
+          operational?: Json
+          result?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          applied_by?: string | null
+          applied_vehicle_id?: string | null
+          batch_id?: string
+          created_at?: string
+          evidence?: Json
+          financial?: Json
+          group_key?: string
+          id?: string
+          item_ids?: string[]
+          kind?: string
+          match_basis?: string | null
+          match_vehicle_id?: string | null
+          operational?: Json
+          result?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_service_transactions_applied_vehicle_id_fkey"
+            columns: ["applied_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_transactions_applied_vehicle_id_fkey"
+            columns: ["applied_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_transactions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_transactions_match_vehicle_id_fkey"
+            columns: ["match_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_transactions_match_vehicle_id_fkey"
+            columns: ["match_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           actual_cost: number
@@ -2405,32 +2504,56 @@ export type Database = {
         Row: {
           amount: number | null
           category: string
+          charge_type: string | null
           created_at: string
+          customer_request: string | null
           description: string
+          details: Json | null
           id: string
+          labor_amount: number | null
+          original_heading: string | null
+          parts_amount: number | null
           quantity: number | null
           record_id: string
           sort_order: number
+          technician_notes: string | null
+          work_performed: string | null
         }
         Insert: {
           amount?: number | null
           category?: string
+          charge_type?: string | null
           created_at?: string
+          customer_request?: string | null
           description: string
+          details?: Json | null
           id?: string
+          labor_amount?: number | null
+          original_heading?: string | null
+          parts_amount?: number | null
           quantity?: number | null
           record_id: string
           sort_order?: number
+          technician_notes?: string | null
+          work_performed?: string | null
         }
         Update: {
           amount?: number | null
           category?: string
+          charge_type?: string | null
           created_at?: string
+          customer_request?: string | null
           description?: string
+          details?: Json | null
           id?: string
+          labor_amount?: number | null
+          original_heading?: string | null
+          parts_amount?: number | null
           quantity?: number | null
           record_id?: string
           sort_order?: number
+          technician_notes?: string | null
+          work_performed?: string | null
         }
         Relationships: [
           {
@@ -2460,6 +2583,8 @@ export type Database = {
           invoice_number: string | null
           item: string
           labor_cost: number | null
+          mileage_in: number | null
+          mileage_out: number | null
           notes: string | null
           odometer: number | null
           original_extraction: Json | null
@@ -2479,6 +2604,7 @@ export type Database = {
           status: string
           tax_amount: number | null
           total_cost: number
+          transaction_id: string | null
           updated_at: string
           updated_by: string | null
           vehicle_id: string
@@ -2504,6 +2630,8 @@ export type Database = {
           invoice_number?: string | null
           item: string
           labor_cost?: number | null
+          mileage_in?: number | null
+          mileage_out?: number | null
           notes?: string | null
           odometer?: number | null
           original_extraction?: Json | null
@@ -2523,6 +2651,7 @@ export type Database = {
           status?: string
           tax_amount?: number | null
           total_cost?: number
+          transaction_id?: string | null
           updated_at?: string
           updated_by?: string | null
           vehicle_id: string
@@ -2548,6 +2677,8 @@ export type Database = {
           invoice_number?: string | null
           item?: string
           labor_cost?: number | null
+          mileage_in?: number | null
+          mileage_out?: number | null
           notes?: string | null
           odometer?: number | null
           original_extraction?: Json | null
@@ -2567,6 +2698,7 @@ export type Database = {
           status?: string
           tax_amount?: number | null
           total_cost?: number
+          transaction_id?: string | null
           updated_at?: string
           updated_by?: string | null
           vehicle_id?: string
@@ -2609,6 +2741,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_records_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_transactions"
             referencedColumns: ["id"]
           },
           {

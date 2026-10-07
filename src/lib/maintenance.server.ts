@@ -6,12 +6,17 @@ import type { Actor } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import { netServiceCost, normalizeCategory, sumKnown, vendorKey } from "@/lib/maintenance-rules";
 
-export type ServiceItemInput = { description: string; category?: string | null; amount?: number | null; quantity?: number | null };
+export type ServiceItemInput = {
+  description: string; category?: string | null; amount?: number | null; quantity?: number | null;
+  originalHeading?: string | null; customerRequest?: string | null; workPerformed?: string | null; technicianNotes?: string | null;
+  chargeType?: string | null; partsAmount?: number | null; laborAmount?: number | null; details?: unknown;
+};
 export type ServiceEventInput = {
   vehicleId: string;
   performedOn: string | null;
   status?: "open" | "completed";
   mileage?: number | null;
+  mileageIn?: number | null; mileageOut?: number | null;
   vendorId?: string | null;
   vendorNameRaw?: string | null;
   invoiceNumber?: string | null;
@@ -24,6 +29,9 @@ export type ServiceEventInput = {
   source: "manual" | "fleet_inbox";
   documentId?: string | null; documentPage?: number | null;
   proposalId?: string | null;
+  transactionId?: string | null;
+  linkDocumentIds?: string[];
+  odometerEvidenceKey?: string | null;
   originalExtraction?: unknown;
 };
 
@@ -52,6 +60,10 @@ export async function addOdometerReading(sb: any, actor: Actor | null, r: {
 }
 
 export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEventInput): Promise<{ id: string; duplicate: boolean; odometerStatus: string | null }> {
+  if (input.transactionId) {
+    const { data: existing } = await sb.from("maintenance_records").select("id").eq("transaction_id", input.transactionId).maybeSingle();
+    if (existing) return { id: existing.id, duplicate: true, odometerStatus: null };
+  }
   if (input.proposalId) {
     const { data: existing } = await sb.from("maintenance_records").select("id").eq("proposal_id", input.proposalId).maybeSingle();
     if (existing) return { id: existing.id, duplicate: true, odometerStatus: null };
@@ -66,6 +78,7 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
   const { data: rec, error } = await sb.from("maintenance_records").insert({
     vehicle_id: input.vehicleId, item: title.slice(0, 200), category: primaryCat,
     status: completed ? "completed" : "in_progress", performed_on: input.performedOn, odometer: input.mileage ?? null,
+    mileage_in: input.mileageIn ?? null, mileage_out: input.mileageOut ?? null, transaction_id: input.transactionId ?? null,
     vendor_id: vendorId, vendor_name_raw: input.vendorNameRaw ?? null, invoice_number: input.invoiceNumber ?? null,
     description: input.description ?? null, labor_cost: input.laborCost ?? null, parts_cost: input.partsCost ?? null,
     tax_amount: input.taxAmount ?? null, other_cost: input.otherCost ?? null, total_cost: total,
@@ -76,6 +89,10 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
     completed_at: completed ? new Date().toISOString() : null, created_by: actor.userId,
   }).select("id").single();
   if (error) {
+    if (input.transactionId && /duplicate|unique/i.test(error.message)) {
+      const { data: again } = await sb.from("maintenance_records").select("id").eq("transaction_id", input.transactionId).single();
+      return { id: again.id, duplicate: true, odometerStatus: null };
+    }
     if (input.proposalId && /duplicate|unique/i.test(error.message)) {
       const { data: again } = await sb.from("maintenance_records").select("id").eq("proposal_id", input.proposalId).single();
       return { id: again.id, duplicate: true, odometerStatus: null };
@@ -84,8 +101,12 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
   }
   if (items.length) {
     await sb.from("maintenance_record_items").insert(items.map((i, n) => ({
-      record_id: rec.id, description: i.description.trim().slice(0, 300), category: normalizeCategory(i.category ?? i.description),
+      // Full text is kept; the UI shows a preview with expandable details.
+      record_id: rec.id, description: i.description.trim(), category: normalizeCategory(i.category ?? i.description),
       amount: i.amount ?? null, quantity: i.quantity ?? null, sort_order: n,
+      original_heading: i.originalHeading ?? null, customer_request: i.customerRequest ?? null, work_performed: i.workPerformed ?? null,
+      technician_notes: i.technicianNotes ?? null, charge_type: i.chargeType ?? null, parts_amount: i.partsAmount ?? null,
+      labor_amount: i.laborAmount ?? null, details: i.details ?? null,
     })));
   }
   // Single financial truth: one expense row that points at this event.
@@ -104,9 +125,13 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
     const r = await addOdometerReading(sb, actor, {
       vehicleId: input.vehicleId, mileage: input.mileage, observedOn: input.performedOn, sourceType: "service",
       sourceId: rec.id, documentId: input.documentId ?? null, documentPage: input.documentPage ?? null,
-      evidenceKey: input.documentId ? `doc:${input.documentId}:${input.vehicleId}:${input.documentPage ?? 0}` : `service:${rec.id}`,
+      evidenceKey: input.odometerEvidenceKey ? input.odometerEvidenceKey : input.documentId ? `doc:${input.documentId}:${input.vehicleId}:${input.documentPage ?? 0}` : `service:${rec.id}`,
     });
     odometerStatus = r.status;
+  }
+  // Every supporting original (all pages, duplicate photos, payment slip) links to the vehicle once.
+  for (const d of new Set([input.documentId, ...(input.linkDocumentIds ?? [])].filter(Boolean) as string[])) {
+    await sb.from("document_vehicle_links").upsert({ document_id: d, vehicle_id: input.vehicleId, created_by: actor.userId }, { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
   }
   // Completed work rolls matching schedules forward (category match only — never guessed across categories).
   if (completed && input.performedOn) {

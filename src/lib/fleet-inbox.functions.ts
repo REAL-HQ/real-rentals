@@ -236,6 +236,10 @@ async function refreshBatchStatus(batchId: string) {
     else if (done.some((p: any) => p.status === "applied")) status = "partially_applied";
     else if (st.some((s: string) => s === "failed" || s === "needs_attention") || ps.some((p: any) => p.kind === "conflict" || p.kind === "unidentified")) status = "needs_attention";
   }
+  const { data: txs } = await sb.from("fleet_service_transactions").select("status,kind").eq("batch_id", batchId).neq("status", "superseded");
+  const openTx = (txs ?? []).filter((t: any) => t.status === "pending" || t.status === "failed");
+  if (status !== "processing" && openTx.some((t: any) => t.kind !== "match")) status = "needs_attention";
+  else if (status === "ready" && (txs ?? []).some((t: any) => t.status === "applied") && !openTx.length) status = "applied";
   await sb.from("fleet_import_batches").update({ status }).eq("id", batchId);
 }
 
@@ -289,6 +293,17 @@ export const analyzeInboxItem = createServerFn({ method: "POST" })
     }).eq("id", data.itemId);
     await sb.from("documents").update({ kind: docClass, category: docClass, page_count: pageCount }).eq("id", claimed.document_id as string);
 
+    const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+    if (isServiceClass(docClass)) {
+      // Service evidence is reviewed as a TRANSACTION across files, never one proposal per file.
+      const r = await readServiceItem(sb, data.itemId);
+      if (!r.ok) return fail(r.error);
+      await rebuildServiceTransactions(sb, claimed.batch_id);
+      await sb.from("fleet_import_items").update({ status: "ready" }).eq("id", data.itemId);
+      await refreshBatchStatus(claimed.batch_id);
+      return { ok: true as const };
+    }
+    if (docGroupOf(docClass) === "Finance") await sb.from("documents").update({ evidence_class: "financial" }).eq("id", claimed.document_id as string);
     await buildItemProposals(sb, data.itemId);
     const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
     await sb.from("fleet_import_items").update({ status: needs ? "needs_attention" : "ready" }).eq("id", data.itemId);
@@ -306,7 +321,11 @@ export const classifyInboxItem = createServerFn({ method: "POST" })
       .eq("id", data.itemId).neq("status", "analyzing").select("batch_id,document_id,extraction,status").maybeSingle();
     if (!item) return { ok: false as const, error: "File is busy." };
     if (item.document_id) await sb.from("documents").update({ kind: data.docClass, category: data.docClass }).eq("id", item.document_id);
-    if (item.extraction) await buildItemProposals(sb, data.itemId); // authority depends on class
+    const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+    if (isServiceClass(data.docClass)) {
+      if (!(item.extraction as any)?.service) await readServiceItem(sb, data.itemId);
+      await rebuildServiceTransactions(sb, item.batch_id);
+    } else if (item.extraction) await buildItemProposals(sb, data.itemId); // authority depends on class
     if (item.status !== "duplicate") await sb.from("fleet_import_items").update({ status: item.extraction ? "ready" : item.status === "failed" ? "failed" : "needs_attention" }).eq("id", data.itemId);
     await refreshBatchStatus(item.batch_id);
     return { ok: true as const };
@@ -360,8 +379,15 @@ export const getImportBatch = createServerFn({ method: "POST" })
       return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length } : null };
     });
     // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
-    const safeProposals = canFinance ? proposals ?? [] : (proposals ?? []).map(stripServiceCosts);
-    return { batch, items: safeItems, proposals: safeProposals, finance, vehicles: vehicles ?? [], canFinance };
+    const live = (proposals ?? []).filter((p: any) => p.status !== "superseded");
+    const safeProposals = canFinance ? live : live.map(stripServiceCosts);
+    const { data: txs } = await sb.from("fleet_service_transactions").select("*").eq("batch_id", data.batchId).neq("status", "superseded").order("created_at");
+    const { operationalView } = await import("@/lib/service-ingest.server");
+    // Coordinators get the operational half only; the financial half (amounts, payment, raw model text) never leaves the server.
+    const transactions = canFinance ? txs ?? [] : (txs ?? []).map(operationalView);
+    const serviceItemIds = new Set((txs ?? []).flatMap((t: any) => t.item_ids ?? []));
+    const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
+    return { batch, items: itemsOut, proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance };
   });
 
 // ---------------------------------------------------------------- apply
@@ -566,8 +592,10 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
-    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category,kind").eq("id", data.documentId).maybeSingle();
+    const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,file_name,mime_type,driver_id,category,kind,evidence_class").eq("id", data.documentId).maybeSingle();
     if (!doc || doc.driver_id) throw new Error("Not found");
+    // Priced invoices are mixed evidence: the original image itself carries costs and payment details.
+    if (((doc as any).evidence_class === "mixed" || (doc as any).evidence_class === "financial") && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden: this original contains financial details (Manager or Owner only).");
     // Loan / payoff / purchase paperwork stays inside the finance boundary.
     if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind)) && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
@@ -600,4 +628,104 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
     const pageBy = Object.fromEntries((links ?? []).map((l: any) => [l.document_id, l.page]));
     return (docs ?? []).map((d: any) => ({ ...d, page: pageBy[d.id] ?? null, relatedVehicles: rel[d.id] ?? 1 }))
       .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+  });
+
+// ---------------------------------------------------------------- service transactions
+/** Re-read one file as service evidence from its private original (Manager+). Does not apply anything. */
+export const reprocessServiceItem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ itemId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    if (!tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
+    const sb = await admin();
+    const { readServiceItem } = await import("@/lib/service-ingest.server");
+    return readServiceItem(sb, data.itemId);
+  });
+
+/** Regroup a batch's service evidence into transactions (Manager+). Never applies. */
+export const rebuildBatchServiceTransactions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ batchId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    if (!tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
+    const sb = await admin();
+    const { rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+    const drafts = await rebuildServiceTransactions(sb, data.batchId);
+    await refreshBatchStatus(data.batchId);
+    await logAudit(actor, { action: "fleet_inbox.service_regrouped", summary: `Regrouped service evidence into ${drafts.length} transaction(s)`, entityType: "fleet_import_batch", entityId: data.batchId, metadata: { transactions: drafts.length } });
+    return { transactions: drafts.length };
+  });
+
+/** Apply ONE service transaction: one service record, at most one linked expense, at most one mileage observation. Manager+. */
+export const applyServiceTransaction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    transactionId: z.string().uuid(), vehicleId: z.string().uuid(),
+    acceptFields: z.array(z.enum(["color", "license_plate"])).default([]),
+    acceptMileage: z.boolean().default(true),
+    confirmFinancial: z.boolean().default(false),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    if (!tierAllows(actor.tier, "manager")) throw new Error("Forbidden: service transactions carry costs (Manager or Owner only).");
+    const sb = await admin();
+    const { data: t } = await sb.from("fleet_service_transactions").update({ status: "applying" }).eq("id", data.transactionId).in("status", ["pending", "failed"]).select("*").maybeSingle();
+    if (!t) return { ok: false as const, message: "Already handled or in progress." };
+    const fail = async (message: string) => { await sb.from("fleet_service_transactions").update({ status: "failed", result: { ok: false, message } }).eq("id", t.id); return { ok: false as const, message }; };
+    try {
+      const op = t.operational as any; const fin = t.financial as any;
+      const { data: v } = await sb.from("vehicles").select("id,vin,color,license_plate").eq("id", data.vehicleId).maybeSingle();
+      if (!v) return fail("Vehicle not found.");
+      const docVin = op.identity?.vin?.value;
+      if (docVin && v.vin && String(v.vin).toUpperCase() !== docVin) return fail(`VIN conflict: ${v.vin} on file vs ${docVin} on the invoice.`);
+      if (op.applyPreview?.serviceRecords === 0) return fail("This is payment evidence without an invoice — attach it to a transaction instead.");
+      const recOk = fin.reconciliation?.status === "reconciled";
+      if (!recOk && !data.confirmFinancial) return fail("Financial reconciliation needs review — confirm the figures before applying.");
+      const updates: Record<string, unknown> = {};
+      for (const f of data.acceptFields) {
+        const c = (op.vehicleChanges ?? []).find((x: any) => x.field === f && x.kind === "fill");
+        if (c && !(v as any)[f]) updates[f] = f === "color" ? normalizeDisplayText(c.proposed) : c.proposed;
+      }
+      if (Object.keys(updates).length) await sb.from("vehicles").update(updates as any).eq("id", v.id);
+      const { recordServiceEvent } = await import("@/lib/maintenance.server");
+      const docIds: string[] = (t.evidence as any[]).filter((e) => e.usedAs !== "possible_payment" && e.documentId).map((e) => e.documentId);
+      const primaryDoc = (t.evidence as any[]).find((e) => e.usedAs === "primary")?.documentId ?? docIds[0] ?? null;
+      const s = fin.summary ?? {};
+      const mileage = data.acceptMileage && op.mileage?.status === "proposed" ? op.mileage.canonical : null;
+      const res = await recordServiceEvent(sb, actor, {
+        vehicleId: v.id, performedOn: op.dates?.completed ?? null, mileage,
+        mileageIn: op.mileage?.in?.value ? Number(op.mileage.in.value) : null, mileageOut: op.mileage?.out?.value ? Number(op.mileage.out.value) : null,
+        vendorNameRaw: op.vendor ?? null, invoiceNumber: op.invoiceNumber ?? null,
+        description: (fin.operations ?? []).map((o: any) => o.heading).join(" · ") || null,
+        items: (fin.operations ?? []).map((o: any) => ({
+          description: o.heading, category: o.category, amount: o.cost, quantity: null,
+          originalHeading: o.heading, customerRequest: o.request ?? null, workPerformed: o.work ?? null, technicianNotes: o.techNotes ?? null,
+          chargeType: o.chargeType, partsAmount: o.partsAmount, laborAmount: o.laborAmount, details: { parts: o.parts, code: o.code ?? null, sourceFiles: o.sourceFiles },
+        })),
+        laborCost: s.labor ?? null, partsCost: s.parts ?? null, taxAmount: s.tax ?? null,
+        otherCost: (s.misc ?? 0) + (s.shopSupplies ?? 0) + (s.other ?? 0) || null, totalCost: s.total ?? null,
+        warrantyCovered: s.warrantyCredit ?? null,
+        paymentMethod: fin.payment?.methodState === "conflict" ? null : (fin.payment?.method ? (/debit|visa|master|card|credit/i.test(fin.payment.method) ? "card" : /cash/i.test(fin.payment.method) ? "cash" : "other") : null),
+        paymentStatus: fin.payment?.state === "corroborated" ? "paid" : null,
+        source: "fleet_inbox", documentId: primaryDoc, transactionId: t.id, linkDocumentIds: docIds,
+        odometerEvidenceKey: `svc-tx:${t.id}`, originalExtraction: { operational: op, financial: fin },
+      });
+      await sb.from("fleet_service_transactions").update({ status: "applied", applied_vehicle_id: v.id, applied_by: actor.userId, applied_at: new Date().toISOString(), result: { ok: true, serviceRecordId: res.id } }).eq("id", t.id);
+      await logAudit(actor, { action: "fleet_inbox.service_applied", summary: `Applied service transaction (${op.vendor ?? "vendor"} ${op.invoiceNumber ?? ""})`.trim(), entityType: "vehicle", entityId: v.id, metadata: { transaction_id: t.id, maintenance_record_id: res.id, documents: docIds, fields: Object.keys(updates), confirmed_financial: data.confirmFinancial } });
+      await refreshBatchStatus(t.batch_id);
+      return { ok: true as const, message: res.duplicate ? "Service record already exists." : "Service recorded." };
+    } catch (e: any) { return fail(e?.message ?? "Failed."); }
+  });
+
+export const ignoreServiceTransaction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ transactionId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    const sb = await admin();
+    const { data: t } = await sb.from("fleet_service_transactions").update({ status: "ignored", applied_by: actor.userId, applied_at: new Date().toISOString() }).eq("id", data.transactionId).in("status", ["pending", "failed"]).select("batch_id").maybeSingle();
+    if (t) await refreshBatchStatus(t.batch_id);
+    return { ok: !!t };
   });

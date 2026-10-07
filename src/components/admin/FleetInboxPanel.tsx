@@ -12,6 +12,7 @@ import {
 } from "@/lib/fleet-inbox.functions";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
+import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
 
 const BATCH_LABEL: Record<string, string> = {
   uploading: "Uploading", processing: "Processing", ready: "Ready for Review", needs_attention: "Needs Attention",
@@ -252,7 +253,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       <div className="flex flex-wrap items-start gap-3 justify-between">
         <div>
           <h2 className="text-xl font-semibold text-[#111114]">{d.batch.label}</h2>
-          <p className="text-sm text-[#55555E]">{counts.vehicles} Vehicle{counts.vehicles === 1 ? "" : "s"} Found</p>
+          <p className="text-sm text-[#55555E]">{counts.vehicles} Vehicle{counts.vehicles === 1 ? "" : "s"} Found{(d.transactions ?? []).length ? ` · ${(d.transactions ?? []).length} Service Transaction${(d.transactions ?? []).length === 1 ? "" : "s"}` : ""}</p>
         </div>
         <StatusPill tone={toneOf(d.batch.status) as any}>{BATCH_LABEL[d.batch.status] ?? d.batch.status}</StatusPill>
       </div>
@@ -268,6 +269,8 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
           </div>
         ))}
       </div>
+
+      <ServiceTransactionReview d={d} isManager={isManager} reload={load} openFile={openFile} />
 
       {/* Files */}
       <section className="rounded-xl border border-[#EDEDF0] bg-white">
