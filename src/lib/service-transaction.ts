@@ -149,7 +149,10 @@ function decide(entries: { file: string; value: string | null | undefined; label
   const sources = ok.map((e) => ({ file: e.file, value: String(e.value), label: e.label }));
   if (sorted.length === 1) return { value: sorted[0].value, status: ok.length > 1 ? "agreed" : "single", sources };
   // Clear winner: at least twice the weight of the runner-up.
-  if (sorted[0].w >= sorted[1].w * 2) return { value: sorted[0].value, status: "agreed", sources, note: "Minority reading rejected by cross-page agreement." };
+  // Clear winner needs real agreement: ≥2 sources AND twice the runner-up's weight. One image against
+  // another (e.g. two photos of a handwritten ticket) is a conflict, not a vote.
+  const winners = ok.filter((e) => eq(String(e.value)) === eq(sorted[0].value)).length;
+  if (winners >= 2 && sorted[0].w >= sorted[1].w * 2) return { value: sorted[0].value, status: "agreed", sources, note: "Minority reading rejected by cross-page agreement." };
   return { value: null, status: "conflict", sources };
 }
 
@@ -352,6 +355,10 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   const dateDec = (k: keyof NonNullable<ServicePageExtraction["dates"]>) => decide(pages.map(({ it, s, w }) => ({ file: it.fileName, value: /^\d{4}-\d{2}-\d{2}$/.test(String(s.dates?.[k]?.value ?? "")) ? s.dates![k]!.value : null, w })));
   const invDate = dateDec("invoiceDate"), ready = dateDec("ready"), svc = dateDec("serviceDate"), opened = dateDec("opened");
   const completed = invDate.value ?? ready.value ?? svc.value ?? null;
+  if (opened.value && completed && (opened.value > completed || (Date.parse(completed) - Date.parse(opened.value)) / 86400000 > 120)) {
+    issues.push(`Opened date ${opened.value} is implausible for a repair completed ${completed} (likely a different header date, e.g. in-service date) — not used.`);
+    opened.value = null;
+  }
   const completedSource = invDate.value ? "Invoice Date" : ready.value ? "Ready Date" : svc.value ? "Service Date" : null;
   if (!completed) issues.push("No readable completion date — no mileage observation can be dated.");
   if (invDate.status === "conflict") issues.push("Invoice date disagrees across pages — Review Required.");
@@ -438,9 +445,9 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   const amount = payAmounts.length ? payAmounts.sort((a, b) => (b.v! - a.v!))[0].v : null;
   const total = summary.total ?? null;
   let state: ServiceTxDraft["financial"]["payment"]["state"] = "unknown";
-  if (amount != null && total != null) state = close(amount, total) ? "corroborated" : amount < total ? "partial" : "overpayment";
+  if (amount != null && total != null) state = close(amount, total) ? "corroborated" : totalKind !== "final_total" ? "unknown" : amount < total ? "partial" : "overpayment";
   if (amount != null && total != null && !close(amount, total)) {
-    finIssues.push(`Payment ${amount.toFixed(2)} vs invoice total ${total.toFixed(2)} — ${state === "partial" ? "Partial Payment" : "Overpayment"}? Financial Review Required (one may be a subtotal).`);
+    finIssues.push(state === "unknown" ? `Payment ${amount.toFixed(2)} vs printed ${totalKind === "page_subtotal" ? "subtotal" : "amount"} ${total.toFixed(2)} — the invoice's final total is not established, so the payment cannot be reconciled. Financial Review Required.` : `Payment ${amount.toFixed(2)} vs invoice total ${total.toFixed(2)} — ${state === "partial" ? "Partial Payment" : "Overpayment"}. Financial Review Required.`);
   }
   if (new Set(payAmounts.map((x) => x.v!.toFixed(2))).size > 1) { state = "conflict"; finIssues.push(`Payment evidence shows different amounts (${payAmounts.map((x) => `${x.file}: ${x.v!.toFixed(2)}`).join(", ")}) — Payment Conflict.`); }
   if (amount == null && total != null && (payItems.length || possItems.length)) finIssues.push("Payment evidence present but the amount could not be read.");
@@ -495,7 +502,9 @@ export function buildServiceTransaction(g: Group, vehicles: CandidateVehicle[], 
   }
 
   const invoicePages = new Set(g.items.map((i) => i.service.pageNumber ?? 1)).size;
-  const willExpense = actualCost != null && actualCost > 0 ? 1 : 0;
+  // An expense is only proposed from reconciled figures; otherwise a Manager must confirm them first.
+  const willExpense = actualCost != null && actualCost > 0 && recStatus === "reconciled" ? 1 : 0;
+  if (actualCost != null && actualCost > 0 && recStatus !== "reconciled") finIssues.push("Linked expense withheld until a Manager confirms the figures (then exactly one expense).");
   const rawNotes = [...g.items, ...g.payments, ...g.possible].map((i) => ({ file: i.fileName, warnings: i.service.warnings ?? [] })).filter((x) => x.warnings.length);
 
   return {
