@@ -43,11 +43,29 @@ export function displayVehicleWord(value: string): string {
   return normalizeDisplayText(s);
 }
 
-/** Display-only person name: "khalique branch" → "Khalique Branch". Mixed-case input is assumed intentional. Never used for identifiers. */
+/** Display-only person name: "khalique branch" → "Khalique Branch", "Tamika lyde" → "Tamika Lyde". Words with intentional mixed case ("McDonald", "DeLa Cruz") are left alone. Never used for identifiers. */
 export function displayPersonName(value: string): string {
   const s = value.trim().replace(/\s+/g, " ");
-  if (s && s === s.toLowerCase() && /[a-z]/.test(s)) {
-    return s.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-  }
-  return s;
+  if (!s) return s;
+  return s
+    .split(" ")
+    .map((w) => (w === w.toLowerCase() && /[a-z]/.test(w) ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+// Short words that stay lower-case mid-phrase in Title Case.
+const TITLE_SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "per", "the", "to", "up", "vs", "yet"]);
+
+/** Display-only Title Case for UI phrases: "Already driving" → "Already Driving". First/last words are always capitalized; small joiner words stay lower-case mid-phrase. */
+export function displayTitleCase(value: string): string {
+  const s = value.trim().replace(/\s+/g, " ");
+  if (!s) return s;
+  const words = s.split(" ");
+  return words
+    .map((w, i) => {
+      const lower = w.toLowerCase();
+      if (i > 0 && i < words.length - 1 && TITLE_SMALL.has(lower)) return lower;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
 }
