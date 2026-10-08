@@ -437,7 +437,9 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           entityType: "vehicle", entityId: vehicleId,
           metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field) },
         });
-        await finish("applied", { proposalId: p.id, ok: true, vehicleId, message: (dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`) + serviceNote + financeNote }, vehicleId);
+        const writtenSet = new Set(written.map((c) => c.field));
+        const remaining = dec.partial && dec.action === "match" ? fresh.changes.filter((c) => !writtenSet.has(c.field) && c.field !== "current_odometer" || (c.field === "current_odometer" && !accept.has("current_odometer"))) : [];
+        await finish(remaining.length ? "pending" : "applied", { proposalId: p.id, ok: true, vehicleId, message: (dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`) + serviceNote + financeNote }, vehicleId);
       } catch (e: any) {
         await finish("failed", { proposalId: p.id, ok: false, message: e?.message ?? "Failed." });
       }
