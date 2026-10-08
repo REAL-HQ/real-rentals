@@ -1,0 +1,386 @@
+{
+  "baseline": "5bc960c0cc314252924f3616bb8ea9a19489e84e",
+  "candidate_start": "ecd470d7c83b6d0d00f102893d3fc26b1d9735f6",
+  "preservation": "95503ef1badf70f733979231fdebb3f1c9abc8f4",
+  "remote_main_observed": "3645ba6964a36b454c957cbbf171d248f5a97f78",
+  "advisories": [
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "1.1.14"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-mh99-v99m-4gvg",
+      "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+      "range": "<1.1.17",
+      "patched": [
+        "1.1.17"
+      ],
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "5.0.5"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-mh99-v99m-4gvg",
+      "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+      "range": ">=4.0.0 <5.0.8",
+      "patched": [
+        "5.0.8"
+      ],
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "5.0.5"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-rgw5-rvv9-x895",
+      "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+      "range": ">=4.0.0 <5.0.9",
+      "patched": [
+        "5.0.9"
+      ],
+      "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "1.1.14"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-rgw5-rvv9-x895",
+      "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+      "range": "<1.1.18",
+      "patched": [
+        "1.1.18"
+      ],
+      "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "1.1.14"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-3jxr-9vmj-r5cp",
+      "title": "brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups",
+      "range": "<1.1.16",
+      "patched": [
+        "1.1.16"
+      ],
+      "url": "https://github.com/advisories/GHSA-3jxr-9vmj-r5cp"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "5.0.5"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-3jxr-9vmj-r5cp",
+      "title": "brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups",
+      "range": ">=3.0.0 <5.0.7",
+      "patched": [
+        "5.0.7"
+      ],
+      "url": "https://github.com/advisories/GHSA-3jxr-9vmj-r5cp"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "5.0.5"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-qhr7-859c-m2p7",
+      "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+      "range": ">=4.0.0 <5.0.11",
+      "patched": [
+        "5.0.11"
+      ],
+      "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "1.1.14"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-6j4f-fj2g-mc7p",
+      "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+      "range": "<1.1.19",
+      "patched": [
+        "1.1.19"
+      ],
+      "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "5.0.5"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-6j4f-fj2g-mc7p",
+      "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+      "range": ">=4.0.0 <5.0.10",
+      "patched": [
+        "5.0.10"
+      ],
+      "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p"
+    },
+    {
+      "package": "brace-expansion",
+      "installed": [
+        "1.1.14"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-qhr7-859c-m2p7",
+      "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+      "range": "<1.1.20",
+      "patched": [
+        "1.1.20"
+      ],
+      "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+    },
+    {
+      "package": "browserslist",
+      "installed": [
+        "4.28.2"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-c83g-rgw3-j3cx",
+      "title": "Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM",
+      "range": "<=4.28.6",
+      "patched": [
+        "4.28.7"
+      ],
+      "url": "https://github.com/advisories/GHSA-c83g-rgw3-j3cx"
+    },
+    {
+      "package": "browserslist",
+      "installed": [
+        "4.28.2"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-73wf-gq98-2v4g",
+      "title": "Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)",
+      "range": "<=4.28.6",
+      "patched": [
+        "4.28.7"
+      ],
+      "url": "https://github.com/advisories/GHSA-73wf-gq98-2v4g"
+    },
+    {
+      "package": "js-yaml",
+      "installed": [
+        "4.1.1"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-52cp-r559-cp3m",
+      "title": "js-yaml: YAML merge-key chains can force quadratic CPU consumption",
+      "range": ">=4.0.0 <4.3.0",
+      "patched": [
+        "4.3.0"
+      ],
+      "url": "https://github.com/advisories/GHSA-52cp-r559-cp3m"
+    },
+    {
+      "package": "js-yaml",
+      "installed": [
+        "4.1.1"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-5p4m-2wfm-xmqj",
+      "title": "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) \u2014 CVE-2026-59870 fix not backported",
+      "range": ">=4.0.0 <4.3.1",
+      "patched": [
+        "4.3.1"
+      ],
+      "url": "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj"
+    },
+    {
+      "package": "js-yaml",
+      "installed": [
+        "4.1.1"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-2883-xcg3-v3hh",
+      "title": "js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources",
+      "range": ">=4.0.0 <4.3.2",
+      "patched": [
+        "4.3.2"
+      ],
+      "url": "https://github.com/advisories/GHSA-2883-xcg3-v3hh"
+    },
+    {
+      "package": "nanoid",
+      "installed": [
+        "3.3.11"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-28wg-ghj8-5hjv",
+      "title": "nanoid: non-secure generators can loop indefinitely with negative size",
+      "range": "<3.3.16",
+      "patched": [
+        "3.3.16"
+      ],
+      "url": "https://github.com/advisories/GHSA-28wg-ghj8-5hjv"
+    },
+    {
+      "package": "nanoid",
+      "installed": [
+        "3.3.11"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-2v37-7h3g-55p8",
+      "title": "nanoid: custom generators can loop indefinitely when size is zero",
+      "range": "<3.3.18",
+      "patched": [
+        "3.3.18"
+      ],
+      "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8"
+    },
+    {
+      "package": "nanoid",
+      "installed": [
+        "3.3.11"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-xwg4-73v4-xw9w",
+      "title": "nanoid: Integer Overflow or Wraparound",
+      "range": "<3.3.12",
+      "patched": [
+        "3.3.12"
+      ],
+      "url": "https://github.com/advisories/GHSA-xwg4-73v4-xw9w"
+    },
+    {
+      "package": "postcss",
+      "installed": [
+        "8.5.10"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-6g55-p6wh-862q",
+      "title": "PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments",
+      "range": "<=8.5.11",
+      "patched": [
+        "8.5.12"
+      ],
+      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q"
+    },
+    {
+      "package": "postcss",
+      "installed": [
+        "8.5.10"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-r28c-9q8g-f849",
+      "title": "PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure",
+      "range": "<=8.5.17",
+      "patched": [
+        "8.5.18"
+      ],
+      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849"
+    },
+    {
+      "package": "shell-quote",
+      "installed": [
+        "1.9.0"
+      ],
+      "severity": "critical",
+      "ghsa": "GHSA-pqg4-j6r4-53mv",
+      "title": "shell-quote: `quote()` command injection via a line terminator in a token after a `{ comment }` token",
+      "range": ">=1.8.4 <1.11.0",
+      "patched": [
+        "1.11.0"
+      ],
+      "url": "https://github.com/advisories/GHSA-pqg4-j6r4-53mv"
+    },
+    {
+      "package": "source-map-js",
+      "installed": [
+        "1.2.1"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-68fv-2mgg-jv7q",
+      "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+      "range": ">=1.0.0 <1.2.2",
+      "patched": [
+        "1.2.2"
+      ],
+      "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q"
+    },
+    {
+      "package": "vite",
+      "installed": [
+        "7.3.2"
+      ],
+      "severity": "high",
+      "ghsa": "GHSA-fx2h-pf6j-xcff",
+      "title": "vite: `server.fs.deny` bypass on Windows alternate paths",
+      "range": ">=7.0.0 <=7.3.4",
+      "patched": [
+        "7.3.5"
+      ],
+      "url": "https://github.com/advisories/GHSA-fx2h-pf6j-xcff"
+    }
+  ],
+  "asset_comparison": [
+    {
+      "asset": "thank-you-B7W4i4Qv.js",
+      "sha256": "38aee1d4fccadb379f8313fe0f24f7aa8dbc2fcfcadfae1c72bb379b6061f069",
+      "identical": true
+    },
+    {
+      "asset": "index-DBXAXCKr.js",
+      "sha256": "d639ba4f8f18b975ff41daf3e7104bb637313ea4857b4c6e1212fd1cdf081095",
+      "identical": true
+    },
+    {
+      "asset": "index-C0Yc52Kt.js",
+      "sha256": "6ddb2420c28240659659a928d8d68f3710071cc24ddce47e6edcc73a14c74ed7",
+      "identical": true
+    },
+    {
+      "asset": "apply-Ba2IoN6a.js",
+      "sha256": "de8106eb28fc4ac0758d9ed9b9c876614c148370e2ad14bc03a1a9d0a4c23921",
+      "identical": true
+    },
+    {
+      "asset": "applications.functions-C834r9Ep.js",
+      "sha256": "8305bcbd7d31dd6f07590f32886c707e55c66498aa9c2ed9ee4e163e04c7ddac",
+      "identical": true
+    },
+    {
+      "asset": "login-DNvvpGLv.js",
+      "sha256": "a164b237695632d04d2cce14029e7170624795b38c79b2550375dcbc26d6342c",
+      "identical": true
+    }
+  ],
+  "tests": {
+    "readiness": 0,
+    "assessment-guard": 0,
+    "applicant-security": 0,
+    "resume-payload": 0,
+    "trip-screenshots": 0,
+    "agreement-guard": 0,
+    "document-registration": 0,
+    "readiness-documents": 0,
+    "public-copy": 0,
+    "grants": 0,
+    "duration-vocabulary": 0,
+    "marketing-fleet": 0,
+    "driver-access": 0,
+    "file-upload-guard": 0,
+    "agreement-pdf": 0,
+    "app-resume-release": 0,
+    "release-query-security": 0,
+    "recovery-abuse": 1,
+    "typecheck": 0,
+    "client-chunks": 0,
+    "production-build": 0,
+    "migration-and-exclusion-integrity": 0
+  }
+}

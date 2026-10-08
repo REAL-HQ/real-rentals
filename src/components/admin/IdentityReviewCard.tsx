@@ -8,11 +8,20 @@ import { Button } from "@/components/ui/button";
 export function IdentityReviewCard({ applicationId }: { applicationId: string }) {
   const load = useServerFn(listIdentityReviews);
   const resolve = useServerFn(resolveIdentityReview);
+  const [loadError, setLoadError] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const refresh = () => load({ data: { applicationId } }).then((r) => setRows(r.rows)).catch(() => {});
+  const refresh = () => load({ data: { applicationId } })
+    .then((r) => { setRows(r.rows); setLoadError(false); })
+    .catch(() => { setRows([]); setLoadError(true); });
   useEffect(() => { refresh(); }, [applicationId]);
   const open = rows.filter((r) => r.status === "open");
+  if (loadError) return (
+    <div role="alert" className="rounded-xl border border-destructive/40 p-4 text-sm">
+      Identity Reviews Could Not Be Loaded. Review Status Is Unknown.
+      <Button size="sm" variant="outline" onClick={refresh}>Retry</Button>
+    </div>
+  );
   if (!open.length) return null;
   const act = async (id: string, resolution: "same_person" | "different_person" | "dismissed") => {
     const note = (notes[id] ?? "").trim();

@@ -1,3 +1,5 @@
+> Superseded security analysis: see [APPLICATION RESUME — SECURITY BLOCKERS ANALYZED](app-resume-security-2026-10-08.md). The original report below is retained as the initial verification record.
+
 # REAL RENTALS — RELEASE VERIFICATION BLOCKED
 
 The isolated candidate is available locally for review, but is **not ready to push or deploy**. Preservation succeeded. Required security verification failed; no release push was made.

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireManager } from "@/lib/roles.server";
+import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 
 /**
@@ -13,12 +13,13 @@ export const listIdentityReviews = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    await requireStaff(context.userId);
     const { data: rows, error } = await context.supabase
       .from("application_identity_reviews")
       .select("id,kind,submitted_full_name,submitted_email,submitted_phone,source,status,resolution,resolution_note,resolved_at,created_at")
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
-    if (error) return { rows: [] as any[] };
+    if (error) throw new Error("Could not load identity reviews. Please retry.");
     return { rows: rows ?? [] };
   });
 
@@ -34,7 +35,7 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row } = await supabaseAdmin
+    const { data: row, error } = await supabaseAdmin
       .from("application_identity_reviews")
       .update({
         status: "resolved", resolution: data.resolution, resolution_note: data.note,
@@ -42,6 +43,7 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
       })
       .eq("id", data.id).eq("status", "open")
       .select("id,application_id,kind").maybeSingle();
+    if (error) throw new Error("Could not resolve identity review. Please retry.");
     if (!row) return { ok: true as const, changed: false };
     await logAudit(actor, {
       action: "identity_review.resolved",

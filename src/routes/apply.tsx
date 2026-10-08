@@ -1,10 +1,10 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
-import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
+import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
@@ -82,7 +82,7 @@ function ApplyPage() {
     // the site one click away.
     <div className="min-h-screen bg-background">
       {token === undefined ? null : token ? (
-        <ApplicationWizard token={token} />
+        <Navigate to="/thank-you" search={{ t: token }} replace />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
           <ContactStep

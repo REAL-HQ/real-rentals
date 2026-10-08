@@ -56,7 +56,9 @@ export async function runSafeAutofillForItem(sb: any, itemId: string): Promise<A
         if (budget <= 0) break;
         // Conditional write: only if still blank at this instant (no overwrite race).
         let q = sb.from("vehicles").update({ [c.field]: c.value }).eq("id", vehicle.id);
-        q = c.field === "seats" ? q.is(c.field, null) : q.or(`${c.field}.is.null,${c.field}.eq.`);
+        // Compare the exact blank state we read; a concurrent change safely skips.
+        // AUTO_FIELDS is fixed, and neither column nor value enters raw syntax.
+        q = vehicle[c.field] == null ? q.is(c.field, null) : q.eq(c.field, "");
         const { data: upd, error } = await q.select("id");
         if (error) throw new Error(`Could not write ${c.field}.`);
         if (!upd?.length) { skipped++; continue; }

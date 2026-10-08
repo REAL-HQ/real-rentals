@@ -643,13 +643,19 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     const plate = (target.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const cols = "id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at";
     const open = ["pending", "failed"];
-    const [{ data: exactRows }, { data: looseRows }] = await Promise.all([
+    // Keep stored VINs as literal filter values, never PostgREST filter syntax.
+    const [{ data: vinRows }, { data: linkedRows }, { data: looseRows }] = await Promise.all([
       vin
-        ? sb.from("fleet_import_proposals").select(cols).in("status", open).or(`vin.eq.${vin},match_vehicle_id.eq.${target.id}`).order("created_at", { ascending: false }).limit(200)
-        : sb.from("fleet_import_proposals").select(cols).in("status", open).eq("match_vehicle_id", target.id).order("created_at", { ascending: false }).limit(200),
+        ? sb.from("fleet_import_proposals").select(cols).in("status", open).eq("vin", vin).order("created_at", { ascending: false }).limit(200)
+        : Promise.resolve({ data: [] }),
+      sb.from("fleet_import_proposals").select(cols).in("status", open).eq("match_vehicle_id", target.id).order("created_at", { ascending: false }).limit(200),
       // Unmatched open items only (small review queue), for possible-match hints.
       sb.from("fleet_import_proposals").select(cols).in("status", open).in("kind", ["unidentified", "new", "conflict"]).order("created_at", { ascending: false }).limit(500),
     ]);
+    // Match the previous OR query's newest-200 limit across both result sets.
+    const exactRows = [...new Map([...(vinRows ?? []), ...(linkedRows ?? [])].map((p: any) => [p.id, p])).values()]
+      .sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at)))
+      .slice(0, 200);
     const seenIds = new Set<string>();
     const props = [...(exactRows ?? []), ...(looseRows ?? [])].filter((p: any) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
     const itemIds = [...new Set((props ?? []).map((p: any) => p.item_id))];

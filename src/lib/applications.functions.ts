@@ -158,6 +158,14 @@ function linkWaitSeconds(history: unknown[]): number {
   const daily = day.length >= LINK_DAILY_MAX ? Math.ceil((day[day.length - LINK_DAILY_MAX] + 86400_000 - now) / 1000) : 0;
   return Math.max(0, short, daily);
 }
+/** Keep successful-send evidence even when anonymous retries fill the history. */
+function boundedRecoveryHistory(history: unknown[]): unknown[] {
+  const sent = history.filter((entry) =>
+    typeof entry === "object" && entry !== null && "link_sent" in entry && entry.link_sent === true,
+  ).slice(-LINK_DAILY_MAX);
+  const other = history.filter((entry) => !sent.includes(entry)).slice(-(25 - sent.length));
+  return [...sent, ...other];
+}
 async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string): Promise<boolean> {
   try {
     const { data: onFile } = await supabaseAdmin
@@ -195,7 +203,7 @@ async function sendRecoveryLink(
   history.push({ at: new Date().toISOString(), ...entry, link_sent: ok, link_failed: !throttled && !ok });
   await supabaseAdmin
     .from("applications")
-    .update({ resubmission_history: history.slice(-25), ...extra } as any)
+    .update({ resubmission_history: boundedRecoveryHistory(history), ...extra } as any)
     .eq("id", primaryId);
   if (throttled) return { outcome: "recent", wait: pending };
   return ok ? { outcome: "sent", wait: LINK_RETRY_SECONDS } : { outcome: "failed", wait: 30 };
@@ -203,9 +211,8 @@ async function sendRecoveryLink(
 
 /**
  * "Continue Application" / "Resend Link". Public. Matched, unmatched and
- * throttled requests all get the same neutral answer; only a real provider
- * failure for a matched address is reported, because the user asked that we
- * never claim a send that did not happen.
+ * throttled requests and provider failures all get the same neutral answer.
+ * Acceptance of this request never asserts that an email was delivered.
  */
 export const requestApplicationLink = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ email: z.string().trim().email().max(160) }).parse(d))
@@ -227,13 +234,12 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
     const hit = results.flatMap((r) => r.data ?? []).sort((a: any, b: any) =>
       String(b.created_at).localeCompare(String(a.created_at)),
     )[0] as any;
-    let outcome: LinkOutcome | "none" = "none";
     if (hit) {
-      outcome = (await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" })).outcome;
+      await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" });
     }
-    // Same answer and same countdown for unmatched, sent and recently-sent
-    // addresses, so this public endpoint can't be used to test for an application.
-    return { ok: outcome !== "failed", retryAfterSeconds: outcome === "failed" ? 30 : LINK_RETRY_SECONDS };
+    // The provider outcome stays server-side. This means "request accepted",
+    // not "email sent"; the UI must not imply successful delivery.
+    return { ok: true, retryAfterSeconds: LINK_RETRY_SECONDS };
   });
 
 export const savePartialApplication = createServerFn({ method: "POST" })
@@ -392,9 +398,12 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           submitted_full_name: data.full_name, submitted_email: emailLower,
           submitted_phone: data.phone, source: data.source ?? null,
         });
-        if (revErr && (revErr as any).code !== "23505") console.error("identity review insert failed", revErr.message);
+        if (revErr && (revErr as any).code !== "23505") {
+          console.error("identity review insert failed", revErr.message);
+          throw new Error("Could not record your request. Please retry or contact our team.");
+        }
         await supabaseAdmin.from("applications").update({
-          resubmission_history: h.slice(-25),
+          resubmission_history: boundedRecoveryHistory(h),
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);

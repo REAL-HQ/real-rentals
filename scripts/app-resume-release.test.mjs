@@ -17,12 +17,15 @@ function client(role = 'service') {
       const q = {
         select() { return q; }, order() { return q; }, limit(n) { max = n; return q; },
         eq(k,v) { filters.push(r => r[k] === v); return q; },
+        gte(k,v) { filters.push(r => r[k] >= v); return q; },
+        gt(k,v) { filters.push(r => r[k] > v); return q; },
         is(k,v) { filters.push(r => (r[k] ?? null) === v); return q; },
         in(k,v) { filters.push(r => v.includes(r[k])); return q; },
         insert(v) { op='insert'; values=v; return q; },
         update(v) { op='update'; values=v; return q; },
         single() { one=true; return q; }, maybeSingle() { one=true; return q; },
         then(done, fail) { return Promise.resolve().then(() => {
+          if (globalThis.__rr.fail === table + ':' + op) return { data:null, error:{code:'XX000',message:'injected database failure'} };
           db[table] ??= [];
           let rows = db[table].filter(r => filters.every(f => f(r))).slice(0,max);
           if (table === 'application_identity_reviews' && role === 'driver') rows=[];
@@ -32,7 +35,7 @@ function client(role = 'service') {
             db[table].push(row); rows=[row];
           }
           if (op === 'update') rows.forEach(r => Object.assign(r,values));
-          return {data:structuredClone(one ? rows[0] ?? null : rows),error:null};
+          return {data:structuredClone(one ? rows[0] ?? null : rows),error:null,count:rows.length};
         }).then(done,fail); }
       }; return q;
     }
@@ -66,6 +69,7 @@ try {
   const reviews=await load('src/lib/identity-review.functions.ts');
   await test('recovery is single-use under concurrent opens; session survives',async()=>{
     const raw=await tokens.issueResumeToken(globalThis.__rr.client,appId,{recovery:true});
+    await assert.rejects(tokens.resolveResumeToken(globalThis.__rr.client,raw));
     const results=await Promise.allSettled([tokens.exchangeResumeToken(globalThis.__rr.client,raw),tokens.exchangeResumeToken(globalThis.__rr.client,raw)]);
     assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
     const session=results.find(r=>r.status==='fulfilled').value;
@@ -91,13 +95,13 @@ try {
     assert.equal(emails.length,0);assert.equal(db.application_identity_reviews.length,1);
     db.applications[0].ai_flags=[];assert.equal(db.application_identity_reviews[0].status,'open');
   });
-  await test('request results are neutral, recent sends throttle, failures are truthful',async()=>{
+  await test('request results stay neutral for provider failures, which are recorded server-side',async()=>{
     const send=email=>applications.requestApplicationLink({data:{email}});
     assert.deepEqual(await send('missing@example.invalid'),{ok:true,retryAfterSeconds:120});
     assert.deepEqual(await send('owner@example.invalid'),{ok:true,retryAfterSeconds:120});
     await send('owner@example.invalid');assert.equal(emails.length,1);
     db.applications[0].resubmission_history=[];globalThis.__rr.send=async()=>({ok:false});
-    assert.deepEqual(await send('owner@example.invalid'),{ok:false,retryAfterSeconds:30});
+    assert.deepEqual(await send('owner@example.invalid'),{ok:true,retryAfterSeconds:120});
     assert.equal(db.applications[0].resubmission_history.at(-1).link_sent,false);
   });
   await test('identity resolution rejects signed-out/driver/coordinator; Manager/Owner audit',async()=>{
@@ -111,5 +115,53 @@ try {
     }
     assert.equal(audits.length,2);
   });
+  await test('recovery bypass rejected by wizard read, write and upload handlers',async()=>{
+    const token=await tokens.issueResumeToken(globalThis.__rr.client,appId,{recovery:true});
+    await assert.rejects(applications.getApplicationForWizard({data:{token}}), /link is no longer valid/);
+    await assert.rejects(applications.updateApplicationStep({data:{token,step:'rental'}}), /link is no longer valid/);
+    await assert.rejects(applications.requestUploadUrl({data:{token,kind:'license',ext:'jpg'}}), /link is no longer valid/);
+    assert.equal(db.application_resume_tokens[0].revoked_at,null);
+  });
+  await test('database errors do not masquerade as successful identity reviews',async()=>{
+    globalThis.__rr.fail='application_identity_reviews:insert';
+    await assert.rejects(applications.savePartialApplication({data:{full_name:'Other Person',phone:'8135551234',email:'other@example.invalid',sms_consent:true,source:'homepage'}}));
+    for (const op of ['read','update']) {
+      db.user_roles=[{user_id:'fixture-user',role:'team'}];
+      globalThis.__rr.fail='application_identity_reviews:'+op;
+      const context={userId:'fixture-user',supabase:globalThis.__rr.client};
+      await assert.rejects(op==='read' ? reviews.listIdentityReviews({data:{applicationId:appId},context}) : reviews.resolveIdentityReview({data:{id:reviewId,resolution:'dismissed',note:'Fixture note'},context}));
+    }
+  });
+  await test('identity list explicitly rejects driver and signed-out callers',async()=>{
+    const data={applicationId:appId};
+    await assert.rejects(reviews.listIdentityReviews({data}));
+    db.user_roles=[{user_id:'fixture-user',role:'driver'}];
+    await assert.rejects(reviews.listIdentityReviews({data,context:{userId:'fixture-user',supabase:globalThis.__rr.client}}));
+  });
+  if (process.argv.includes('--abuse')) {
+    // Desired invariants: these remain release blockers until a durable design
+    // is approved. Never call these passing behavior checks when they fail.
+    const findings = [
+      ['concurrent link requests send at most one email', async () => {
+        await Promise.all(Array.from({length:10}, () => applications.requestApplicationLink({data:{email:'owner@example.invalid'}})));
+        assert.equal(emails.length,1,`concurrent sends: ${emails.length}`);
+      }],
+      ['throttled history churn cannot erase the cooldown', async () => {
+        for(let i=0;i<27;i++) await applications.requestApplicationLink({data:{email:'owner@example.invalid'}});
+        assert.equal(emails.length,1,`sends during cooldown: ${emails.length}`);
+      }],
+      ['provider failure cannot reveal whether an address matched', async () => {
+        globalThis.__rr.send=async()=>({ok:false});
+        const hit=await applications.requestApplicationLink({data:{email:'owner@example.invalid'}});
+        const miss=await applications.requestApplicationLink({data:{email:'missing@example.invalid'}});
+        assert.deepEqual(hit,miss);
+      }],
+    ];
+    for(const [name,fn] of findings) {
+      reset();
+      try { await fn();console.log('PASS',name); }
+      catch(error) { process.exitCode=1;console.error('BLOCKER',name, error.message); }
+    }
+  }
   console.log(`${passed} offline behavioral scenarios passed. RLS enforcement requires a separate isolated database test.`);
 } finally { rmSync(dir,{recursive:true,force:true});delete globalThis.__rr; }

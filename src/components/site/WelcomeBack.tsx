@@ -76,8 +76,8 @@ export function WelcomeBack({
       )}
       {state === "requested" && (
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
-          If that email matches an application, a secure link is on its way (or was sent recently). It works once and
-          expires in 30 minutes. Please check your inbox, Spam or Promotions folder.
+          Your request was received. If the email matches an application and a link can be sent, it will arrive in
+          your inbox. Check Spam or Promotions too. If nothing arrives, retry when the button is ready or contact us.
         </p>
       )}
       {state === "review" && (

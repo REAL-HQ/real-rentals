@@ -170,13 +170,18 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
 
   const { data: row } = await admin
     .from("application_resume_tokens")
-    .select("id,application_id,expires_at,revoked_at")
+    .select("id,application_id,created_at,expires_at,revoked_at")
     .eq("token_hash", await hashResumeToken(raw))
     .maybeSingle();
 
   if (!row) throw new Error(generic);
   if (row.revoked_at) throw new Error(generic);
-  if (new Date(row.expires_at as string).getTime() < Date.now()) throw new Error(generic);
+  const expires = new Date(row.expires_at as string).getTime();
+  const created = new Date(row.created_at as string).getTime();
+  if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now()) throw new Error(generic);
+  // Recovery credentials must be consumed by exchangeResumeToken before any
+  // applicant read/write/upload handler can use them as a session credential.
+  if (expires - created <= RECOVERY_MAX_MS) throw new Error(generic);
 
   // Best-effort; a failed timestamp must not deny a valid applicant.
   await admin
@@ -204,8 +209,9 @@ export async function exchangeResumeToken(admin: AdminClient, raw: string): Prom
     .maybeSingle();
   if (!row || row.revoked_at) throw new Error(generic);
   const exp = new Date(row.expires_at as string).getTime();
-  if (exp < Date.now()) throw new Error(generic);
-  const isRecovery = exp - new Date(row.created_at as string).getTime() <= RECOVERY_MAX_MS;
+  const created = new Date(row.created_at as string).getTime();
+  if (!Number.isFinite(exp) || !Number.isFinite(created) || exp <= Date.now()) throw new Error(generic);
+  const isRecovery = exp - created <= RECOVERY_MAX_MS;
   if (!isRecovery) return raw;
   const now = new Date().toISOString();
   const { data: claimed } = await admin
@@ -213,6 +219,7 @@ export async function exchangeResumeToken(admin: AdminClient, raw: string): Prom
     .update({ revoked_at: now, last_used_at: now })
     .eq("id", row.id)
     .is("revoked_at", null)
+    .gt("expires_at", now)
     .select("id");
   if (!claimed || claimed.length === 0) throw new Error(generic);
   return issueResumeToken(admin, row.application_id as string);
