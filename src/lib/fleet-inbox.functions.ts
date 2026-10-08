@@ -148,6 +148,17 @@ export const classifyInboxItem = createServerFn({ method: "POST" })
     if (!item) return { ok: false as const, error: "File is busy." };
     if (item.document_id) await sb.from("documents").update({ kind: data.docClass, category: data.docClass }).eq("id", item.document_id);
     const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+    const { isFinancialClass } = await import("@/lib/financial-docs");
+    if (isFinancialClass(data.docClass)) {
+      // Payments / receipts: review only, never an expense or vehicle change.
+      const { readFinancialItem, buildFinancialReview } = await import("@/lib/financial-ingest.server");
+      if (!(item.extraction as any)?.financial) await readFinancialItem(sb, data.itemId);
+      await buildFinancialReview(sb, data.itemId);
+      await sb.from("fleet_import_proposals").update({ status: "superseded" }).eq("item_id", data.itemId).in("status", ["pending", "failed"]);
+      if (item.status !== "duplicate") await sb.from("fleet_import_items").update({ status: "needs_attention" }).eq("id", data.itemId);
+      await refreshBatchStatus(item.batch_id);
+      return { ok: true as const };
+    }
     if (isServiceClass(data.docClass)) {
       if (!(item.extraction as any)?.service) await readServiceItem(sb, data.itemId);
       await rebuildServiceTransactions(sb, item.batch_id);
