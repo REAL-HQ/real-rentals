@@ -91,7 +91,7 @@ export const scanVehicleTitle = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<TitleScanResult> => {
-    await requireManager(context.userId);
+    const actor = await requireManager(context.userId);
 
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) {
@@ -209,6 +209,8 @@ export const scanVehicleTitle = createServerFn({ method: "POST" })
       ? parsed.documentType
       : "other";
 
+    // Ownership / lien details are Owner only.
+    if (actor.tier !== "owner") { delete fields.legal_owner; delete fields.lienholder; }
     // Deliberately no write of any kind. The operator confirms every field.
     return { ok: true, documentType, fields, vinCheck, warnings };
   });

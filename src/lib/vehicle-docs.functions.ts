@@ -68,7 +68,10 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
     today.setHours(0, 0, 0, 0);
 
     const out: VehicleDoc[] = [];
+    const { isFinanceKind } = await import("@/lib/vehicle-doc-presence");
     for (const r of (rows ?? []) as any[]) {
+      // Purchase, loan, payoff and lien paperwork is Owner only.
+      if (actor.tier !== "owner" && (isFinanceKind(r.kind) || isFinanceKind(r.category))) continue;
       out.push({
         id: r.id,
         vehicle_id: r.vehicle_id,

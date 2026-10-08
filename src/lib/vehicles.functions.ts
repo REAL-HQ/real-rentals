@@ -355,7 +355,7 @@ export const createVehicle = createServerFn({ method: "POST" })
       // Recorded after the vehicle exists because it is keyed by vehicle_id, and
       // best-effort because a car that is on the lot is a fact whether or not we
       // managed to write down how it is held.
-      if (data.ownership_type) {
+      if (data.ownership_type && actor.tier === "owner") {
         const { error: finErr } = await supabaseAdmin.from("vehicle_finance").upsert(
           {
             vehicle_id: row.id,
@@ -547,7 +547,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     // Canonical document presence: direct + Fleet Inbox links, one physical
     // document counted once. Finance paperwork is hidden from Coordinators.
-    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, isManager);
+    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, actor.tier === "owner");
 
     let driverName: string | null = null;
     if (rental?.application_id) {
@@ -582,7 +582,8 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
       .maybeSingle();
 
     let finance: VehicleProfile["finance"] = null;
-    if (isManager) {
+    // Acquisition, lender, lien and payoff data: Owner only (DB policy matches).
+    if (actor.tier === "owner") {
       const { data: fin } = await supabaseAdmin
         .from("vehicle_finance")
         .select("*")

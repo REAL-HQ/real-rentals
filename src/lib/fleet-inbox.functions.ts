@@ -481,7 +481,7 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
     // Same canonical loader as the vehicle profile; finance paperwork is
     // withheld from Coordinators here, not merely hidden in the UI.
     const { loadVehicleDocPresence } = await import("@/lib/vehicle-doc-presence.server");
-    const pres = await loadVehicleDocPresence(sb, data.vehicleId, isManager);
+    const pres = await loadVehicleDocPresence(sb, data.vehicleId, actor.tier === "owner");
     if (!pres.linked.length) return [];
     const ids = pres.linked.map((d) => d.id);
     const [{ data: docs }, { data: links }] = await Promise.all([
