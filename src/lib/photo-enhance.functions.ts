@@ -10,6 +10,10 @@ import { logAudit } from "@/lib/audit";
 // No paid provider is called anywhere in this path, so cost is always 0.
 
 export const ENHANCE_MODES = ["enhanced", "studio"] as const;
+/** Studio is deferred (exceeds browser memory); the server refuses it too. */
+const STUDIO_ENABLED = false;
+/** A started attempt holds a daily slot only while it can still finish. */
+const IN_FLIGHT_MINUTES = 10;
 
 function dayStartUtc() {
   const d = new Date();
@@ -23,7 +27,13 @@ function monthStartUtc() {
 
 async function usage(admin: any) {
   const [{ count: today }, { data: month }] = await Promise.all([
-    admin.from("photo_enhance_events").select("id", { count: "exact", head: true }).neq("status", "failed").gte("created_at", dayStartUtc()),
+    admin
+      .from("photo_enhance_events")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", dayStartUtc())
+      // Count finished results plus attempts still running; failed and abandoned
+      // (closed tab, crash) attempts never use up the day's limit.
+      .or(`status.eq.succeeded,and(status.eq.started,created_at.gte.${new Date(Date.now() - IN_FLIGHT_MINUTES * 60_000).toISOString()})`),
     admin.from("photo_enhance_events").select("cost_cents").gte("created_at", monthStartUtc()),
   ]);
   const monthCents = ((month as any[]) ?? []).reduce((s, r) => s + (r.cost_cents ?? 0), 0);
@@ -86,6 +96,7 @@ export const startPhotoEnhance = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ mediaId: z.string().uuid(), mode: z.enum(ENHANCE_MODES) }).parse(d))
   .handler(async ({ data, context }): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> => {
     const actor = await requireManager(context.userId);
+    if (data.mode === "studio" && !STUDIO_ENABLED) return { ok: false, error: "Studio is not available yet. Use Enhanced." };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const s = await loadSettings(supabaseAdmin);
     if (!s.enabled) return { ok: false, error: "Photo Enhancement is switched off. An Owner can turn it on in Settings → Photo Enhancement." };
