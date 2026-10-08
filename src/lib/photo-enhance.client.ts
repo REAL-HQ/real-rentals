@@ -9,7 +9,7 @@ export function localProcessingBlocker(mode: EnhanceMode): string | null {
   if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined")
     return "This browser can't process photos on the device. Try a current version of Chrome, Edge or Safari on a computer.";
   if (mode === "studio") {
-    if (typeof WebAssembly === "undefined") return "This browser can't run the cut-out model. Use a computer with a current browser.";
+    if (!(navigator as any).gpu) return "Studio backgrounds need a device with graphics acceleration (current Chrome, Edge or Safari on a computer). This device can still use Enhanced.";
     const mem = (navigator as any).deviceMemory as number | undefined;
     if (mem !== undefined && mem < 2) return "This device doesn't have enough memory for Studio backgrounds. Use a computer, or choose Enhanced.";
   }

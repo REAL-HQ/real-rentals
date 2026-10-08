@@ -27,12 +27,10 @@ async function loadModel(id: number) {
       const progress_callback = (p: any) => {
         if (p.status === "progress" && p.file?.endsWith(".onnx")) post({ id, type: "progress", stage: "Downloading model (one time)", pct: Math.round(p.progress) });
       };
-      let model;
-      try {
-        model = await t.AutoModel.from_pretrained(MODEL_ID, { device: hasGpu ? "webgpu" : "wasm", dtype: "fp16", progress_callback, session_options: { enableCpuMemArena: false, enableMemPattern: false } } as any);
-      } catch {
-        model = await t.AutoModel.from_pretrained(MODEL_ID, { device: "wasm", dtype: "fp16", progress_callback, session_options: { enableCpuMemArena: false, enableMemPattern: false } } as any);
-      }
+      // The cut-out model needs more memory than the browser's CPU engine allows
+      // at full resolution, so Studio runs only where the graphics engine is available.
+      if (!hasGpu) throw new Error("NO_WEBGPU");
+      const model = await t.AutoModel.from_pretrained(MODEL_ID, { device: "webgpu", dtype: "fp32", progress_callback } as any);
       return { model, RawImage: t.RawImage, Tensor: t.Tensor, size: 1024 };
     })().catch((e) => {
       modelPromise = null;
@@ -229,7 +227,9 @@ self.onmessage = async (e: MessageEvent<Req>) => {
     post({ id, type: "done", jpeg, flags, ms: Math.round(performance.now() - t0) }, [jpeg]);
   } catch (err: any) {
     const raw = String(err?.message ?? err);
-    const error = /memory|allocation|OOM/i.test(raw)
+    const error = raw.includes("NO_WEBGPU")
+      ? "Studio backgrounds need a device with graphics acceleration (current Chrome, Edge or Safari on a computer). This device can still use Enhanced."
+      : /memory|allocation|OOM/i.test(raw)
       ? "This device ran out of memory processing the photo. Try a computer, or choose Enhanced."
       : /fetch|network|Failed to load/i.test(raw)
         ? "Couldn't download the free cut-out model. Check the connection and Retry."
