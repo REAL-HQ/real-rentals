@@ -48,6 +48,8 @@ const dupSoft = reviewFinancial({ itemId: "a", fin: payNoRef }, { ...empty, othe
 ok(dupSoft.duplicates[0]?.strength === "possible", "same amount/vendor/date possible");
 ok(dupSoft.uncertainties.some((u) => u.includes("duplicate")), "duplicate flagged as uncertainty");
 
+ok(reviewFinancial({ itemId: "a", fin: { ...pay, reference: F("ZL-8842I"), date: F("2026-10-09") } }, { ...empty, others: [other("b", pay)] }).duplicates[0]?.kind === "same_reference", "OCR look-alike reference still a duplicate");
+
 // Payment corresponds to an existing service invoice (multi-page invoice grouped elsewhere)
 const tx = { id: "t1", batch_id: "b", status: "pending", vendor: "Elder Ford", invoiceNumber: "R12345", total: 1334.26, date: "2026-09-30", vehicleId: "v1" };
 const rTx = reviewFinancial({ itemId: "a", fin: payNoRef }, { ...empty, serviceTxs: [tx] });

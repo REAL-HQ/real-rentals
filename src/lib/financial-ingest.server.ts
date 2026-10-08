@@ -1,6 +1,6 @@
 // Server-only: financial-document reading and review building for Fleet Inbox
 // (Step B). Proposals only — never writes expenses, vehicle finance records or vehicles.
-import { cleanFinancialExtraction, reviewFinancial, type FinancialExtraction, type OtherFinDoc } from "@/lib/financial-docs";
+import { FINANCIAL_CLASSES, cleanFinancialExtraction, reviewFinancial, type FinancialExtraction, type OtherFinDoc } from "@/lib/financial-docs";
 
 const BUCKET = "vehicle-docs";
 
@@ -59,8 +59,8 @@ export async function buildFinancialReview(sb: any, itemId: string) {
   if (!fin) return null;
   const { data: otherRows } = await sb.from("fleet_import_items")
     .select("id,batch_id,file_name,document_id,content_sha256,extraction").neq("id", itemId)
-    .not("extraction->financial", "is", null).order("created_at", { ascending: false }).limit(500);
-  const others: OtherFinDoc[] = (otherRows ?? []).map((o: any) => ({ itemId: o.id, batchId: o.batch_id, fileName: o.file_name, documentId: o.document_id, contentSha256: o.content_sha256, fin: o.extraction.financial }));
+    .in("doc_class", [...FINANCIAL_CLASSES]).order("created_at", { ascending: false }).limit(500);
+  const others: OtherFinDoc[] = (otherRows ?? []).filter((o: any) => o.extraction?.financial).map((o: any) => ({ itemId: o.id, batchId: o.batch_id, fileName: o.file_name, documentId: o.document_id, contentSha256: o.content_sha256, fin: o.extraction.financial }));
   const { data: expenses } = await sb.from("vehicle_expenses").select("id,vehicle_id,amount,incurred_on,reference,description,category").order("incurred_on", { ascending: false }).limit(2000);
   const { data: txs } = await sb.from("fleet_service_transactions").select("id,batch_id,status,operational,financial,match_vehicle_id,applied_vehicle_id").neq("status", "superseded").limit(1000);
   const serviceTxs = (txs ?? []).map((t: any) => ({

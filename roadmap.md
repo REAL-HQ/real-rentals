@@ -45,5 +45,7 @@
 - [ ] Step E — actionable de-duplicated notifications
 - [ ] Step F — policy engine (Auto-File first; financial posting off)
 - [ ] Step G — validation suite incl. 1,000-vehicle simulation
-- [x] Step B (preview): financial document recognition, duplicate/correspondence detection, ambiguous vehicle suggestions, Review section — unpublished, awaiting approval
+- [x] Step B: financial document recognition, duplicate/correspondence detection, ambiguous vehicle suggestions, Review section — published Oct 8 2026
 - [ ] Steps C–G: not authorized
+- [ ] Next (planned, not authorized): Owner-only protection for lender payments, acquisition financing, ownership and other sensitive finance
+- [ ] Next (planned, not authorized): permanent financial transaction ↔ document link table
