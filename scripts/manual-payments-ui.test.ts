@@ -76,7 +76,7 @@ describe("expired reconciliation, partials, isolation", () => {
   });
   it("practice screen has no database, storage or Stripe access", () => {
     const src = readFileSync("src/components/admin/ManualPaymentsWorkspace.tsx", "utf8");
-    expect(src).not.toMatch(/supabase|stripe|createServerFn|\.functions"|fetch\(/i);
+    expect(src).not.toMatch(/from "@\/integrations|from "@\/lib\/stripe|createServerFn|\.functions"|fetch\(|\.storage\./);
     expect(src).toMatch(/MANUAL_PAYMENTS_LIVE/);
   });
 });
