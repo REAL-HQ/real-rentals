@@ -92,7 +92,7 @@ CREATE FUNCTION public.collection_record(_payment_id uuid, _method text, _amount
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE c public.payments%ROWTYPE; v_id uuid; v_open numeric; v_pending numeric; v_ref text;
 BEGIN
-  IF auth.uid() IS NULL OR NOT (private.is_manager() OR public.has_role(auth.uid(),'coordinator')) THEN
+  IF auth.uid() IS NULL OR NOT (private.is_manager() OR EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'coordinator')) THEN
     RAISE EXCEPTION 'Not allowed to record payments' USING ERRCODE = '42501'; END IF;
   IF coalesce(btrim(_idem),'') = '' THEN RAISE EXCEPTION 'Missing submission key'; END IF;
   SELECT id INTO v_id FROM public.payment_collections WHERE idempotency_key = _idem;
