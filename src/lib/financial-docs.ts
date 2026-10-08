@@ -76,6 +76,8 @@ export function moneyOf(f?: FinField | string | number | null): number | null {
   return Number.isFinite(n) && String(raw).match(/\d/) ? Math.round(n * 100) / 100 : null;
 }
 const norm = (x?: string | null) => (x ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+/** References compared with look-alike characters folded (OCR reads B/8, O/0, I/1, S/5 interchangeably). */
+const normRef = (x?: string | null) => norm(x).replace(/o/g, "0").replace(/[il]/g, "1").replace(/b/g, "8").replace(/s/g, "5").replace(/z/g, "2");
 const dayDiff = (a?: string | null, b?: string | null) => {
   const ta = a ? Date.parse(a) : NaN, tb = b ? Date.parse(b) : NaN;
   return Number.isFinite(ta) && Number.isFinite(tb) ? Math.abs(ta - tb) / 86_400_000 : null;
@@ -145,7 +147,7 @@ export function reviewFinancial(
   const amt = moneyOf(f.amount);
   const date = f.date?.value ?? null;
   const party = f.vendor?.value || f.payee?.value || null;
-  const ref = norm(f.reference?.value) || null;
+  const ref = normRef(f.reference?.value) || null;
   const inv = norm(f.invoiceNumber?.value) || null;
   const duplicates: DuplicateHit[] = [];
   const correspondences: Correspondence[] = [];
@@ -161,7 +163,7 @@ export function reviewFinancial(
       duplicates.push({ kind: "same_file", strength: "certain", target: { type: "fleet_document", id: o.itemId, label }, reason: "Identical file already received." });
       related.add(o.itemId); continue;
     }
-    const sameRef = (ref && ref.length >= 4 && ref === norm(of.reference?.value)) || (inv && inv.length >= 3 && inv === norm(of.invoiceNumber?.value) && f.event === of.event);
+    const sameRef = (ref && ref.length >= 4 && ref === normRef(of.reference?.value)) || (inv && inv.length >= 3 && inv === norm(of.invoiceNumber?.value) && f.event === of.event);
     if (sameRef && (amt == null || oa == null || amt === oa)) {
       duplicates.push({ kind: "same_reference", strength: "likely", target: { type: "fleet_document", id: o.itemId, label }, reason: "Same transaction or invoice reference and amount." });
       related.add(o.itemId); continue;
@@ -187,7 +189,7 @@ export function reviewFinancial(
   for (const e of ctx.expenses) {
     const ea = e.amount == null ? null : Math.round(Number(e.amount) * 100) / 100;
     const label = `Expense ${e.incurred_on ?? ""} ${e.description ?? ""}`.trim();
-    if (ref && ref.length >= 4 && norm(e.reference) === ref) {
+    if (ref && ref.length >= 4 && normRef(e.reference) === ref) {
       duplicates.push({ kind: "same_reference", strength: "likely", target: { type: "expense", id: e.id, label }, reason: "An expense with this reference is already recorded." });
       continue;
     }
