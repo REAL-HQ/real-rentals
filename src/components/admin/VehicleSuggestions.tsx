@@ -80,7 +80,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
                 <div className="min-w-0 flex-1 text-[12px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-[#111114]">{s.label.replace(/\b\w/g, (c) => c.toUpperCase())}</span>
-                    <span className="font-mono text-[#111114]">{s.proposed}</span>
+                    <span className={s.field === "body_type" ? "text-[#111114]" : "font-mono text-[#111114]"}>{s.field === "body_type" ? titleCase(s.proposed) : s.proposed}</span>
                     <span className="rounded-full bg-[#F2F2F4] px-2 py-0.5 text-[10px]">{titleCase(s.confidence)} Confidence</span>
                     {!s.safe && <span className="rounded-full bg-[#FFF4E5] px-2 py-0.5 text-[10px] text-[#8A4B00]">Confirm Individually</span>}
                   </div>
