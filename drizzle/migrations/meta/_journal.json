@@ -99,6 +99,13 @@
       "when": 1791471257211,
       "tag": "0013_vehicle_docs_finance_owner_only_writes",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791473301327,
+      "tag": "0014_waitlist_holds_and_safe_promotion",
+      "breakpoints": true
     }
   ]
 }

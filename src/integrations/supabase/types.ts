@@ -313,6 +313,41 @@ export type Database = {
           },
         ]
       }
+      application_waitlist_holds: {
+        Row: {
+          added_at: string
+          added_by: string
+          application_id: string
+          id: string
+          removed_at: string | null
+          removed_by: string | null
+        }
+        Insert: {
+          added_at?: string
+          added_by: string
+          application_id: string
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          application_id?: string
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_waitlist_holds_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           address: string | null
@@ -424,6 +459,8 @@ export type Database = {
           utm_term: string | null
           vehicle_id: string | null
           vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
           weekly_hours: number | null
           weekly_rent: number | null
           years_licensed: number | null
@@ -539,6 +576,8 @@ export type Database = {
           utm_term?: string | null
           vehicle_id?: string | null
           vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null
@@ -654,6 +693,8 @@ export type Database = {
           utm_term?: string | null
           vehicle_id?: string | null
           vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null
@@ -5824,6 +5865,7 @@ export type Database = {
       fleet_inbox_wake: { Args: never; Returns: undefined }
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
+      promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
