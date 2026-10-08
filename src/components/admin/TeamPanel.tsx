@@ -155,7 +155,7 @@ export function TeamPanel() {
                               title={
                                 m.role === "admin" && owners <= 1
                                   ? "This is the only Owner — promote somebody else first"
-                                  : "Remove access"
+                                  : "Remove Access"
                               }
                               className="text-muted-foreground hover:text-[#D03020] disabled:opacity-30"
                               disabled={m.role === "admin" && owners <= 1}

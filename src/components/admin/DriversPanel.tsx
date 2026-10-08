@@ -2980,10 +2980,10 @@ function RequestDocumentsAction({
         disabled={!driver.email || (sentAt !== null && !canResend)}
         title={
           !driver.email
-            ? "No email on file"
+            ? "No Email on File"
             : sentAt && !canResend
               ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
-              : "Request missing documents"
+              : "Request Missing Documents"
         }
         className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
