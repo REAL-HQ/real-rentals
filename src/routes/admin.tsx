@@ -221,7 +221,7 @@ function Admin() {
     if (main) mo.observe(main, { childList: true, subtree: true });
     window.addEventListener("resize", set);
     return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener("resize", set); };
-  }, []);
+  });
   const [notifs, setNotifs] = useState<
     Array<{
       id: string;
@@ -516,7 +516,7 @@ function Admin() {
           {/* Locked while scrolling: top bar, page title, section tabs. Its
               height is published as --admin-sticky-h so panel filter rows
               can lock directly underneath. */}
-          <div ref={stickyRef} className="md:sticky md:top-0 z-20 bg-[#FAFAFB]">
+          <div ref={stickyRef} className="max-md:contents md:sticky md:top-0 z-20 bg-[#FAFAFB]">
           <header className="sticky top-0 z-20 md:static bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
