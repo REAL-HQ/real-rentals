@@ -1824,7 +1824,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <AgreementsCard applicationId={driver.id} />
+                <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
