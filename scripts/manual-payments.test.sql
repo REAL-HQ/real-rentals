@@ -244,7 +244,7 @@ $ddl$;
   INSERT INTO payments(driver_id,amount,balance_due,status,type,due_date) VALUES (a,350,350,'unpaid','rent',current_date) RETURNING id INTO ch;
   INSERT INTO payments(driver_id,amount,balance_due,status,type) VALUES (a,500,500,'unpaid','deposit') RETURNING id INTO dep;
   INSERT INTO payments(driver_id,amount,balance_due,status,type,stripe_payment_intent_id) VALUES (a,100,100,'pending','fee','pi_test') RETURNING id INTO ch2;
-  INSERT INTO documents(application_id, file_name, storage_path, category) VALUES (a,'r.png','zz/r.png','other') RETURNING id INTO doc;
+  INSERT INTO documents(kind, storage_bucket, storage_path, evidence_class) VALUES ('payment_receipt','documents','zz/r.png','financial') RETURNING id INTO doc;
   INSERT INTO user_roles(user_id,role) VALUES (mgr2,'team');
 
   -- Evidence rules per method (as Manager)
