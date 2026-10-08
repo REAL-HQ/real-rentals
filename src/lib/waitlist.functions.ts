@@ -319,7 +319,8 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ entryId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const actor = await requireStaff(context.userId);
+    // Owner + Manager only — Coordinators may view the waitlist but not promote.
+    const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // One atomic database call: locks the entry, reuses an existing applicant

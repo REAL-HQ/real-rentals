@@ -8,3 +8,6 @@
 - [x] Email repairs: plain-text alternative, identity/reason footer, calmer recovery + payment-failed wording (preview)
 - [ ] Email: one controlled test send per changed template to owner Gmail + Outlook (needs user go-ahead and inbox check)
 - [ ] Email: business postal address (waiting on user)
+
+- [ ] Waitlist acceptance check: automated Coordinator denial test (add/remove/promote), reconcile application/Waitlist counts incl. Dustin Arango. No historical changes, unpublished.
+- [ ] Owner driver deletion (approved plan, archived in .lovable/plan/) — migration pending.
