@@ -22,6 +22,13 @@
       "when": 1791430766220,
       "tag": "0002_owner_only_acquisition_finance",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791431279577,
+      "tag": "0003_title_originals_owner_only",
+      "breakpoints": true
     }
   ]
 }
