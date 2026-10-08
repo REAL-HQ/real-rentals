@@ -43,6 +43,16 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
   const info = (id: string) => { if (id === "sample") return { driver: "Sample Driver (Practice)", purpose: "Rent" }; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return { driver: d?.full_name ?? "Driver", purpose: String((p as any)?.type ?? "charge").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) }; };
   const label = (id: string) => { if (id === "sample") return "Sample Charge (Practice) · Rent · $350"; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return `${d?.full_name ?? "Driver"} · ${String((p as any)?.type ?? "charge").replace(/_/g, " ")} · due ${fmtDate((p as any)?.due_date)}`; };
 
+  const [review, setReview] = useState<string | null>(null);
+  const evidence = (c: Collection) => (c.hasReceipt ? "Receipt" : c.method === "cash" ? `Cash Note · ${c.cashRecipient}` : "Reference Only");
+  // One action set shared by the desktop row and the mobile Review sheet (same rules, same dialogs).
+  const actions = (c: Collection) => (<>
+                  {c.status === "pending" && canDecide(role) && <><Btn onClick={() => setDlg({ kind: "verify", id: c.id })}>Verify</Btn><Btn onClick={() => setDlg({ kind: "reject", id: c.id })}>Reject</Btn></>}
+                  {c.status === "verified" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reverse", id: c.id })}>Reverse</Btn>}
+                  {c.status === "pending" && role === "owner" && <Btn onClick={() => setDlg({ kind: "extend", id: c.id })}>Extend</Btn>}
+                  {c.status === "pending" && !MANUAL_PAYMENTS_LIVE && <Btn onClick={() => setColls((cs) => sweepExpired(cs.map((x) => x.id === c.id ? { ...x, expiresAt: new Date(Date.now() - 1000).toISOString() } : x), new Date()))}>Fast Expire</Btn>}
+                  {c.status === "expired" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reconcile", id: c.id })}>Reconcile</Btn>}
+  </>);
   const pending = colls.filter((c) => c.status === "pending");
   const switchRole = (r: Role) => { setRole(r); setActor(ACTORS[r]); };
   const patch = (id: string, f: (c: Collection) => Collection) => setColls((cs) => cs.map((c) => (c.id === id ? f(c) : c)));
@@ -84,7 +94,28 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
               </tr>); })}
           </Table>
         )}
-        {(tab === "pending" || tab === "history") && (
+        {(tab === "pending" || tab === "history") && (() => { const list = tab === "pending" ? pending : colls; return (<>
+          <div className="space-y-3 sm:hidden">
+            {list.length === 0 && <p className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">{tab === "pending" ? "Nothing waiting for verification." : "No payments recorded yet."}</p>}
+            {list.map((c) => (
+              <article key={c.id} className="rounded-xl border border-border bg-card p-4 text-sm">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                  <div className="min-w-0"><div className="truncate font-semibold">{info(c.chargeId).driver}</div>
+                    <div className="text-muted-foreground">{METHOD_LABEL[c.method]} · {info(c.chargeId).purpose}</div></div>
+                  <div className="shrink-0 text-lg font-semibold">${c.amount.toFixed(2)}</div>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <dt className="text-muted-foreground">Status</dt><dd className={c.status === "expired" ? "font-medium text-amber-700" : ""}>{STATUS_LABEL[c.status]}</dd>
+                  <dt className="text-muted-foreground">Deadline</dt><dd>{c.status === "pending" ? `${fmtDateTime(c.expiresAt)} · ${timeLeft(c.expiresAt, now)}` : "—"}</dd>
+                  <dt className="text-muted-foreground">Recorded By</dt><dd>{c.recordedBy}</dd>
+                  <dt className="text-muted-foreground">Reference</dt><dd className="break-all">{c.reference ?? "—"}</dd>
+                  <dt className="text-muted-foreground">Evidence</dt><dd>{evidence(c)}</dd>
+                </dl>
+                <button onClick={() => setReview(c.id)} className="mt-3 w-full rounded-md bg-primary py-2 font-medium text-primary-foreground">Review</button>
+              </article>
+            ))}
+          </div>
+          <div className="hidden sm:block">
           <Table head={["Driver", "Purpose", "Amount", "Method", "Received", "Reference", "Evidence", "Recorded By", "Deadline", "Time Left", "Status", ""]} empty={tab === "pending" ? "Nothing waiting for verification." : "No payments recorded yet."}>
             {(tab === "pending" ? pending : colls).map((c) => (
               <tr key={c.id} className="border-t border-border align-top">
@@ -92,24 +123,39 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
                 <td className="p-2">{info(c.chargeId).purpose}</td>
                 <td className="p-2">${c.amount.toFixed(2)}</td><td className="p-2">{METHOD_LABEL[c.method]}</td>
                 <td className="p-2">{fmtDate(c.receivedOn)}</td><td className="p-2">{c.reference ?? "—"}</td>
-                <td className="p-2">{c.hasReceipt ? "Receipt" : c.method === "cash" ? `Cash Note · ${c.cashRecipient}` : "Reference Only"}</td>
+                <td className="p-2">{evidence(c)}</td>
                 <td className="p-2">{c.recordedBy}</td>
                 <td className="p-2">{c.status === "pending" ? fmtDateTime(c.expiresAt) : "—"}</td>
                 <td className="p-2">{c.status === "pending" ? timeLeft(c.expiresAt, now) : "—"}</td>
                 <td className="p-2"><span className={c.status === "expired" ? "font-medium text-amber-700" : ""}>{STATUS_LABEL[c.status]}</span></td>
-                <td className="p-2 text-right space-x-1 whitespace-nowrap">
-                  {c.status === "pending" && canDecide(role) && <><Btn onClick={() => setDlg({ kind: "verify", id: c.id })}>Verify</Btn><Btn onClick={() => setDlg({ kind: "reject", id: c.id })}>Reject</Btn></>}
-                  {c.status === "verified" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reverse", id: c.id })}>Reverse</Btn>}
-                  {c.status === "pending" && role === "owner" && <Btn onClick={() => setDlg({ kind: "extend", id: c.id })}>Extend</Btn>}
-                  {c.status === "pending" && !MANUAL_PAYMENTS_LIVE && <Btn onClick={() => setColls((cs) => sweepExpired(cs.map((x) => x.id === c.id ? { ...x, expiresAt: new Date(Date.now() - 1000).toISOString() } : x), new Date()))}>Fast Expire</Btn>}
-                  {c.status === "expired" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reconcile", id: c.id })}>Reconcile</Btn>}
-                </td>
+                <td className="p-2 text-right space-x-1 whitespace-nowrap">{actions(c)}                </td>
               </tr>
             ))}
           </Table>
-        )}
+          </div>
+        </>); })()}
       </ModalBody>
       <ModalFooter><ModalButton onClick={onClose}>Close</ModalButton></ModalFooter>
+
+      {review && !dlg && (() => { const c = colls.find((x) => x.id === review); if (!c) return null; return (
+        <ModalShell onClose={() => setReview(null)} size="md" label="Review Payment" z="z-[55]">
+          <ModalHeader title="Review Payment" subtitle={`${info(c.chargeId).driver} · $${c.amount.toFixed(2)}`} onClose={() => setReview(null)} />
+          <ModalBody>
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Method</dt><dd>{METHOD_LABEL[c.method]}</dd>
+              <dt className="text-muted-foreground">Purpose</dt><dd>{info(c.chargeId).purpose}</dd>
+              <dt className="text-muted-foreground">Received</dt><dd>{fmtDate(c.receivedOn)}</dd>
+              <dt className="text-muted-foreground">Reference</dt><dd className="break-all">{c.reference ?? "—"}</dd>
+              <dt className="text-muted-foreground">Evidence</dt><dd>{evidence(c)}</dd>
+              <dt className="text-muted-foreground">Recorded By</dt><dd>{c.recordedBy}</dd>
+              <dt className="text-muted-foreground">Status</dt><dd>{STATUS_LABEL[c.status]}</dd>
+              <dt className="text-muted-foreground">Deadline</dt><dd>{c.status === "pending" ? `${fmtDateTime(c.expiresAt)} · ${timeLeft(c.expiresAt, now)}` : "—"}</dd>
+            </dl>
+            <History c={c} />
+            <div className="mt-4 flex flex-wrap gap-2">{actions(c)}</div>
+            {!canDecide(role) && <p className="mt-3 text-xs text-muted-foreground">Only a Manager or Owner can decide on payments.</p>}
+          </ModalBody>
+        </ModalShell>); })()}
 
       {dlg?.kind === "record" && chargeMap[dlg.chargeId] && (
         <RecordDialog charge={chargeMap[dlg.chargeId]} title={label(dlg.chargeId)} onClose={() => setDlg(null)} onSubmit={(i) => {
