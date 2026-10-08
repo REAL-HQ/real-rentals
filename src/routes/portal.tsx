@@ -55,6 +55,9 @@ import {
   XCircle,
   RefreshCw,
 } from "lucide-react";
+import { tierFromRoles, type StaffTier } from "@/lib/roles";
+import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
+import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/portal")({
@@ -98,6 +101,8 @@ function Portal() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
   const [isDriver, setIsDriver] = useState(false);
+  const [staffTier, setStaffTier] = useState<StaffTier | null>(null);
+  const wantsPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "1";
   const [tab, setTab] = useState<Tab>("dashboard");
 
   useEffect(() => {
@@ -118,9 +123,11 @@ function Portal() {
       .from("user_roles")
       .select("role")
       .eq("user_id", session.user.id)
-      .eq("role", "driver")
-      .maybeSingle()
-      .then(({ data }) => setIsDriver(!!data));
+      .then(({ data }) => {
+        const roles = ((data ?? []) as any[]).map((r) => String(r.role));
+        setIsDriver(roles.includes("driver"));
+        setStaffTier(tierFromRoles(roles));
+      });
   }, [session]);
 
   // Shares PortalBody's query key, so this costs no extra request — it only
@@ -169,6 +176,9 @@ function Portal() {
         </div>
       </div>
     );
+  }
+  if (!isDriver && wantsPreview && availableExperiences(staffTier, false).includes("driver")) {
+    return <DriverPreview tier={staffTier} />;
   }
   if (!isDriver) {
     return (
@@ -1919,6 +1929,55 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Driver Preview for Owners/Managers. Shows the real portal navigation with no
+ * driver data: staff accounts have no driver record, and this view never reads
+ * another driver's data (no impersonation, no new access path).
+ */
+function DriverPreview({ tier }: { tier: StaffTier | null }) {
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const options = availableExperiences(tier, false);
+  const current = TABS.find((t) => t.id === tab)!;
+  function choose(e: Experience) {
+    storeExperience(e);
+    if (e !== "driver") window.location.assign("/admin");
+  }
+  const nav = (onPick?: () => void) => TABS.map((t) => {
+    const Icon = t.icon;
+    const active = tab === t.id;
+    return (
+      <button key={t.id} type="button" onClick={() => { setTab(t.id); onPick?.(); }}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"}`}>
+        <Icon className="w-4 h-4" /> {t.label}
+      </button>
+    );
+  });
+  return (
+    <div className="min-h-screen flex bg-white">
+      <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
+        <div className="px-4 py-3 flex items-center justify-center"><Logo offset={false} /></div>
+        <ExperienceSwitcher value="driver" options={options} onChange={choose} />
+        <nav className="flex-1 px-3 space-y-1">{nav()}</nav>
+      </aside>
+      <main className="flex-1 min-w-0">
+        <div className="md:hidden bg-[#0b0b0d] pt-3">
+          <ExperienceSwitcher value="driver" options={options} onChange={choose} />
+          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">{nav()}</div>
+        </div>
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          Driver Preview — This Is The Driver Portal Layout. No Driver Data Is Loaded, And Your Permissions Are Unchanged.
+        </div>
+        <div className="p-6 md:p-10 max-w-3xl">
+          <h1 className="text-2xl font-semibold">{current.label}</h1>
+          <div className="mt-6 rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            A driver sees their own {current.label.toLowerCase()} information here.
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
