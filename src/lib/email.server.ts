@@ -22,9 +22,10 @@ type SendArgs = {
    * it the send is untracked and "accepted" is all anyone will ever know.
    */
   track?: { workflow: string };
+  idempotencyKey?: string;
 };
 
-export type SendResult = { ok: boolean; error?: string; id?: string; deliveryId?: string };
+export type SendResult = { uncertain?: boolean; ok: boolean; error?: string; id?: string; deliveryId?: string };
 
 /**
  * Record one send attempt in email_deliveries. Never throws, never delays the
@@ -83,7 +84,7 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -111,6 +112,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify({
         from: from ?? EMAIL_FROM,
@@ -123,13 +125,13 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     if (!res.ok) {
       const body = await res.text();
       console.error(`[email] Resend send failed [${res.status}]`, body, { subject });
-      return done({ ok: false, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` });
+      return done({ ok: false, uncertain: res.status >= 500 || res.status === 409, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` });
     }
     const json = (await res.json().catch(() => ({}))) as { id?: string };
     return done({ ok: true, id: json.id });
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
-    return done({ ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." });
+    return done({ ok: false, uncertain: true, error: err instanceof Error ? err.message : "Could not reach Resend." });
   }
 }
 
@@ -334,12 +336,13 @@ export async function sendApplicationResumeEmail(args: {
   to: string;
   firstName: string | null;
   applicationId: string;
-}): Promise<{ ok: boolean; error?: string }> {
+  token: string;
+  attemptId: string;
+}): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   // Short-lived, single-use recovery link (see resume-tokens.server.ts).
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
-  const resumeUrl = buildUrl(await issueResumeToken(supabaseAdmin, args.applicationId, { recovery: true }));
+  const { resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  const resumeUrl = buildUrl(args.token);
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application, ${escapeHtml(name)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Here's your secure link to pick up exactly where you left off. Your answers and documents are saved. For your security the link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
@@ -352,8 +355,9 @@ export async function sendApplicationResumeEmail(args: {
     html,
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "application_resume" },
+    idempotencyKey: `application-resume/${args.attemptId}`,
   });
-  return { ok: !!(sent as any)?.ok, error: (sent as any)?.error };
+  return sent;
 }
 
 type RecoveryArgs = {

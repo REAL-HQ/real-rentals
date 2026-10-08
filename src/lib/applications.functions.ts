@@ -142,22 +142,10 @@ const stepUpdateSchema = z.object({
 
 // Returning applicants. The link always goes to the address already on file,
 // never to whoever typed the form, and is a short-lived single-use recovery
-// link. Rate limit per application, tracked in resubmission_history: one send
-// per LINK_RETRY_SECONDS and at most LINK_DAILY_MAX per 24h. Only sends the
-// email provider actually accepted are recorded as sent.
+// link. Atomic database reservations enforce one attempt per 120 seconds and
+// at most six per 24h, including failed or uncertain provider attempts.
 export const LINK_RETRY_SECONDS = 120;
 const LINK_DAILY_MAX = 6;
-type LinkOutcome = "sent" | "recent" | "failed";
-/** Seconds until another send is allowed (0 = allowed now). */
-function linkWaitSeconds(history: unknown[]): number {
-  const now = Date.now();
-  const sends = history.filter((h: any) => h?.link_sent).map((h: any) => new Date(h.at).getTime()).filter(Number.isFinite);
-  const last = Math.max(0, ...sends);
-  const short = Math.ceil((last + LINK_RETRY_SECONDS * 1000 - now) / 1000);
-  const day = sends.filter((t) => t > now - 86400_000).sort((a, b) => a - b);
-  const daily = day.length >= LINK_DAILY_MAX ? Math.ceil((day[day.length - LINK_DAILY_MAX] + 86400_000 - now) / 1000) : 0;
-  return Math.max(0, short, daily);
-}
 /** Keep successful-send evidence even when anonymous retries fill the history. */
 function boundedRecoveryHistory(history: unknown[]): unknown[] {
   const sent = history.filter((entry) =>
@@ -166,47 +154,24 @@ function boundedRecoveryHistory(history: unknown[]): unknown[] {
   const other = history.filter((entry) => !sent.includes(entry)).slice(-(25 - sent.length));
   return [...sent, ...other];
 }
-async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string): Promise<boolean> {
-  try {
-    const { data: onFile } = await supabaseAdmin
-      .from("applications")
-      .select("email, full_name")
-      .eq("id", applicationId)
-      .maybeSingle();
-    if (!onFile?.email) return false;
-    const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
-    if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
-    return r.ok;
-  } catch (e) {
-    console.error("[resume-link] send failed", applicationId, e);
-    return false;
-  }
-}
-/** Append a history entry, send if not throttled, record the true outcome. */
+/** History is display metadata; the database reservation owns the rate limit. */
 async function sendRecoveryLink(
   supabaseAdmin: any,
   primaryId: string,
   entry: Record<string, unknown>,
   extra: Record<string, unknown> = {},
-): Promise<{ outcome: LinkOutcome; wait: number }> {
-  const { data: row } = await supabaseAdmin
-    .from("applications")
-    .select("resubmission_history, purged_at")
-    .eq("id", primaryId)
-    .maybeSingle();
-  if (!row || row.purged_at) return { outcome: "recent", wait: LINK_RETRY_SECONDS };
-  const history = Array.isArray(row.resubmission_history) ? (row.resubmission_history as unknown[]) : [];
-  const pending = linkWaitSeconds(history);
-  const throttled = pending > 0;
-  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
-  history.push({ at: new Date().toISOString(), ...entry, link_sent: ok, link_failed: !throttled && !ok });
-  await supabaseAdmin
-    .from("applications")
-    .update({ resubmission_history: boundedRecoveryHistory(history), ...extra } as any)
-    .eq("id", primaryId);
-  if (throttled) return { outcome: "recent", wait: pending };
-  return ok ? { outcome: "sent", wait: LINK_RETRY_SECONDS } : { outcome: "failed", wait: 30 };
+): Promise<import("@/lib/application-recovery.server").RecoveryOutcome> {
+  const { deliverApplicationRecovery } = await import("@/lib/application-recovery.server");
+  let result: import("@/lib/application-recovery.server").RecoveryOutcome;
+  try { result = await deliverApplicationRecovery(supabaseAdmin, primaryId); }
+  catch { result = { outcome: "failed", wait: LINK_RETRY_SECONDS }; }
+  const { data: row } = await supabaseAdmin.from("applications").select("resubmission_history, purged_at").eq("id", primaryId).maybeSingle();
+  if (row && !row.purged_at) {
+    const history = Array.isArray(row.resubmission_history) ? row.resubmission_history : [];
+    history.push({ at: new Date().toISOString(), ...entry, link_sent: result.outcome === "sent", link_failed: result.outcome === "failed" });
+    await supabaseAdmin.from("applications").update({ resubmission_history: boundedRecoveryHistory(history), ...extra } as any).eq("id", primaryId);
+  }
+  return result;
 }
 
 /**

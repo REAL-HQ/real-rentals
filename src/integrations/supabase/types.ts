@@ -5275,6 +5275,19 @@ export type Database = {
       }
     }
     Functions: {
+      reserve_application_recovery: {
+        Args: { _application_id: string; _token_hash: string }
+        Returns: Json
+      }
+      finish_application_recovery: {
+        Args: { _attempt_id: string; _status: string; _provider_id?: string | null }
+        Returns: undefined
+      }
+      resolve_application_identity_review: {
+        Args: { _review_id: string; _resolution: string; _note: string }
+        Returns: Json
+      }
+
       activate_rental_tx: {
         Args: {
           _actor?: string

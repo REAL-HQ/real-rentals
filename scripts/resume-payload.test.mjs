@@ -98,10 +98,11 @@ const save = src.slice(src.indexOf("export const savePartialApplication"), src.i
 const dedupe = save.slice(save.indexOf("if (existing) {"), save.indexOf("const { data: row, error }"));
 ok(!/issueResumeToken/.test(dedupe), "the dedupe branch never mints a token");
 ok(/token: null/.test(dedupe), "  it returns a null token");
-const recovery = src.slice(src.indexOf("async function emailLinkToAddressOnFile"), src.indexOf("export const requestApplicationLink"));
+const recovery = readFileSync("src/lib/application-recovery.server.ts", "utf8");
+const recoverySql = readFileSync("drizzle/migrations/0021_application_resume_atomic_security.sql", "utf8");
 ok(/sendRecoveryLink\(/.test(dedupe) && /sendApplicationResumeEmail/.test(recovery), "  and mails the link through the recovery helper instead");
-ok(/\.select\("email, full_name"\)[\s\S]{0,200}sendApplicationResumeEmail/.test(recovery),
-   "  to the address on the matched record, not the submitted one");
+ok(/to: attempt.email/.test(recovery) && /SELECT \* INTO a FROM public.applications WHERE id = _application_id FOR UPDATE/.test(recoverySql) && /'email', a.email/.test(recoverySql),
+   "  to the address on the locked matched record, not the submitted one");
 // Stronger than excluding the identity fields, which is what this used to
 // check: nothing the caller submitted is applied to a record they merely
 // matched. sms_consent was the one that mattered — an anonymous POST could

@@ -12,6 +12,31 @@ const reviewId = '20000000-0000-4000-8000-000000000001';
 function client(role = 'service') {
   return {
     auth: { admin: { getUserById: async () => ({ data: { user: { email: 'fixture@example.invalid' } } }) } },
+    async rpc(name, args) {
+      if (name === 'reserve_application_recovery') {
+        assert.match(args._token_hash, /^[a-f0-9]{64}$/);
+        const app = db.applications.find(a => a.id === args._application_id);
+        db.application_recovery_attempts ??= [];
+        const attempts = db.application_recovery_attempts.filter(a => a.application_id === args._application_id);
+        if (!app || app.deleted_at || app.purged_at || !app.email || attempts.some(a => Date.now()-a.created_at < 120000) || attempts.filter(a => Date.now()-a.created_at < 86400000).length >= 6) return {data:{reserved:false,retry_after_seconds:120},error:null};
+        const attempt = {id:crypto.randomUUID(),application_id:app.id,created_at:Date.now(),status:'reserved'};
+        db.application_recovery_attempts.push(attempt);
+        db.application_resume_tokens ??= [];
+        db.application_resume_tokens.push({id:crypto.randomUUID(),application_id:app.id,token_hash:args._token_hash,created_at:new Date().toISOString(),expires_at:new Date(Date.now()+1800000).toISOString(),revoked_at:null});
+        return {data:{reserved:true,attempt_id:attempt.id,email:app.email,full_name:app.full_name,retry_after_seconds:120},error:null};
+      }
+      if (name === 'finish_application_recovery') {
+        Object.assign(db.application_recovery_attempts.find(a => a.id === args._attempt_id), {status:args._status});
+        return {data:null,error:null};
+      }
+      if (name === 'resolve_application_identity_review') {
+        if (globalThis.__rr.fail === 'application_identity_reviews:update') return {data:null,error:{code:'XX000'}};
+        const row = db.application_identity_reviews?.find(r => r.id === args._review_id && r.status === 'open');
+        if (row) {row.status='resolved';audits.push({review_id:row.id});}
+        return {data:{ok:true,changed:!!row},error:null};
+      }
+      throw Error('Unexpected RPC '+name);
+    },
     from(table) {
       let filters = [], op = 'read', values, one = false, max = Infinity;
       const q = {
@@ -42,7 +67,7 @@ function client(role = 'service') {
   };
 }
 function reset() {
-  db={applications:[{id:appId,email:'owner@example.invalid',phone:'8135551234',full_name:'Fixture Owner',created_at:'2020-01-01',resubmission_history:[],resubmission_count:0,status:'reviewing',sms_consent:false,license_photo_url:'preserved/document',ai_flags:['original']}]};
+  db={applications:[{id:appId,email:'owner@example.invalid',phone:'8135551234',full_name:'Fixture Owner',created_at:baselineAbuse ? new Date().toISOString() : '2020-01-01',resubmission_history:[],resubmission_count:0,status:'reviewing',sms_consent:false,license_photo_url:'preserved/document',ai_flags:['original']}]};
   emails=[]; audits=[]; globalThis.__rr = {client:client(), send:async args => {emails.push(args); return {ok:true};}, audit:async (...args) => audits.push(args)};
 }
 const stubs = {
@@ -50,7 +75,7 @@ const stubs = {
   '@tanstack/react-start': `export const createServerFn=()=>{let validate=x=>x,auth=false; const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})}};return api};`,
   '@/integrations/supabase/auth-middleware': 'export const requireSupabaseAuth={};',
   '@/integrations/supabase/client.server': 'export const supabaseAdmin=new Proxy({}, {get:(_,p)=>globalThis.__rr.client[p]});',
-  '@/lib/email.server': 'export const sendApplicationResumeEmail=(args)=>globalThis.__rr.send(args); export const sendDriverWelcome=async()=>{}; export const sendLeadAlert=async()=>{};',
+  '@/lib/email.server': 'export const sendApplicationResumeEmail=(args)=>globalThis.__rr.send(args); export const sendDriverWelcome=async()=>{}; export const sendLeadAlert=async()=>{}; export const sendLeadAlertEmail=async()=>{};',
   '@/lib/audit': 'export const logAudit=(...args)=>globalThis.__rr.audit(...args);'
 };
 async function load(file) {
@@ -61,12 +86,13 @@ async function load(file) {
   }}]});
   return import(pathToFileURL(output));
 }
+const baselineAbuse = process.argv.includes('--baseline-abuse');
 let passed=0;
-async function test(name, fn) {reset();await fn();passed++;console.log('PASS',name);}
+async function test(name, fn) {if (baselineAbuse) return;reset();await fn();passed++;console.log('PASS',name);}
 try {
   const tokens=await load('src/lib/resume-tokens.server.ts');
   const applications=await load('src/lib/applications.functions.ts');
-  const reviews=await load('src/lib/identity-review.functions.ts');
+  const reviews=baselineAbuse ? null : await load('src/lib/identity-review.functions.ts');
   await test('recovery is single-use under concurrent opens; session survives',async()=>{
     const raw=await tokens.issueResumeToken(globalThis.__rr.client,appId,{recovery:true});
     await assert.rejects(tokens.resolveResumeToken(globalThis.__rr.client,raw));
@@ -109,7 +135,7 @@ try {
     await assert.rejects(reviews.resolveIdentityReview({data}));
     for(const role of ['driver','coordinator','team','admin']) {
       db.user_roles=[{user_id:'fixture-user',role}];db.application_identity_reviews=[{id:reviewId,application_id:appId,status:'open',kind:'phone_match_email_differs'}];
-      const action=reviews.resolveIdentityReview({data,context:{userId:'fixture-user'}});
+      const action=reviews.resolveIdentityReview({data,context:{userId:'fixture-user',supabase:globalThis.__rr.client}});
       if(['team','admin'].includes(role)) {assert.equal((await action).changed,true);assert.equal(db.application_identity_reviews[0].status,'resolved');}
       else {await assert.rejects(action);assert.equal(db.application_identity_reviews[0].status,'open');}
     }
@@ -138,16 +164,19 @@ try {
     db.user_roles=[{user_id:'fixture-user',role:'driver'}];
     await assert.rejects(reviews.listIdentityReviews({data,context:{userId:'fixture-user',supabase:globalThis.__rr.client}}));
   });
-  if (process.argv.includes('--abuse')) {
-    // Desired invariants: these remain release blockers until a durable design
-    // is approved. Never call these passing behavior checks when they fail.
+  if (process.argv.includes('--abuse') || baselineAbuse) {
+    // Desired invariants. The actual database implementation is exercised separately
+    // by application-security-postgres.test.mjs; this suite tests handler wiring.
+    const recoveryRequest = () => baselineAbuse
+      ? applications.savePartialApplication({data:{full_name:'Fixture Owner',email:'owner@example.invalid',phone:'8135551234',sms_consent:true,source:'homepage'}})
+      : applications.requestApplicationLink({data:{email:'owner@example.invalid'}});
     const findings = [
       ['concurrent link requests send at most one email', async () => {
-        await Promise.all(Array.from({length:10}, () => applications.requestApplicationLink({data:{email:'owner@example.invalid'}})));
+        await Promise.all(Array.from({length:10}, recoveryRequest));
         assert.equal(emails.length,1,`concurrent sends: ${emails.length}`);
       }],
       ['throttled history churn cannot erase the cooldown', async () => {
-        for(let i=0;i<27;i++) await applications.requestApplicationLink({data:{email:'owner@example.invalid'}});
+        for(let i=0;i<27;i++) await recoveryRequest();
         assert.equal(emails.length,1,`sends during cooldown: ${emails.length}`);
       }],
       ['provider failure cannot reveal whether an address matched', async () => {
@@ -157,7 +186,7 @@ try {
         assert.deepEqual(hit,miss);
       }],
     ];
-    for(const [name,fn] of findings) {
+    for(const [name,fn] of baselineAbuse ? findings.slice(0,2) : findings) {
       reset();
       try { await fn();console.log('PASS',name); }
       catch(error) { process.exitCode=1;console.error('BLOCKER',name, error.message); }

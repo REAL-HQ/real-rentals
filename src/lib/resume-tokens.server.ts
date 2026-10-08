@@ -53,7 +53,7 @@ export async function hashResumeToken(raw: string): Promise<string> {
   return hex(new Uint8Array(digest));
 }
 
-function newRawToken(): string {
+export function newRawToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   // base64url: URL-safe, and shorter than hex for the same 256 bits.

@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager, requireStaff } from "@/lib/roles.server";
-import { logAudit } from "@/lib/audit";
 
 /**
  * Durable identity reviews (application_identity_reviews). Rows are written
@@ -33,24 +32,10 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const actor = await requireManager(context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("application_identity_reviews")
-      .update({
-        status: "resolved", resolution: data.resolution, resolution_note: data.note,
-        resolved_by: actor.userId, resolved_at: new Date().toISOString(),
-      })
-      .eq("id", data.id).eq("status", "open")
-      .select("id,application_id,kind").maybeSingle();
-    if (error) throw new Error("Could not resolve identity review. Please retry.");
-    if (!row) return { ok: true as const, changed: false };
-    await logAudit(actor, {
-      action: "identity_review.resolved",
-      summary: `Resolved identity review (${data.resolution.replace("_", " ")})`,
-      entityType: "application",
-      entityId: row.application_id,
-      metadata: { review_id: row.id, kind: row.kind, resolution: data.resolution, note: data.note },
+    await requireManager(context.userId);
+    const { data: result, error } = await context.supabase.rpc("resolve_application_identity_review", {
+      _review_id: data.id, _resolution: data.resolution, _note: data.note,
     });
-    return { ok: true as const, changed: true };
+    if (error) throw new Error("Could not resolve identity review. Please retry.");
+    return z.object({ ok: z.literal(true), changed: z.boolean() }).parse(result);
   });
