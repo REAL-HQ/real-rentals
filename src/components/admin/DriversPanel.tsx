@@ -221,6 +221,9 @@ const DRIVER_STATUSES = [
   "declined",
   "closed",
 ] as const;
+// "active" is set only by activate_rental_tx when a rental really starts;
+// staff can no longer pick it by hand.
+const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active");
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
@@ -365,6 +368,18 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
+  // Active Renter source of truth: drivers with a rentals row in status 'active'.
+  const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
+  const refreshActiveRenters = useCallback(() => {
+    supabase
+      .from("rentals")
+      .select("application_id")
+      .eq("status", "active")
+      .then(({ data }) =>
+        setActiveRenters(new Set((data ?? []).map((r: any) => r.application_id).filter(Boolean))),
+      );
+  }, []);
+  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -557,7 +572,9 @@ export function DriversPanel({
         ? drivers
         : filter === "waitlist"
           ? drivers.filter((a) => held.has(a.id))
-          : drivers.filter((a) => a.status === filter && !held.has(a.id))
+          : filter === "active"
+            ? drivers.filter((a) => activeRenters.has(a.id))
+            : drivers.filter((a) => a.status === filter && !held.has(a.id))
     ).filter((a) => {
       if (!q) return true;
       const hay =
@@ -581,7 +598,7 @@ export function DriversPanel({
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, externalSearch, held]);
+  }, [drivers, filter, externalSearch, held, activeRenters]);
 
   async function update(id: string, patch: Partial<Application>) {
     // Stamp contacted_at the first time the admin advances status past "new"
@@ -596,6 +613,7 @@ export function DriversPanel({
     // One list, one update. `open` is derived from this list, so patching it
     // here is all that is needed — there is no second copy to keep in step.
     setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
+    refreshActiveRenters();
   }
 
   async function markContacted(id: string) {
@@ -694,6 +712,11 @@ export function DriversPanel({
         vehicles={vehicles}
         onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
+        hasActiveRental={activeRenters.has(open.id)}
+        onRentalStarted={() => {
+          setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
+          refreshActiveRenters();
+        }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
@@ -716,7 +739,9 @@ export function DriversPanel({
         : waitlistCount + drivers.filter((a) => held.has(a.id)).length
       : s === "all"
         ? drivers.length
-        : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+        : s === "active"
+          ? drivers.filter((a) => activeRenters.has(a.id)).length
+          : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -883,7 +908,18 @@ export function DriversPanel({
                               Waitlist
                             </span>
                           ) : a.status ? (
-                            <StatusPill status={a.status} />
+                            activeRenters.has(a.id) ? (
+                              <StatusPill status="active" />
+                            ) : a.status === "active" ? (
+                              <span
+                                title="Marked Active, but no active rental exists. Status unchanged pending review."
+                                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                              >
+                                Marked Active, No Rental
+                              </span>
+                            ) : (
+                              <StatusPill status={a.status} />
+                            )
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
                               Select status <ChevronDown className="w-3 h-3" />
@@ -891,7 +927,7 @@ export function DriversPanel({
                           )}
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
-                          {DRIVER_STATUSES.map((s) => (
+                          {SELECTABLE_STATUSES.map((s) => (
                             <SelectItem key={s} value={s} className="capitalize text-[13px]">
                               {s}
                             </SelectItem>
@@ -1033,6 +1069,8 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  hasActiveRental,
+  onRentalStarted,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1042,7 +1080,12 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  /** True only when a rentals row with status 'active' exists for this driver. */
+  hasActiveRental: boolean;
+  onRentalStarted?: () => void;
 }) {
+  const rentalActiveFlag = hasActiveRental;
+  const rentalActive = hasActiveRental;
   const veh = driver.vehicle_id ? vehicles.find((v) => v.id === driver.vehicle_id) : null;
   const initials = (driver.full_name || "?")
     .split(/\s+/)
@@ -1137,9 +1180,11 @@ function DriverDetail({
   // everything through the application still read as having sent nothing.
   const docsComplete = vaultDocCount >= REQUIRED_VAULT_CATEGORIES.length;
   const insuranceOk = !!(screening as any)?.insurance_verified;
+  // Active Renter = an actual active rental (rentals table), never the
+  // application stage alone. rentalActive is declared below with the lookup.
   const approved = dStatus === "approved" || dStatus === "active";
-  const pickedUp = !!(driver as any).pickup_at || dStatus === "active";
-  const active = dStatus === "active";
+  const pickedUp = !!(driver as any).pickup_at || rentalActiveFlag;
+  const active = rentalActiveFlag;
 
   const stageFlags: { key: string; label: string; done: boolean }[] = [
     { key: "applied", label: "Applied", done: true },
@@ -1197,6 +1242,7 @@ function DriverDetail({
   const [approving, setApproving] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
+  const [rentalStatus, setRentalStatus] = useState<string | null>(null);
 
   // The rental is what deposit disposition and ending hang off, so look it up
   // once the driver is active.
@@ -1210,7 +1256,9 @@ function DriverDetail({
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setActiveRentalId((data?.id as string) ?? null);
+        if (cancelled) return;
+        setActiveRentalId((data?.id as string) ?? null);
+        setRentalStatus((data?.status as string) ?? null);
       });
     return () => {
       cancelled = true;
@@ -1298,7 +1346,7 @@ function DriverDetail({
               onClick: approveAndSend,
               icon: Check,
             }
-          : driver.status !== "active"
+          : !rentalActive
             ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
             : {
                 label: "View Rental",
@@ -1332,7 +1380,7 @@ function DriverDetail({
   // Where the person is in the journey decides what Overview leads with.
   // Derived from the same flags the lifecycle rail uses — no new state.
   const phase: "screening" | "pickup" | "active" =
-    driver.status === "active" ? "active" : approved ? "pickup" : "screening";
+    rentalActive ? "active" : approved ? "pickup" : "screening";
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
@@ -1536,7 +1584,7 @@ function DriverDetail({
           <button className={btnSecondary} onClick={() => setDepositRentalId(activeRentalId)}>
             <Wallet className="w-3.5 h-3.5" /> Deposit Disposition
           </button>
-          {driver.status === "active" ? (
+          {rentalActive ? (
             <button className={btnSecondary} onClick={doEndRental}>
               <Car className="w-3.5 h-3.5" /> End Rental
             </button>
@@ -1846,8 +1894,8 @@ function DriverDetail({
                     <SelField
                       label="Driver Status"
                       value={driver.status}
-                      options={[...DRIVER_STATUSES]}
-                      onChange={(v) => onUpdate({ status: v })}
+                      options={driver.status === "active" ? [...DRIVER_STATUSES] : [...SELECTABLE_STATUSES]}
+                      onChange={(v) => { if (v !== "active") onUpdate({ status: v }); }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
@@ -2068,7 +2116,9 @@ function DriverDetail({
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);
-            onUpdate({ status: "active" });
+            // activate_rental_tx already set the stage in the same transaction;
+            // only refresh the screen — no second browser write.
+            onRentalStarted?.();
           }}
         />
       ) : null}
