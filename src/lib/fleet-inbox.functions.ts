@@ -15,6 +15,7 @@ import {
   DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
   isFinanceField, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
+import { fmtDate } from "@/lib/date-format";
 
 const BUCKET = "vehicle-docs";
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
@@ -31,7 +32,7 @@ export const createImportBatch = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
-    const label = data.label || `Fleet Import — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}`;
+    const label = data.label || `Fleet Import — ${fmtDate()}`;
     const { data: row, error } = await sb.from("fleet_import_batches").insert({ label, created_by: actor.userId }).select("id").single();
     if (error) throw new Error("Could not start an import.");
     return { id: row.id as string };

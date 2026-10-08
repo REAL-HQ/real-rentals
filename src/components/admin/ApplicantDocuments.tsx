@@ -81,10 +81,6 @@ function fmtSize(n: number | null) {
     : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-function fmtDate(iso: string | null) {
-  if (!iso) return null;
-  return new fmtDate(Date(iso));
-}
 
 function isImageDoc(d: VaultDocument): boolean {
   if ((d.mime_type ?? "").startsWith("image/")) return true;
