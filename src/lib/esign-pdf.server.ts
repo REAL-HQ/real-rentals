@@ -1,6 +1,6 @@
 // Deterministic server-side PDF for completed eSign documents.
 // Same inputs -> same bytes (fixed metadata dates, standard fonts).
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
 
 export type CompletedDocInput = {
   id: string;
@@ -215,7 +215,7 @@ export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> 
   write("Company countersignature is applied when the agreement is sent", 9.5, font, muted);
 
   for (const p of pages) {
-    p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: { type: "degrees" as any, angle: 35 } as any });
+    p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: degrees(35) });
   }
   return pdf.save({ useObjectStreams: false });
 }
