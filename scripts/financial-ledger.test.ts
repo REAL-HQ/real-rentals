@@ -36,3 +36,13 @@ test("reference normalization is a hint", () => {
   expect(normalizeReference("inv-0O1l")).toBe("1NV0011");
   expect(normalizeReference("a")).toBeNull();
 });
+
+import { operatingPortion as _op, isOperatingExpense as _ioe } from "../src/lib/financial-ledger";
+import { test as _t, expect as _e } from "vitest";
+_t("loan principal is not operating expense; interest is", () => {
+  _e(_op("financing_payment", "financing", 500, 120)).toBe(120);
+  _e(_ioe("financing_draw", "financing")).toBe(false);
+  _e(_ioe("capital_expenditure", "make_ready")).toBe(false);
+  _e(_ioe("deposit_received", "security_deposit")).toBe(false);
+  _e(_op("expense", "wash", 50, null)).toBe(50);
+});
