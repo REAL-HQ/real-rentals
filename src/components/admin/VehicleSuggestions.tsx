@@ -95,7 +95,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
                 <div className="font-semibold mb-1 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-[#8A4B00]" /> Needs Verification — Not Applied</div>
                 {(data.needsVerification ?? []).map((v: any) => (
                   <div key={`${v.proposalId}:${v.field}`} className="text-[#55555E] mb-1">
-                    {v.label}: document shows “{v.proposed}”. {v.note} ({v.fileName}{v.page ? ` · Page ${v.page}` : ""})
+                    {titleCase(v.label)}: document shows “{v.proposed}”. {v.note} ({v.fileName}{v.page ? ` · Page ${v.page}` : ""})
                   </div>
                 ))}
               </div>
