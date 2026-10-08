@@ -602,29 +602,12 @@ export function DriversPanel({
     toast.success("Marked contacted");
   }
 
-  async function remove(id: string) {
-    // Waitlist links keep a person's signup history. Never strip them to
-    // force a delete; say why and point at Close instead.
-    try {
-      const b = await deleteBlockersFn({ data: { applicationId: id } });
-      if (b.waitlistLinked) {
-        return void toast.error(
-          "This driver has waitlist history, so the record can't be deleted. Set the status to Closed instead.",
-        );
-      }
-    } catch {
-      return void toast.error("Could not check this record. Please try again.");
-    }
-    if (!confirm("Delete this driver record? This cannot be undone.")) return;
-    const { error } = await supabase.from("applications").delete().eq("id", id);
-    if (error) {
-      if ((error as any).code === "23503")
-        return void toast.error("This record is linked to other history and can't be deleted. Set the status to Closed instead.");
-      return toast.error(error.message);
-    }
-    setDrivers((a) => a.filter((x) => x.id !== id));
-    setOpenId(null);
-    toast.success("Deleted");
+  // Owner-only, through the Owner-checked deletion functions (driver-deletion.functions.ts).
+  // No raw deletes from the browser: they cascaded agreements and documents.
+  const [deleting, setDeleting] = useState<string | null>(null);
+  function remove(id: string) {
+    if (!isOwner) return void toast.error("Only the Owner can delete drivers. Set the status to Closed instead.");
+    setDeleting(id);
   }
 
   async function handleMerge() {
