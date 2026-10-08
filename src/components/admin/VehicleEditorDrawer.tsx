@@ -546,6 +546,7 @@ export function VehicleEditorDrawer({
                 value={day("registration_expires_on")}
                 onChange={(x) => set("dmv", "registration_expires_on", x)}
               />
+              {canFinance && (<>
               <Text
                 label="Title Number"
                 value={str("title_number")}
@@ -565,6 +566,7 @@ export function VehicleEditorDrawer({
                   { value: "rebuilt", label: "Rebuilt" },
                 ]}
               />
+              </>)}
             </Grid>
             <DocLink
               label="Title and Registration Documents"

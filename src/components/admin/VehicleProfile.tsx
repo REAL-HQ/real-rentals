@@ -328,6 +328,7 @@ export function VehicleProfile({
           section={editing}
           vehicleId={vehicleId}
           vehicle={p.vehicle}
+          canTitle={p.canSeeFinance}
           onClose={() => setEditing(null)}
           onSaved={afterSave}
         />
@@ -737,12 +738,14 @@ function SectionDrawer({
   section,
   vehicleId,
   vehicle,
+  canTitle = false,
   onClose,
   onSaved,
 }: {
   section: VehicleSection;
   vehicleId: string;
   vehicle: Record<string, any>;
+  canTitle?: boolean;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }) {
@@ -983,6 +986,7 @@ function SectionDrawer({
             value={day("registration_expires_on")}
             onChange={(v) => set("registration_expires_on", v)}
           />
+          {canTitle && (<>
           <Choice
             label="Title Status"
             value={str("title_status")}
@@ -1002,6 +1006,7 @@ function SectionDrawer({
             onChange={(v) => set("title_number", v)}
             mono
           />
+          </>)}
         </div>
       )}
 
