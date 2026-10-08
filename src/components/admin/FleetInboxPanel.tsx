@@ -10,6 +10,7 @@ import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
   applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile,
 } from "@/lib/fleet-inbox.functions";
+import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
@@ -298,6 +299,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       )}
 
       <ServiceTransactionReview d={d} isManager={isManager} reload={load} openFile={openFile} />
+      <FinancialDocumentReview d={d} isManager={isManager} openFile={openFile} />
 
       {/* Files */}
       <section className="rounded-xl border border-[#EDEDF0] bg-white">
