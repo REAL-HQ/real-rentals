@@ -297,8 +297,8 @@ $ddl$;
   BEGIN DELETE FROM payment_collections WHERE id=c1; out := out || ('FAIL verified deleted') || E'\n';
   EXCEPTION WHEN OTHERS THEN out := out || ('ok verified record cannot be deleted') || E'\n'; END;
   EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
-  UPDATE payment_collections SET status='verified' WHERE id=c2; GET DIAGNOSTICS n = ROW_COUNT;
-  out := out || ((CASE WHEN n=0 THEN 'ok' ELSE 'FAIL' END)||' browser update blocked ('||n||' rows)') || E'\n';
+  BEGIN UPDATE payment_collections SET status='verified' WHERE id=c2; out := out || ('FAIL browser update allowed') || E'\n';
+  EXCEPTION WHEN insufficient_privilege THEN out := out || ('ok browser update blocked') || E'\n'; END;
 
   -- Owner verifies check → charge paid
   EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',own,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
