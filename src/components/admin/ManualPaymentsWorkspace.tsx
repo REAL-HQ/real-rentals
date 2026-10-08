@@ -30,14 +30,17 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
 
   useEffect(() => { const t = setInterval(() => setColls((c) => sweepExpired(c, new Date())), 30_000); return () => clearInterval(t); }, []);
 
-  const charges: Charge[] = useMemo(() => payments
+  const charges: Charge[] = useMemo(() => [
+    // Practice-only sample so the flow can be tried with no real charges.
+    ...(!MANUAL_PAYMENTS_LIVE ? [{ id: "sample", amount: 350, balance: Math.max(0, 350 - (verified.sample ?? 0)), status: "current" }] : []),
+    ...payments
     .filter((p) => !["paid", "refunded", "waived", "void"].includes(String(p.status)))
     .map((p) => {
       const open = p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due);
       return { id: p.id, amount: Number(p.amount || 0), balance: Math.max(0, open - (verified[p.id] ?? 0)), status: String(p.status), stripeInProgress: String(p.status) === "pending" };
-    }), [payments, verified]);
+    })], [payments, verified]);
   const chargeMap = Object.fromEntries(charges.map((c) => [c.id, c]));
-  const label = (id: string) => { const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return `${d?.full_name ?? "Driver"} · ${String((p as any)?.type ?? "charge").replace(/_/g, " ")} · due ${fmtDate((p as any)?.due_date)}`; };
+  const label = (id: string) => { if (id === "sample") return "Sample Charge (Practice) · rent · $350"; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return `${d?.full_name ?? "Driver"} · ${String((p as any)?.type ?? "charge").replace(/_/g, " ")} · due ${fmtDate((p as any)?.due_date)}`; };
 
   const pending = colls.filter((c) => c.status === "pending");
   const switchRole = (r: Role) => { setRole(r); setActor(ACTORS[r]); };
