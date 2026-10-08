@@ -31,8 +31,16 @@ export function normalizeDisplayText(value: string): string {
   return s.split(" ").map(caseWord).join(" ");
 }
 
+// DMV/title color abbreviations ("SIL") → plain words; raw code stays in provenance.
+const COLOR_CODES: Record<string, string> = {
+  SIL: "Silver", SLV: "Silver", WHI: "White", WHT: "White", BLK: "Black", BLA: "Black", GRY: "Gray", GRA: "Gray",
+  BLU: "Blue", RED: "Red", GRN: "Green", BRO: "Brown", BRN: "Brown", GLD: "Gold", TAN: "Tan", MAR: "Maroon",
+  BGE: "Beige", BEI: "Beige", YEL: "Yellow", ORG: "Orange", PUR: "Purple", CHA: "Charcoal",
+};
+
 export function normalizeDisplayField<T>(field: string, value: T): T {
   if (typeof value !== "string" || !NORMALIZED_FIELDS.has(field)) return value;
+  if (field === "color" && COLOR_CODES[value.trim().toUpperCase()]) return COLOR_CODES[value.trim().toUpperCase()] as unknown as T;
   return normalizeDisplayText(value) as unknown as T;
 }
 

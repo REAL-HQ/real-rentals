@@ -368,6 +368,7 @@ export function VehicleEditorDrawer({
 
           {/* ===== 1. Vehicle ============================================== */}
           <Group id="identity" title="Vehicle" icon={Car}>
+            <Sub>Identity</Sub>
             <Grid>
               <Text
                 label="Unit Number"
@@ -376,16 +377,21 @@ export function VehicleEditorDrawer({
                 error={fieldErr("unit_number")}
                 placeholder="RR-001"
               />
-              {/* Reads here, saves under `dmv` — that is the whitelist that
-                  owns the column, and sending it as `identity` would drop it
-                  silently. Visual grouping and section ownership are allowed
-                  to differ; getting them confused is not. */}
+              {/* VIN and plate read here but save under `dmv` — that whitelist
+                  owns the columns; sending them as `identity` would drop them. */}
               <Text
                 label="VIN"
                 value={str("vin")}
                 onChange={(x) => set("dmv", "vin", normalizeVin(x))}
                 error={fieldErr("vin") ?? (vinBlocks ? (vinIssue ?? undefined) : undefined)}
                 hint={!vinBlocks && vinIssue ? vinIssue : "17 characters. Never I, O or Q."}
+                mono
+              />
+              <Text
+                label="License Plate"
+                value={str("license_plate")}
+                onChange={(x) => set("dmv", "license_plate", x)}
+                error={fieldErr("license_plate")}
                 mono
               />
               <NumberField
@@ -405,6 +411,10 @@ export function VehicleEditorDrawer({
                 value={str("color")}
                 onChange={(x) => set("identity", "color", x)}
               />
+            </Grid>
+
+            <Sub>Specifications</Sub>
+            <Grid>
               <Choice
                 label="Body Type"
                 value={str("body_type")}
@@ -414,23 +424,6 @@ export function VehicleEditorDrawer({
                   ...BODY_TYPES.map((b) => ({ value: b, label: b })),
                 ]}
               />
-              <NumberField
-                label="Odometer"
-                value={num("current_odometer")}
-                onChange={(x) => set("identity", "current_odometer", x)}
-                suffix="mi"
-              />
-              <Choice
-                label="Status"
-                value={str("status")}
-                onChange={(x) => set("identity", "status", x)}
-                options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
-                hint="Taking a car out of the fleet is refused while a rental is active."
-              />
-            </Grid>
-
-            <Sub>Specification</Sub>
-            <Grid>
               <NumberField
                 label="Seats"
                 value={num("seats")}
@@ -452,15 +445,28 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("identity", "mpg", x)}
               />
               <NumberField
-                label="Range per Tank"
+                label="Range Per Tank"
                 value={num("miles_per_tank")}
                 onChange={(x) => set("identity", "miles_per_tank", x)}
                 suffix="mi"
               />
             </Grid>
 
-            <Sub>Listing &amp; pricing</Sub>
+            <Sub>Operations</Sub>
             <Grid>
+              <Choice
+                label="Status"
+                value={str("status")}
+                onChange={(x) => set("identity", "status", x)}
+                options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
+                hint="Taking a car out of the fleet is refused while a rental is active."
+              />
+              <NumberField
+                label="Odometer"
+                value={num("current_odometer")}
+                onChange={(x) => set("identity", "current_odometer", x)}
+                suffix="mi"
+              />
               <NumberField
                 label="Weekly Rate"
                 value={num("weekly_rate")}
@@ -513,13 +519,6 @@ export function VehicleEditorDrawer({
           {/* ===== 2. Registration ========================================= */}
           <Group id="dmv" title="Registration" icon={ScrollText}>
             <Grid>
-              <Text
-                label="Plate"
-                value={str("license_plate")}
-                onChange={(x) => set("dmv", "license_plate", x)}
-                error={fieldErr("license_plate")}
-                mono
-              />
               <Text
                 label="Plate State"
                 value={str("plate_state")}
