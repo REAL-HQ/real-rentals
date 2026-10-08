@@ -173,7 +173,9 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     if (!d) return;
     const busy = d.items.some((i: any) => ["uploaded", "analyzing", "matching"].includes(i.status));
     if (!busy) return;
-    const t = setInterval(() => void load(), 3000);
+    // Fast while a file is being read; slower while files only wait for a scheduled retry.
+    const active = d.items.some((i: any) => ["analyzing", "matching"].includes(i.status) || (i.status === "uploaded" && i.job?.state !== "retry_wait"));
+    const t = setInterval(() => void load(), active ? 3000 : 15000);
     return () => clearInterval(t);
   }, [d, load]);
   // Email-delivered files arrive "waiting to analyze"; run the normal analysis once when staff open the import.
