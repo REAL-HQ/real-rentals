@@ -145,6 +145,25 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
           onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void ingest(f); }} />
       </div>
 
+      {rows.length > 0 && (
+        <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]" aria-live="polite">
+          {rows.map((r) => (
+            <div key={r.key} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="truncate text-[#111114]">{r.name}</span>
+              <span className={`shrink-0 text-xs font-medium ${r.status === "done" ? "text-[#1F8A4C]" : r.status === "failed" || r.status === "rejected" ? "text-[#D03020]" : "text-[#55555E]"}`}>
+                {{ queued: "Waiting", uploading: "Uploading…", done: "Uploaded", duplicate: "Duplicate", rejected: "Skipped", failed: "Failed" }[r.status]}
+                {r.note ? ` · ${r.note}` : ""}
+              </span>
+            </div>
+          ))}
+          {failedFiles.length > 0 && !busy && lastBatch && (
+            <div className="px-4 py-2.5 text-right">
+              <button onClick={() => void ingest(failedFiles, lastBatch)} className="min-h-[36px] rounded-md bg-[#D03020] text-white px-4 text-sm font-medium">Retry Failed</button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <h3 className="text-[13px] font-semibold text-[#111114] mb-2">Imports</h3>
         {batches === null ? (
