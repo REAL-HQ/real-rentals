@@ -8,7 +8,7 @@ const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
 ok(owner.length === TABS.length, "Owner sees every destination");
-ok(mgr.includes("settings"), "Manager: Settings (for Automations)");
+ok(visibleSettingsSections("manager").length > 0, "Manager: Settings sections (opened from profile menu)");
 ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","vehicle_defaults","maintenance","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
 ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Settings sections");
@@ -28,7 +28,7 @@ ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five 
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
-ok(rail("owner") === "Overview,Drivers,Payments,Vehicles,Fleet Inbox,Service,Incidents,Expenses,Partners,Settings", "Owner rail matches target: " + rail("owner"));
+ok(rail("owner") === "Overview,Drivers,Payments,Vehicles,Fleet Inbox,Service,Incidents,Expenses,Partners", "Owner rail matches target: " + rail("owner"));
 ok(rail("coordinator") === "Overview,Drivers,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
 ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");
 ok(JSON.stringify(visibleWorkspaceTabs("partners", "coordinator").map((k) => k.id)) === '["vendors"]', "Coordinator Partners: Vendors only");

@@ -210,6 +210,8 @@ function Admin() {
    * rule, not the enforcement, and it must never be the only lock.
    */
   const tab: Tab = useMemo(() => {
+    // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
+    if (urlTab === "settings") return "settings";
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;

@@ -4189,6 +4189,81 @@ export type Database = {
         }
         Relationships: []
       }
+      vehicle_autofill_events: {
+        Row: {
+          actor: string
+          batch_id: string | null
+          confidence: string
+          created_at: string
+          doc_class: string | null
+          document_id: string | null
+          evidence_raw: string | null
+          field: string
+          id: string
+          new_value: string
+          page: number | null
+          previous_value: string | null
+          proposal_id: string | null
+          undo_result: string | null
+          undone_at: string | null
+          undone_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          actor?: string
+          batch_id?: string | null
+          confidence: string
+          created_at?: string
+          doc_class?: string | null
+          document_id?: string | null
+          evidence_raw?: string | null
+          field: string
+          id?: string
+          new_value: string
+          page?: number | null
+          previous_value?: string | null
+          proposal_id?: string | null
+          undo_result?: string | null
+          undone_at?: string | null
+          undone_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          actor?: string
+          batch_id?: string | null
+          confidence?: string
+          created_at?: string
+          doc_class?: string | null
+          document_id?: string | null
+          evidence_raw?: string | null
+          field?: string
+          id?: string
+          new_value?: string
+          page?: number | null
+          previous_value?: string | null
+          proposal_id?: string | null
+          undo_result?: string | null
+          undone_at?: string | null
+          undone_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_autofill_events_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_autofill_events_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_defaults: {
         Row: {
           body_type: string

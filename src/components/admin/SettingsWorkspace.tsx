@@ -6,6 +6,7 @@ import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
+import { SafeAutofillPanel } from "@/components/admin/SafeAutofillPanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
@@ -17,6 +18,7 @@ const DESCRIPTIONS: Record<string, string> = {
   activity: "Who did what, and what is about to expire.",
   vehicle_defaults: "Set standard pricing for each vehicle type. These values pre-fill new vehicles and can always be changed before saving. Existing vehicles never change.",
   maintenance: "Company maintenance intervals by miles, time or both. A vehicle can override an interval from its Service tab.",
+  safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
   rental_terms: "Minimum term, return notice and the terms text.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
@@ -103,6 +105,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <AutomationsPanel />
         ) : current.id === "vehicle_defaults" ? (
           <VehicleDefaultsPanel />
+        ) : current.id === "safe_autofill" ? (
+          <SafeAutofillPanel />
         ) : current.id === "maintenance" ? (
           <MaintenanceDefaultsPanel />
         ) : current.id === "website" ? (
