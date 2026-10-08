@@ -236,9 +236,7 @@ export function DocumentVault({
           context="Team-only Document"
           upload={(file) => uploadDoc("other", true, file)}
           className="text-[#55555E]"
-        >
-          <Lock className="w-3.5 h-3.5" />
-        </FileUploader>
+        />
       ) : null}
 
       {history.length ? (
