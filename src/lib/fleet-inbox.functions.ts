@@ -617,8 +617,9 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
     // Scale: one vehicle row, indexed proposal lookups — never the whole fleet.
-    const { data: target } = await sb.from("vehicles").select("*").eq("id", data.vehicleId).maybeSingle();
-    if (!target) throw new Error("Vehicle not found");
+    const { data: row } = await sb.from("vehicles").select("*").eq("id", data.vehicleId).maybeSingle();
+    if (!row) throw new Error("Vehicle not found");
+    const [target] = await (await core()).overlayTitles(sb, [row as any]);
     const vin = (target.vin ?? "").toUpperCase();
     const plate = (target.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const cols = "id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at";
