@@ -114,6 +114,7 @@ import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
+import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import {
   Dialog,
@@ -605,6 +606,7 @@ export function DriversPanel({
   // Owner-only, through the Owner-checked deletion functions (driver-deletion.functions.ts).
   // No raw deletes from the browser: they cascaded agreements and documents.
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   function remove(id: string) {
     if (!isOwner) return void toast.error("Only the Owner can delete drivers. Set the status to Closed instead.");
     setDeleting(id);
@@ -725,8 +727,22 @@ export function DriversPanel({
 
   return (
     <div>
+      {showDeleted && (
+        <RecentlyDeletedDialog
+          onClose={() => setShowDeleted(false)}
+          onRestored={() =>
+            void supabase.from("applications").select("*").neq("status", "duplicate").is("deleted_at", null)
+              .order("created_at", { ascending: false }).then(({ data }) => data && setDrivers(data))
+          }
+        />
+      )}
       <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {isOwner && (
+          <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
+            Recently Deleted
+          </button>
+        )}
         <div className="ml-auto shrink-0">
           <button
             onClick={handleMerge}
@@ -1688,12 +1704,12 @@ function DriverDetail({
                   <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
                   <ReissueLinkAction applicationId={driver.id} />
                   <CardOnFileActions driver={driver} onUpdate={onUpdate} />
-                  <DropdownMenuItem
+{isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
                   >
                     <Trash2 className="w-4 h-4 mr-2" /> Delete Driver
-                  </DropdownMenuItem>
+                  </DropdownMenuItem>)}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
