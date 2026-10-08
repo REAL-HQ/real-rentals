@@ -97,9 +97,9 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
       >
         <Upload className="w-8 h-8 mx-auto text-[#9A9AA3]" />
         <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop Fleet Files Here</h2>
-        <p className="mt-1 text-sm text-[#55555E] max-w-md mx-auto">
+        <p className="mt-1 text-sm text-[#55555E] max-w-lg mx-auto">
           Titles, registrations, insurance, receipts, photos — one file or a whole stack. REAL RENTALS sorts each
-          document, identifies the vehicles and prepares updates for you to review. Nothing changes until you approve it.
+          document, matches the vehicles and prepares updates for your review. Nothing changes until you approve.
         </p>
         <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
           <button disabled={!!busy} onClick={() => fileRef.current?.click()} className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-md bg-[#D03020] text-white px-5 text-sm font-medium disabled:opacity-50">
