@@ -45,8 +45,10 @@ async function handle(request: Request): Promise<Response> {
     for (const job of (jobs ?? []) as any[]) {
       summary.processed++;
       const now = new Date();
-      const finish = (patch: Record<string, unknown>) =>
-        sb.from("fleet_inbox_jobs").update({ lease_expires_at: null, ...patch } as any).eq("id", job.id);
+      const finish = (patch: Record<string, unknown>) => {
+        if ("finished_at" in patch) patch.finished_at = new Date().toISOString();
+        return
+        sb.from("fleet_inbox_jobs").update({ lease_expires_at: null, ...patch } as any).eq("id", job.id); };
       try {
         let r = await analyzeItemCore(job.item_id, { allowStuck: job.attempts >= 3 });
         if (!r.ok && r.notClaimed) {
