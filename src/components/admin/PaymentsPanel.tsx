@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AdminTableScroll } from "./AdminTableScroll";
+import { ManualPaymentsWorkspace } from "./ManualPaymentsWorkspace";
 import { StatusPill, EmptyState } from "./ui";
 import {
   DropdownMenu,
@@ -69,6 +70,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
   const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
+  const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
     supabase
@@ -167,13 +169,20 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
         </div>
         <button
+          onClick={() => setShowManual(true)}
+          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium"
+        >
+          Manual Payments
+        </button>
+        <button
           onClick={() => setShowAdd(true)}
-          className="ml-auto rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
+          className=" rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
         >
           + Add Payment
         </button>
       </div>
 
+      {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
