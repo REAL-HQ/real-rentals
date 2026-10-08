@@ -622,9 +622,15 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     // nothing from anyone and made the fleet list read wrongly.
 
     // Title number and lien-type title status are Owner View only; others see "on file" style metadata.
+    // Title identifiers live in the Owner-only vehicle_titles table (RLS: private.is_owner()).
+    let ownerTitle: { title_number: string | null; title_status: string | null } | null = null;
+    if (isOwnerView) {
+      const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
+      ownerTitle = t ?? null;
+    }
     const shapedVehicle = isOwnerView
-      ? v
-      : { ...v, title_number: null, title_status: v.title_status && /lien|financ/i.test(String(v.title_status)) ? "on_file" : v.title_status };
+      ? { ...v, title_number: ownerTitle?.title_number ?? null, title_status: ownerTitle?.title_status ?? null }
+      : { ...v, title_number: null, title_status: (v as any).title_on_file ? "on_file" : null };
     return {
       vehicle: shapedVehicle,
       finance,
