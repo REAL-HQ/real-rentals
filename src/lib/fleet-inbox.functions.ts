@@ -185,9 +185,10 @@ export const attachInboxItem = createServerFn({ method: "POST" })
 
 // ---------------------------------------------------------------- read batch
 const SERVICE_COST_FIELDS = new Set(["parts_total", "labor_total", "tax_total", "total", "payment_method"]);
+const isOwnerOnlyField = (k: string) => isFinanceField(k) || k === "title_number" || k === "title_status";
 function stripOwnershipFinance(p: any) {
-  const fields = Object.fromEntries(Object.entries(p.fields ?? {}).filter(([k]) => !isFinanceField(k)));
-  const changes = Array.isArray(p.changes) ? p.changes.filter((c: any) => !isFinanceField(c?.field)) : p.changes;
+  const fields = Object.fromEntries(Object.entries(p.fields ?? {}).filter(([k]) => !isOwnerOnlyField(k)));
+  const changes = Array.isArray(p.changes) ? p.changes.filter((c: any) => !isOwnerOnlyField(c?.field)) : p.changes;
   return { ...p, fields, changes };
 }
 function stripServiceCosts(p: any) {
@@ -219,7 +220,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
-      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => (canOwnership || !isFinanceField(k)) && (canFinance || !SERVICE_COST_FIELDS.has(k))));
+      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => (canOwnership || !isOwnerOnlyField(k)) && (canFinance || !SERVICE_COST_FIELDS.has(k))));
       return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length, ...(canFinance && ex.financial ? { financial: ex.financial, financialReview: ex.financial_review ?? null } : {}) } : null };
     });
     // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
