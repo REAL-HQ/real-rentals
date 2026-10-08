@@ -1,6 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+/** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
+const previewInput = (d: unknown): { previewDriverId?: string } => {
+  const id = (d as any)?.previewDriverId;
+  if (id == null || id === "") return {};
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
+  return { previewDriverId: id };
+};
+const scope = async (context: any, data: any, section: string) =>
+  (await import("@/lib/driver-preview.server")).portalScope(context, data, section);
+const refuseWrite = async (userId: string) =>
+  (await import("@/lib/driver-preview.server")).refuseStaffPortalWrite(userId);
+
 export type DriverDashboard = {
   /** The newest linked application's status, or null if there is none. */
   applicationStatus: string | null;
@@ -66,8 +78,9 @@ export type DriverDocument = {
 
 export const getDriverDashboard = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverDashboard> => {
-    const { supabase, userId } = context;
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverDashboard> => {
+    const { supabase, userId, preview } = await scope(context, input, "dashboard");
 
     const { data: rental } = await supabase
       .from("rentals")
@@ -140,7 +153,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     ]);
 
     // Driver-market shops (RLS already scopes to active + driver_market_id)
-    const { data: shops } = await supabase
+    const { data: shops } = preview ? { data: [] as any[] } : await supabase
       .from("shops")
       .select("id,name,address,phone,services")
       .eq("is_active", true)
@@ -192,8 +205,9 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
   });
 export const getDriverDocuments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverDocument[]> => {
-    const { supabase, userId } = context;
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverDocument[]> => {
+    const { supabase, userId, preview } = await scope(context, input, "documents");
 
     // documents.driver_id references applications.id (not auth.users.id), so
     // resolve this user's application(s) before querying the vault.
@@ -213,6 +227,7 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
     return Promise.all(
       rows.map(async (d: any) => {
         let url: string | null = null;
+        if (preview) return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
         const { data: signed } = await supabase.storage
           .from(d.storage_bucket)
           .createSignedUrl(d.storage_path, 60 * 10);
@@ -234,11 +249,13 @@ export type DriverIssue = {
 
 export const getDriverIssues = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverIssue[]> => {
-    const { data } = await context.supabase
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverIssue[]> => {
+    const sc = await scope(context, input, "issues");
+    const { data } = await sc.supabase
       .from("issues")
       .select("id,title,body,kind,severity,status,created_at")
-      .eq("driver_id", context.userId)
+      .eq("driver_id", sc.userId)
       .order("created_at", { ascending: false })
       .limit(30);
     return (data ?? []) as DriverIssue[];
@@ -257,6 +274,7 @@ export const createDriverIssue = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    await refuseWrite(context.userId);
     const { supabase, userId } = context;
     const { data: rental } = await supabase
       .from("rentals")
@@ -290,11 +308,13 @@ export type DriverReferral = {
 
 export const getDriverReferrals = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverReferral[]> => {
-    const { data } = await context.supabase
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverReferral[]> => {
+    const sc = await scope(context, input, "referrals");
+    const { data } = await sc.supabase
       .from("referrals")
       .select("id,referred_email,reward_amount,status,created_at")
-      .eq("referrer_id", context.userId)
+      .eq("referrer_id", sc.userId)
       .order("created_at", { ascending: false })
       .limit(50);
     return (data ?? []).map((r: any) => ({ ...r, reward_amount: Number(r.reward_amount ?? 0) }));
@@ -308,6 +328,7 @@ export const createDriverReferral = createServerFn({ method: "POST" })
     return { email };
   })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    await refuseWrite(context.userId);
     const { error } = await context.supabase.from("referrals").insert({
       referrer_id: context.userId,
       referred_email: data.email,
@@ -332,11 +353,13 @@ export type DriverProfile = {
 
 export const getDriverProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverProfile> => {
-    const { data } = await context.supabase
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverProfile> => {
+    const sc = await scope(context, input, "profile");
+    const { data } = await sc.supabase
       .from("applications")
       .select("full_name,email,phone,city,status,created_at,address,state,zip,sms_consent")
-      .eq("user_id", context.userId)
+      .eq("user_id", sc.userId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -351,7 +374,7 @@ export const getDriverProfile = createServerFn({ method: "GET" })
       sms_consent: (data as any)?.sms_consent ?? null,
       status: data?.status ?? null,
       applied_at: data?.created_at ?? null,
-      account_email: (context.claims as any)?.email ?? null,
+      account_email: sc.preview ? (data?.email ?? null) : ((context.claims as any)?.email ?? null),
     };
   });
 
@@ -412,6 +435,7 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
+    await refuseWrite(context.userId);
     const { supabase, userId } = context;
     const { data: app } = await supabase
       .from("applications")
@@ -466,8 +490,9 @@ export type DriverPicture = { url: string; label: string };
 
 export const getDriverPictures = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<DriverPicture[]> => {
-    const { supabase, userId } = context;
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverPicture[]> => {
+    const { supabase, userId } = await scope(context, input, "pictures");
     const { data: rental } = await supabase
       .from("rentals")
       .select("vehicle_id")

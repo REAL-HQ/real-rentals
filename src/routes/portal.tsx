@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,6 +31,7 @@ import {
   signCheckoutInspection,
 } from "@/lib/inspections.functions";
 import { getMyCharges } from "@/lib/charges.functions";
+import { searchPreviewDrivers, recordDriverPreview } from "@/lib/driver-preview.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
@@ -97,6 +98,33 @@ type Tab = (typeof TABS)[number]["id"];
  */
 const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
 
+
+/** Staff read-only "Viewing as" preview: the selected driver's account id, or null. */
+const PreviewDriverCtx = createContext<string | null>(null);
+function usePreviewDriver() {
+  return useContext(PreviewDriverCtx);
+}
+/** Portal read: in preview, asks the server for that driver's data (server re-checks Owner/Manager). */
+function usePortalRead<F extends (...a: any[]) => Promise<any>>(fn: F): (..._a: any[]) => ReturnType<F> {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (..._a: any[]) => f({ data: id ? { previewDriverId: id } : {} });
+}
+/** Portal write: refused in preview (and refused again on the server for staff). */
+function usePortalWrite<F extends (...a: any[]) => Promise<any>>(fn: F): F {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (id ? async () => { throw new Error("Driver Preview is read-only."); } : f) as F;
+}
+function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: Awaited<ReturnType<F>>): F {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (id ? async () => empty : f) as F;
+}
+function ReadOnlyNote({ what }: { what: string }) {
+  return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
+}
+
 function Portal() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
@@ -132,7 +160,7 @@ function Portal() {
 
   // Shares PortalBody's query key, so this costs no extra request — it only
   // lets the shell know whether there is a rental before it draws the nav.
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data: dash } = useQuery({
     queryKey: ["driver-dashboard"],
     queryFn: () => fetchDashboard(),
@@ -277,7 +305,7 @@ function Portal() {
 }
 
 function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => void }) {
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data, isLoading, error } = useQuery({
     queryKey: ["driver-dashboard"],
     queryFn: () => fetchDashboard(),
@@ -336,7 +364,8 @@ function fmt(amount: number) {
 }
 
 function DocumentsView() {
-  const fetchDocs = useServerFn(getDriverDocuments);
+  const docsPreviewId = usePreviewDriver();
+  const fetchDocs = usePortalRead(getDriverDocuments);
   const { data, isLoading } = useQuery({
     queryKey: ["driver-documents"],
     queryFn: () => fetchDocs(),
@@ -354,7 +383,7 @@ function DocumentsView() {
           keep the history.
         </p>
         <div className="mt-4">
-          <DocumentVault mode="driver" />
+          {docsPreviewId ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
         </div>
       </div>
 
@@ -391,8 +420,8 @@ function DocumentsView() {
 }
 
 function AgreementsView() {
-  const fetchAgreements = useServerFn(getMyAgreements);
-  const sign = useServerFn(signMyAgreement);
+  const fetchAgreements = usePortalRead(getMyAgreements);
+  const sign = usePortalWrite(signMyAgreement);
   const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
@@ -512,7 +541,7 @@ function IssuesView() {
 }
 
 function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }) {
-  const save = useServerFn(updateDriverProfile);
+  const save = usePortalWrite(updateDriverProfile);
   const [f, setF] = useState({
     full_name: profile?.full_name ?? "",
     email: profile?.email ?? "",
@@ -616,8 +645,8 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
  * of them, with room to note anything they disagree with, before they sign.
  */
 function CheckoutSignOffCard() {
-  const fetchInspection = useServerFn(getMyCheckoutInspection);
-  const sign = useServerFn(signCheckoutInspection);
+  const fetchInspection = usePreviewNull(getMyCheckoutInspection, null);
+  const sign = usePortalWrite(signCheckoutInspection);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["checkout-inspection"],
     queryFn: () => fetchInspection(),
@@ -836,9 +865,10 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function PicturesView() {
-  const fetchPics = useServerFn(getDriverPictures);
-  const fetchCondition = useServerFn(listConditionMedia);
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const picsPreviewId = usePreviewDriver();
+  const fetchPics = usePortalRead(getDriverPictures);
+  const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
 
   const { data: dash } = useQuery({
     queryKey: ["driver-dashboard"],
@@ -875,6 +905,7 @@ function PicturesView() {
             </p>
           </div>
 
+          {picsPreviewId ? <ReadOnlyNote what="Condition photo uploads" /> : (<>
           <ConditionUploader
             title="Before — at Pickup"
             vehicleId={vehicleId}
@@ -892,6 +923,7 @@ function PicturesView() {
             media={after}
             onChanged={() => refetchCondition()}
           />
+          </>)}
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-white p-5">
@@ -942,8 +974,8 @@ function PicturesView() {
 }
 
 function SettingsView() {
-  const fetchProfile = useServerFn(getDriverProfile);
-  const submitIssue = useServerFn(createDriverIssue);
+  const fetchProfile = usePortalRead(getDriverProfile);
+  const submitIssue = usePortalWrite(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-profile"],
     queryFn: () => fetchProfile(),
@@ -1049,8 +1081,8 @@ function SettingsView() {
 
 function IssuesViewInner() {
   const businessPhone = useBusinessPhone();
-  const fetchIssues = useServerFn(getDriverIssues);
-  const submitIssue = useServerFn(createDriverIssue);
+  const fetchIssues = usePortalRead(getDriverIssues);
+  const submitIssue = usePortalWrite(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-issues"],
     queryFn: () => fetchIssues(),
@@ -1190,8 +1222,8 @@ function IssuesViewInner() {
 }
 
 function ReferralsView() {
-  const fetchReferrals = useServerFn(getDriverReferrals);
-  const submitReferral = useServerFn(createDriverReferral);
+  const fetchReferrals = usePortalRead(getDriverReferrals);
+  const submitReferral = usePortalWrite(createDriverReferral);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-referrals"],
     queryFn: () => fetchReferrals(),
@@ -1636,7 +1668,7 @@ function Field({ label, value }: { label: string; value: any }) {
  * put in front of them.
  */
 function MyChargesCard() {
-  const fetchCharges = useServerFn(getMyCharges);
+  const fetchCharges = usePortalRead(getMyCharges);
   const { data, isLoading } = useQuery({
     queryKey: ["driver-charges"],
     queryFn: () => fetchCharges(),
@@ -1697,14 +1729,17 @@ function MyChargesCard() {
 function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
+  const previewId = usePreviewDriver();
+  const loadBilling = () => getRentalBilling({ data: previewId ? { previewDriverId: previewId } : {} });
 
   useEffect(() => {
-    getRentalBilling()
+    loadBilling()
       .then(setBilling)
       .catch(() => setBilling(null));
   }, []);
 
   async function payNow() {
+    if (previewId) { toast.error("Driver Preview is read-only."); return; }
     if (!billing?.rentalId || billing.outstandingCents < 50) return;
     setBusy(true);
     try {
@@ -1717,7 +1752,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
       });
       if ("error" in res) throw new Error(res.error);
       toast.success("Payment submitted");
-      const b = await getRentalBilling();
+      const b = await loadBilling();
       setBilling(b);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Payment failed");
@@ -1940,12 +1975,33 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
  */
 function DriverPreview({ tier }: { tier: StaffTier | null }) {
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [picking, setPicking] = useState(false);
+  const [driverName, setDriverName] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const options = availableExperiences(tier, false);
   const current = TABS.find((t) => t.id === tab)!;
+  const driverId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("driver") : null;
+  const validId = driverId && /^[0-9a-f-]{36}$/i.test(driverId) ? driverId : null;
+  const record = useServerFn(recordDriverPreview);
+
+  useEffect(() => {
+    if (!validId) return;
+    let live = true;
+    record({ data: { driverId: validId, event: "start" } })
+      .then((r) => live && setDriverName(r.name))
+      .catch((e) => live && setPreviewError(e instanceof Error ? e.message : "Could not open this driver."));
+    const end = () => { record({ data: { driverId: validId, event: "end" } }).catch(() => {}); };
+    window.addEventListener("pagehide", end);
+    return () => { live = false; window.removeEventListener("pagehide", end); };
+  }, [validId]);
+
   function choose(e: Experience) {
     storeExperience(e);
     if (e !== "driver") window.location.assign("/admin");
   }
+  function exitPreview() { window.location.assign("/portal?preview=1"); }
+  function openDriver(id: string) { window.location.assign(`/portal?preview=1&driver=${encodeURIComponent(id)}`); }
+
   const nav = (onPick?: () => void) => TABS.map((t) => {
     const Icon = t.icon;
     const active = tab === t.id;
@@ -1968,16 +2024,77 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
           <ExperienceSwitcher value="driver" options={options} onChange={choose} />
           <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">{nav()}</div>
         </div>
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-          <strong>Driver Preview</strong> — the driver portal layout only. No driver data is loaded, and your permissions are unchanged.
-        </div>
-        <div className="p-6 md:p-10 max-w-3xl">
-          <h1 className="text-2xl font-semibold">{current.label}</h1>
-          <div className="mt-6 rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            A driver sees their own {current.label.toLowerCase()} information here.
+        {validId ? (
+          <div role="status" className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+            <span className="flex-1 min-w-[180px]"><strong>Viewing As {driverName ?? "Driver"}</strong> — Read-Only. You are still signed in as yourself.</span>
+            <button type="button" onClick={() => setPicking(true)} className="min-h-9 rounded-lg border border-amber-300 bg-white px-3 text-sm font-medium">Change Driver</button>
+            <button type="button" onClick={exitPreview} className="min-h-9 rounded-lg bg-real-red px-3 text-sm font-medium text-white">Exit Preview</button>
           </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+            <span className="flex-1 min-w-[180px]"><strong>Preview Driver</strong> — sample layout only. No driver data is loaded.</span>
+            <button type="button" onClick={() => setPicking(true)} className="min-h-9 rounded-lg bg-real-red px-3 text-sm font-medium text-white">Select Driver</button>
+          </div>
+        )}
+        <div className="p-6 md:p-10 max-w-3xl">
+          {validId ? (
+            previewError ? (
+              <div className="text-sm text-real-red">{previewError}</div>
+            ) : (
+              <PreviewDriverCtx.Provider value={validId}>
+                <PortalBody tab={tab} onNavigate={setTab} />
+              </PreviewDriverCtx.Provider>
+            )
+          ) : (
+            <>
+              <h1 className="text-2xl font-semibold">{current.label}</h1>
+              <div className="mt-6 rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                A driver sees their own {current.label.toLowerCase()} information here.
+              </div>
+            </>
+          )}
         </div>
       </main>
+      {picking && <DriverPicker onClose={() => setPicking(false)} onPick={openDriver} />}
+    </div>
+  );
+}
+
+function DriverPicker({ onClose, onPick }: { onClose: () => void; onPick: (id: string) => void }) {
+  const search = useServerFn(searchPreviewDrivers);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => { const t = setTimeout(() => { setDebounced(q); setPage(0); }, 250); return () => clearTimeout(t); }, [q]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["preview-driver-search", debounced, page],
+    queryFn: () => search({ data: { q: debounced, page } }),
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh]" onClick={onClose}>
+      <div role="dialog" aria-label="Select Driver" className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Select Driver</h2>
+          <button type="button" onClick={onClose} className="text-sm text-muted-foreground">Close</button>
+        </div>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Name, Email, Phone Or ID"
+          className="mt-3 w-full min-h-11 rounded-lg border border-border px-3 text-sm outline-none focus:ring-2 focus:ring-real-red" />
+        <div className="mt-3 max-h-[50vh] overflow-y-auto divide-y divide-border">
+          {isLoading && <div className="py-6 text-center text-sm text-muted-foreground">Searching…</div>}
+          {error && <div className="py-6 text-center text-sm text-real-red">{(error as Error).message}</div>}
+          {data && data.rows.length === 0 && <div className="py-6 text-center text-sm text-muted-foreground">No Drivers Found</div>}
+          {data?.rows.map((r) => (
+            <button key={r.id} type="button" onClick={() => onPick(r.id)} className="w-full py-3 text-left hover:bg-soft px-2 rounded-lg">
+              <div className="text-sm font-medium">{r.name || "Unnamed Driver"}</div>
+              <div className="text-xs text-muted-foreground">{[r.email, r.phone, r.status].filter(Boolean).join(" · ")}</div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex justify-between">
+          <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="text-sm disabled:opacity-40">Previous</button>
+          <button type="button" disabled={!data?.hasMore} onClick={() => setPage((p) => p + 1)} className="text-sm disabled:opacity-40">Next</button>
+        </div>
+      </div>
     </div>
   );
 }

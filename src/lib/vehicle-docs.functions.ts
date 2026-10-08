@@ -69,9 +69,11 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
 
     const out: VehicleDoc[] = [];
     const { isFinanceKind } = await import("@/lib/vehicle-doc-presence");
+    const ownerOnlyOk = (await import("@/lib/experience.server")).ownerView(actor);
     for (const r of (rows ?? []) as any[]) {
       // Purchase, loan, payoff and lien paperwork is Owner only.
-      if (actor.tier !== "owner" && (isFinanceKind(r.kind) || isFinanceKind(r.category))) continue;
+      if (!ownerOnlyOk && (isFinanceKind(r.kind) || isFinanceKind(r.category))) continue;
+      const titleRestricted = !ownerOnlyOk && (r.kind === "title" || r.category === "title");
       out.push({
         id: r.id,
         vehicle_id: r.vehicle_id,
@@ -86,7 +88,7 @@ export const listVehicleDocs = createServerFn({ method: "POST" })
           ? Math.round((new Date(r.expires_at).getTime() - today.getTime()) / 86400_000)
           : null,
         // Notes on priced evidence can carry amounts; Coordinators get none (the original is Manager-only too).
-        notes: !isManager && r.evidence_class && r.evidence_class !== "operational" ? null : r.notes,
+        notes: titleRestricted || (!isManager && r.evidence_class && r.evidence_class !== "operational") ? null : r.notes,
         created_at: r.created_at,
         url: null,
       });

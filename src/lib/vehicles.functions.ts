@@ -511,6 +511,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     const v = vehicle as any;
     const isManager = actor.tier === "manager" || actor.tier === "owner";
+    const isOwnerView = (await import("@/lib/experience.server")).ownerView(actor);
 
     const [{ data: rental }, { data: partner }, publishedMedia, maint, insp, rentals, media] =
       await Promise.all([
@@ -549,7 +550,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     // Canonical document presence: direct + Fleet Inbox links, one physical
     // document counted once. Finance paperwork is hidden from Coordinators.
-    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, actor.tier === "owner");
+    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, isOwnerView);
 
     let driverName: string | null = null;
     if (rental?.application_id) {
@@ -585,7 +586,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     let finance: VehicleProfile["finance"] = null;
     // Acquisition, lender, lien and payoff data: Owner only (DB policy matches).
-    if (actor.tier === "owner") {
+    if (isOwnerView) {
       const { data: fin } = await supabaseAdmin
         .from("vehicle_finance")
         .select("*")
@@ -620,10 +621,14 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     // printed on drivereal.com; hiding them from a Coordinator withheld
     // nothing from anyone and made the fleet list read wrongly.
 
+    // Title number and lien-type title status are Owner View only; others see "on file" style metadata.
+    const shapedVehicle = isOwnerView
+      ? v
+      : { ...v, title_number: null, title_status: v.title_status && /lien|financ/i.test(String(v.title_status)) ? "on_file" : v.title_status };
     return {
-      vehicle: v,
+      vehicle: shapedVehicle,
       finance,
-      canSeeFinance: actor.tier === "owner",
+      canSeeFinance: isOwnerView,
       canEdit: isManager,
       unitLabel: v.unit_number || `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim(),
       vinLast4: v.vin ? String(v.vin).slice(-4) : "",

@@ -206,7 +206,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
     // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
-    const canOwnership = actor.tier === "owner";
+    const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
     const { data: batch } = await sb.from("fleet_import_batches").select("*").eq("id", data.batchId).maybeSingle();
     if (!batch) throw new Error("Not found");
@@ -279,7 +279,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
     // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
-    const canOwnership = actor.tier === "owner";
+    const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
     const results: ApplyResult[] = [];
 
@@ -461,7 +461,7 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
     // Priced invoices are mixed evidence: the original image itself carries costs and payment details.
     if (((doc as any).evidence_class === "mixed" || (doc as any).evidence_class === "financial") && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden: this original contains financial details (Manager or Owner only).");
     // Loan / payoff / purchase paperwork stays inside the finance boundary.
-    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind) || isFinanceKind(doc.category)) && actor.tier !== "owner") throw new Error("Forbidden: ownership and loan paperwork is Owner only.");
+    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind) || isFinanceKind(doc.category) || doc.category === "title" || (doc as any).kind === "title") && !(await import("@/lib/experience.server")).ownerView(actor)) throw new Error("Forbidden: title, ownership and loan paperwork is Owner only.");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -481,7 +481,7 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
     // Same canonical loader as the vehicle profile; finance paperwork is
     // withheld from Coordinators here, not merely hidden in the UI.
     const { loadVehicleDocPresence } = await import("@/lib/vehicle-doc-presence.server");
-    const pres = await loadVehicleDocPresence(sb, data.vehicleId, actor.tier === "owner");
+    const pres = await loadVehicleDocPresence(sb, data.vehicleId, (await import("@/lib/experience.server")).ownerView(actor));
     if (!pres.linked.length) return [];
     const ids = pres.linked.map((d) => d.id);
     const [{ data: docs }, { data: links }] = await Promise.all([
