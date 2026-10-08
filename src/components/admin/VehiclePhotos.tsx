@@ -447,9 +447,17 @@ function PhotoTile({
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    loadStaffPhoto(m.storage_path).then((u) => live && setUrl(u));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tryLoad = (left: number) =>
+      loadStaffPhoto(m.storage_path).then((u) => {
+        if (!live) return;
+        if (u) setUrl(u);
+        else if (left > 0) timer = setTimeout(() => tryLoad(left - 1), 4000);
+      });
+    void tryLoad(2);
     return () => {
       live = false;
+      if (timer) clearTimeout(timer);
     };
   }, [m.storage_path]);
   const isEnhanced = m.kind === "ai_enhanced";

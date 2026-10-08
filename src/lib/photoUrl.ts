@@ -28,10 +28,10 @@ export function loadStaffPhoto(path: string): Promise<string | null> {
       // Wait for the signed-in session to be restored; a download fired before
       // that is anonymous and is refused by the private bucket.
       await supabase.auth.getSession();
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 4; i++) {
         const { data } = await supabase.storage.from("vehicle-photos").download(path);
         if (data) return URL.createObjectURL(data);
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 600 * 2 ** i));
       }
       return null;
     };
