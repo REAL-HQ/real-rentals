@@ -1851,6 +1851,7 @@ function DriverDetail({
                   screening={screening}
                   docCount={vaultDocCount}
                   hasRecording={hasRecording}
+                  hasActiveRental={hasActiveRental}
                   onAdvance={advanceStatus}
                 />
                 <InsuranceVerificationCard

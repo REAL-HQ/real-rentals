@@ -148,6 +148,8 @@ export function ScreeningPipeline({
    * either way, so the UI knowing less is not a way around it.
    */
   hasRecording: boolean;
+  /** Active Renter completes only once a rental is running (enforced in the database). */
+  hasActiveRental?: boolean;
   onAdvance: (next: ScreeningStatus) => Promise<void>;
 }) {
   const current = (screening?.status ?? "new_lead") as ScreeningStatus;
