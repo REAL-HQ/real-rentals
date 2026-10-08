@@ -406,9 +406,9 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
   const resumeUrl = await applicantResumeUrl(applicationId);
   const subject =
     variant === "24h"
-      ? `${name}, finish your REAL RENTALS application`
-      : `${name}, your spot won't hold much longer`;
-  const headline = variant === "24h" ? "You're almost there." : "Last nudge — your spot is waiting.";
+      ? `${name}, your REAL RENTALS application is saved`
+      : `${name}, your REAL RENTALS application is still open`;
+  const headline = variant === "24h" ? "Your Application Is Almost Done" : "Your Application Is Still Open";
   const body =
     variant === "24h"
       ? "You started your driver application yesterday but didn't finish. It takes about 2 minutes to complete — then our team can call you to confirm availability and get you on the road."
