@@ -76,10 +76,8 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
       }
       if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again.`);
       onOpen(id);
-      // Analyze sequentially; one failure never stops the rest.
-      for (const itemId of itemIds) {
-        try { await analyze({ data: { itemId } }); } catch { /* recorded on the item */ }
-      }
+      // Analysis is queued server-side at registration; the worker processes it without this page open.
+      void itemIds;
     } catch {
       toast.error("Could not start the import.");
     } finally {
@@ -179,15 +177,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     const t = setInterval(() => void load(), active ? 3000 : 15000);
     return () => clearInterval(t);
   }, [d, load]);
-  // Email-delivered files arrive "waiting to analyze"; run the normal analysis once when staff open the import.
-  const kicked = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!d || d.batch.source_channel !== "email") return;
-    const waiting = d.items.filter((i: any) => i.status === "uploaded" && !kicked.current.has(i.id));
-    if (!waiting.length) return;
-    waiting.forEach((i: any) => kicked.current.add(i.id));
-    void (async () => { for (const i of waiting) { try { await analyze({ data: { itemId: i.id } }); } catch { /* shown as Failed */ } } void load(); })();
-  }, [d, analyze, load]);
+  // Email and uploaded files are analyzed by the server-side queue worker; the page only displays progress.
 
   const setOne = (id: string, patch: Partial<Decision>) => setDec((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
 
