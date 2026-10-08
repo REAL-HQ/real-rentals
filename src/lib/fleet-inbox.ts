@@ -2,6 +2,7 @@
 // vehicle matching and change proposals. No I/O, so the same rules run in the
 // analyzer, the apply step (revalidation) and the tests.
 import { checkVin, normalizeVin } from "@/lib/vin";
+import { normalizeDisplayField } from "@/lib/display-normalize";
 
 export const DOC_GROUPS = [
   { group: "Ownership", classes: ["title", "registration", "bill_of_sale", "purchase_agreement"] },
@@ -130,7 +131,9 @@ function norm(field: string, v: string): string {
 }
 function same(field: string, a: unknown, b: unknown) {
   if (a == null || a === "") return false;
-  return up(norm(field, String(a))) === up(norm(field, String(b)));
+  // Compare only: ignore case/spacing and equivalent standardized values (e.g. DMV "SIL" = "Silver").
+  const k = (v: unknown) => up(String(normalizeDisplayField(field, norm(field, String(v))))).replace(/\s+/g, " ").trim();
+  return k(a) === k(b);
 }
 
 /**

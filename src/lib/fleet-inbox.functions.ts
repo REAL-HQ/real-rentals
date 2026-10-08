@@ -273,8 +273,15 @@ const DATE_FIELDS = new Set(["registration_expires_on", "insurance_effective_on"
 function withBodyType(fields: Record<string, ExtractedField>, model: string | null | undefined): Record<string, ExtractedField> {
   const b = fields.body_type;
   if (!b?.value) return fields;
+  const raw = String(b.raw ?? b.value);
+  // A doors-only code ("4D") does not state body style; keep the raw text so it
+  // can't be offered as a storable value unless a reliable mapping exists.
+  if (/^\s*\d\s?D(R|OOR)?\s*$/i.test(raw)) {
+    const mapped = normalizeBodyType(raw, model);
+    return { ...fields, body_type: { ...b, raw, value: mapped ?? raw } };
+  }
   const mapped = normalizeBodyType(String(b.value), model);
-  return mapped ? { ...fields, body_type: { ...b, raw: b.raw ?? b.value, value: mapped } } : fields;
+  return mapped ? { ...fields, body_type: { ...b, raw, value: mapped } } : fields;
 }
 function coerce(field: string, v: string): unknown {
   if (field === "year" || field === "current_odometer") { const n = parseInt(v.replace(/[^0-9]/g, ""), 10); return Number.isFinite(n) ? n : null; }
@@ -656,6 +663,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     const suggestions: any[] = [];
     const conflicts: any[] = [];
     const possible: any[] = [];
+    const needsVerification: any[] = [];
     for (const p of props ?? []) {
       const it = itemBy[p.item_id];
       if (!it) continue;
@@ -676,9 +684,12 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       const fresh = buildProposal(entry, it.doc_class ?? "unknown", [target], prov);
       for (const c of fresh.changes) {
         if (!canOwnership && isOwnerOnlyField(c.field)) continue;
-        // Never offer a value the save path can't store (e.g. body type "4D").
-        if (coerce(c.field, c.proposed) == null) continue;
         const f: any = (entry.fields as any)[c.field] ?? {};
+        // Never offer a value the save path can't store (e.g. body type "4D"): show it for verification only.
+        if (coerce(c.field, c.proposed) == null) {
+          if (c.field === "body_type" && c.kind === "fill") needsVerification.push({ ...source, field: c.field, label: c.label, current: c.current, proposed: String(f.raw ?? c.proposed), note: "Body style requires verification — the document shows a door count only.", evidence: { raw: f.raw ?? null, note: f.note ?? null } });
+          continue;
+        }
         const row = {
           ...source, field: c.field, label: c.label, current: c.current, proposed: normalizeDisplayField(c.field, c.proposed),
           confidence: c.confidence, risk: c.risk, kind: c.kind,
@@ -692,5 +703,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     // One suggestion per field: highest-authority/most recent first already (ordered by created_at desc).
     const seen = new Set<string>();
     const unique = suggestions.filter((s) => (seen.has(s.field) ? false : (seen.add(s.field), true)));
-    return { suggestions: unique, conflicts, possibleMatches: possible, canOwnership };
+    const vSeen = new Set<string>();
+    const verify = needsVerification.filter((s) => !seen.has(s.field) && (vSeen.has(s.field) ? false : (vSeen.add(s.field), true)));
+    return { suggestions: unique, conflicts, possibleMatches: possible, needsVerification: verify, canOwnership };
   });
