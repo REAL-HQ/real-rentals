@@ -17,7 +17,7 @@ const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.
 export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleId: string; canEdit: boolean; onApplied: () => void }) {
   const load = useServerFn(getVehicleSuggestions);
   const apply = useServerFn(applyImportDecisions);
-  const [data, setData] = useState<{ suggestions: Sug[]; conflicts: Sug[]; possibleMatches: any[] } | null>(null);
+  const [data, setData] = useState<{ suggestions: Sug[]; conflicts: Sug[]; possibleMatches: any[]; needsVerification?: any[] } | null>(null);
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
   const sugs = data?.suggestions ?? [];
   const safeKeys = useMemo(() => sugs.filter((s) => s.safe).map(key), [sugs]);
   const count = sugs.length;
-  if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length)) return null;
+  if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length && !(data.needsVerification ?? []).length)) return null;
 
   async function submit(keys: string[]) {
     if (!keys.length) return;
@@ -90,6 +90,16 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
               </label>
             ))}
 
+            {(data.needsVerification ?? []).length > 0 && (
+              <div className="mt-3 text-[12px]">
+                <div className="font-semibold mb-1 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-[#8A4B00]" /> Needs Verification — Not Applied</div>
+                {(data.needsVerification ?? []).map((v: any) => (
+                  <div key={`${v.proposalId}:${v.field}`} className="text-[#55555E] mb-1">
+                    {v.label}: document shows “{v.proposed}”. {v.note} ({v.fileName}{v.page ? ` · Page ${v.page}` : ""})
+                  </div>
+                ))}
+              </div>
+            )}
             {data.conflicts.length > 0 && (
               <div className="mt-3 text-[12px]">
                 <div className="font-semibold mb-1">Conflicts — Not Applied</div>
