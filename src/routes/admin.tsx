@@ -204,7 +204,7 @@ function Admin() {
       const header = el.querySelector("header");
       root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
       const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
-      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight + 16 : 0}px`);
+      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
     };
     set();
     const ro = new ResizeObserver(set);
