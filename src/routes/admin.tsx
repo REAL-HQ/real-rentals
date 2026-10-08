@@ -285,7 +285,9 @@ function Admin() {
     if (!tier) return;
     const r = resolveExperience(tier, false);
     // Landing on /admin means a staff view; a stored "driver" falls back to the default staff view.
-    setExperience(r === "driver" ? availableExperiences(tier, false)[0] : r);
+    const staffView = r === "driver" ? availableExperiences(tier, false)[0] : r;
+    if (staffView && staffView !== r) storeExperience(staffView); // e.g. browser Back from Driver Preview
+    setExperience(staffView);
   }, [tier]);
   function chooseExperience(e: Experience) {
     storeExperience(e);
