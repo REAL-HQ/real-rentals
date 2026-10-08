@@ -494,7 +494,7 @@ function LinkExpired({ message }: { message: string }) {
           to="/apply"
           className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
-          Start a New Application
+          Start A New Application
         </Link>
       </div>
     </div>
