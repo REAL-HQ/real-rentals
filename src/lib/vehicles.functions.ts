@@ -622,9 +622,15 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     // nothing from anyone and made the fleet list read wrongly.
 
     // Title number and lien-type title status are Owner View only; others see "on file" style metadata.
+    // Title identifiers live in the Owner-only vehicle_titles table (RLS: private.is_owner()).
+    let ownerTitle: { title_number: string | null; title_status: string | null } | null = null;
+    if (isOwnerView) {
+      const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
+      ownerTitle = t ?? null;
+    }
     const shapedVehicle = isOwnerView
-      ? v
-      : { ...v, title_number: null, title_status: v.title_status && /lien|financ/i.test(String(v.title_status)) ? "on_file" : v.title_status };
+      ? { ...v, title_number: ownerTitle?.title_number ?? null, title_status: ownerTitle?.title_status ?? null }
+      : { ...v, title_number: null, title_status: (v as any).title_on_file ? "on_file" : null };
     return {
       vehicle: shapedVehicle,
       finance,
@@ -871,8 +877,24 @@ async function applySection(
     const allowed: readonly string[] = VEHICLE_SECTIONS[data.section as VehicleSection];
 
     const patch: Record<string, unknown> = {};
+    // Title identifiers are Owner-only (public.vehicle_titles). Only the Owner
+    // view may write them, and they go straight to that table, never vehicles.
+    const canTitle = (await import("@/lib/experience.server")).ownerView(actor);
+    const TITLE_KEYS = ["title_number", "title_status"];
+    if (canTitle && TITLE_KEYS.some((k) => k in data.values)) {
+      const clean = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
+      const row: Record<string, unknown> = { vehicle_id: data.id, updated_by: actor.userId, updated_at: new Date().toISOString() };
+      for (const k of TITLE_KEYS) if (k in data.values) row[k] = clean(data.values[k]);
+      const { error: tErr } = await supabaseAdmin.from("vehicle_titles").upsert(row, { onConflict: "vehicle_id" });
+      if (tErr) throw new Error("Could not save title details");
+      const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
+      await supabaseAdmin.from("vehicles").update({ title_on_file: !!(t?.title_number || t?.title_status) }).eq("id", data.id);
+      // Values deliberately omitted: Managers can read the audit log.
+      await logAudit(actor, { action: "vehicle.title_updated", summary: "Updated Owner-only title details", entityType: "vehicle", entityId: data.id, metadata: { fields: TITLE_KEYS.filter((k) => k in data.values) } });
+    }
     for (const key of allowed) {
       if (!(key in data.values)) continue;
+      if (TITLE_KEYS.includes(key)) continue;
       let v = data.values[key];
 
       if (typeof v === "string") {

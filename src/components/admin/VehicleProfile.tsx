@@ -1,3 +1,4 @@
+import { useUnsavedGuard } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -328,6 +329,7 @@ export function VehicleProfile({
           section={editing}
           vehicleId={vehicleId}
           vehicle={p.vehicle}
+          canTitle={p.canSeeFinance}
           onClose={() => setEditing(null)}
           onSaved={afterSave}
         />
@@ -598,8 +600,14 @@ function Dmv({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         icon={<ScrollText className="w-4 h-4" strokeWidth={1.75} />}
       >
         <Row label="VIN" value={v.vin} mono />
-        <Row label="Title Status" value={titleCase(v.title_status)} />
-        <Row label="Title Number" value={v.title_number} mono />
+        {p.canSeeFinance ? (
+          <>
+            <Row label="Title Status" value={titleCase(v.title_status)} />
+            <Row label="Title Number" value={v.title_number} mono />
+          </>
+        ) : (
+          <Row label="Title" value={v.title_on_file ? "Title On File" : "Not On File"} />
+        )}
         <div className="mt-3 text-[11px] text-[#9A9AA3]">
           Changing a VIN or plate is recorded in Activity with what it was before.
         </div>
@@ -731,12 +739,14 @@ function SectionDrawer({
   section,
   vehicleId,
   vehicle,
+  canTitle = false,
   onClose,
   onSaved,
 }: {
   section: VehicleSection;
   vehicleId: string;
   vehicle: Record<string, any>;
+  canTitle?: boolean;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }) {
@@ -745,7 +755,9 @@ function SectionDrawer({
   const [saving, setSaving] = useState(false);
   const [fieldError, setFieldError] = useState<{ field?: string; message: string } | null>(null);
 
-  const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const [touched, setTouched] = useState(false);
+  useUnsavedGuard("vehicle-section-drawer", touched);
+  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);
@@ -977,6 +989,7 @@ function SectionDrawer({
             value={day("registration_expires_on")}
             onChange={(v) => set("registration_expires_on", v)}
           />
+          {canTitle && (<>
           <Choice
             label="Title Status"
             value={str("title_status")}
@@ -996,6 +1009,7 @@ function SectionDrawer({
             onChange={(v) => set("title_number", v)}
             mono
           />
+          </>)}
         </div>
       )}
 
@@ -1142,7 +1156,9 @@ function FinanceDrawer({
     };
   }, [load, vehicleId, onClose]);
 
-  const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const [touched, setTouched] = useState(false);
+  useUnsavedGuard("vehicle-finance-drawer", touched);
+  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);

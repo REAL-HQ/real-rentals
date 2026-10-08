@@ -4613,6 +4613,45 @@ export type Database = {
           },
         ]
       }
+      vehicle_titles: {
+        Row: {
+          title_number: string | null
+          title_status: string | null
+          updated_at: string
+          updated_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          title_number?: string | null
+          title_status?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          title_number?: string | null
+          title_status?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_titles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_titles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           archive_reason: string | null
@@ -4680,6 +4719,7 @@ export type Database = {
           spare_key: boolean | null
           status: string
           title_number: string | null
+          title_on_file: boolean
           title_status: string | null
           toll_account: string | null
           toll_transponder_id: string | null
@@ -4756,6 +4796,7 @@ export type Database = {
           spare_key?: boolean | null
           status?: string
           title_number?: string | null
+          title_on_file?: boolean
           title_status?: string | null
           toll_account?: string | null
           toll_transponder_id?: string | null
@@ -4832,6 +4873,7 @@ export type Database = {
           spare_key?: boolean | null
           status?: string
           title_number?: string | null
+          title_on_file?: boolean
           title_status?: string | null
           toll_account?: string | null
           toll_transponder_id?: string | null

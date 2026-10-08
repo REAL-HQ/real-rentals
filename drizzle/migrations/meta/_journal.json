@@ -29,6 +29,20 @@
       "when": 1791431279577,
       "tag": "0003_title_originals_owner_only",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791432590443,
+      "tag": "0004_owner_only_vehicle_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791432832737,
+      "tag": "0005_vehicle_titles_revoke_anon",
+      "breakpoints": true
     }
   ]
 }

@@ -15,3 +15,16 @@ export function confirmLeaveIfUnsaved() {
   if (!hasUnsavedChanges()) return true;
   return window.confirm("You have unsaved changes. Leave without saving?");
 }
+
+import { useEffect } from "react";
+
+/** Register an editor's dirty state with the shared guard (also warns on refresh/close). */
+export function useUnsavedGuard(key: string, dirty: boolean) {
+  useEffect(() => {
+    setUnsaved(key, dirty);
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => { setUnsaved(key, false); window.removeEventListener("beforeunload", warn); };
+  }, [key, dirty]);
+}

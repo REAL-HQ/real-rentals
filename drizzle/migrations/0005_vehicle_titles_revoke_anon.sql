@@ -1,0 +1,1 @@
+REVOKE ALL ON public.vehicle_titles FROM anon;

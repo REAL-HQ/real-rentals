@@ -212,5 +212,9 @@ export const scanVehicleTitle = createServerFn({ method: "POST" })
     // Ownership / lien details are Owner only.
     if (actor.tier !== "owner") { delete fields.legal_owner; delete fields.lienholder; }
     // Deliberately no write of any kind. The operator confirms every field.
+    // Title identifiers, owner and lien details are Owner-only; never returned to other staff.
+    if (!(await import("@/lib/experience.server")).ownerView(actor)) {
+      for (const k of ["title_number", "title_status", "legal_owner", "lienholder"] as const) delete (fields as any)[k];
+    }
     return { ok: true, documentType, fields, vinCheck, warnings };
   });
