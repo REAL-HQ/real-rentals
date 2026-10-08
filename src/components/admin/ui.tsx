@@ -7,7 +7,7 @@ import {
   type ReadinessResult,
   type ReadinessState,
 } from "@/lib/readiness";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate as formatDate } from "@/lib/date-format";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
@@ -708,7 +708,7 @@ function fmtDate(iso?: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return fmtDate(d);
+  return formatDate(d);
 }
 
 export function buildDriverTimeline(driver: any, screening?: any): TimelineStep[] {

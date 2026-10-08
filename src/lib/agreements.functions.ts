@@ -282,7 +282,7 @@ async function buildMergeData(
     start_date: startDate ?? "",
     return_date: endDate ?? "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: fmtDate(),
+    today: fmtDate(new Date()),
   };
   return { data, app, vehicle, blockers };
 }

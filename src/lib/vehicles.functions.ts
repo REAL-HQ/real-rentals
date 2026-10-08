@@ -6,7 +6,7 @@ import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { notReadyMessage, hasValidRate } from "@/lib/vehicle-readiness";
 import { normalizeDisplayText } from "@/lib/display-normalize";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate as formatDate } from "@/lib/date-format";
 
 async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance: boolean) {
   const m = await import("@/lib/vehicle-doc-presence.server");
@@ -1199,7 +1199,7 @@ export const getVehicleShare = createServerFn({ method: "POST" })
 
     const fmtDate = (d: string | null) =>
       d
-        ? fmtDate(d + "T00:00:00")
+        ? formatDate(d)
         : "—";
     const rows = (pairs: Array<[string, unknown]>) =>
       pairs

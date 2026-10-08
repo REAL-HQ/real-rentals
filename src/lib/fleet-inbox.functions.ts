@@ -32,7 +32,7 @@ export const createImportBatch = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
-    const label = data.label || `Fleet Import — ${fmtDate()}`;
+    const label = data.label || `Fleet Import — ${fmtDate(new Date())}`;
     const { data: row, error } = await sb.from("fleet_import_batches").insert({ label, created_by: actor.userId }).select("id").single();
     if (error) throw new Error("Could not start an import.");
     return { id: row.id as string };

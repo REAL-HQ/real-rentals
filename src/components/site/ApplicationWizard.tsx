@@ -26,7 +26,7 @@ import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate as formatDate } from "@/lib/date-format";
 
 /*
  * ONE application, TWO parts.
@@ -1803,5 +1803,5 @@ function MultiFileUpload({
 function fmtDate(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
-  return fmtDate(d);
+  return formatDate(d);
 }

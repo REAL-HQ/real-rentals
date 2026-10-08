@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate as formatDate } from "@/lib/date-format";
 
 const STATUSES = [
   "upcoming",
@@ -57,7 +57,7 @@ function fmtDate(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return fmtDate(d);
+  return formatDate(d);
 }
 
 export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: string; autoOpenAdd?: boolean } = {}) {
