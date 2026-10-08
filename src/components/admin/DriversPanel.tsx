@@ -801,8 +801,8 @@ export function DriversPanel({
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
+                      <span className="inline-flex items-center gap-1.5 max-w-[200px]">
+                        <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
                       <SourceBadge
                         source={a.gclid ? "google" : "organic"}
@@ -844,9 +844,11 @@ export function DriversPanel({
                       {a.email ? (
                         <a
                           href={`mailto:${a.email}`}
-                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                          title={a.email}
+                          className="inline-flex items-center gap-1 max-w-[190px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
                         >
-                          <Mail className="w-3 h-3" /> {a.email}
+                          <Mail className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{a.email}</span>
                         </a>
                       ) : (
                         <span className="text-[11px] text-muted-foreground">—</span>
