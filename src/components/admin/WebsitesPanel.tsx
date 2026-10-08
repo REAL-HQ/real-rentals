@@ -104,7 +104,7 @@ export function WebsitesPanel() {
             <tbody className="divide-y divide-[#EDEDF0]">
               {sites.map((s) => (
                 <tr key={s.id} className="h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
-                <td className="px-3 font-medium text-[13px]">{s.title}</td>
+                <td className="px-3 font-medium text-[13px] max-w-[80px] truncate" title={s.title}>{s.title}</td>
                   <td className="max-w-[90px]"><code className="text-xs block truncate">/{s.slug}</code></td>
                   <td className="text-muted-foreground">{markets.find((m) => m.id === s.market_id)?.name ?? "—"}</td>
                   <td>
@@ -113,7 +113,7 @@ export function WebsitesPanel() {
                       <select
                         value={s.status}
                         onChange={(e) => updateSite(s.id, { status: e.target.value })}
-                        className="text-xs rounded border border-[#EDEDF0] bg-white px-2 py-1"
+                        className="text-xs rounded border border-[#EDEDF0] bg-white px-1.5 py-1"
                       >
                         <option value="live">Live</option>
                         <option value="coming_soon">Coming Soon</option>
