@@ -511,6 +511,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     const v = vehicle as any;
     const isManager = actor.tier === "manager" || actor.tier === "owner";
+    const isOwnerView = (await import("@/lib/experience.server")).ownerView(actor);
 
     const [{ data: rental }, { data: partner }, publishedMedia, maint, insp, rentals, media] =
       await Promise.all([
@@ -549,7 +550,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     // Canonical document presence: direct + Fleet Inbox links, one physical
     // document counted once. Finance paperwork is hidden from Coordinators.
-    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, actor.tier === "owner");
+    const presence = await loadVehicleDocPresence(supabaseAdmin, data.id, isOwnerView);
 
     let driverName: string | null = null;
     if (rental?.application_id) {
@@ -585,7 +586,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
 
     let finance: VehicleProfile["finance"] = null;
     // Acquisition, lender, lien and payoff data: Owner only (DB policy matches).
-    if (actor.tier === "owner") {
+    if (isOwnerView) {
       const { data: fin } = await supabaseAdmin
         .from("vehicle_finance")
         .select("*")
@@ -623,7 +624,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     return {
       vehicle: v,
       finance,
-      canSeeFinance: actor.tier === "owner",
+      canSeeFinance: isOwnerView,
       canEdit: isManager,
       unitLabel: v.unit_number || `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim(),
       vinLast4: v.vin ? String(v.vin).slice(-4) : "",

@@ -91,7 +91,8 @@ export const getVehicleFinance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicle_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<VehicleFinance | null> => {
-    await requireOwner(context.userId);
+    const actor = await requireOwner(context.userId);
+    if (!(await import("@/lib/experience.server")).ownerView(actor)) throw new Error("Forbidden: Owner View only.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: row } = await supabaseAdmin
