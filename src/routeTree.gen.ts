@@ -35,6 +35,7 @@ import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
+import { Route as ApiPublicCronFleetInboxRouteImport } from './routes/api/public/cron/fleet-inbox'
 import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
@@ -176,6 +177,11 @@ const ApiPublicCronEsignArchiveRetryRoute =
     path: '/api/public/cron/esign-archive-retry',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronFleetInboxRoute = ApiPublicCronFleetInboxRouteImport.update({
+  id: '/api/public/cron/fleet-inbox',
+  path: '/api/public/cron/fleet-inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronLateFeesRoute = ApiPublicCronLateFeesRouteImport.update({
   id: '/api/public/cron/late-fees',
   path: '/api/public/cron/late-fees',
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
+  '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -284,6 +291,7 @@ export interface FileRoutesByTo {
   '/fleet': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
+  '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -321,6 +329,7 @@ export interface FileRoutesById {
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
+  '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
@@ -359,6 +368,7 @@ export interface FileRouteTypes {
     | '/fleet/'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
+    | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -395,6 +405,7 @@ export interface FileRouteTypes {
     | '/fleet'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
+    | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -431,6 +442,7 @@ export interface FileRouteTypes {
     | '/fleet/'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
+    | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/wizard-recovery'
@@ -468,6 +480,7 @@ export interface RootRouteChildren {
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
   ApiPublicCronEsignArchiveRetryRoute: typeof ApiPublicCronEsignArchiveRetryRoute
+  ApiPublicCronFleetInboxRoute: typeof ApiPublicCronFleetInboxRoute
   ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
@@ -662,6 +675,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronEsignArchiveRetryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/fleet-inbox': {
+      id: '/api/public/cron/fleet-inbox'
+      path: '/api/public/cron/fleet-inbox'
+      fullPath: '/api/public/cron/fleet-inbox'
+      preLoaderRoute: typeof ApiPublicCronFleetInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/late-fees': {
       id: '/api/public/cron/late-fees'
       path: '/api/public/cron/late-fees'
@@ -748,6 +768,7 @@ const rootRouteChildren: RootRouteChildren = {
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
   ApiPublicCronEsignArchiveRetryRoute: ApiPublicCronEsignArchiveRetryRoute,
+  ApiPublicCronFleetInboxRoute: ApiPublicCronFleetInboxRoute,
   ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
