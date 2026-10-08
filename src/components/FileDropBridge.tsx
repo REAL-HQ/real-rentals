@@ -61,7 +61,6 @@ export function FileDropBridge() {
     const onOver = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault(); // never let the browser open the file instead
-      if (e.defaultPrevented && active === null && (e.target as Element)?.closest?.("[data-own-drop]")) return;
       const t = findTarget(e.target);
       if (e.dataTransfer) e.dataTransfer.dropEffect = t ? "copy" : "none";
       if (t?.box !== active) { clear(); if (t) { active = t.box; active.setAttribute("data-drop-active", ""); } }
