@@ -49,12 +49,11 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
         const res = await apply({ data: { batchId, decisions: [...props].map(([proposalId, fields]) => ({
           proposalId, action: "match" as const, vehicleId, acceptFields: fields, confirmHighRisk: fields, applyFinance: false, partial: true,
         })) } });
-        for (const r of res.results) r.ok ? applied++ : errors.push(r.message);
+        for (const r of res.results) { if (r.ok) applied += Number(/(\d+) change/.exec(r.message ?? "")?.[1] ?? 0); else errors.push(r.message); }
       }
-      setMsg(errors.length ? errors.join(" ") : `Saved ${chosen.length} Detail${chosen.length === 1 ? "" : "s"}.`);
+      setMsg(errors.length ? errors.join(" ") : applied ? `Saved ${applied} Detail${applied === 1 ? "" : "s"}.` : "Nothing Saved — Those Fields Already Have Values.");
       setPicked(new Set());
       await refresh(); onApplied();
-      void applied;
     } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
   }
 

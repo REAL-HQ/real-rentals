@@ -305,7 +305,10 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         const docClass = item.doc_class ?? "unknown";
 
         // Re-derive the proposal from current data — never trust the preview.
-        const vehicles = await loadVehicles(sb);
+        // Match loads only the chosen car (scale); create still checks the whole fleet for duplicates.
+        const vehicles: ExistingVehicle[] = dec.action === "match"
+          ? await (async () => { const { data: r } = await sb.from("vehicles").select("*").eq("id", dec.vehicleId!).is("archived_at", null).maybeSingle(); return r ? await (await core()).overlayTitles(sb, [r as any]) : []; })()
+          : await loadVehicles(sb);
         const entry: ExtractedEntry = { page: p.page, fields: ((p.fields ?? {}) as unknown) as Record<string, ExtractedField> };
         let target: ExistingVehicle | null = null;
         if (dec.action === "match") {
@@ -664,6 +667,8 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       const fresh = buildProposal(entry, it.doc_class ?? "unknown", [target], prov);
       for (const c of fresh.changes) {
         if (!canOwnership && isOwnerOnlyField(c.field)) continue;
+        // Never offer a value the save path can't store (e.g. body type "4D").
+        if (coerce(c.field, c.proposed) == null) continue;
         const f: any = (entry.fields as any)[c.field] ?? {};
         const row = {
           ...source, field: c.field, label: c.label, current: c.current, proposed: normalizeDisplayField(c.field, c.proposed),
