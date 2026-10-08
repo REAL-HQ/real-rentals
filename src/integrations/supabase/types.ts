@@ -4080,6 +4080,75 @@ export type Database = {
           },
         ]
       }
+      photo_enhance_events: {
+        Row: {
+          actor_id: string | null
+          cost_cents: number
+          created_at: string
+          error: string | null
+          id: string
+          mode: string
+          processing_ms: number | null
+          result_media_id: string | null
+          source_media_id: string | null
+          status: string
+          vehicle_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode: string
+          processing_ms?: number | null
+          result_media_id?: string | null
+          source_media_id?: string | null
+          status: string
+          vehicle_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode?: string
+          processing_ms?: number | null
+          result_media_id?: string | null
+          source_media_id?: string | null
+          status?: string
+          vehicle_id?: string
+        }
+        Relationships: []
+      }
+      photo_enhance_settings: {
+        Row: {
+          daily_limit: number
+          enabled: boolean
+          id: boolean
+          monthly_paid_cap_cents: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          daily_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_paid_cap_cents?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          daily_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_paid_cap_cents?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       referrals: {
         Row: {
           created_at: string
@@ -4983,8 +5052,13 @@ export type Database = {
           is_primary: boolean
           kind: string
           mime_type: string | null
+          processing_ms: number | null
           provenance: string
           published: boolean
+          quality_flags: Json
+          review_status: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           size_bytes: number | null
           sort_order: number
           storage_bucket: string
@@ -5003,8 +5077,13 @@ export type Database = {
           is_primary?: boolean
           kind: string
           mime_type?: string | null
+          processing_ms?: number | null
           provenance?: string
           published?: boolean
+          quality_flags?: Json
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           size_bytes?: number | null
           sort_order?: number
           storage_bucket?: string
@@ -5023,8 +5102,13 @@ export type Database = {
           is_primary?: boolean
           kind?: string
           mime_type?: string | null
+          processing_ms?: number | null
           provenance?: string
           published?: boolean
+          quality_flags?: Json
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           size_bytes?: number | null
           sort_order?: number
           storage_bucket?: string
