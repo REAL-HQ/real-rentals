@@ -81,7 +81,7 @@ CREATE TRIGGER payment_collections_guard BEFORE UPDATE OR DELETE ON public.payme
 CREATE FUNCTION public.collection__audit(_id uuid, _action text, _summary text, _meta jsonb)
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   INSERT INTO public.audit_log(actor_user_id, actor_role, action, entity_type, entity_id, summary, metadata)
-  VALUES (auth.uid(), CASE WHEN private.is_owner() THEN 'owner' WHEN private.is_manager() THEN 'manager' ELSE 'coordinator' END,
+  VALUES (auth.uid(), CASE WHEN auth.uid() IS NULL THEN 'system' WHEN private.is_owner() THEN 'owner' WHEN private.is_manager() THEN 'manager' ELSE 'coordinator' END,
           _action, 'payment_collection', _id::text, _summary, _meta);
 $$;
 
@@ -239,3 +239,86 @@ GRANT EXECUTE ON FUNCTION public.collection_record(uuid,text,numeric,date,text,u
 GRANT EXECUTE ON FUNCTION public.collection_verify(uuid,boolean,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.collection_reject(uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.collection_reverse(uuid,text) TO authenticated;
+
+-- ===== 48-hour expiry (repaired: audit via collection__audit -> real audit_log columns;
+-- transitions allowed by payment_collections_guard) =====
+
+-- Background sweep; scheduler calls it with no user session. Moves no money, posts nothing, no Stripe.
+CREATE FUNCTION public.collection_expire_due() RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r record; n int := 0;
+BEGIN
+  FOR r IN SELECT id, expires_at FROM public.payment_collections
+           WHERE status = 'pending' AND expires_at <= now() FOR UPDATE SKIP LOCKED LOOP
+    UPDATE public.payment_collections SET status = 'expired', expired_at = now() WHERE id = r.id;
+    PERFORM public.collection__audit(r.id, 'payment_expired', 'Expired — 48-hour verification deadline passed (review needed)',
+      jsonb_build_object('deadline', r.expires_at));
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END $$;
+
+-- Owner: extend a pending deadline (or reopen an expired one) with a reason.
+CREATE FUNCTION public.collection_extend(_id uuid, _reason text) RETURNS timestamptz
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.payment_collections%ROWTYPE; c public.payments%ROWTYPE; v timestamptz := now() + interval '48 hours';
+BEGIN
+  IF auth.uid() IS NULL OR NOT private.is_owner() THEN RAISE EXCEPTION 'Only the Owner can extend a deadline' USING ERRCODE = '42501'; END IF;
+  IF coalesce(btrim(_reason),'') = '' THEN RAISE EXCEPTION 'A reason is required'; END IF;
+  SELECT * INTO r FROM public.payment_collections WHERE id = _id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Payment record not found'; END IF;
+  IF r.status NOT IN ('pending','expired') THEN RAISE EXCEPTION 'Payment record is %', r.status; END IF;
+  IF r.status = 'expired' THEN
+    SELECT * INTO c FROM public.payments WHERE id = r.payment_id FOR UPDATE;
+    IF r.amount > coalesce(c.balance_due, c.amount) - (SELECT coalesce(sum(amount),0) FROM public.payment_collections
+         WHERE payment_id = c.id AND id <> r.id AND status = 'pending' AND expires_at > now()) THEN
+      RAISE EXCEPTION 'Amount is more than the remaining balance'; END IF;
+  END IF;
+  UPDATE public.payment_collections SET status = 'pending', expires_at = greatest(v, r.expires_at + interval '1 second'),
+    expired_at = NULL, extended_count = extended_count + 1 WHERE id = _id;
+  PERFORM public.collection__audit(_id, 'payment_deadline_extended', 'Verification deadline extended 48 hours',
+    jsonb_build_object('reason', btrim(_reason), 'previous_deadline', r.expires_at, 'previous_status', r.status));
+  RETURN v;
+END $$;
+
+-- Manager/Owner: reconcile an expired entry back to verification (same row; never a new payment).
+CREATE FUNCTION public.collection_reconcile(_id uuid, _reason text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.payment_collections%ROWTYPE; c public.payments%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL OR NOT private.is_manager() THEN RAISE EXCEPTION 'Only a Manager or Owner can reconcile' USING ERRCODE = '42501'; END IF;
+  IF coalesce(btrim(_reason),'') = '' THEN RAISE EXCEPTION 'A reason is required'; END IF;
+  SELECT * INTO r FROM public.payment_collections WHERE id = _id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Payment record not found'; END IF;
+  IF r.status <> 'expired' THEN RAISE EXCEPTION 'Only expired payments can be reconciled'; END IF;
+  SELECT * INTO c FROM public.payments WHERE id = r.payment_id FOR UPDATE;
+  IF c.status IN ('paid','refunded','waived','void') THEN RAISE EXCEPTION 'This charge is already %', c.status; END IF;
+  IF r.amount > coalesce(c.balance_due, c.amount) - (SELECT coalesce(sum(amount),0) FROM public.payment_collections
+       WHERE payment_id = c.id AND id <> r.id AND status = 'pending' AND expires_at > now()) THEN
+    RAISE EXCEPTION 'Amount is more than the remaining balance'; END IF;
+  UPDATE public.payment_collections SET status = 'pending', expires_at = now() + interval '48 hours', expired_at = NULL WHERE id = _id;
+  PERFORM public.collection__audit(_id, 'payment_reconciled', 'Expired payment returned to verification', jsonb_build_object('reason', btrim(_reason)));
+  RETURN 'pending';
+END $$;
+
+-- Duplicate cash guard: a matching expired cash entry must be reconciled, not re-entered.
+CREATE FUNCTION public.payment_collections_cash_dupe() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.method = 'cash' AND EXISTS (SELECT 1 FROM public.payment_collections
+       WHERE payment_id = NEW.payment_id AND method = 'cash' AND status = 'expired'
+         AND amount = NEW.amount AND received_on = NEW.received_on) THEN
+    RAISE EXCEPTION 'A matching expired cash entry exists — reconcile it instead'; END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER payment_collections_cash_dupe BEFORE INSERT ON public.payment_collections
+  FOR EACH ROW EXECUTE FUNCTION public.payment_collections_cash_dupe();
+
+REVOKE ALL ON FUNCTION public.collection_expire_due() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.collection_expire_due() TO service_role;
+REVOKE ALL ON FUNCTION public.collection_extend(uuid,text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.collection_reconcile(uuid,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.collection_extend(uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.collection_reconcile(uuid,text) TO authenticated;
+
+-- Scheduler (runs with nobody online), enabled with the migration:
+-- SELECT cron.schedule('manual-payments-expiry', '*/5 * * * *', $c$SELECT public.collection_expire_due()$c$);
