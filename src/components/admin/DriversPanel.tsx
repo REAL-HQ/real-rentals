@@ -755,6 +755,7 @@ export function DriversPanel({
 
   return (
     <div>
+      {deleteDialog}
       {showDeleted && (
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
