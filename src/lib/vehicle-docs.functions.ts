@@ -185,6 +185,7 @@ export const deleteVehicleDoc = createServerFn({ method: "POST" })
       .select("id,vehicle_id,kind,storage_bucket,storage_path")
       .eq("id", data.id)
       .maybeSingle();
+    { const { isFinanceKind } = await import("@/lib/vehicle-doc-presence"); if (doc && isFinanceKind(doc.kind) && actor.tier !== "owner") return { ok: false }; }
 
     if (doc?.storage_path) {
       await supabaseAdmin.storage
