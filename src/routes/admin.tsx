@@ -289,7 +289,7 @@ function Admin() {
   }, [tier]);
   function chooseExperience(e: Experience) {
     storeExperience(e);
-    if (e === "driver") { navigate({ to: "/portal", search: { preview: "1" } as any }); return; }
+    if (e === "driver") { window.location.assign("/portal?preview=1"); return; }
     setExperience(e);
   }
 
