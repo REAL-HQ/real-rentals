@@ -87,10 +87,10 @@ export function WebsitesPanel() {
         />
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
-          <table className="w-full text-sm">
+           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
-                <th className="px-4 py-2.5">Title</th>
+                <th className="px-3 py-2.5">Title</th>
                 <th>Slug</th>
                 <th>Market</th>
                 <th>Status</th>
@@ -104,8 +104,8 @@ export function WebsitesPanel() {
             <tbody className="divide-y divide-[#EDEDF0]">
               {sites.map((s) => (
                 <tr key={s.id} className="h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
-                  <td className="px-4 font-medium text-[13px]">{s.title}</td>
-                  <td><code className="text-xs">/{s.slug}</code></td>
+                <td className="px-3 font-medium text-[13px]">{s.title}</td>
+                  <td className="max-w-[110px]"><code className="text-xs block truncate">/{s.slug}</code></td>
                   <td className="text-muted-foreground">{markets.find((m) => m.id === s.market_id)?.name ?? "—"}</td>
                   <td>
                     <div className="flex items-center gap-2">
@@ -133,7 +133,7 @@ export function WebsitesPanel() {
                       type="number"
                       value={s.sort_order}
                       onChange={(e) => updateSite(s.id, { sort_order: Number(e.target.value) })}
-                      className="w-16 text-xs rounded border border-border px-2 py-1"
+                      className="w-14 text-xs rounded border border-border px-2 py-1"
                     />
                   </td>
                   <td>
@@ -146,13 +146,13 @@ export function WebsitesPanel() {
                         }
                       }}
                       placeholder="https://…"
-                      className="w-44 text-xs rounded border border-border px-2 py-1"
+                      className="w-32 text-xs rounded border border-border px-2 py-1"
                     />
                   </td>
                   <td className="text-center">
                     <span className="text-xs font-semibold text-real-red">{waitlistCounts[s.market_id ?? ""] ?? 0}</span>
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-3 py-2 text-right">
                     <button onClick={() => togglePublish(s.id, s.is_published)} className="text-xs rounded border border-border px-2 py-1">
                       {s.is_published ? "Unpublish" : "Publish"}
                     </button>
