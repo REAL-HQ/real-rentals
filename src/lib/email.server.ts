@@ -732,3 +732,19 @@ export async function sendAgreementSignedOpsEmail(args: { driverName: string; ap
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
   await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `Signed Agreement — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
 }
+
+/**
+ * Passwordless portal sign-in: a 6-digit code AND a one-time link in one
+ * branded email (plain-text alternative added by sendEmail). Gmail sometimes
+ * mangles or pre-clicks links, so the code is the fallback that always works.
+ */
+export async function sendPortalSignInEmail(args: { to: string; code: string; link: string; minutes: number }): Promise<SendResult> {
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Your Sign-In Code</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Enter this code on the REAL RENTALS sign-in page:</p>
+      <div style="font-size:32px;letter-spacing:.35em;font-weight:700;color:#111;margin:0 0 18px">${escapeHtml(args.code)}</div>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Or sign in with one tap:</p>
+      <a href="${args.link}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Sign In To REAL RENTALS</a>
+      <p style="color:#666;font-size:13px;line-height:1.55;margin:18px 0 0">The code and link expire in ${args.minutes} minutes and work once. If you didn't ask to sign in, you can ignore this email — nobody can get in without it. Contact us at team@drivereal.com.</p>`);
+  return sendEmail({ to: args.to, subject: `${args.code} is your REAL RENTALS sign-in code`, html, track: { workflow: "portal_signin" } });
+}
