@@ -159,6 +159,7 @@ export function ScreeningPipeline({
 
   function attempt(target: ScreeningStatus) {
     const missing: string[] = [];
+    if (target === "active_renter" && !hasActiveRental) missing.push("Start a rental first");
     if (target !== "new_lead" && target !== "contacted") {
       if (!screening?.interview_completed_at) missing.push("Complete the interview first");
       if (screening?.disqualified) missing.push("Driver is disqualified");
