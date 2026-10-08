@@ -1023,15 +1023,15 @@ function PhotoSummary({ profile, onOpen }: { profile: Profile; onOpen: () => voi
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[13px] text-[#111114]">
-          {n === 0 ? "No photos" : `${n} photo${n === 1 ? "" : "s"}`}
+          {n === 0 ? "No Photos" : `${n} photo${n === 1 ? "" : "s"}`}
           {lead && <span className="text-[#9A9AA3]"> · lead photo set</span>}
         </div>
         <div className="text-[11px] text-[#9A9AA3]">
-          Managed on the Photos tab — the website order is derived from it.
+          Managed on the Photos Tab — the Website Order Is Derived From It.
         </div>
       </div>
       <span className="shrink-0 inline-flex items-center gap-1 text-[12px] text-[#D03020]">
-        Manage photos <ArrowUpRight className="w-3.5 h-3.5" />
+        Manage Photos <ArrowUpRight className="w-3.5 h-3.5" />
       </span>
     </button>
   );
@@ -1068,7 +1068,7 @@ function DocLink({ label, hint, onOpen }: { label: string; hint: string; onOpen:
         <div className="text-[11px] text-[#9A9AA3]">{hint}</div>
       </div>
       <span className="shrink-0 inline-flex items-center gap-1 text-[12px] text-[#D03020]">
-        Manage documents <ArrowUpRight className="w-3.5 h-3.5" />
+        Manage Documents <ArrowUpRight className="w-3.5 h-3.5" />
       </span>
     </button>
   );

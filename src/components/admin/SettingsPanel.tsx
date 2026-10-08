@@ -414,7 +414,7 @@ function EmailList({
         onClick={() => setRows([...rows, ""])}
         className="mt-2 inline-flex items-center gap-1.5 text-xs text-[#D03020] hover:underline"
       >
-        <Plus className="w-3.5 h-3.5" /> Add another email
+        <Plus className="w-3.5 h-3.5" /> Add Another Email
       </button>
       <p className="mt-1 text-[11px] text-muted-foreground">
         Every address here gets each applicant alert. Leave empty to fall back to the environment.

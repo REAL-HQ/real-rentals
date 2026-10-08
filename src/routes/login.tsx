@@ -124,7 +124,7 @@ function LoginPage() {
             <button
               type="button"
               onClick={() => setShowPw((v) => !v)}
-              aria-label={showPw ? "Hide password" : "Show password"}
+              aria-label={showPw ? "Hide Password" : "Show Password"}
               className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground"
             >
               {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -149,7 +149,7 @@ function LoginPage() {
         }}
         className="mt-4 text-sm text-real-red hover:underline font-medium"
       >
-        {mode === "signin" ? "Forgot your password?" : "Back to Sign In"}
+        {mode === "signin" ? "Forgot Your Password?" : "Back to Sign In"}
       </button>
 
       {/* No Create Account. A driver account is made when we approve the

@@ -1374,7 +1374,7 @@ function PreRentalPanel({
           <FileText className="w-5 h-5 text-real-red" strokeWidth={1.75} />
           <div className="mt-3 font-semibold">Your Documents</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Upload or replace your licence and insurance, and read your rental agreement.
+            Upload or Replace Your Licence and Insurance, and Read Your Rental Agreement.
           </div>
           <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
             Open Documents <ArrowRight className="w-3.5 h-3.5" />
@@ -1389,7 +1389,7 @@ function PreRentalPanel({
           <SettingsIcon className="w-5 h-5 text-real-red" strokeWidth={1.75} />
           <div className="mt-3 font-semibold">Your Details</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Check your phone, email and address are right — that's where we send everything.
+            Check Your Phone, Email and Address Are Right — That's Where We Send Everything.
           </div>
           <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
             Open Settings <ArrowRight className="w-3.5 h-3.5" />

@@ -800,7 +800,7 @@ function SignIn() {
               <button
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
-                aria-label={showPw ? "Hide password" : "Show password"}
+                aria-label={showPw ? "Hide Password" : "Show Password"}
                 className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground"
               >
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -825,7 +825,7 @@ function SignIn() {
               disabled={loading}
               className="mt-4 text-xs text-real-red hover:underline font-medium disabled:opacity-50"
             >
-              Forgot your password?
+              Forgot Your Password?
             </button>
           )}
           {/* No Create Account. Team access arrives by invitation. */}

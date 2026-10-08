@@ -52,11 +52,11 @@ export function AddVehicleDialog({
     setPrefill(null);
   }
 
-  const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a vehicle"
-    : mode === "vin" ? "Start from a VIN"
-    : mode === "scan" ? "Scan the title"
-    : mode === "import" ? "Import a spreadsheet"
-    : prefill ? "Confirm the details"
+  const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a Vehicle"
+    : mode === "vin" ? "Start From a VIN"
+    : mode === "scan" ? "Scan the Title"
+    : mode === "import" ? "Import a Spreadsheet"
+    : prefill ? "Confirm the Details"
     : "Vehicle details";
   return (
     <ModalShell onClose={onClose} size={mode === "quick" || mode === "choose" ? "md" : "lg"} label={title}>
@@ -368,7 +368,7 @@ function ManualForm({
                 onClick={applyDecoded}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-xs"
               >
-                <Check className="w-3.5 h-3.5" /> Use these for anything still blank
+                <Check className="w-3.5 h-3.5" /> Use These for Anything Still Blank
               </button>
             </>
           )}

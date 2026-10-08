@@ -271,17 +271,17 @@ export function ChargesPanel() {
                               const res = await reattribute({ data: { id: r.id } });
                               toast[res.attributed ? "success" : "error"](
                                 res.attributed
-                                  ? "Matched to a renter"
-                                  : "Still no rental covers that time",
+                                  ? "Matched to a Renter"
+                                  : "Still No Rental Covers That Time",
                               );
                               load();
                             } catch (e) {
-                              toast.error(e instanceof Error ? e.message : "Retry failed");
+                              toast.error(e instanceof Error ? e.message : "Retry Failed");
                             }
                           }}
                           className="text-[11px] font-semibold text-[#D03020] px-1.5"
                         >
-                          Retry match
+                          Retry Match
                         </button>
                       ) : null}
                       {r.status !== "rebilled" && r.status !== "paid" ? (
@@ -294,7 +294,7 @@ export function ChargesPanel() {
                             }}
                             className="text-[11px] text-[#55555E] px-1.5"
                           >
-                            Write off
+                            Write Off
                           </button>
                           <button
                             onClick={async () => {
@@ -303,7 +303,7 @@ export function ChargesPanel() {
                                 await remove({ data: { id: r.id } });
                                 load();
                               } catch (e) {
-                                toast.error(e instanceof Error ? e.message : "Could not delete");
+                                toast.error(e instanceof Error ? e.message : "Could Not Delete");
                               }
                             }}
                             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#55555E] hover:text-[#D03020]"
@@ -416,7 +416,7 @@ function AddChargeForm({
       });
       toast[res.attributed ? "success" : "warning"](
         res.attributed
-          ? "Charge recorded and matched to the renter"
+          ? "Charge Recorded and Matched to the Renter"
           : "Charge recorded — no rental covered that time, so it is unassigned",
       );
       onSaved();
@@ -620,7 +620,7 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               }}
               className="rounded-lg border border-[#EDEDF0] px-4 py-2 text-sm"
             >
-              Import another
+              Import Another
             </button>
             <button
               onClick={onDone}

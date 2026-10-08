@@ -208,7 +208,7 @@ function AuthStep() {
             type="button"
             onClick={() => setShowPw((v) => !v)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            aria-label={showPw ? "Hide password" : "Show password"}
+            aria-label={showPw ? "Hide Password" : "Show Password"}
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -231,7 +231,7 @@ function AuthStep() {
         }}
         className="mt-4 w-full text-sm text-muted-foreground underline"
       >
-        {mode === "signup" ? "I already have an account" : "I need to create an account"}
+        {mode === "signup" ? "I Already Have an Account" : "I Need to Create an Account"}
       </button>
     </div>
   );

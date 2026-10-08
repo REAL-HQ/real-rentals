@@ -1263,7 +1263,7 @@ function DriverProfile({
                         tips={[
                           "All four corners in the frame",
                           "No glare across the text",
-                          "Close enough to read your name and the expiry date",
+                          "Close Enough to Read Your Name and the Expiry Date",
                         ]}
                         kind="license"
                         token={token}
@@ -1474,7 +1474,7 @@ function InsuranceSection({
       <DocumentCapture
         title="Insurance Card"
         hint="Photograph your insurance card or declaration page."
-        tips={["Show the policy number and the dates it covers"]}
+        tips={["Show the Policy Number and the Dates It Covers"]}
         kind="insurance"
         token={token}
         onFile={state.insurance_doc_on_file}

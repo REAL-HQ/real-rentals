@@ -87,10 +87,10 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
     if (!f.year.trim() || !f.make.trim() || !f.model.trim()) m.push("details");
     if (!vinOk) m.push(f.vin.trim() ? "Enter a valid VIN" : "Add VIN");
     const r = Number(f.rate);
-    if (!f.rate.trim() || !(r > 0)) m.push("Add weekly rate");
+    if (!f.rate.trim() || !(r > 0)) m.push("Add Weekly Rate");
     if (m.length === 0) return undefined;
-    if (m.length === 1) return m[0] === "details" ? "Add year, make and model" : m[0];
-    return "Complete required details";
+    if (m.length === 1) return m[0] === "details" ? "Add Year, Make and Model" : m[0];
+    return "Complete Required Details";
   })();
   const vinError = f.vin && f.vin.length >= 11 && !vinOk ? "Not a valid VIN" : null;
   const onCancel = onClose ?? (() => {});

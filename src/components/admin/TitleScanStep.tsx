@@ -120,15 +120,15 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
           {busy ? (
             <>
               <Loader2 className="w-6 h-6 mx-auto text-[#D03020] animate-spin" />
-              <div className="mt-3 text-sm font-medium">Reading the document…</div>
+              <div className="mt-3 text-sm font-medium">Reading the Document…</div>
             </>
           ) : (
             <>
               <Camera className="w-6 h-6 mx-auto text-[#D03020]" strokeWidth={1.75} />
-              <div className="mt-3 text-sm font-medium">Photograph the title or registration</div>
+              <div className="mt-3 text-sm font-medium">Photograph the Title or Registration</div>
               <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
-                Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is
-                saved until you confirm what was read.
+                Lay It Flat, Fill the Frame, Avoid Glare. JPG, PNG or PDF Up to 5MB. Nothing Is
+                Saved Until You Confirm What Was Read.
               </p>
             </>
           )}
@@ -153,7 +153,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
             }}
             className="mt-3 text-[12px] text-[#D03020] hover:underline"
           >
-            Try another photo
+            Try Another Photo
           </button>
         </div>
       )}
@@ -234,7 +234,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               }}
               className="rounded-md px-3.5 py-2 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
             >
-              Scan another
+              Scan Another
             </button>
             <div className="flex-1" />
             <button

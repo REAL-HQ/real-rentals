@@ -86,7 +86,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         const ext = (f.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
         const path = `inbox/${id}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("vehicle-docs").upload(path, f, { contentType: f.type || undefined });
-        if (error) { failed++; patch(key, { status: "failed", note: "Upload failed — check your connection and retry" }); continue; }
+        if (error) { failed++; patch(key, { status: "failed", note: "Upload Failed — Check Your Connection and Retry" }); continue; }
         try {
           // Server hashes the stored bytes; identical content is never stored twice (safe on retry).
           const r = await register({ data: { batchId: id, path, fileName: f.name, mimeType: f.type || null, sizeBytes: f.size } });
@@ -466,7 +466,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
   const changes = (p.changes ?? []) as Change[];
   const heading =
     p.kind === "new" ? "New vehicle detected" : p.kind === "match" ? `Matches ${vehLabel(p.match_vehicle_id)}` :
-    p.kind === "conflict" ? "Review required — conflict" : "Couldn't identify vehicle";
+    p.kind === "conflict" ? "Review Required — Conflict" : "Couldn't identify vehicle";
   const toggle = (set: Set<string>, f: string) => { const n = new Set(set); n.has(f) ? n.delete(f) : n.add(f); return n; };
 
   return (
