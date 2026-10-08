@@ -24,11 +24,21 @@ export function requiredSensitivity(t: TxnType, category: string): "owner_only" 
   return OWNER_ONLY_CATEGORIES.has(category) || t === "financing_draw" || t === "financing_payment" ? "owner_only" : "standard";
 }
 
-/** Not operating expense: capital spend and loan principal. Interest is expense. */
+/**
+ * Not operating expense: capital spend, acquisition, loan draws/principal and
+ * deposit movements. For a financing_payment only interest_amount is expense;
+ * the rest is principal (balance-sheet), so use operatingPortion().
+ */
 export function isOperatingExpense(t: TxnType, category: string): boolean {
-  if (t === "capital_expenditure" || t === "financing_draw" || t === "deposit_received" || t === "deposit_returned") return false;
-  if (OWNER_ONLY_CATEGORIES.has(category) && category !== "financing") return false;
+  if (t === "capital_expenditure" || t === "financing_draw" || t === "financing_payment") return false;
+  if (t === "deposit_received" || t === "deposit_returned" || t === "deposit_applied") return false;
+  if (OWNER_ONLY_CATEGORIES.has(category)) return false;
   return true;
+}
+/** Operating-expense amount of a row: interest only for loan payments. */
+export function operatingPortion(t: TxnType, category: string, amount: number, interest: number | null | undefined): number {
+  if (t === "financing_payment") return Number(interest ?? 0);
+  return isOperatingExpense(t, category) ? Number(amount) : 0;
 }
 
 export type LedgerRow = {
