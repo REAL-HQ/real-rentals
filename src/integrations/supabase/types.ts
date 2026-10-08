@@ -1715,6 +1715,7 @@ export type Database = {
           created_at: string
           created_by: string
           currency: string
+          deposit_source_id: string | null
           direction: string
           document_date: string | null
           due_date: string | null
@@ -1756,6 +1757,7 @@ export type Database = {
           created_at?: string
           created_by: string
           currency?: string
+          deposit_source_id?: string | null
           direction: string
           document_date?: string | null
           due_date?: string | null
@@ -1797,6 +1799,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           currency?: string
+          deposit_source_id?: string | null
           direction?: string
           document_date?: string | null
           due_date?: string | null
@@ -1829,6 +1832,13 @@ export type Database = {
             foreignKeyName: "financial_transactions_corrects_id_fkey"
             columns: ["corrects_id"]
             isOneToOne: true
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_deposit_source_id_fkey"
+            columns: ["deposit_source_id"]
+            isOneToOne: false
             referencedRelation: "financial_transactions"
             referencedColumns: ["id"]
           },
