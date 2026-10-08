@@ -267,5 +267,6 @@
   position: sticky;
   top: var(--admin-sticky-h, 0px);
   z-index: 15;
-  background: var(--background);
+  background: #fafafb;
+  padding-top: 4px;
 }
