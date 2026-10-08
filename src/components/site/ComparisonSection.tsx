@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { FadeUp } from "./FadeUp";
+import { fmtDate } from "@/lib/date-format";
 
 type ComparisonRow = {
   feature: string;
@@ -128,7 +129,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
               made the whole homepage scroll sideways — same pre-existing cause
               as the affiliation line above the fleet section. */}
           <p className="mt-6 text-xs text-muted-foreground text-center md:whitespace-nowrap">
-            {data.disclaimer} As of {data.as_of_date}.
+            {data.disclaimer} As of {fmtDate(data.as_of_date)}.
           </p>
         </FadeUp>
       </div>

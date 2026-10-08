@@ -241,7 +241,7 @@ export function WaitlistPanel({
                       </div>
                     </td>
                     <td className="px-5 py-3 text-[13px] text-[#55555E]">
-                      {e.pickup_date ?? "—"}
+                      {e.pickup_date ? fmtDate(e.pickup_date) : "—"}
                     </td>
                     <td className="px-5 py-3">
                       <StatusPill tone={statusTone(e.status)}>{statusLabel(e.status)}</StatusPill>
