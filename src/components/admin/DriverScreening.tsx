@@ -128,6 +128,7 @@ export function ScreeningPipeline({
   screening,
   docCount,
   hasRecording,
+  hasActiveRental = false,
   onAdvance,
 }: {
   screening: DriverScreening | null;
@@ -148,6 +149,8 @@ export function ScreeningPipeline({
    * either way, so the UI knowing less is not a way around it.
    */
   hasRecording: boolean;
+  /** Active Renter completes only once a rental is running (enforced in the database). */
+  hasActiveRental?: boolean;
   onAdvance: (next: ScreeningStatus) => Promise<void>;
 }) {
   const current = (screening?.status ?? "new_lead") as ScreeningStatus;
@@ -156,6 +159,7 @@ export function ScreeningPipeline({
 
   function attempt(target: ScreeningStatus) {
     const missing: string[] = [];
+    if (target === "active_renter" && !hasActiveRental) missing.push("Start a rental first");
     if (target !== "new_lead" && target !== "contacted") {
       if (!screening?.interview_completed_at) missing.push("Complete the interview first");
       if (screening?.disqualified) missing.push("Driver is disqualified");
@@ -220,8 +224,9 @@ export function ScreeningPipeline({
                 key={p.key}
                 type="button"
                 onClick={() => attempt(p.key)}
-                title={p.label}
-                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors ${dotCls}`}
+                disabled={p.key === "active_renter" && !hasActiveRental && current !== "active_renter"}
+                title={p.key === "active_renter" && !hasActiveRental && current !== "active_renter" ? "Active Renter: Available Once A Rental Is Running" : p.label}
+                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${dotCls}`}
               >
                 {done ? (
                   <CheckCircle2 className="h-3 w-3" />
