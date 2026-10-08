@@ -113,7 +113,7 @@ import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
-import { listWaitlist } from "@/lib/waitlist.functions";
+import { listWaitlist, listWaitlistHolds, setWaitlistHold, getDeleteBlockers } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -292,8 +292,11 @@ export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  canManageWaitlist = false,
   urlFilter,
 }: {
+  /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
+  canManageWaitlist?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
@@ -353,6 +356,37 @@ export function DriversPanel({
       .then((r) => setWaitlistCount(r.entries.filter((e) => e.status !== "promoted").length))
       .catch(() => setWaitlistCount(null));
   }, [loadWaitlist]);
+  // Drivers held on the waitlist. A display status only: the application
+  // stage underneath is never changed, so Remove restores it automatically.
+  const loadHolds = useServerFn(listWaitlistHolds);
+  const holdFn = useServerFn(setWaitlistHold);
+  const deleteBlockersFn = useServerFn(getDeleteBlockers);
+  const [held, setHeld] = useState<Set<string>>(new Set());
+  const [holdBusy, setHoldBusy] = useState<string | null>(null);
+  const refreshHolds = useCallback(
+    () =>
+      loadHolds()
+        .then((r) => setHeld(new Set(r.holds.map((h) => h.application_id))))
+        .catch(() => undefined),
+    [loadHolds],
+  );
+  useEffect(() => {
+    void refreshHolds();
+  }, [refreshHolds]);
+  async function toggleHold(id: string, on: boolean) {
+    if (holdBusy) return;
+    setHoldBusy(id);
+    try {
+      const r = await holdFn({ data: { applicationId: id, on } });
+      if (!r.ok) return void toast.error(r.error);
+      await refreshHolds();
+      toast.success(on ? "Added To Waitlist" : "Removed From Waitlist");
+    } catch {
+      toast.error("You don't have permission to change the waitlist.");
+    } finally {
+      setHoldBusy(null);
+    }
+  }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
@@ -515,7 +549,11 @@ export function DriversPanel({
   const grouped = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
     const filteredRows = (
-      filter === "all" ? drivers : drivers.filter((a) => a.status === filter)
+      filter === "all"
+        ? drivers
+        : filter === "waitlist"
+          ? drivers.filter((a) => held.has(a.id))
+          : drivers.filter((a) => a.status === filter && !held.has(a.id))
     ).filter((a) => {
       if (!q) return true;
       const hay =
@@ -539,7 +577,7 @@ export function DriversPanel({
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, externalSearch]);
+  }, [drivers, filter, externalSearch, held]);
 
   async function update(id: string, patch: Partial<Application>) {
     // Stamp contacted_at the first time the admin advances status past "new"
@@ -564,9 +602,25 @@ export function DriversPanel({
   }
 
   async function remove(id: string) {
+    // Waitlist links keep a person's signup history. Never strip them to
+    // force a delete; say why and point at Close instead.
+    try {
+      const b = await deleteBlockersFn({ data: { applicationId: id } });
+      if (b.waitlistLinked) {
+        return void toast.error(
+          "This driver has waitlist history, so the record can't be deleted. Set the status to Closed instead.",
+        );
+      }
+    } catch {
+      return void toast.error("Could not check this record. Please try again.");
+    }
     if (!confirm("Delete this driver record? This cannot be undone.")) return;
     const { error } = await supabase.from("applications").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) {
+      if ((error as any).code === "23503")
+        return void toast.error("This record is linked to other history and can't be deleted. Set the status to Closed instead.");
+      return toast.error(error.message);
+    }
     setDrivers((a) => a.filter((x) => x.id !== id));
     setOpenId(null);
     toast.success("Deleted");
@@ -651,10 +705,12 @@ export function DriversPanel({
   const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
   const filterCount = (s: string) =>
     s === "waitlist"
-      ? waitlistCount ?? "…"
+      ? waitlistCount == null
+        ? "…"
+        : waitlistCount + drivers.filter((a) => held.has(a.id)).length
       : s === "all"
         ? drivers.length
-        : drivers.filter((a) => a.status === s).length;
+        : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -664,29 +720,6 @@ export function DriversPanel({
       {FILTER_LABEL[s]} ({filterCount(s)})
     </button>
   ));
-
-  if (filter === "waitlist") {
-    return (
-      <div>
-        <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">{filterButtons}</div>
-        <div className="mb-4">
-          <h2 className="text-[15px] font-semibold text-[#111114]">Waitlist</h2>
-          <p className="text-[12px] text-[#55555E] mt-0.5">Drivers Waiting When No Cars Are Available</p>
-        </div>
-        <WaitlistPanel
-          onEntriesChange={(n) => setWaitlistCount(n)}
-          onPromoted={() =>
-            void supabase
-              .from("applications")
-              .select("*")
-              .neq("status", "duplicate")
-              .order("created_at", { ascending: false })
-              .then(({ data }) => data && setDrivers(data))
-          }
-        />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -821,7 +854,14 @@ export function DriversPanel({
                         onValueChange={(status) => update(a.id, { status })}
                       >
                         <SelectTrigger className="h-7 w-auto min-w-[7rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
-                          {a.status ? (
+                          {held.has(a.id) ? (
+                            <span
+                              title={`Underlying stage: ${a.status ?? "—"}`}
+                              className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
+                            >
+                              Waitlist
+                            </span>
+                          ) : a.status ? (
                             <StatusPill status={a.status} />
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
@@ -871,6 +911,14 @@ export function DriversPanel({
                           <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: a.id } }))}>
                             <MessageSquare className="w-4 h-4 mr-2" /> Open in Messages
                           </DropdownMenuItem>
+                          {canManageWaitlist && (
+                            <DropdownMenuItem
+                              disabled={holdBusy === a.id}
+                              onClick={() => void toggleHold(a.id, !held.has(a.id))}
+                            >
+                              <Clock className="w-4 h-4 mr-2" /> {held.has(a.id) ? "Remove Waitlist" : "Add Waitlist"}
+                            </DropdownMenuItem>
+                          )}
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
                               <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark Contacted
@@ -932,6 +980,25 @@ export function DriversPanel({
           </table>
         </div>
       </div>
+      {filter === "waitlist" && (
+        <div className="mt-6">
+          <div className="mb-4">
+            <h2 className="text-[15px] font-semibold text-[#111114]">Waitlist Signups</h2>
+            <p className="text-[12px] text-[#55555E] mt-0.5">People Who Joined The Waitlist Before Applying</p>
+          </div>
+          <WaitlistPanel
+            onEntriesChange={(n) => setWaitlistCount(n)}
+            onPromoted={() =>
+              void supabase
+                .from("applications")
+                .select("*")
+                .neq("status", "duplicate")
+                .order("created_at", { ascending: false })
+                .then(({ data }) => data && setDrivers(data))
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
