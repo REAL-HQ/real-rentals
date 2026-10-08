@@ -46,7 +46,9 @@ async function anthropicRead(req: ReadRequest): Promise<ReadResult> {
     if (!res.ok) {
       const t = await res.text();
       console.error("[document-reader] provider error", res.status, t.slice(0, 300));
-      return { ok: false, status: res.status, error: `The document reader returned an error (${res.status}).` };
+      // Provider reports exhausted credit as 400 "credit balance is too low": treat as 402 so the queue pauses.
+      const status = res.status === 400 && /credit balance/i.test(t) ? 402 : res.status;
+      return { ok: false, status, error: `The document reader returned an error (${status}).` };
     }
     const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
     const text = json.content?.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n") ?? "";
