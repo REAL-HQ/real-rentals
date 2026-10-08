@@ -334,12 +334,12 @@ export function ApplicantDocuments({
                   </span>
                 ) : (
                   <span className="absolute inset-0 grid place-items-center text-[11px] text-[#C4C4CB]">
-                    Not received
+                    Not Received
                   </span>
                 )}
                 {d && !d.url && (
                   <span className="absolute inset-x-0 bottom-0 bg-red-600/90 text-white text-[10px] py-1">
-                    File missing from storage
+                    File Missing from Storage
                   </span>
                 )}
               </button>

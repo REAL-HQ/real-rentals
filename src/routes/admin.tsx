@@ -825,7 +825,7 @@ function SignIn() {
               disabled={loading}
               className="mt-4 text-xs text-real-red hover:underline font-medium disabled:opacity-50"
             >
-              Forgot your password?
+              Forgot Your Password?
             </button>
           )}
           {/* No Create Account. Team access arrives by invitation. */}

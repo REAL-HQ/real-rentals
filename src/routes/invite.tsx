@@ -220,7 +220,7 @@ function AuthStep() {
           disabled={busy}
           className="w-full rounded-lg bg-real-red text-white py-2.5 text-sm font-medium disabled:opacity-60"
         >
-          {busy ? "Working…" : mode === "signup" ? "Create Account & Accept" : "Sign in & Accept"}
+          {busy ? "Working…" : mode === "signup" ? "Create Account & Accept" : "Sign In & Accept"}
         </button>
       </form>
 
@@ -231,7 +231,7 @@ function AuthStep() {
         }}
         className="mt-4 w-full text-sm text-muted-foreground underline"
       >
-        {mode === "signup" ? "I already have an account" : "I need to create an account"}
+        {mode === "signup" ? "I Already Have an Account" : "I Need to Create an Account"}
       </button>
     </div>
   );

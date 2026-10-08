@@ -183,7 +183,7 @@ export function ChargesPanel() {
               ) : (
                 <Send className="w-3.5 h-3.5" />
               )}
-              Bill to renters
+              Bill to Renters
             </button>
           </div>
         </div>
@@ -281,7 +281,7 @@ export function ChargesPanel() {
                           }}
                           className="text-[11px] font-semibold text-[#D03020] px-1.5"
                         >
-                          Retry match
+                          Retry Match
                         </button>
                       ) : null}
                       {r.status !== "rebilled" && r.status !== "paid" ? (
@@ -294,7 +294,7 @@ export function ChargesPanel() {
                             }}
                             className="text-[11px] text-[#55555E] px-1.5"
                           >
-                            Write off
+                            Write Off
                           </button>
                           <button
                             onClick={async () => {
@@ -620,7 +620,7 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               }}
               className="rounded-lg border border-[#EDEDF0] px-4 py-2 text-sm"
             >
-              Import another
+              Import Another
             </button>
             <button
               onClick={onDone}

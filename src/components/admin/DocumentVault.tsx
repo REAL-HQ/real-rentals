@@ -264,7 +264,7 @@ export function DocumentVault({
           onClick={() => pick("other", true)}
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#55555E] hover:text-[#111114]"
         >
-          <Lock className="w-3.5 h-3.5" /> Upload team-only document
+          <Lock className="w-3.5 h-3.5" /> Upload Team-only Document
         </button>
       ) : null}
 

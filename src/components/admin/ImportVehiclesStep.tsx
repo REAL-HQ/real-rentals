@@ -129,7 +129,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
           className="w-full rounded-xl border border-dashed border-border p-8 text-center hover:border-[#D03020] hover:bg-[rgba(208,48,32,0.02)] transition-colors"
         >
           <Upload className="w-6 h-6 mx-auto text-[#D03020]" strokeWidth={1.75} />
-          <div className="mt-3 text-sm font-medium">Choose a CSV file</div>
+          <div className="mt-3 text-sm font-medium">Choose a CSV File</div>
           <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
             Any column order. You will map the columns and see exactly what will happen to each row
             before anything is created. Up to {MAX_ROWS} rows at a time.
@@ -153,7 +153,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
           }}
           className="inline-flex items-center gap-1.5 text-[12px] text-[#55555E] hover:text-[#D03020] transition-colors"
         >
-          <Download className="w-3.5 h-3.5" /> Download a template
+          <Download className="w-3.5 h-3.5" /> Download a Template
         </button>
       </div>
     );
@@ -264,7 +264,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
           }}
           className="rounded-md px-3.5 py-2 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
         >
-          Choose another file
+          Choose Another File
         </button>
         <div className="flex-1" />
         {!verdicts ? (
@@ -273,7 +273,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
             disabled={busy || !hasRequired}
             className="inline-flex items-center gap-2 rounded-md bg-[#111114] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Check this file
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Check This File
           </button>
         ) : (
           <button

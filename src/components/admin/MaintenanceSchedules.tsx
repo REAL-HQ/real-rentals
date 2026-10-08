@@ -280,7 +280,7 @@ export function MaintenanceSchedules() {
                               onClick={() => setCompleting(s)}
                               className="inline-flex items-center gap-1 rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-medium hover:opacity-90"
                             >
-                              <Check className="w-3 h-3" /> Mark done
+                              <Check className="w-3 h-3" /> Mark Done
                             </button>
                             <button
                               onClick={() => setEditing({ vehicleId: v.id, schedule: s })}

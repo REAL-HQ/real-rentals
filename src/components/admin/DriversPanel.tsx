@@ -864,7 +864,7 @@ export function DriversPanel({
                           </DropdownMenuItem>
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
-                              <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
+                              <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark Contacted
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
@@ -2632,7 +2632,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <a
                 href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
               >
-                <MessageSquare className="w-4 h-4 mr-2" /> Text link to driver
+                <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
               </a>
             </DropdownMenuItem>
           )}
@@ -2641,7 +2641,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <a
                 href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
               >
-                <Mail className="w-4 h-4 mr-2" /> Email link to driver
+                <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
               </a>
             </DropdownMenuItem>
           )}
@@ -2892,7 +2892,7 @@ function CardOnFileCard({
               }}
               className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
             >
-              Copy link
+              Copy Link
             </button>
             <a
               href={link}
@@ -2980,10 +2980,10 @@ function RequestDocumentsAction({
         disabled={!driver.email || (sentAt !== null && !canResend)}
         title={
           !driver.email
-            ? "No email on file"
+            ? "No Email on File"
             : sentAt && !canResend
               ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
-              : "Request missing documents"
+              : "Request Missing Documents"
         }
         className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >

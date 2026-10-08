@@ -243,7 +243,7 @@ export function AutomationsPanel() {
                       onClick={() => setEditingStep({ workflowId: wf.id, step: null })}
                       className="inline-flex items-center gap-1.5 text-sm font-medium text-[#D03020]"
                     >
-                      <Plus className="w-4 h-4" /> Add message
+                      <Plus className="w-4 h-4" /> Add Message
                     </button>
                   </li>
                 </ol>
