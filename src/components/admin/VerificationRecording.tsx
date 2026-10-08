@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Loader2, Mic, Upload, History, Lock } from "lucide-react";
+import { Loader2, Mic, History, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { FileUploader } from "@/components/FileUploader";
 import {
   ownerListVerificationRecordings,
   createDocumentUploadUrl,
@@ -47,9 +48,7 @@ export function VerificationRecording({
 
   const [docs, setDocs] = useState<VaultDocument[]>([]);
   const [loading, setLoading] = useState(canAccess);
-  const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     if (!canAccess) return;
@@ -70,16 +69,9 @@ export function VerificationRecording({
     void refresh();
   }, [refresh]);
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`Recordings must be under ${MAX_MB} MB`);
-      return;
-    }
-    setBusy(true);
+  async function uploadRecording(file: File, onProgress: (pct: number) => void) {
     try {
+      onProgress(10);
       const signed = await startUpload({
         data: {
           applicationId,
@@ -88,10 +80,12 @@ export function VerificationRecording({
           mimeType: file.type || "application/octet-stream",
         },
       });
+      onProgress(40);
       const { error } = await supabase.storage
         .from(signed.bucket)
         .uploadToSignedUrl(signed.path, signed.token, file);
       if (error) throw new Error(error.message);
+      onProgress(80);
       await confirmUpload({
         data: {
           applicationId: signed.applicationId!,
@@ -103,12 +97,12 @@ export function VerificationRecording({
           internal: true,
         },
       });
+      onProgress(100);
       toast.success("Recording saved. The previous version is kept in history.");
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setBusy(false);
+      throw err;
     }
   }
 
@@ -126,13 +120,6 @@ export function VerificationRecording({
 
   return (
     <div className="rounded-lg border border-[#EDEDF0] bg-white p-3">
-      <input
-        ref={fileInput}
-        type="file"
-        accept="audio/*,video/*"
-        className="hidden"
-        onChange={onFile}
-      />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#111114]">
@@ -145,15 +132,15 @@ export function VerificationRecording({
             Label the file: DriverName_Date_Vehicle
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          disabled={busy}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-          {current ? "Replace" : "Upload"}
-        </button>
+        <FileUploader
+          variant="inline"
+          label={current ? "Replace" : "Upload"}
+          context="Verification Call Recording"
+          accept="audio/*,video/*"
+          maxBytes={MAX_MB * 1024 * 1024}
+          upload={(file, { onProgress }) => uploadRecording(file, onProgress)}
+          className="shrink-0"
+        />
       </div>
 
       <div className="mt-3">
