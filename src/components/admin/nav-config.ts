@@ -7,7 +7,6 @@ import {
   Car,
   Handshake,
   CreditCard,
-  Settings as SettingsIcon,
   Wrench,
   LayoutDashboard,
   ClipboardCheck,
