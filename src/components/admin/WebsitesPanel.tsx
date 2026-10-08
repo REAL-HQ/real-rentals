@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Globe } from "lucide-react";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
 
 type Site = {
@@ -85,7 +86,7 @@ export function WebsitesPanel() {
           hint="Create a city page to publish a market-specific landing site."
         />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+        <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
@@ -160,7 +161,7 @@ export function WebsitesPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       )}
       {showForm && <NewSiteForm markets={markets} onClose={() => setShowForm(false)} onCreated={() => { setShowForm(false); load(); }} />}
     </div>
