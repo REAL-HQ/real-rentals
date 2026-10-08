@@ -12,6 +12,7 @@ import {
   TrendingDown,
   Loader2,
 } from "lucide-react";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
 import {
@@ -178,7 +179,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
         />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <AdminTableScroll className="rounded-xl border border-border">
         <table className="w-full text-sm">
           <thead className="bg-[#FAFAFB] text-left">
             <tr>
@@ -223,7 +224,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
             ))}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       <p className="text-xs text-muted-foreground">
         Revenue counts rent actually marked paid — deposits are excluded, since they are held rather than
@@ -360,7 +361,7 @@ function Ledger({
           hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <AdminTableScroll className="rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-left">
               <tr>
@@ -413,7 +414,7 @@ function Ledger({
               ))}
             </tbody>
           </table>
-        </div>
+          </AdminTableScroll>
       )}
 
       {showForm && (
