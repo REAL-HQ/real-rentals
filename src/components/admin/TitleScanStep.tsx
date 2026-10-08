@@ -153,7 +153,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
             }}
             className="mt-3 text-[12px] text-[#D03020] hover:underline"
           >
-            Try another photo
+            Try Another Photo
           </button>
         </div>
       )}
@@ -234,7 +234,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               }}
               className="rounded-md px-3.5 py-2 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
             >
-              Scan another
+              Scan Another
             </button>
             <div className="flex-1" />
             <button

@@ -264,7 +264,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
           }}
           className="rounded-md px-3.5 py-2 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
         >
-          Choose another file
+          Choose Another File
         </button>
         <div className="flex-1" />
         {!verdicts ? (

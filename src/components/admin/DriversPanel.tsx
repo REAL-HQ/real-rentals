@@ -2892,7 +2892,7 @@ function CardOnFileCard({
               }}
               className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
             >
-              Copy link
+              Copy Link
             </button>
             <a
               href={link}
