@@ -3,6 +3,14 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
+
+const previewInput = (d: unknown): { previewDriverId?: string } => {
+  const id = (d as any)?.previewDriverId;
+  if (id == null || id === "") return {};
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
+  return { previewDriverId: id };
+};
+
   COMPANY_DEFAULTS,
   DEFAULT_AGREEMENT_BODY,
   renderTemplate,
@@ -813,7 +821,9 @@ export const signAgreement = createServerFn({ method: "POST" })
 
 export const getMyAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator(previewInput)
+  .handler(async ({ context: rawCtx, data: input }) => {
+    const context = await (await import("@/lib/driver-preview.server")).portalScope(rawCtx as any, input, "agreements");
     type Mine = {
       id: string;
       title: string;
@@ -849,6 +859,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    await (await import("@/lib/driver-preview.server")).refuseStaffPortalWrite(context.userId);
     // Ownership through the driver's own RLS-scoped client — an id belonging
     // to someone else simply isn't found. The emailed link is left intact.
     const { data: own } = await context.supabase

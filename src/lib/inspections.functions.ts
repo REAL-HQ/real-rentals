@@ -635,6 +635,7 @@ export const signCheckoutInspection = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
+    await (await import("@/lib/driver-preview.server")).refuseStaffPortalWrite(context.userId);
     const rental = await activeRentalFor(context.supabase, context.userId);
     if (!rental?.vehicle_id) return { error: "No active rental on file." };
 

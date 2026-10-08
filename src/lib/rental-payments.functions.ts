@@ -2,6 +2,14 @@ import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
 
+const previewInput = (d: unknown): { previewDriverId?: string } => {
+  const id = (d as any)?.previewDriverId;
+  if (id == null || id === "") return {};
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
+  return { previewDriverId: id };
+};
+
+
 const REASONS = ['rent', 'late_fee', 'toll', 'damage', 'cleaning', 'fuel', 'other'] as const;
 export type ChargeReason = (typeof REASONS)[number];
 
@@ -372,8 +380,9 @@ export type RentalBilling = {
 
 export const getRentalBilling = createServerFn({ method: 'GET' })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<RentalBilling> => {
-    const { supabase, userId } = context;
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<RentalBilling> => {
+    const { supabase, userId } = await (await import('@/lib/driver-preview.server')).portalScope(context as any, input, 'billing');
     const { data: rental } = await (supabase as any)
       .from('rentals')
       .select('id, weekly_rate, autopay_active, payment_status, card_brand, card_last4, card_exp_month, card_exp_year, stripe_subscription_id, next_payment_due')

@@ -3,6 +3,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { parseTollStatement, normalizePlate } from "@/lib/toll-import";
 
+const previewInput = (d: unknown): { previewDriverId?: string } => {
+  const id = (d as any)?.previewDriverId;
+  if (id == null || id === "") return {};
+  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
+  return { previewDriverId: id };
+};
+
+
 // Tolls, citations and the rebilling of them.
 //
 // Attribution is the whole job: a toll is charged to the registered owner, so
@@ -552,7 +560,9 @@ export const deleteCharge = createServerFn({ method: "POST" })
 /** The renter's own view of what they have been charged. */
 export const getMyCharges = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<TollCharge[]> => {
+  .inputValidator(previewInput)
+  .handler(async ({ context: rawCtx, data: input }): Promise<TollCharge[]> => {
+    const context = await (await import("@/lib/driver-preview.server")).portalScope(rawCtx as any, input, "charges");
     const { data: apps } = await context.supabase
       .from("applications")
       .select("id")
