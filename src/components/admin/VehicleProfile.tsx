@@ -34,6 +34,7 @@ import {
 } from "@/lib/vehicles.functions";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
@@ -461,10 +462,10 @@ function Overview({
           )}
         </SectionCard>
 
-        {p.finance !== null || p.canEdit ? (
+        {p.canSeeFinance && readStoredExperience() !== "admin" && (p.finance !== null || p.canEdit) ? (
           <SectionCard
             title="Acquisition & Financing"
-            subtitle="Owners and managers only"
+            subtitle="Owner Only"
             icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}
             right={<EditButton show={p.canEdit} onClick={() => onEdit("finance")} />}
           >
@@ -512,7 +513,7 @@ function Overview({
         </SectionCard>
 
         {p.financials && (
-          <SectionCard title="Lifetime P&L" subtitle="Owners and managers only" icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}>
+          <SectionCard title="Lifetime P&L" subtitle="Owner Only" icon={<Lock className="w-4 h-4" strokeWidth={1.75} />}>
             <Row label="Revenue" value={money(p.financials.revenue)} />
             <Row label="Expenses" value={money(p.financials.expenses)} />
             <Row label="Maintenance" value={money(p.financials.maintenance)} />

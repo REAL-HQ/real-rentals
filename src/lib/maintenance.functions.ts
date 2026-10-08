@@ -390,7 +390,7 @@ export const getVehicleTimeline = createServerFn({ method: "POST" })
     const pushDoc = (docId: string, d: any, at: string) => {
       if (seenDocs.has(docId) || !d) return; seenDocs.add(docId);
       const { isFinanceKind } = { isFinanceKind: (k: string) => /loan|payoff|purchase|lender/.test(k ?? "") };
-      if (!isManager && isFinanceKind(d.kind)) return;
+      if (actor.tier !== "owner" && isFinanceKind(d.kind)) return;
       ev.push({ id: `d:${docId}`, kind: "document", at, title: "Document Added", detail: d.label || d.file_name, ref: { table: "documents", id: docId }, evidenceDocumentId: evRef(docId) });
     };
     for (const l of (links.data ?? []) as any[]) pushDoc(l.document_id, l.documents, l.documents?.created_at ?? l.created_at);

@@ -185,6 +185,11 @@ export const attachInboxItem = createServerFn({ method: "POST" })
 
 // ---------------------------------------------------------------- read batch
 const SERVICE_COST_FIELDS = new Set(["parts_total", "labor_total", "tax_total", "total", "payment_method"]);
+function stripOwnershipFinance(p: any) {
+  const fields = Object.fromEntries(Object.entries(p.fields ?? {}).filter(([k]) => !isFinanceField(k)));
+  const changes = Array.isArray(p.changes) ? p.changes.filter((c: any) => !isFinanceField(c?.field)) : p.changes;
+  return { ...p, fields, changes };
+}
 function stripServiceCosts(p: any) {
   const fields = Object.fromEntries(Object.entries(p.fields ?? {}).filter(([k]) => !SERVICE_COST_FIELDS.has(k)).map(([k, v]: [string, any]) => {
     if (k !== "service_items" || !v) return [k, v];
@@ -200,24 +205,27 @@ export const getImportBatch = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
+    // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
+    const canOwnership = actor.tier === "owner";
     const sb = await admin();
     const { data: batch } = await sb.from("fleet_import_batches").select("*").eq("id", data.batchId).maybeSingle();
     if (!batch) throw new Error("Not found");
     const { data: items } = await sb.from("fleet_import_items").select("id,document_id,duplicate_of_document_id,file_name,mime_type,size_bytes,status,doc_class,class_confidence,classified_manually,warnings,error,attempts,extraction,created_at").eq("batch_id", data.batchId).order("created_at");
     const { data: proposals } = await sb.from("fleet_import_proposals").select("*").eq("batch_id", data.batchId).order("created_at").order("entry_index");
-    const finance = canFinance
+    const finance = canOwnership
       ? (await sb.from("fleet_import_finance_facts").select("proposal_id,field,value,confidence,page").in("item_id", (items ?? []).map((i: any) => i.id))).data ?? []
       : [];
     const { data: vehicles } = await sb.from("vehicles").select("id,year,make,model,vin,unit_number,license_plate,current_odometer").is("archived_at", null).order("created_at");
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
-      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => canFinance || (!isFinanceField(k) && !SERVICE_COST_FIELDS.has(k))));
+      const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => (canOwnership || !isFinanceField(k)) && (canFinance || !SERVICE_COST_FIELDS.has(k))));
       return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length, ...(canFinance && ex.financial ? { financial: ex.financial, financialReview: ex.financial_review ?? null } : {}) } : null };
     });
     // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
     const live = (proposals ?? []).filter((p: any) => p.status !== "superseded");
-    const safeProposals = canFinance ? live : live.map(stripServiceCosts);
+    const ownerSafe = canOwnership ? live : live.map(stripOwnershipFinance);
+    const safeProposals = canFinance ? ownerSafe : ownerSafe.map(stripServiceCosts);
     const { data: txs } = await sb.from("fleet_service_transactions").select("*").eq("batch_id", data.batchId).neq("status", "superseded").order("created_at");
     const { operationalView } = await import("@/lib/service-ingest.server");
     // Coordinators get the operational half only; the financial half (amounts, payment, raw model text) never leaves the server.
@@ -270,6 +278,8 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<{ results: ApplyResult[] }> => {
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
+    // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
+    const canOwnership = actor.tier === "owner";
     const sb = await admin();
     const results: ApplyResult[] = [];
 
@@ -398,7 +408,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         // Finance facts only through the vehicle_finance boundary, Manager+, explicit opt-in, blanks only.
         let financeNote = "";
         if (dec.applyFinance) {
-          if (!canFinance) financeNote = " Finance details skipped (Manager or Owner only).";
+          if (!canOwnership) financeNote = " Finance details skipped (Owner only).";
           else {
             const { data: facts } = await sb.from("fleet_import_finance_facts").select("field,value").eq("proposal_id", p.id);
             const { data: cur } = await sb.from("vehicle_finance").select("*").eq("vehicle_id", vehicleId).maybeSingle();
@@ -451,7 +461,7 @@ export const getFleetDocumentFile = createServerFn({ method: "POST" })
     // Priced invoices are mixed evidence: the original image itself carries costs and payment details.
     if (((doc as any).evidence_class === "mixed" || (doc as any).evidence_class === "financial") && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden: this original contains financial details (Manager or Owner only).");
     // Loan / payoff / purchase paperwork stays inside the finance boundary.
-    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind)) && !tierAllows(actor.tier, "manager")) throw new Error("Forbidden");
+    if ((docGroupOf(doc.category) === "Finance" || isFinanceKind((doc as any).kind) || isFinanceKind(doc.category)) && actor.tier !== "owner") throw new Error("Forbidden: ownership and loan paperwork is Owner only.");
     const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
     if (!file) throw new Error("File unavailable");
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -471,7 +481,7 @@ export const listVehicleLinkedDocs = createServerFn({ method: "POST" })
     // Same canonical loader as the vehicle profile; finance paperwork is
     // withheld from Coordinators here, not merely hidden in the UI.
     const { loadVehicleDocPresence } = await import("@/lib/vehicle-doc-presence.server");
-    const pres = await loadVehicleDocPresence(sb, data.vehicleId, isManager);
+    const pres = await loadVehicleDocPresence(sb, data.vehicleId, actor.tier === "owner");
     if (!pres.linked.length) return [];
     const ids = pres.linked.map((d) => d.id);
     const [{ data: docs }, { data: links }] = await Promise.all([

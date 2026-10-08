@@ -26,6 +26,7 @@ import {
   type VehicleProfile as Profile,
 } from "@/lib/vehicles.functions";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
+import { readStoredExperience } from "@/lib/experience";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { MicroLabel } from "./ui";
@@ -112,6 +113,8 @@ export function VehicleEditorDrawer({
   // Ownership money block, and could not save one if the UI showed it.
   useEffect(() => {
     let live = true;
+    // Owner in the Admin experience sees the Admin layout: no Owner finance block.
+    if (readStoredExperience() === "admin") { setCanFinance(false); return; }
     loadFinance({ data: { vehicle_id: profile.id } })
       .then((r) => {
         if (live) {
