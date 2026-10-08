@@ -27,6 +27,11 @@ async function hmac(value: string): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value))));
 }
 
+/** ilike pattern that matches the literal address only (escape % _ \\). */
+export function exactLike(e: string): string {
+  return e.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export function normEmail(e: string): string {
   return String(e ?? "").trim().toLowerCase();
 }
@@ -74,9 +79,9 @@ async function isStaff(admin: Admin, userId: string): Promise<boolean> {
 async function isEligible(admin: Admin, email: string): Promise<boolean> {
   const user = await findAuthUser(admin, email);
   if (user) return !(await isStaff(admin, user.id)); // staff keep password sign-in on /admin
-  const { count: apps } = await admin.from("applications").select("id", { count: "exact", head: true }).ilike("email", email).is("deleted_at", null);
+  const { count: apps } = await admin.from("applications").select("id", { count: "exact", head: true }).ilike("email", exactLike(email)).is("deleted_at", null);
   if ((apps ?? 0) > 0) return true;
-  const { count: wl } = await admin.from("waitlist").select("id", { count: "exact", head: true }).ilike("email", email);
+  const { count: wl } = await admin.from("waitlist").select("id", { count: "exact", head: true }).ilike("email", exactLike(email));
   return (wl ?? 0) > 0;
 }
 
@@ -225,10 +230,10 @@ export async function verifySignIn(admin: Admin, input: { email?: string; code?:
 export async function linkVerifiedApplication(admin: Admin, userId: string, email: string): Promise<"linked" | "already" | "none" | "review"> {
   const { data: apps } = await admin
     .from("applications")
-    .select("id,user_id,ai_flags")
-    .ilike("email", email)
+    .select("id,email,user_id,ai_flags")
+    .ilike("email", exactLike(email))
     .is("deleted_at", null);
-  const list = (apps ?? []).filter((a: any) => normEmail(email) === normEmail(email));
+  const list = (apps ?? []).filter((a: any) => normEmail(a.email) === email);
   if (list.some((a: any) => a.user_id === userId)) return "already";
   if (list.length === 0) return "none";
   const foreign = list.filter((a: any) => a.user_id && a.user_id !== userId);
