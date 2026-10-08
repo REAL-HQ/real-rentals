@@ -211,6 +211,7 @@ export function VehicleProfile({
                     {p?.vinLast4 ? ` · VIN …${p.vinLast4}` : ""}
                     {v.license_plate ? ` · ${v.license_plate}` : ""}
                   </div>
+                  <VehicleSuggestions vehicleId={vehicleId} canEdit={!!p?.canEdit} onApplied={refresh} />
                 </>
               )}
             </div>

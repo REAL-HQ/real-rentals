@@ -1,0 +1,119 @@
+// Vehicle profile completion: shows document-backed suggestions already
+// extracted by Fleet Inbox and applies accepted ones through the same
+// server apply path (blanks only, provenance + audit, Owner-only fields guarded).
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { Sparkles, X, FileText, AlertTriangle } from "lucide-react";
+import { getVehicleSuggestions, applyImportDecisions } from "@/lib/fleet-inbox.functions";
+
+type Sug = {
+  proposalId: string; batchId: string; fileName: string; docClass: string | null; page: number | null;
+  field: string; label: string; current: string | null; proposed: string; confidence: string;
+  safe: boolean; risk: string; evidence: { raw: string | null; note: string | null };
+};
+
+const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleId: string; canEdit: boolean; onApplied: () => void }) {
+  const load = useServerFn(getVehicleSuggestions);
+  const apply = useServerFn(applyImportDecisions);
+  const [data, setData] = useState<{ suggestions: Sug[]; conflicts: Sug[]; possibleMatches: any[] } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try { setData(await load({ data: { vehicleId } }) as any); } catch { setData(null); }
+  }, [load, vehicleId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const key = (s: Sug) => `${s.proposalId}:${s.field}`;
+  const sugs = data?.suggestions ?? [];
+  const safeKeys = useMemo(() => sugs.filter((s) => s.safe).map(key), [sugs]);
+  const count = sugs.length;
+  if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length)) return null;
+
+  async function submit(keys: string[]) {
+    if (!keys.length) return;
+    setBusy(true); setMsg(null);
+    try {
+      const chosen = sugs.filter((s) => keys.includes(key(s)));
+      const byBatch = new Map<string, Map<string, string[]>>();
+      for (const s of chosen) {
+        const b = byBatch.get(s.batchId) ?? new Map(); const f = b.get(s.proposalId) ?? [];
+        f.push(s.field); b.set(s.proposalId, f); byBatch.set(s.batchId, b);
+      }
+      let applied = 0; const errors: string[] = [];
+      for (const [batchId, props] of byBatch) {
+        const res = await apply({ data: { batchId, decisions: [...props].map(([proposalId, fields]) => ({
+          proposalId, action: "match" as const, vehicleId, acceptFields: fields, confirmHighRisk: fields, applyFinance: false, partial: true,
+        })) } });
+        for (const r of res.results) r.ok ? applied++ : errors.push(r.message);
+      }
+      setMsg(errors.length ? errors.join(" ") : `Saved ${chosen.length} Detail${chosen.length === 1 ? "" : "s"}.`);
+      setPicked(new Set());
+      await refresh(); onApplied();
+      void applied;
+    } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-[#FAFAFB] px-2.5 py-1 text-[11px] font-medium text-[#111114] hover:bg-white">
+        <Sparkles className="w-3 h-3 text-[#D03020]" />
+        {count > 0 ? `${count} Detail${count === 1 ? "" : "s"} Found` : "Document Matches To Review"}
+        <span className="text-[#D03020]">Review</span>
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setOpen(false)}>
+          <div role="dialog" aria-label="Details Found In Documents" className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[16px] font-semibold text-[#111114]">Details Found In Documents</h3>
+              <button aria-label="Close" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-[12px] text-[#55555E] mb-4">Only blank fields are filled. Existing values are never overwritten. VIN, plate and mileage need individual approval.</p>
+
+            {sugs.map((s) => (
+              <label key={key(s)} className="flex gap-3 border border-[#EDEDF0] rounded-xl p-3 mb-2 cursor-pointer">
+                {canEdit && <input type="checkbox" className="mt-1" checked={picked.has(key(s))} onChange={(e) => { const n = new Set(picked); e.target.checked ? n.add(key(s)) : n.delete(key(s)); setPicked(n); }} />}
+                <div className="min-w-0 flex-1 text-[12px]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-[#111114]">{s.label.replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+                    <span className="font-mono text-[#111114]">{s.proposed}</span>
+                    <span className="rounded-full bg-[#F2F2F4] px-2 py-0.5 text-[10px]">{titleCase(s.confidence)} Confidence</span>
+                    {!s.safe && <span className="rounded-full bg-[#FFF4E5] px-2 py-0.5 text-[10px] text-[#8A4B00]">Confirm Individually</span>}
+                  </div>
+                  <div className="text-[#55555E] mt-1">Current: {s.current ?? "Not Set"}</div>
+                  <div className="text-[#55555E] mt-0.5 flex items-center gap-1"><FileText className="w-3 h-3" /> {s.fileName}{s.docClass ? ` · ${titleCase(s.docClass)}` : ""}{s.page ? ` · Page ${s.page}` : ""}</div>
+                  {(s.evidence.raw || s.evidence.note) && <div className="text-[#55555E] mt-0.5">Evidence: “{s.evidence.raw}”{s.evidence.note ? ` (${s.evidence.note})` : ""}</div>}
+                </div>
+              </label>
+            ))}
+
+            {data.conflicts.length > 0 && (
+              <div className="mt-3 text-[12px]">
+                <div className="font-semibold mb-1">Conflicts — Not Applied</div>
+                {data.conflicts.map((c) => <div key={key(c)} className="text-[#55555E]">{c.label}: on file {c.current}, document says {c.proposed} ({c.fileName})</div>)}
+              </div>
+            )}
+            {data.possibleMatches.length > 0 && (
+              <div className="mt-3 text-[12px]">
+                <div className="font-semibold mb-1 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-[#8A4B00]" /> Possible Matches — Review In Fleet Inbox</div>
+                {data.possibleMatches.map((m: any) => <div key={m.proposalId} className="text-[#55555E]">{m.fileName}: {m.reason}</div>)}
+              </div>
+            )}
+
+            {msg && <div className="mt-3 text-[12px] text-[#111114]">{msg}</div>}
+            {canEdit && sugs.length > 0 && (
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button disabled={busy || !safeKeys.length} onClick={() => submit(safeKeys)} className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-[12px] font-medium disabled:opacity-50">Approve Safe Fields ({safeKeys.length})</button>
+                <button disabled={busy || !picked.size} onClick={() => submit([...picked])} className="rounded-md bg-[#D03020] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50">Accept Selected ({picked.size})</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
