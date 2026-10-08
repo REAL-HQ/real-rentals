@@ -4268,6 +4268,48 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_signin_challenges: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          eligible: boolean
+          email: string
+          expires_at: string
+          id: string
+          ip_hash: string | null
+          link_hash: string
+          send_state: string
+          used_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          eligible?: boolean
+          email: string
+          expires_at: string
+          id?: string
+          ip_hash?: string | null
+          link_hash: string
+          send_state?: string
+          used_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          eligible?: boolean
+          email?: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          link_hash?: string
+          send_state?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       referrals: {
         Row: {
           created_at: string
