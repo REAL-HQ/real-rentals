@@ -1969,7 +1969,7 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
           <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">{nav()}</div>
         </div>
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-          Driver Preview — This Is The Driver Portal Layout. No Driver Data Is Loaded, And Your Permissions Are Unchanged.
+          <strong>Driver Preview</strong> — the driver portal layout only. No driver data is loaded, and your permissions are unchanged.
         </div>
         <div className="p-6 md:p-10 max-w-3xl">
           <h1 className="text-2xl font-semibold">{current.label}</h1>
