@@ -38,6 +38,9 @@ export type VehicleMedia = {
   sort_order: number;
   caption: string | null;
   created_at: string;
+  review_status?: "pending" | "approved" | "rejected" | null;
+  quality_flags?: string[] | null;
+  processing_ms?: number | null;
 };
 
 export type VehicleMediaList = {
@@ -178,6 +181,9 @@ export const updateVehicleMedia = createServerFn({ method: "POST" })
     if (data.caption !== undefined) patch.caption = data.caption || null;
     if (data.sortOrder !== undefined) patch.sort_order = data.sortOrder;
     if (data.published !== undefined) patch.published = data.published;
+    if ((data.published || data.makePrimary) && row.kind === "ai_enhanced" && (row as any).review_status !== "approved") {
+      return { ok: false, error: "Approve this retouched photo before publishing it." };
+    }
 
     if (data.makePrimary) {
       // Primary implies published — a lead image the site cannot show is not a

@@ -19,11 +19,18 @@ import {
   registerVehicleMedia,
   updateVehicleMedia,
   deleteVehicleMedia,
-  enhanceVehiclePhoto,
   type VehicleMedia,
   type VehicleMediaList,
 } from "@/lib/vehicle-media.functions";
 import { loadStaffPhoto } from "@/lib/photoUrl";
+import {
+  getPhotoEnhanceStatus,
+  startPhotoEnhance,
+  completePhotoEnhance,
+  failPhotoEnhance,
+  reviewPhotoEnhance,
+} from "@/lib/photo-enhance.functions";
+import { localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.client";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
 
 // The gallery.
@@ -45,7 +52,31 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const register = useServerFn(registerVehicleMedia);
   const update = useServerFn(updateVehicleMedia);
   const remove = useServerFn(deleteVehicleMedia);
-  const enhanceFn = useServerFn(enhanceVehiclePhoto);
+  const enhStatusFn = useServerFn(getPhotoEnhanceStatus);
+  const startFn = useServerFn(startPhotoEnhance);
+  const completeFn = useServerFn(completePhotoEnhance);
+  const failFn = useServerFn(failPhotoEnhance);
+  const reviewFn = useServerFn(reviewPhotoEnhance);
+  const [enh, setEnh] = useState<{ available: boolean; reason: string }>({ available: false, reason: "Checking…" });
+  const [progress, setProgress] = useState<Record<string, string>>({});
+  const [failures, setFailures] = useState<Record<string, { mode: EnhanceMode; error: string }>>({});
+  const [compare, setCompare] = useState<VehicleMedia | null>(null);
+
+  const refreshEnh = useCallback(async () => {
+    try {
+      const s = await enhStatusFn();
+      setEnh(
+        !s.enabled
+          ? { available: false, reason: "Photo Enhancement is Off. An Owner can turn it on in Settings → Photo Enhancement." }
+          : s.usedToday >= s.dailyLimit
+            ? { available: false, reason: `Daily limit reached (${s.dailyLimit} photos).` }
+            : { available: true, reason: `Free, on this device · ${s.usedToday} of ${s.dailyLimit} used today.` },
+      );
+    } catch {
+      setEnh({ available: false, reason: "Photo enhancement is Manager-only." });
+    }
+  }, [enhStatusFn]);
+  useEffect(() => { void refreshEnh(); }, [refreshEnh]);
 
   const [data, setData] = useState<VehicleMediaList | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,17 +182,52 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
     }
   }
 
-  async function enhance(m: VehicleMedia, mode: string) {
+  async function enhance(m: VehicleMedia, mode: EnhanceMode) {
+    const blocker = localProcessingBlocker(mode);
+    if (blocker) return toast.error(blocker);
+    setBusyId(m.id);
+    setFailures((f) => { const n = { ...f }; delete n[m.id]; return n; });
+    setProgress((p) => ({ ...p, [m.id]: "Starting" }));
+    let eventId: string | null = null;
+    try {
+      const start = await startFn({ data: { mediaId: m.id, mode } });
+      if (!start.ok) throw new Error(start.error);
+      eventId = start.eventId;
+      const { data: file, error } = await supabase.storage.from("vehicle-photos").download(m.storage_path);
+      if (error || !file) throw new Error("Could not read the original photo.");
+      const res = await runEnhance(await file.arrayBuffer(), mode, (stage, pct) =>
+        setProgress((p) => ({ ...p, [m.id]: pct != null ? `${stage} ${pct}%` : stage })),
+      );
+      const path = `${vehicleId}/enhanced-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const up = await supabase.storage.from("vehicle-photos").upload(path, new Blob([res.jpeg], { type: "image/jpeg" }), { contentType: "image/jpeg" });
+      if (up.error) throw new Error("Could not save the result.");
+      const done = await completeFn({ data: { eventId, path, sizeBytes: res.jpeg.byteLength, processingMs: res.ms, flags: res.flags } });
+      if (!done.ok) throw new Error(done.error);
+      eventId = null;
+      toast.success(res.flags.length ? "Done — flagged for a closer look. Review before approving." : "Done — review it before approving.");
+      await refresh();
+    } catch (e: any) {
+      const msg = e?.message === "Forbidden" ? "Enhancement is Manager-only." : e?.message || "Enhancement failed.";
+      if (eventId) await failFn({ data: { eventId, error: msg } }).catch(() => {});
+      setFailures((f) => ({ ...f, [m.id]: { mode, error: msg } }));
+      toast.error(msg);
+    } finally {
+      setProgress((p) => { const n = { ...p }; delete n[m.id]; return n; });
+      setBusyId(null);
+      void refreshEnh();
+    }
+  }
+
+  async function review(m: VehicleMedia, decision: "approve" | "reject") {
     setBusyId(m.id);
     try {
-      const res = await enhanceFn({ data: { mediaId: m.id, mode: mode as any } });
-      if (!res.ok) return toast.error(res.error ?? "Enhancement failed.");
-      toast.success("Created a retouched version — review it before publishing.");
-      await refresh(); window.dispatchEvent(new Event("vehicle-profile-refresh"));
+      const r = await reviewFn({ data: { mediaId: m.id, decision } });
+      if (!r.ok) return toast.error(r.error ?? "Could not save that decision.");
+      toast.success(decision === "approve" ? "Approved — still private until you publish it." : "Rejected and removed.");
+      setCompare(null);
+      await refresh();
     } catch (e: any) {
-      toast.error(
-        e?.message === "Forbidden" ? "Enhancement is Manager-only." : "Enhancement failed.",
-      );
+      toast.error(e?.message === "Forbidden" ? "Reviewing is Manager-only." : "Could not save that decision.");
     } finally {
       setBusyId(null);
     }
@@ -224,12 +290,16 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 canEdit={canEdit}
                 canDelete={!!data?.canDelete}
                 busy={busyId === m.id}
-                enhancement={data!.enhancement}
+                enhancement={enh}
+                progress={progress[m.id]}
+                failure={failures[m.id]}
+                onCompare={() => setCompare(m)}
+                onReview={(d) => review(m, d)}
                 onPrimary={() => patch(m, { id: m.id, makePrimary: true })}
                 onPublish={(v) => patch(m, { id: m.id, published: v })}
                 onCaption={(c) => patch(m, { id: m.id, caption: c })}
                 onDelete={() => destroy(m)}
-                onEnhance={(mode) => enhance(m, mode)}
+                onEnhance={(mode) => enhance(m, mode as EnhanceMode)}
               />
             ))}
           </div>
@@ -245,12 +315,12 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-[#9A9AA3]" />
             <div className="space-y-2">
               <p>
-                {data.enhancement.available ? data.enhancement.reason : data.enhancement.reason}
+                {enh.reason}
               </p>
               <p>
-                A retouched image improves the lighting on the photograph you took. It never invents
-                a car — a listing has to show the vehicle a driver will actually be handed the keys
-                to. New ones arrive switched off and reach the website only when you publish them.
+                Enhanced adjusts lighting and color on the photograph you took. Studio keeps the car's
+                own pixels and only replaces the background. Nothing is redrawn. Each result must be
+                approved, and then separately published, before it can reach the website.
               </p>
               <p className="text-[#9A9AA3]">
                 Inspection and damage evidence is kept in the inspection record, not here, and
@@ -260,16 +330,78 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
           </div>
         </SectionCard>
       )}
+      {compare && (
+        <CompareModal
+          m={compare}
+          source={compare.derived_from_id ? (byId.get(compare.derived_from_id) ?? null) : null}
+          busy={busyId === compare.id}
+          canReview={enh.reason !== "Photo enhancement is Manager-only."}
+          onClose={() => setCompare(null)}
+          onReview={(d) => review(compare, d)}
+        />
+      )}
     </div>
   );
 }
 
 const MODES = [
-  { value: "clean_background", label: "Clean Background" },
+  { value: "enhanced", label: "Enhanced" },
   { value: "studio", label: "Studio" },
-  { value: "outdoor", label: "Outdoor" },
-  { value: "dealer_listing", label: "Dealer Listing" },
 ];
+
+function CompareModal({ m, source, busy, canReview, onClose, onReview }: {
+  m: VehicleMedia; source: VehicleMedia | null; busy: boolean; canReview: boolean;
+  onClose: () => void; onReview: (d: "approve" | "reject") => void;
+}) {
+  const [a, setA] = useState<string | null>(null);
+  const [b, setB] = useState<string | null>(null);
+  useEffect(() => {
+    if (source) loadStaffPhoto(source.storage_path).then(setA);
+    loadStaffPhoto(m.storage_path).then(setB);
+  }, [m.storage_path, source?.storage_path]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const flags = m.quality_flags ?? [];
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-3" onClick={onClose}>
+      <div role="dialog" aria-label="Before and After" className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] overflow-auto p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-[15px] font-semibold text-[#111114]">Before / After · {m.enhancement_mode === "studio" ? "Studio" : "Enhanced"}</h3>
+          <button type="button" onClick={onClose} className="text-[13px] text-[#55555E] px-2 py-1 rounded hover:bg-[#F4F4F6]">Close</button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[["Original", a], ["Retouched", b]].map(([label, u]) => (
+            <figure key={label as string} className="space-y-1">
+              <figcaption className="text-[11px] font-medium text-[#55555E]">{label}</figcaption>
+              <div className="aspect-[4/3] bg-[#F4F4F6] rounded-lg overflow-hidden">
+                {u ? <img src={u as string} alt={label as string} className="w-full h-full object-contain" /> : <div className="w-full h-full grid place-items-center"><Loader2 className="w-4 h-4 animate-spin text-[#9A9AA3]" /></div>}
+              </div>
+            </figure>
+          ))}
+        </div>
+        {flags.length > 0 ? (
+          <div className="rounded-lg border border-[#F2C94C] bg-[#FFF8E1] p-3 text-[12px] text-[#5C4300] space-y-1">
+            <p className="font-medium">Needs a Closer Look</p>
+            <ul className="list-disc pl-4">{flags.map((f) => <li key={f}>{f}</li>)}</ul>
+          </div>
+        ) : (
+          <p className="text-[12px] text-[#55555E]">Automatic checks found nothing unusual. Still compare mirrors, wheels, edges and shadow before approving.</p>
+        )}
+        {m.processing_ms != null && <p className="text-[11px] text-[#9A9AA3]">Processed on device in {(m.processing_ms / 1000).toFixed(1)}s · Cost $0.00</p>}
+        {canReview && m.review_status !== "approved" && (
+          <div className="flex flex-wrap gap-2 justify-end">
+            <button type="button" disabled={busy} onClick={() => onReview("reject")} className="rounded-lg border border-[#EDEDF0] px-3 py-1.5 text-[13px] text-[#D03020] disabled:opacity-50">Reject</button>
+            <button type="button" disabled={busy} onClick={() => onReview("approve")} className="rounded-lg bg-[#111114] text-white px-3 py-1.5 text-[13px] disabled:opacity-50">Approve</button>
+          </div>
+        )}
+        {m.review_status === "approved" && <p className="text-[12px] text-[#55555E] text-right">Approved. Publish it from the gallery when you're ready.</p>}
+      </div>
+    </div>
+  );
+}
 
 function PhotoTile({
   m,
@@ -283,7 +415,15 @@ function PhotoTile({
   onCaption,
   onDelete,
   onEnhance,
+  progress,
+  failure,
+  onCompare,
+  onReview,
 }: {
+  progress?: string;
+  failure?: { mode: EnhanceMode; error: string };
+  onCompare: () => void;
+  onReview: (d: "approve" | "reject") => void;
   m: VehicleMedia;
   source: VehicleMedia | null;
   canEdit: boolean;
@@ -336,12 +476,18 @@ function PhotoTile({
             </Tag>
           )}
           {m.provenance === "adopted" && <Tag tone="grey">Unverified origin</Tag>}
+          {isEnhanced && m.review_status === "pending" && <Tag tone="grey">Needs Review</Tag>}
+          {isEnhanced && m.review_status === "approved" && <Tag tone="grey">Approved</Tag>}
+          {isEnhanced && (m.quality_flags?.length ?? 0) > 0 && <Tag tone="grey">Flagged</Tag>}
           {!m.published && <Tag tone="grey">Not on site</Tag>}
         </div>
 
         {busy && (
-          <div className="absolute inset-0 bg-white/60 grid place-items-center">
-            <Loader2 className="w-4 h-4 animate-spin text-[#55555E]" />
+          <div className="absolute inset-0 bg-white/70 grid place-items-center text-center px-2">
+            <div className="space-y-1">
+              <Loader2 className="w-4 h-4 animate-spin text-[#55555E] mx-auto" />
+              {progress && <div className="text-[10px] text-[#55555E]">{progress}</div>}
+            </div>
           </div>
         )}
       </div>
@@ -355,6 +501,23 @@ function PhotoTile({
           </div>
         )}
 
+        {failure && (
+          <div className="text-[10px] text-[#D03020] space-y-1">
+            <div>{failure.error}</div>
+            <button type="button" onClick={() => onEnhance(failure.mode)} disabled={busy} className="underline">Retry</button>
+          </div>
+        )}
+        {isEnhanced && (
+          <div className="flex flex-wrap gap-1">
+            <button type="button" onClick={onCompare} className="rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[10px] text-[#111114] hover:bg-[#F4F4F6]">Before/After</button>
+            {canEdit && m.review_status === "pending" && (
+              <>
+                <button type="button" disabled={busy} onClick={() => onReview("approve")} className="rounded bg-[#111114] text-white px-1.5 py-0.5 text-[10px] disabled:opacity-50">Approve</button>
+                <button type="button" disabled={busy} onClick={() => onReview("reject")} className="rounded border border-[#EDEDF0] px-1.5 py-0.5 text-[10px] text-[#D03020] disabled:opacity-50">Reject</button>
+              </>
+            )}
+          </div>
+        )}
         {canEdit ? (
           <input
             value={caption}
@@ -372,7 +535,7 @@ function PhotoTile({
             <IconBtn
               title={m.published ? "Remove from the Website" : "Show on the Website"}
               onClick={() => onPublish(!m.published)}
-              disabled={busy}
+              disabled={busy || (isEnhanced && m.review_status !== "approved" && !m.published)}
             >
               {m.published ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             </IconBtn>
