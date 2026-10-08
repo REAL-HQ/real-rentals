@@ -58,7 +58,20 @@ function withServiceItems(f: Record<string, ExtractedField>, items: unknown): Re
 
 export async function loadVehicles(sb: any): Promise<ExistingVehicle[]> {
   const { data } = await sb.from("vehicles").select("*").is("archived_at", null);
-  return (data ?? []) as ExistingVehicle[];
+  return overlayTitles(sb, (data ?? []) as ExistingVehicle[]);
+}
+/** Title identifiers live in Owner-only vehicle_titles; overlay them so blank-only
+ *  comparisons see an existing title and never overwrite it. Server-side only. */
+export async function overlayTitles<T extends { id: string }>(sb: any, vehicles: T[]): Promise<T[]> {
+  if (!vehicles.length) return vehicles;
+  const ids = vehicles.map((v) => v.id);
+  const rows: any[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const { data } = await sb.from("vehicle_titles").select("vehicle_id,title_number,title_status").in("vehicle_id", ids.slice(i, i + 500));
+    rows.push(...(data ?? []));
+  }
+  const by = new Map(rows.map((r) => [r.vehicle_id, r]));
+  return vehicles.map((v: any) => { const t = by.get(v.id); return t ? { ...v, title_number: t.title_number ?? v.title_number ?? null, title_status: t.title_status ?? v.title_status ?? null } : v; });
 }
 export async function loadProvenance(sb: any, ids: string[]): Promise<ProvenanceIndex> {
   if (!ids.length) return {};
