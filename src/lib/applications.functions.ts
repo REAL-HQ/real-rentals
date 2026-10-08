@@ -332,9 +332,10 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       ),
     ]);
     const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
-    const existing = [...(byPhone.data ?? []), ...(byEmail.data ?? [])].sort((a, b) =>
-      String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
-    )[0];
+    // An email match wins; a phone-only match is handled as an identity conflict below.
+    const newest = (rows: any[]) =>
+      [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
+    const existing = newest(byEmail.data ?? []) ?? newest(byPhone.data ?? []);
     if (existing) {
       const primaryId = existing.primary_application_id ?? existing.id;
 
