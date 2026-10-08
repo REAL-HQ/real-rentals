@@ -319,7 +319,7 @@ function PartnerSignIn() {
             <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="Email" className="w-full bg-soft rounded-lg px-5 py-3 text-sm" />
             <div className="relative">
               <input value={pw} onChange={(e) => setPw(e.target.value)} type={showPw ? "text" : "password"} required minLength={6} placeholder="Password" className="w-full bg-soft rounded-lg px-5 py-3 pr-12 text-sm" />
-              <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide Password" : "Show Password"} className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground">
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>

@@ -539,7 +539,7 @@ export function OverviewPanel() {
               svc.open > 0 && (svc.overdue > 0 || svc.due > 0) ? `${svc.open} open` : null,
               svc.conflict > 0 && (svc.overdue > 0 || svc.due > 0) ? `${svc.conflict} mileage to review` : null,
               svc.dueSoon > 0 && serviceAttention > 0 ? `${svc.dueSoon} due soon` : null,
-            ].filter(Boolean).join(" · ") || (serviceAttention + svc.dueSoon === 0 ? "0 due" : "View Service")
+            ].filter(Boolean).join(" · ") || (serviceAttention + svc.dueSoon === 0 ? "0 due" : "View service")
           }
           href="/admin"
           search={{ tab: "maintenance" }}

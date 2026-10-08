@@ -127,8 +127,8 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               <Camera className="w-6 h-6 mx-auto text-[#D03020]" strokeWidth={1.75} />
               <div className="mt-3 text-sm font-medium">Photograph the Title or Registration</div>
               <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
-                Lay It Flat, Fill the Frame, Avoid Glare. JPG, PNG or PDF Up to 5MB. Nothing Is
-                Saved Until You Confirm What Was Read.
+                Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is
+                saved until you confirm what was read.
               </p>
             </>
           )}
@@ -153,7 +153,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
             }}
             className="mt-3 text-[12px] text-[#D03020] hover:underline"
           >
-            Try Another Photo
+            Try another photo
           </button>
         </div>
       )}
@@ -234,7 +234,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               }}
               className="rounded-md px-3.5 py-2 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
             >
-              Scan Another
+              Scan another
             </button>
             <div className="flex-1" />
             <button
@@ -242,7 +242,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               disabled={!usable.length}
               className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              Review {usable.length} Field{usable.length === 1 ? "" : "s"}{" "}
+              Review {usable.length} field{usable.length === 1 ? "" : "s"}{" "}
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -184,7 +184,7 @@ export function VerificationRecording({
             className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#55555E] hover:text-[#111114]"
           >
             <History className="h-3 w-3" />
-            {showHistory ? "Hide" : "Show"} Earlier Recordings ({history.length})
+            {showHistory ? "Hide" : "Show"} earlier recordings ({history.length})
           </button>
           {showHistory && (
             <ul className="mt-2 space-y-2">

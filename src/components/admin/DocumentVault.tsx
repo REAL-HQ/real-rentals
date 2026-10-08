@@ -274,7 +274,7 @@ export function DocumentVault({
             onClick={() => setShowHistory((v) => !v)}
             className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#55555E] hover:text-[#111114]"
           >
-            <History className="w-3.5 h-3.5" /> {showHistory ? "Hide" : "Show"} Previous Versions (
+            <History className="w-3.5 h-3.5" /> {showHistory ? "Hide" : "Show"} previous versions (
             {history.length})
           </button>
           {showHistory ? (

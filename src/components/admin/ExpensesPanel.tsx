@@ -344,7 +344,7 @@ function Ledger({
         <button
           onClick={() => setShowForm(true)}
           disabled={vehicles.length === 0}
-          title={vehicles.length === 0 ? "Add a Vehicle First" : undefined}
+          title={vehicles.length === 0 ? "Add a vehicle first" : undefined}
           className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           <Plus className="w-4 h-4" /> Record Expense

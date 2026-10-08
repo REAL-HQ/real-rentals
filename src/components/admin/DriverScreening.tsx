@@ -157,13 +157,13 @@ export function ScreeningPipeline({
   function attempt(target: ScreeningStatus) {
     const missing: string[] = [];
     if (target !== "new_lead" && target !== "contacted") {
-      if (!screening?.interview_completed_at) missing.push("Complete the Interview First");
+      if (!screening?.interview_completed_at) missing.push("Complete the interview first");
       if (screening?.disqualified) missing.push("Driver is disqualified");
     }
     if (["insurance_verified", "approved", "pickup_scheduled", "active_renter"].includes(target)) {
       if (docCount < 4) missing.push(`Upload all four documents (${docCount}/4)`);
-      if (!screening?.insurance_verified) missing.push("Mark Insurance Verified");
-      if (!hasRecording) missing.push("Upload Verification Call Recording");
+      if (!screening?.insurance_verified) missing.push("Mark insurance verified");
+      if (!hasRecording) missing.push("Upload verification call recording");
     }
     if (missing.length > 0) {
       toast.error(`Cannot advance to "${target.replace(/_/g, " ")}"`, {
@@ -404,7 +404,7 @@ export function InterviewTab({
                         : "border-border bg-white hover:bg-soft"
                     }`}
                   >
-                    <PlatformLogo platform={a} Size={14} />
+                    <PlatformLogo platform={a} size={14} />
                     <span>{platformLabel(a)}</span>
                     {on && <CheckCircle2 className="h-3 w-3" />}
                   </button>

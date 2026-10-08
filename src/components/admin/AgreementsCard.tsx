@@ -198,7 +198,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
               }}
               className="mt-2.5 inline-flex items-center gap-1.5 rounded-md border border-[#F3C2BC] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#8A1F12]"
             >
-              Try Again
+              Try again
             </button>
           </div>
         ) : rows.length === 0 ? (
@@ -290,7 +290,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                       }}
                       className="text-[11px] font-semibold text-[#8A1F12] border border-[#F3C2BC] rounded-md px-2 py-1"
                     >
-                      Retry Save
+                      Retry save
                     </button>
                   ) : null}
                   {a.status !== "signed" && a.status !== "voided" && a.status !== "signing" ? (

@@ -52,11 +52,11 @@ export function AddVehicleDialog({
     setPrefill(null);
   }
 
-  const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a Vehicle"
-    : mode === "vin" ? "Start From a VIN"
-    : mode === "scan" ? "Scan the Title"
-    : mode === "import" ? "Import a Spreadsheet"
-    : prefill ? "Confirm the Details"
+  const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a vehicle"
+    : mode === "vin" ? "Start from a VIN"
+    : mode === "scan" ? "Scan the title"
+    : mode === "import" ? "Import a spreadsheet"
+    : prefill ? "Confirm the details"
     : "Vehicle details";
   return (
     <ModalShell onClose={onClose} size={mode === "quick" || mode === "choose" ? "md" : "lg"} label={title}>

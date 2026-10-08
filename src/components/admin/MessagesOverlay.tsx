@@ -224,7 +224,7 @@ export function MessagesOverlay({
                 <li key={c.applicationId}>
                   <button onClick={() => onSelect(c.applicationId)}
                     className={`w-full text-left px-4 py-4 flex gap-3 border-b border-[#EDEDF0] ${active ? "bg-[#FAFAFB]" : "hover:bg-[#FAFAFB]"}`}>
-                    <Avatar name={c.name} Id={c.applicationId} />
+                    <Avatar name={c.name} id={c.applicationId} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[15px] font-semibold truncate text-[#111114]">{c.name}</span>
@@ -427,8 +427,8 @@ export function MessagesOverlay({
         </Link>
       </div>
       <dl className="p-5 space-y-4 text-[13px]">
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text Available" : person.sms_channel.reason}</dd>{person.phone && <dd className="text-[11px] text-[#9A9AA3]">Text consent: {person.smsOptedOut ? "Opted out" : person.smsConsent ? "Yes" : "Not given"}</dd>}</div>
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Mail className="w-3 h-3" /> Email</dt><dd className="mt-0.5 break-all">{person.email ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.email_channel.available ? "Email Available" : person.email_channel.reason}</dd></div>
+        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text available" : person.sms_channel.reason}</dd>{person.phone && <dd className="text-[11px] text-[#9A9AA3]">Text consent: {person.smsOptedOut ? "Opted out" : person.smsConsent ? "Yes" : "Not given"}</dd>}</div>
+        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Mail className="w-3 h-3" /> Email</dt><dd className="mt-0.5 break-all">{person.email ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.email_channel.available ? "Email available" : person.email_channel.reason}</dd></div>
         <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Car className="w-3 h-3" /> Vehicle</dt><dd className="mt-0.5">{person.vehicle ?? "None assigned"}</dd></div>
       </dl>
       </>)}

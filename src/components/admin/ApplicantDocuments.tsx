@@ -220,7 +220,7 @@ export function ApplicantDocuments({
           ? "Marked verified"
           : status === "rejected"
             ? "Marked as needing a replacement"
-            : "Review Cleared",
+            : "Review cleared",
       );
       await refresh();
     } catch (e) {
@@ -299,7 +299,7 @@ export function ApplicantDocuments({
             className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#55555E] hover:text-[#111114]"
           >
             <History className="w-3.5 h-3.5" />
-            {showHistory ? "Hide" : "Show"} Replaced Versions ({history.length})
+            {showHistory ? "Hide" : "Show"} replaced versions ({history.length})
           </button>
         )}
       </div>
@@ -325,7 +325,7 @@ export function ApplicantDocuments({
                 {d && d.url && isImageDoc(d) ? (
                   <img
                     src={d.url}
-                    Alt={meta.label}
+                    alt={meta.label}
                     className="absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity"
                   />
                 ) : d ? (
@@ -339,7 +339,7 @@ export function ApplicantDocuments({
                 )}
                 {d && !d.url && (
                   <span className="absolute inset-x-0 bottom-0 bg-red-600/90 text-white text-[10px] py-1">
-                    File Missing From Storage
+                    File Missing from Storage
                   </span>
                 )}
               </button>
@@ -450,7 +450,7 @@ export function ApplicantDocuments({
                 {d.url && isImageDoc(d) ? (
                   <img
                     src={d.url}
-                    Alt={d.file_name ?? "Document"}
+                    alt={d.file_name ?? "Document"}
                     className="absolute inset-0 w-full h-full object-cover group-hover:opacity-90"
                   />
                 ) : (

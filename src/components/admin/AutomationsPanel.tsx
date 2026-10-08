@@ -532,7 +532,7 @@ function StepForm({
         </div>
       </Field>
 
-      <Field label="Send This Long After the Trigger">
+      <Field label="Send this long after the trigger">
         <div className="flex gap-2">
           <input
             type="number"
@@ -575,7 +575,7 @@ function StepForm({
         {channel === "sms" ? (
           <p className="mt-1 text-xs text-muted-foreground">
             {body.length} characters · {segments} segment{segments === 1 ? "" : "s"}. Always leave
-            "Reply STOP to Opt Out" in the first message of a sequence.
+            "Reply STOP to opt out" in the first message of a sequence.
           </p>
         ) : null}
       </Field>

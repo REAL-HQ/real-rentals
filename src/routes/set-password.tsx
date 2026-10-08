@@ -143,7 +143,7 @@ function SetPasswordPage() {
           <button
             type="button"
             onClick={() => setShowPw((v) => !v)}
-            aria-label={showPw ? "Hide Password" : "Show Password"}
+            aria-label={showPw ? "Hide password" : "Show password"}
             className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground"
           >
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

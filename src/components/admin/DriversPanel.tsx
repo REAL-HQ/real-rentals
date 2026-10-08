@@ -2639,7 +2639,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
           {driver.email && (
             <DropdownMenuItem asChild>
               <a
-                href={`mailto:${driver.email}?subject=${encodeURIComponent("Save Your Card on File")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
+                href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
               >
                 <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
               </a>
@@ -2892,7 +2892,7 @@ function CardOnFileCard({
               }}
               className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
             >
-              Copy Link
+              Copy link
             </button>
             <a
               href={link}
@@ -2980,10 +2980,10 @@ function RequestDocumentsAction({
         disabled={!driver.email || (sentAt !== null && !canResend)}
         title={
           !driver.email
-            ? "No Email on File"
+            ? "No email on file"
             : sentAt && !canResend
               ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
-              : "Request Missing Documents"
+              : "Request missing documents"
         }
         className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
