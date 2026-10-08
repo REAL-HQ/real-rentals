@@ -889,6 +889,8 @@ async function applySection(
       if (tErr) throw new Error("Could not save title details");
       const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
       await supabaseAdmin.from("vehicles").update({ title_on_file: !!(t?.title_number || t?.title_status) }).eq("id", data.id);
+      // Values deliberately omitted: Managers can read the audit log.
+      await logAudit(actor, { action: "vehicle.title_updated", summary: "Updated Owner-only title details", entityType: "vehicle", entityId: data.id, metadata: { fields: TITLE_KEYS.filter((k) => k in data.values) } });
     }
     for (const key of allowed) {
       if (!(key in data.values)) continue;
