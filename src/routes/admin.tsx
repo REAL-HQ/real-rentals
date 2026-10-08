@@ -1,5 +1,5 @@
 import { createFileRoute, useSearch as useRouterSearch, useNavigate, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
 import { VehiclesPanel } from "@/components/admin/VehiclesPanel";
@@ -189,6 +189,16 @@ function Admin() {
   const urlFilter = typeof search?.filter === "string" ? search.filter : null;
   const urlAdd = search?.add === "1";
   const [globalSearch, setGlobalSearch] = useState("");
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = stickyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const set = () => document.documentElement.style.setProperty("--admin-sticky-h", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   const [notifs, setNotifs] = useState<
     Array<{
       id: string;
