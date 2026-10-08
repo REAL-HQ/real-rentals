@@ -213,7 +213,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
       const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => canFinance || (!isFinanceField(k) && !SERVICE_COST_FIELDS.has(k))));
-      return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length } : null };
+      return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length, ...(canFinance && ex.financial ? { financial: ex.financial, financialReview: ex.financial_review ?? null } : {}) } : null };
     });
     // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
     const live = (proposals ?? []).filter((p: any) => p.status !== "superseded");
@@ -223,7 +223,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     // Coordinators get the operational half only; the financial half (amounts, payment, raw model text) never leaves the server.
     const transactions = canFinance ? txs ?? [] : (txs ?? []).map(operationalView);
     const serviceItemIds = new Set((txs ?? []).flatMap((t: any) => t.item_ids ?? []));
-    const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
+    const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes|payment|transfer|refund|deposit/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
     // Email source: Managers/Owners see the preserved body; Coordinators get envelope only, money redacted.
     let email: any = null;
     if (batch.inbound_email_id) {
