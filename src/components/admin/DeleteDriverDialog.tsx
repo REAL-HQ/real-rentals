@@ -41,7 +41,8 @@ export function DeleteDriverDialog({
       const r = mode === "soft" ? await softFn({ data: { applicationId } }) : await purgeFn({ data: { applicationId } });
       if (!r.ok) return void toast.error(r.error);
       toast.success(mode === "soft" ? "Driver Deleted" : "Personal Data Deleted");
-      if (mode === "purge" && "files" in r && r.files?.failed) toast.error(`${r.files.failed} file(s) could not be removed yet. Retry in Recently Deleted.`);
+      const failed = mode === "purge" ? Number((r as any).files?.failed ?? 0) : 0;
+      if (failed) toast.error(`${failed} file(s) could not be removed yet. Retry in Recently Deleted.`);
       onDone();
     } catch {
       toast.error("Could not complete. Please try again.");
