@@ -13,6 +13,8 @@ import {
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { DepositDialog } from "./DepositDialog";
+import { supabase as _sbPay } from "@/integrations/supabase/client";
+import { derivePaymentStatus, deriveDepositDisplay, PAYMENT_STATUS_LABEL, type PayRental, type PayRow } from "@/lib/driver-payment-status";
 import { endRental } from "@/lib/rentals.functions";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
@@ -282,6 +284,27 @@ function useNow(intervalMs = 30000) {
   return now;
 }
 
+
+const PAY_RENTAL_COLS = "id,application_id,status,deposit_amount,deposit_held,deposit_status,deposit_refund_amount";
+const PAY_ROW_COLS = "driver_id,rental_id,type,amount,balance_due,net_collected,refunded_amount,status,due_date";
+type PayIndex = Record<string, { rentals: PayRental[]; payments: PayRow[] }>;
+/** Bulk-load rentals + payments for the given applicants (null = all) and group by applicant. */
+async function loadPayIndex(ids: string[] | null): Promise<PayIndex> {
+  let rq = _sbPay.from("rentals").select(PAY_RENTAL_COLS);
+  let pq = _sbPay.from("payments").select(PAY_ROW_COLS);
+  if (ids) { rq = rq.in("application_id", ids); pq = pq.in("driver_id", ids); }
+  const [{ data: r }, { data: p }] = await Promise.all([rq, pq]);
+  const idx: PayIndex = {};
+  const slot = (k: string) => (idx[k] ??= { rentals: [], payments: [] });
+  for (const x of (r ?? []) as any[]) if (x.application_id) slot(x.application_id).rentals.push(x);
+  for (const x of (p ?? []) as any[]) if (x.driver_id) slot(x.driver_id).payments.push(x);
+  return idx;
+}
+function payCells(e: PayIndex[string] | undefined) {
+  const v = e ?? { rentals: [], payments: [] };
+  return { pay: PAYMENT_STATUS_LABEL[derivePaymentStatus(v.rentals, v.payments)], dep: deriveDepositDisplay(v.rentals, v.payments) };
+}
+
 export function DriversPanel({
   externalSearch = "",
   initialOpenId,
@@ -352,6 +375,8 @@ export function DriversPanel({
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
+  const [payIndex, setPayIndex] = useState<PayIndex>({});
+  useEffect(() => { void loadPayIndex(null).then(setPayIndex); }, []);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -797,11 +822,11 @@ export function DriversPanel({
                         docCount={docCounts[a.id] ?? 0}
                       />
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap capitalize text-muted-foreground">
-                      {a.payment_status?.replace(/_/g, " ")}
+                    <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                      {payCells(payIndex[a.id]).pay}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
-                      ${Number(a.deposit_paid ?? 0).toLocaleString()}
+                      {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
                     </td>
                     <td
                       className="px-4 py-2.5 whitespace-nowrap"
@@ -890,12 +915,8 @@ export function DriversPanel({
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2 capitalize">
-                          {h.payment_status?.replace(/_/g, " ")}
-                        </td>
-                        <td className="px-4 py-2">
-                          ${Number(h.deposit_paid ?? 0).toLocaleString()}
-                        </td>
+                        <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
+                        <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         <td className="px-4 py-2">
                           <div>{new Date(h.created_at!).toLocaleDateString()}</div>
@@ -1755,18 +1776,7 @@ function DriverDetail({
                       options={[...DRIVER_STATUSES]}
                       onChange={(v) => onUpdate({ status: v })}
                     />
-                    <SelField
-                      label="Deposit Status"
-                      value={driver.deposit_status}
-                      options={[...DEPOSIT_STATUSES]}
-                      onChange={(v) => onUpdate({ deposit_status: v })}
-                    />
-                    <SelField
-                      label="Payment Status"
-                      value={driver.payment_status}
-                      options={[...PAYMENT_STATUSES]}
-                      onChange={(v) => onUpdate({ payment_status: v })}
-                    />
+                    <DerivedPayFields driverId={driver.id} />
                     <SelField
                       label="Background Check"
                       value={driver.background_check_status}
@@ -3050,6 +3060,19 @@ function RequestDocumentsAction({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+/** Read-only: the same calculation the Drivers list uses, for one driver. */
+function DerivedPayFields({ driverId }: { driverId: string }) {
+  const [e, setE] = useState<PayIndex[string] | undefined>();
+  useEffect(() => { void loadPayIndex([driverId]).then((i) => setE(i[driverId])); }, [driverId]);
+  const { pay, dep } = payCells(e);
+  return (
+    <>
+      <Field label="Deposit" value={dep.detail ? `${dep.text} · ${dep.detail}` : dep.text} />
+      <Field label="Payment Status" value={pay} />
     </>
   );
 }
