@@ -480,7 +480,11 @@ function Admin() {
 
         {/* Workspace */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <header className="sticky top-0 z-20 bg-[#FAFAFB]/95 backdrop-blur px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
+          {/* Locked while scrolling: top bar, page title, section tabs. Its
+              height is published as --admin-sticky-h so panel filter rows
+              can lock directly underneath. */}
+          <div ref={stickyRef} className="sticky top-0 z-20 bg-[#FAFAFB]">
+          <header className="bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
                 aria-label="Open navigation"
@@ -646,16 +650,16 @@ function Admin() {
             </div>
           </header>
 
-          <main className="flex-1 min-w-0 p-4 md:px-8 md:pt-4 md:pb-8">
+          <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
             {tab !== "overview" && !recordParent && (
-              <div className="mb-5">
+              <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
                 <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (
-              <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-5 overflow-x-auto">
+              <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-3 overflow-x-auto">
                 <div role="tablist" aria-label={`${workspace.label} sections`} className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max">
                   {workspaceTabs.map((v) => (
                     <Link
@@ -672,6 +676,10 @@ function Admin() {
                 </div>
               </div>
             )}
+          </div>
+          </div>
+
+          <main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
