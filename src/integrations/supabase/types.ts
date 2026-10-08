@@ -5826,6 +5826,7 @@ export type Database = {
         Returns: Json
       }
       cars_available: { Args: never; Returns: number }
+      driver_deletion_blocker: { Args: { _id: string }; Returns: string }
       email_delivery_attach: {
         Args: { _id: string; _resend_id: string }
         Returns: undefined

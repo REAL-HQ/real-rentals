@@ -13,10 +13,11 @@ const idInput = (d: unknown) => z.object({ applicationId: z.string().uuid() }).p
 
 const ERRORS: Record<string, string> = {
   not_found: "That driver record was not found.",
-  active_rental: "This driver has an active rental. End the rental first.",
+  active_rental: "This driver has an active rental. End it in Rentals before deleting.",
   not_soft_deleted: "Delete the driver first, then delete permanently.",
   legal_hold: "This driver is on Legal Hold, so permanent deletion is blocked.",
-  open_charge: "This driver has an open charge. Resolve it before deleting permanently.",
+  open_charge: "This driver has an open toll or charge. Resolve it in Charges before deleting.",
+  unpaid_payment: "This driver has an unpaid or upcoming payment. Settle, waive or void it in Payments before deleting.",
   purged: "This record was permanently deleted and cannot be restored.",
 };
 
