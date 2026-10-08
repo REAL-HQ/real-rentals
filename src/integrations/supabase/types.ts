@@ -5570,6 +5570,8 @@ export type Database = {
           pickup_date: string | null
           promoted_application_id: string | null
           promoted_at: string | null
+          review_flagged_at: string | null
+          review_reason: string | null
           source: string
           state: string | null
           status: string
@@ -5593,6 +5595,8 @@ export type Database = {
           pickup_date?: string | null
           promoted_application_id?: string | null
           promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
           source?: string
           state?: string | null
           status?: string
@@ -5616,6 +5620,8 @@ export type Database = {
           pickup_date?: string | null
           promoted_application_id?: string | null
           promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
           source?: string
           state?: string | null
           status?: string
