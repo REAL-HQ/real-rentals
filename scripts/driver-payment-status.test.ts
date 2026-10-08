@@ -53,7 +53,6 @@ describe("deposit display", () => {
   });
 });
 
-console.log(`${pass} passed, ${fail} failed`);
 describe("resolved failures and multiple charges", () => {
   const paidOld = P({ status: "paid", balance_due: 0, due_date: "2026-09-24" });
   it("failed then retried successfully (same charge now paid) → Current", () => expect(s([R()], [paidOld], T)).toBe("current"));
