@@ -376,22 +376,26 @@ export async function sendApplicationResumeEmail(args: {
   to: string;
   firstName: string | null;
   applicationId: string;
-}): Promise<void> {
+}): Promise<{ ok: boolean; error?: string }> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(args.applicationId);
+  // Short-lived, single-use recovery link (see resume-tokens.server.ts).
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  const resumeUrl = buildUrl(await issueResumeToken(supabaseAdmin, args.applicationId, { recovery: true }));
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You Already Have An Application With Us, ${escapeHtml(name)}</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Somebody just started a new one using your details, so rather than create a second record we've sent you the link to the one you already have. Pick up exactly where you left off.</p>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application, ${escapeHtml(name)}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Here's your secure link to pick up exactly where you left off. Your answers and documents are saved. For your security the link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open My Application</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
       <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">If that wasn't you, you can ignore this email — nothing on your application has changed, and the link above is the only way in.</p>`);
-  await sendEmail({
+  const sent = await sendEmail({
     to: args.to,
     subject: "Your REAL RENTALS Application — Here's Your Link",
     html,
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "application_resume" },
   });
+  return { ok: !!(sent as any)?.ok, error: (sent as any)?.error };
 }
 
 type RecoveryArgs = {

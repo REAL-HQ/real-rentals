@@ -108,7 +108,7 @@ function ContactStep({
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<string | null>(null);
+  const [returning, setReturning] = useState<{ email: string; ok: boolean; retryAfterSeconds: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [hp, setHp] = useState("");
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", sms_consent: false });
@@ -174,7 +174,7 @@ function ContactStep({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning(form.email);
+        setReturning({ email: form.email, ok: data.linkOk !== false, retryAfterSeconds: data.retryAfterSeconds ?? 120 });
         return;
       }
       navigate({ to: "/thank-you", search: { t: data.token } });
@@ -195,7 +195,7 @@ function ContactStep({
 
         {returning !== null && (
           <div className="mt-8">
-            <WelcomeBack email={returning} />
+            <WelcomeBack email={returning.email} initial={returning} />
           </div>
         )}
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">

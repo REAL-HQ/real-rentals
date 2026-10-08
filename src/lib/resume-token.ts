@@ -54,6 +54,11 @@ function write(token: string) {
   }
 }
 
+/** Replace this tab's token (after a single-use recovery link is exchanged). */
+export function storeResumeToken(token: string) {
+  write(token);
+}
+
 export function clearResumeToken() {
   try {
     window.sessionStorage.removeItem(KEY);
