@@ -24,14 +24,23 @@ const staffCache = new Map<string, Promise<string | null>>();
  */
 export function loadStaffPhoto(path: string): Promise<string | null> {
   if (!staffCache.has(path)) {
-    staffCache.set(
-      path,
-      supabase.storage
-        .from("vehicle-photos")
-        .download(path)
-        .then(({ data }) => (data ? URL.createObjectURL(data) : null))
-        .catch(() => null),
-    );
+    const attempt = async (): Promise<string | null> => {
+      // Wait for the signed-in session to be restored; a download fired before
+      // that is anonymous and is refused by the private bucket.
+      await supabase.auth.getSession();
+      for (let i = 0; i < 2; i++) {
+        const { data } = await supabase.storage.from("vehicle-photos").download(path);
+        if (data) return URL.createObjectURL(data);
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      return null;
+    };
+    const p = attempt().catch(() => null);
+    staffCache.set(path, p);
+    // Never remember a failure: the next render retries instead of staying blank.
+    p.then((u) => {
+      if (!u) staffCache.delete(path);
+    });
   }
   return staffCache.get(path)!;
 }
