@@ -481,7 +481,7 @@ function LinkExpired({ message }: { message: string }) {
       <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{message}</p>
       <p className="mt-2 text-sm text-muted-foreground leading-relaxed">Enter your email and we'll send a fresh link to the address on your application.</p>
       <div className="mt-6 text-left">
-        <WelcomeBack />
+        <WelcomeBack expired />
       </div>
       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
         <a
