@@ -639,7 +639,9 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     const { data: row } = await sb.from("vehicles").select("*").eq("id", data.vehicleId).maybeSingle();
     if (!row) throw new Error("Vehicle not found");
     const [target] = await (await core()).overlayTitles(sb, [row as any]);
-    const vin = (target.vin ?? "").toUpperCase();
+    // Only alphanumeric VINs enter the filter below; anything else falls back to the loose match.
+    const vinRaw = (target.vin ?? "").toUpperCase();
+    const vin = /^[A-Z0-9]{1,20}$/.test(vinRaw) ? vinRaw : "";
     const plate = (target.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const cols = "id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at";
     const open = ["pending", "failed"];
