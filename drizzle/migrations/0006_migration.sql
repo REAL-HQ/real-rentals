@@ -1,0 +1,3 @@
+CREATE INDEX IF NOT EXISTS fleet_import_proposals_open_vin_idx ON public.fleet_import_proposals (vin) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS fleet_import_proposals_match_vehicle_idx ON public.fleet_import_proposals (match_vehicle_id) WHERE match_vehicle_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS fleet_import_proposals_status_kind_idx ON public.fleet_import_proposals (status, kind, created_at DESC);

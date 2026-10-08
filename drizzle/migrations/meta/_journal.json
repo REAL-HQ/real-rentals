@@ -43,6 +43,13 @@
       "when": 1791432832737,
       "tag": "0005_vehicle_titles_revoke_anon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791458463060,
+      "tag": "0006_migration",
+      "breakpoints": true
     }
   ]
 }
