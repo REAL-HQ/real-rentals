@@ -59,7 +59,7 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
         <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">Practice As:</span>
           {(["owner", "manager", "coordinator", "driver"] as Role[]).map((r) => (
-            <button key={r} onClick={() => switchRole(r)} className={`rounded-md border px-3 py-1 ${role === r ? "border-foreground bg-foreground text-background" : "border-border bg-card"}`}>{ACTORS[r]}</button>
+            <button key={r} onClick={() => switchRole(r)} className={`rounded-md border px-3 py-1 ${role === r ? "border-foreground bg-foreground text-background" : "border-border bg-card"}`}>{r === "manager" ? "Manager" : ACTORS[r]}</button>
           ))}
           {role === "manager" && (
             <button onClick={() => setActor(actor === "Manager A" ? "Manager B" : "Manager A")} className="rounded-md border border-border px-3 py-1">Switch To {actor === "Manager A" ? "Manager B" : "Manager A"}</button>
