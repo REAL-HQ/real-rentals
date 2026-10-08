@@ -1,5 +1,5 @@
 // Server-only: financial-document reading and review building for Fleet Inbox
-// (Step B). Proposals only — never writes expenses, vehicle_finance or vehicles.
+// (Step B). Proposals only — never writes expenses, vehicle finance records or vehicles.
 import { cleanFinancialExtraction, reviewFinancial, type FinancialExtraction, type OtherFinDoc } from "@/lib/financial-docs";
 
 const BUCKET = "vehicle-docs";
