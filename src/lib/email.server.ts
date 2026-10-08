@@ -91,6 +91,10 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     const phone = await getBusinessPhone();
     html = html.split("{{company_phone}}").join(`<a href="${phone.tel}" style="color:#999">${phone.display}</a>`);
   }
+  // Sender identity + why-you-got-this line, then a plain-text alternative
+  // (Resend sends both as multipart/alternative). Links and tokens are kept verbatim.
+  html = withIdentityFooter(html, track?.workflow);
+  const text = htmlToText(html);
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
@@ -117,6 +121,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
+        text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
       }),
     });
@@ -131,6 +136,43 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     console.error("[email] Resend send threw", err, { subject });
     return done({ ok: false, error: err instanceof Error ? err.message : "Could not reach Resend." });
   }
+}
+
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email"]);
+
+/** Why this recipient got this email — accurate per workflow, never promotional. */
+export function emailReason(workflow: string | undefined): string {
+  if (!workflow) return "You received this email from REAL RENTALS about your account or rental.";
+  if (STAFF_WORKFLOWS.has(workflow)) return "Internal REAL RENTALS team notification.";
+  if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
+  if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
+  if (workflow.startsWith("payment") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
+  return "You received this email from REAL RENTALS about your application, account or rental.";
+}
+
+function withIdentityFooter(html: string, workflow: string | undefined): string {
+  if (html.includes("data-rr-identity")) return html;
+  const footer = `<div data-rr-identity style="max-width:560px;margin:0 auto;padding:0 24px 24px;color:#999;font-size:11px;line-height:1.5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">REAL RENTALS · drivereal.com<br>${escapeHtml(emailReason(workflow))}</div>`;
+  return html.includes("</body>") ? html.replace("</body>", `${footer}</body>`) : html + footer;
+}
+
+/** Plain-text alternative: keeps every link URL visible next to its label. */
+export function htmlToText(html: string): string {
+  const decode = (t: string) => t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&middot;/g, "·");
+  let t = html
+    .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, label: string) => {
+      const l = label.replace(/<[^>]+>/g, "").trim();
+      if (/^tel:/i.test(href)) return l;
+      return l && l !== href ? `${l}: ${href}` : href;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|tr|li|table)>/gi, "\n")
+    .replace(/<hr[^>]*>/gi, "\n----\n")
+    .replace(/<td[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, "");
+  t = decode(t).split("\n").map((x) => x.replace(/[ \t]+/g, " ").trim()).join("\n");
+  return t.replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
 function escapeHtml(v: unknown): string {
@@ -364,13 +406,13 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
   const resumeUrl = await applicantResumeUrl(applicationId);
   const subject =
     variant === "24h"
-      ? `${name}, finish your REAL RENTALS application`
-      : `${name}, your spot won't hold much longer`;
-  const headline = variant === "24h" ? "You're almost there." : "Last nudge — your spot is waiting.";
+      ? `${name}, your REAL RENTALS application is saved`
+      : `${name}, your REAL RENTALS application is still open`;
+  const headline = variant === "24h" ? "Your Application Is Almost Done" : "Your Application Is Still Open";
   const body =
     variant === "24h"
       ? "You started your driver application yesterday but didn't finish. It takes about 2 minutes to complete — then our team can call you to confirm availability and get you on the road."
-      : "We've held your spot for 3 days. Vehicles in your market move fast — finish your application now to lock it in before we release it to the next driver in line.";
+      : "Your REAL RENTALS driver application from a few days ago is saved and still open. When you're ready, you can finish it from the link below and our team will follow up about availability in your area. If you've changed your mind, you can simply ignore this email.";
 
   const html = `<!doctype html>
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
@@ -458,7 +500,7 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Action Needed — Payment Failed (${money(args.amount)})`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+  await sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 type CardExpiringArgs = {
