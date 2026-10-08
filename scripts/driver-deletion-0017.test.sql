@@ -19,10 +19,10 @@ BEGIN
   INSERT INTO applications(full_name,email,phone) VALUES ('Zz T P','zz-p@invalid.example','0') RETURNING id INTO p;
   INSERT INTO applications(full_name,email,phone) VALUES ('Zz T T','zz-t@invalid.example','0') RETURNING id INTO tc;
   INSERT INTO applications(full_name,email,phone) VALUES ('Zz T L','zz-l@invalid.example','0') RETURNING id INTO l;
-  INSERT INTO vehicles(year,make,model) VALUES (2020,'Zz','Test') RETURNING id INTO v;
   INSERT INTO application_waitlist_holds(application_id,added_at,added_by) VALUES (w,'2026-01-01T00:00:00Z',mgr);
   INSERT INTO waitlist(full_name,email,promoted_application_id) VALUES ('Zz T W','zz-w@invalid.example',w);
-  SET LOCAL session_replication_role = replica;  -- fixture only: bypass rental lifecycle guard
+  SET LOCAL session_replication_role = replica;  -- fixture only: bypass vehicle/rental guards
+  INSERT INTO vehicles(year,make,model) VALUES (2020,'Zz','Test') RETURNING id INTO v;
   INSERT INTO rentals(driver_id,application_id,vehicle_id,status) VALUES (r,r,v,'active');
   SET LOCAL session_replication_role = origin;
   INSERT INTO payments(driver_id,amount,status,type) VALUES (p,100,'unpaid','rent');
