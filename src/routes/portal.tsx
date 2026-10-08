@@ -105,21 +105,21 @@ function usePreviewDriver() {
   return useContext(PreviewDriverCtx);
 }
 /** Portal read: in preview, asks the server for that driver's data (server re-checks Owner/Manager). */
-function usePortalRead(fn: any): any {
+function usePortalRead<F extends (...a: any[]) => Promise<any>>(fn: F): (..._a: any[]) => ReturnType<F> {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
   return (..._a: any[]) => f({ data: id ? { previewDriverId: id } : {} });
 }
 /** Portal write: refused in preview (and refused again on the server for staff). */
-function usePortalWrite(fn: any): any {
+function usePortalWrite<F extends (...a: any[]) => Promise<any>>(fn: F): F {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
-  return id ? async () => { throw new Error("Driver Preview is read-only."); } : f;
+  return (id ? async () => { throw new Error("Driver Preview is read-only."); } : f) as F;
 }
-function usePreviewNull(fn: any, empty: any): any {
+function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: Awaited<ReturnType<F>>): F {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
-  return id ? async () => empty : f;
+  return (id ? async () => empty : f) as F;
 }
 function ReadOnlyNote({ what }: { what: string }) {
   return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
