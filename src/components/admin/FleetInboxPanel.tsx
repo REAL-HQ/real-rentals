@@ -298,6 +298,12 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
         </section>
       )}
 
+      {d.queue?.pausedReason && (
+        <div role="status" className="rounded-xl border border-[#F5C26B] bg-[#FFF8EB] px-4 py-3 text-sm text-[#7A4B00]">
+          Automatic Analysis Is Paused — {d.queue.pausedReason}. Files stay queued and resume on their own once this is resolved.
+        </div>
+      )}
+
       <ServiceTransactionReview d={d} isManager={isManager} reload={load} openFile={openFile} />
 
       {/* Files */}
@@ -314,6 +320,11 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                   {it.extraction ? ` · ${it.extraction.vehicleCount} vehicle entr${it.extraction.vehicleCount === 1 ? "y" : "ies"}` : ""}
                   {it.error ? ` · ${it.error}` : ""}
                 </div>
+                {it.job && it.job.state === "retry_wait" && (
+                  <div className="text-xs text-[#B45309] mt-0.5">Retrying Automatically · Attempt {it.job.attempts + 1} Of {it.job.maxAttempts}{it.job.nextRunAt ? ` · Next Try ${new Date(it.job.nextRunAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}` : ""}</div>
+                )}
+                {it.job && it.job.state === "queued" && it.status === "uploaded" && <div className="text-xs text-[#9A9AA3] mt-0.5">Queued For Automatic Analysis</div>}
+                {it.job && it.job.state === "dead" && it.status === "failed" && <div className="text-xs text-[#D03020] mt-0.5">Automatic Retries Used Up · Use Retry Analysis</div>}
                 {(it.warnings ?? []).length > 0 && <div className="text-xs text-[#B45309] mt-0.5">{it.warnings.slice(0, 2).join(" · ")}</div>}
               </div>
               <StatusPill tone={toneOf(it.status) as any}>

@@ -224,7 +224,13 @@ export const getImportBatch = createServerFn({ method: "POST" })
           : { ...em, subject: redact(em.subject), text_body: null, attachments: ((em.attachments as any[]) ?? []).map((a: any) => ({ file_name: a.file_name, outcome: a.outcome })) };
       }
     }
-    return { batch, items: itemsOut, proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email };
+    // Background processing status: latest job per item, plus queue pause (no amounts or provider details).
+    const { data: jobRows } = await sb.from("fleet_inbox_jobs").select("item_id,state,attempts,max_attempts,next_run_at,created_at").eq("batch_id", data.batchId).order("created_at", { ascending: false });
+    const jobs: Record<string, { state: string; attempts: number; maxAttempts: number; nextRunAt: string | null }> = {};
+    for (const j of jobRows ?? []) if (!jobs[j.item_id]) jobs[j.item_id] = { state: j.state, attempts: j.attempts, maxAttempts: j.max_attempts, nextRunAt: j.next_run_at };
+    const { data: ws } = await sb.from("fleet_inbox_worker_state").select("paused_reason,paused_at").eq("id", 1).maybeSingle();
+    const queue = { pausedReason: ws?.paused_reason ?? null, pausedAt: ws?.paused_at ?? null };
+    return { batch, items: itemsOut.map((i: any) => ({ ...i, job: jobs[i.id] ?? null })), proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email, queue };
   });
 
 // ---------------------------------------------------------------- apply
