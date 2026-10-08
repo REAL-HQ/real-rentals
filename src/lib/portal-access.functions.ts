@@ -59,7 +59,7 @@ export const getMyPortalAccess = createServerFn({ method: "GET" })
         .from("application_waitlist_holds")
         .select("id", { count: "exact", head: true })
         .eq("application_id", app.id)
-        .is("closed_at", null);
+        .is("removed_at", null);
       onWaitlist = (count ?? 0) > 0;
     }
     const waitlist = verified && email ? (await myWaitlist(admin, email)).find((w: any) => !w.promoted_application_id) ?? null : null;
