@@ -105,7 +105,7 @@ export function WebsitesPanel() {
               {sites.map((s) => (
                 <tr key={s.id} className="h-11 hover:bg-[#FAFAFB] transition-colors duration-150">
                 <td className="px-3 font-medium text-[13px]">{s.title}</td>
-                  <td className="max-w-[110px]"><code className="text-xs block truncate">/{s.slug}</code></td>
+                  <td className="max-w-[90px]"><code className="text-xs block truncate">/{s.slug}</code></td>
                   <td className="text-muted-foreground">{markets.find((m) => m.id === s.market_id)?.name ?? "—"}</td>
                   <td>
                     <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export function WebsitesPanel() {
                         }
                       }}
                       placeholder="https://…"
-                      className="w-32 text-xs rounded border border-border px-2 py-1"
+                      className="w-28 text-xs rounded border border-border px-2 py-1"
                     />
                   </td>
                   <td className="text-center">
