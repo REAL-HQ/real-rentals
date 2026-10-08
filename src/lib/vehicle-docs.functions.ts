@@ -47,6 +47,15 @@ function labelFor(kind: string): string {
   return VEHICLE_DOC_TYPES.find((d) => d.value === kind)?.label ?? kind;
 }
 
+/** Whether the caller may see Owner-only finance slots. Layout only — the server guards stay authoritative. */
+export const getVehicleDocAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ financeSlots: boolean }> => {
+    const actor = await requireStaff(context.userId);
+    const { ownerView } = await import("@/lib/experience.server");
+    return { financeSlots: ownerView(actor) };
+  });
+
 export const listVehicleDocs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid() }).parse(d))
@@ -117,6 +126,18 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
     const actor = await requireStaff(context.userId);
+    // Acquisition/lien/loan paperwork is Owner only — same boundary as RLS
+    // (private.is_ownership_finance_kind) and listVehicleDocs. This handler
+    // writes with the admin client, so the check must live here too.
+    const { isFinanceKind } = await import("@/lib/vehicle-doc-presence");
+    if (isFinanceKind(data.kind) && actor.tier !== "owner") {
+      return { ok: false, error: "Only the Owner can add purchase, loan or lien paperwork." };
+    }
+    // The file must sit under this vehicle's folder, so a request cannot
+    // attach some other object to this record.
+    if (!data.path.startsWith(`${data.vehicleId}/`) || data.path.includes("..")) {
+      return { ok: false, error: "That file reference is not valid for this vehicle." };
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Replacing a document of the same kind supersedes the old one rather than
