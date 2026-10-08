@@ -12,4 +12,6 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // The on-device photo enhancer worker lazy-loads its model library, which needs ES-module workers.
+  vite: { worker: { format: "es" } },
 });
