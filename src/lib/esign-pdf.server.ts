@@ -220,7 +220,7 @@ export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> 
   return pdf.save({ useObjectStreams: false });
 }
 
-export async function sha256Hex(bytes: Uint8Array | string): Promise<string>
+export async function sha256Hex(bytes: Uint8Array | string): Promise<string> {
   const buf = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
   const d = await crypto.subtle.digest("SHA-256", buf as BufferSource);
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
