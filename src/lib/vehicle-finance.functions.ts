@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireManager } from "@/lib/roles.server";
+import { requireOwner } from "@/lib/roles.server";
 import { logAudit, diffFields } from "@/lib/audit";
 
 // What a vehicle cost and what is still owed on it.
@@ -91,7 +91,7 @@ export const getVehicleFinance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicle_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<VehicleFinance | null> => {
-    await requireManager(context.userId);
+    await requireOwner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: row } = await supabaseAdmin
@@ -109,7 +109,7 @@ export const saveVehicleFinance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => saveInput.parse(d))
   .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
-    const actor = await requireManager(context.userId);
+    const actor = await requireOwner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: vehicle } = await supabaseAdmin
@@ -167,7 +167,7 @@ export const deleteVehicleFinance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ vehicle_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
-    const actor = await requireManager(context.userId);
+    const actor = await requireOwner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: vehicle } = await supabaseAdmin
