@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791420975062,
+      "tag": "0000_fleet_inbox_job_queue",
+      "breakpoints": true
+    }
+  ]
+}
