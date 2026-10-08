@@ -247,6 +247,7 @@ export function OverviewPanel() {
             `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}`,
           )
           .neq("status", "duplicate")
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(APPLICANT_WINDOW),
         supabase.from("driver_screenings").select(READINESS_SCREENING_SELECT),
