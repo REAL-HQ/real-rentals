@@ -150,7 +150,6 @@ BEGIN
 
   UPDATE public.payments SET
     balance_due = v_new,
-    net_collected = round(coalesce(net_collected,0) + r.amount, 2),
     status = CASE WHEN v_new = 0 THEN 'paid' ELSE status END,
     paid_date = CASE WHEN v_new = 0 THEN r.received_on ELSE paid_date END,
     payment_method = CASE WHEN v_new = 0 THEN r.method ELSE payment_method END
@@ -205,7 +204,6 @@ BEGIN
   IF v_bal > c.amount + coalesce(c.late_fees,0) THEN RAISE EXCEPTION 'Reversal would exceed the charge total'; END IF;
   UPDATE public.payments SET
     balance_due = v_bal,
-    net_collected = greatest(round(coalesce(net_collected,0) - r.amount, 2), 0),
     status = CASE WHEN status = 'paid' THEN CASE WHEN due_date IS NOT NULL AND due_date < current_date THEN 'past_due' ELSE 'unpaid' END ELSE status END,
     paid_date = CASE WHEN status = 'paid' THEN NULL ELSE paid_date END
   WHERE id = c.id;
