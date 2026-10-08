@@ -322,70 +322,104 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: entry } = await supabaseAdmin
-      .from("waitlist")
-      .select("id,full_name,email,phone,city,state,market_id,pickup_date,status,promoted_application_id,utm_source,utm_medium,utm_campaign,utm_content,utm_term,gclid")
-      .eq("id", data.entryId)
-      .maybeSingle();
-    if (!entry) return { ok: false as const, error: "That waitlist entry no longer exists." };
-    if ((entry as any).promoted_application_id) {
-      return { ok: false as const, error: "This entry was already promoted." };
+    // One atomic database call: locks the entry, reuses an existing applicant
+    // by exact email/phone, never creates a second profile, keeps the original
+    // signup date/source, and is safe to retry. Sends nothing.
+    const { data: res, error } = await supabaseAdmin.rpc("promote_waitlist_entry", { _entry: data.entryId });
+    if (error || !res) {
+      console.error("[waitlist] promote failed", error?.message);
+      return { ok: false as const, error: "Could not move this person into Drivers. Please try again." };
     }
+    const r = res as { application_id: string; created: boolean; already: boolean };
+    if (r.already) return { ok: true as const, applicationId: r.application_id, token: null, reused: true };
 
-    // Same shape a hero submission lands in: a partial application the driver
-    // can resume from the link we send, and staff see immediately.
-    const { data: app, error: appErr } = await supabaseAdmin
-      .from("applications")
-      .insert({
-        full_name: (entry as any).full_name,
-        email: (entry as any).email,
-        phone: (entry as any).phone,
-        city: (entry as any).city,
-        state: (entry as any).state,
-        market_id: (entry as any).market_id,
-        pickup_date: (entry as any).pickup_date,
-        sms_consent: false,
-        source: "city_lp",
-        status: "new",
-        current_step: "rental",
-        utm_source: (entry as any).utm_source,
-        utm_medium: (entry as any).utm_medium,
-        utm_campaign: (entry as any).utm_campaign,
-        utm_content: (entry as any).utm_content,
-        utm_term: (entry as any).utm_term,
-        gclid: (entry as any).gclid,
-      })
-      .select("id")
-      .single();
-    if (appErr || !app) {
-      console.error("[waitlist] promote insert failed", appErr?.message);
-      return { ok: false as const, error: "Could not create the application. Please try again." };
+    let token: string | null = null;
+    if (r.created) {
+      const { issueResumeToken } = await import("@/lib/resume-tokens.server");
+      token = await issueResumeToken(supabaseAdmin, r.application_id);
     }
-
-    const { issueResumeToken } = await import("@/lib/resume-tokens.server");
-    const token = await issueResumeToken(supabaseAdmin, (app as any).id);
-
-    const { error: updErr } = await supabaseAdmin
-      .from("waitlist")
-      .update({
-        status: "promoted",
-        promoted_application_id: (app as any).id,
-        promoted_at: new Date().toISOString(),
-      })
-      .eq("id", data.entryId);
-    if (updErr) {
-      console.error("[waitlist] promote status update failed", updErr.message);
-    }
-
     await logAudit(actor, {
       action: "waitlist.promoted",
-      summary: `Promoted ${(entry as any).full_name} from the waitlist to an application`,
+      summary: r.created
+        ? "Promoted a waitlist entry to a new application"
+        : "Linked a waitlist entry to the existing application",
       entityType: "waitlist",
       entityId: data.entryId,
-      metadata: { application_id: (app as any).id, email: (entry as any).email },
+      metadata: { application_id: r.application_id, created: r.created },
     });
+    return { ok: true as const, applicationId: r.application_id, token, reused: !r.created };
+  });
 
-    return { ok: true as const, applicationId: (app as any).id, token };
+// ------------------------------------------------- waitlist holds (Drivers)
+
+/** Application ids currently held on the waitlist, with when they were added. */
+export const listWaitlistHolds = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("application_waitlist_holds")
+      .select("application_id,added_at")
+      .is("removed_at", null);
+    return { holds: (data ?? []) as { application_id: string; added_at: string }[] };
+  });
+
+/** Add/Remove Waitlist. Owner + Manager only; idempotent; records who and when; sends nothing. */
+export const setWaitlistHold = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ applicationId: z.string().uuid(), on: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select("id,full_name,status")
+      .eq("id", data.applicationId)
+      .maybeSingle();
+    if (!app || app.status === "duplicate") return { ok: false as const, error: "That driver record was not found." };
+
+    if (data.on) {
+      const { error } = await supabaseAdmin
+        .from("application_waitlist_holds")
+        .insert({ application_id: data.applicationId, added_by: actor.userId });
+      // Unique partial index: a retry or double click is already on the waitlist.
+      if (error && (error as any).code === "23505") return { ok: true as const, changed: false };
+      if (error) return { ok: false as const, error: "Could not add to the waitlist. Please try again." };
+    } else {
+      const { data: closed, error } = await supabaseAdmin
+        .from("application_waitlist_holds")
+        .update({ removed_at: new Date().toISOString(), removed_by: actor.userId })
+        .eq("application_id", data.applicationId)
+        .is("removed_at", null)
+        .select("id");
+      if (error) return { ok: false as const, error: "Could not remove from the waitlist. Please try again." };
+      if (!closed?.length) return { ok: true as const, changed: false };
+    }
+    await logAudit(actor, {
+      action: data.on ? "waitlist.hold_added" : "waitlist.hold_removed",
+      summary: `${data.on ? "Added" : "Removed"} ${app.full_name ?? "a driver"} ${data.on ? "to" : "from"} the waitlist`,
+      entityType: "application",
+      entityId: data.applicationId,
+      metadata: { underlying_status: app.status },
+    });
+    return { ok: true as const, changed: true };
+  });
+
+/** Why an application cannot be deleted (waitlist links keep its history). */
+export const getDeleteBlockers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await requireStaff(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ count: w }, { count: h }] = await Promise.all([
+      supabaseAdmin.from("waitlist").select("id", { count: "exact", head: true }).eq("promoted_application_id", data.applicationId),
+      supabaseAdmin.from("application_waitlist_holds").select("id", { count: "exact", head: true }).eq("application_id", data.applicationId),
+    ]);
+    return { waitlistLinked: (w ?? 0) + (h ?? 0) > 0 };
   });
 
 function siteOrigin(): string {
