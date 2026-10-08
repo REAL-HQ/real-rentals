@@ -116,6 +116,7 @@ import { WaitlistPanel } from "./WaitlistPanel";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
+import { IdentityReviewCard } from "@/components/admin/IdentityReviewCard";
 import {
   Dialog,
   DialogContent,
@@ -1813,6 +1814,7 @@ function DriverDetail({
                   }}
                   onRecordingChange={setHasRecording}
                 />
+                <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>
 
