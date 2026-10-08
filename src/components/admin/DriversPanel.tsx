@@ -980,6 +980,25 @@ export function DriversPanel({
           </table>
         </div>
       </div>
+      {filter === "waitlist" && (
+        <div className="mt-6">
+          <div className="mb-4">
+            <h2 className="text-[15px] font-semibold text-[#111114]">Waitlist Signups</h2>
+            <p className="text-[12px] text-[#55555E] mt-0.5">People Who Joined The Waitlist Before Applying</p>
+          </div>
+          <WaitlistPanel
+            onEntriesChange={(n) => setWaitlistCount(n)}
+            onPromoted={() =>
+              void supabase
+                .from("applications")
+                .select("*")
+                .neq("status", "duplicate")
+                .order("created_at", { ascending: false })
+                .then(({ data }) => data && setDrivers(data))
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
