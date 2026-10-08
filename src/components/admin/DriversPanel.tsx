@@ -1033,6 +1033,8 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  hasActiveRental,
+  onRentalStarted,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1042,7 +1044,12 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  /** True only when a rentals row with status 'active' exists for this driver. */
+  hasActiveRental: boolean;
+  onRentalStarted?: () => void;
 }) {
+  const rentalActiveFlag = hasActiveRental;
+  const rentalActive = hasActiveRental;
   const veh = driver.vehicle_id ? vehicles.find((v) => v.id === driver.vehicle_id) : null;
   const initials = (driver.full_name || "?")
     .split(/\s+/)
