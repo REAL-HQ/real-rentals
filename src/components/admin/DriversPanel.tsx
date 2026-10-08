@@ -598,7 +598,7 @@ export function DriversPanel({
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, externalSearch, held]);
+  }, [drivers, filter, externalSearch, held, activeRenters]);
 
   async function update(id: string, patch: Partial<Application>) {
     // Stamp contacted_at the first time the admin advances status past "new"
@@ -613,6 +613,7 @@ export function DriversPanel({
     // One list, one update. `open` is derived from this list, so patching it
     // here is all that is needed — there is no second copy to keep in step.
     setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
+    refreshActiveRenters();
   }
 
   async function markContacted(id: string) {
