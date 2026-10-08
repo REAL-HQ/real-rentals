@@ -10,4 +10,4 @@
 - [ ] Email: business postal address (waiting on user)
 
 - [ ] Waitlist acceptance check: automated Coordinator denial test (add/remove/promote), reconcile application/Waitlist counts incl. Dustin Arango. No historical changes, unpublished.
-- [ ] Owner driver deletion: Stage 1 (0016) applied + preview UI built; Stage 2 (0017) waits for publish approval; live role tests need temporary Manager/Coordinator accounts.
+- [ ] Owner driver deletion: 0016 applied; review found Managers can still erase drivers directly + restore drops Waitlist hold; 0017 (remove Manager delete policy) not written/applied — awaits approval.
