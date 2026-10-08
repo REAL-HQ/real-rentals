@@ -190,14 +190,37 @@ function Admin() {
   const urlAdd = search?.add === "1";
   const [globalSearch, setGlobalSearch] = useState("");
   const stickyRef = useRef<HTMLDivElement | null>(null);
+  // Shared sticky layout: publish chrome + filter-row heights as CSS vars
+  // (see "Back-office sticky layout standard" in styles.css). Re-measures
+  // on resize and whenever a page swaps its toolbar.
   useEffect(() => {
     const el = stickyRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const set = () => document.documentElement.style.setProperty("--admin-sticky-h", `${el.offsetHeight}px`);
+    const root = document.documentElement;
+    const main = document.querySelector("[data-admin-main]");
+    const set = () => {
+      const desktop = window.matchMedia("(min-width: 768px)").matches;
+      const header = el.querySelector("header");
+      root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
+      const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
+      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight + 16 : 0}px`);
+    };
     set();
     const ro = new ResizeObserver(set);
     ro.observe(el);
-    return () => ro.disconnect();
+    let observedBar: Element | null = null;
+    const mo = new MutationObserver(() => {
+      const bar = main?.querySelector(".admin-sticky-bar") ?? null;
+      if (bar !== observedBar) {
+        if (observedBar) ro.unobserve(observedBar);
+        if (bar) ro.observe(bar);
+        observedBar = bar;
+        set();
+      }
+    });
+    if (main) mo.observe(main, { childList: true, subtree: true });
+    window.addEventListener("resize", set);
+    return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener("resize", set); };
   });
   const [notifs, setNotifs] = useState<
     Array<{
@@ -493,8 +516,8 @@ function Admin() {
           {/* Locked while scrolling: top bar, page title, section tabs. Its
               height is published as --admin-sticky-h so panel filter rows
               can lock directly underneath. */}
-          <div ref={stickyRef} className="sticky top-0 z-20 bg-[#FAFAFB]">
-          <header className="bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
+          <div ref={stickyRef} className="max-md:contents md:sticky md:top-0 z-20 bg-[#FAFAFB]">
+          <header className="sticky top-0 z-20 md:static bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
                 aria-label="Open navigation"
@@ -689,7 +712,7 @@ function Admin() {
           </div>
           </div>
 
-          <main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
+          <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
             {tab === "overview" && <OverviewPanel />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />

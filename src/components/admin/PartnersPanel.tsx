@@ -65,7 +65,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4">
         <div className="flex flex-wrap gap-2 text-xs">
           {(["all", ...PARTNER_TYPES] as const).map(s => (
             <button key={s} onClick={() => setFilter(s)}
