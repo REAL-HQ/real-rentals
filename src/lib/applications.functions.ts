@@ -379,18 +379,22 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       const sameEmail = String(existing.email ?? "").trim().toLowerCase() === emailLower;
       if (!sameEmail) {
         const { data: row } = await supabaseAdmin
-          .from("applications").select("resubmission_history, ai_flags").eq("id", primaryId).maybeSingle();
+          .from("applications").select("resubmission_history").eq("id", primaryId).maybeSingle();
         const h = Array.isArray(row?.resubmission_history) ? (row!.resubmission_history as unknown[]) : [];
         h.push({
           at: new Date().toISOString(), source: data.source, identity_conflict: "phone_match_email_differs",
-          submitted_full_name: data.full_name, submitted_phone: data.phone, submitted_email: data.email,
           link_sent: false,
         });
-        const flags = Array.isArray(row?.ai_flags) ? (row!.ai_flags as unknown[]) : [];
-        const flag = "Identity review: same phone submitted with a different email";
+        // Durable review row (survives AI re-scoring). Unique open index makes
+        // a repeat submission a no-op instead of a second warning.
+        const { error: revErr } = await supabaseAdmin.from("application_identity_reviews").insert({
+          application_id: primaryId, kind: "phone_match_email_differs",
+          submitted_full_name: data.full_name, submitted_email: emailLower,
+          submitted_phone: data.phone, source: data.source ?? null,
+        });
+        if (revErr && (revErr as any).code !== "23505") console.error("identity review insert failed", revErr.message);
         await supabaseAdmin.from("applications").update({
           resubmission_history: h.slice(-25),
-          ai_flags: flags.includes(flag) ? flags : [...flags, flag],
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);
