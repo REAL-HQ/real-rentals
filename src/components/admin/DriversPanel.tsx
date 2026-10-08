@@ -759,20 +759,20 @@ export function DriversPanel({
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Phone</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Email</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Readiness
                 </th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Payment
                 </th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Deposit
                 </th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">Status</th>
-                <th className="text-left font-medium px-4 py-2.5 border-b border-border">
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Created
                 </th>
                 <th className="px-2 py-2.5 border-b border-border w-10"></th>
@@ -800,7 +800,7 @@ export function DriversPanel({
                     onClick={() => openDriver(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
-                    <td className="px-4 py-2.5 font-medium whitespace-nowrap">
+                    <td className="px-3 py-2.5 font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 max-w-[200px]">
                         <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
@@ -823,7 +823,7 @@ export function DriversPanel({
                       )}
                     </td>
                     <td
-                      className="px-4 py-2.5 whitespace-nowrap"
+                      className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {a.phone ? (
@@ -838,7 +838,7 @@ export function DriversPanel({
                       )}
                     </td>
                     <td
-                      className="px-4 py-2.5 whitespace-nowrap"
+                      className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {a.email ? (
@@ -854,20 +854,20 @@ export function DriversPanel({
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <ReadinessCell
                         result={readinessIndex.get(a.id)}
                         docCount={docCounts[a.id] ?? 0}
                       />
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {payCells(payIndex[a.id]).pay}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
                     </td>
                     <td
-                      className="px-4 py-2.5 whitespace-nowrap"
+                      className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Select
@@ -899,7 +899,7 @@ export function DriversPanel({
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       <div>{new Date(a.created_at!).toLocaleDateString()}</div>
                       <div className="text-[10px] opacity-70">
                         {new Date(a.created_at!).toLocaleTimeString([], {
