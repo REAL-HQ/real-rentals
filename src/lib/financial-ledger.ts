@@ -9,12 +9,13 @@ export const TXN_TYPES = [
   "capital_expenditure", "financing_draw", "financing_payment",
 ] as const;
 export type TxnType = (typeof TXN_TYPES)[number];
-export type Basis = "accrual" | "cash" | "both";
+export type Basis = "accrual" | "cash" | "both" | "none";
 export type TxnStatus = "proposed" | "confirmed" | "posted" | "reversed" | "corrected" | "discarded";
 
 export function basisOf(t: TxnType): Basis {
   if (t === "obligation" || t === "invoice") return "accrual";
   if (t === "expense" || t === "capital_expenditure") return "both";
+  if (t === "deposit_applied") return "none"; // non-cash settlement of a held deposit
   return "cash";
 }
 
@@ -52,11 +53,11 @@ const signed = (r: LedgerRow) => (r.direction === "out" ? -1 : 1) * Number(r.amo
 
 /** Accrual: invoices/obligations/expenses by recognition date. Payments never count here. */
 export function accrualNet(rows: LedgerRow[], from: string, to: string): number {
-  return round(rows.filter((r) => counts(r) && r.basis !== "cash" && r.recognition_date && r.recognition_date >= from && r.recognition_date <= to).reduce((s, r) => s + signed(r), 0));
+  return round(rows.filter((r) => counts(r) && (r.basis === "accrual" || r.basis === "both") && r.recognition_date && r.recognition_date >= from && r.recognition_date <= to).reduce((s, r) => s + signed(r), 0));
 }
 /** Cash: money that actually moved, by cash date. Invoices never count here. */
 export function cashNet(rows: LedgerRow[], from: string, to: string): number {
-  return round(rows.filter((r) => counts(r) && r.basis !== "accrual" && r.cash_date && r.cash_date >= from && r.cash_date <= to).reduce((s, r) => s + signed(r), 0));
+  return round(rows.filter((r) => counts(r) && (r.basis === "cash" || r.basis === "both") && r.cash_date && r.cash_date >= from && r.cash_date <= to).reduce((s, r) => s + signed(r), 0));
 }
 const round = (n: number) => Math.round(n * 100) / 100;
 

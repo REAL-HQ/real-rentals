@@ -46,3 +46,15 @@ _t("loan principal is not operating expense; interest is", () => {
   _e(_ioe("deposit_received", "security_deposit")).toBe(false);
   _e(_op("expense", "wash", 50, null)).toBe(50);
 });
+
+import { basisOf as _b, cashNet as _cn, accrualNet as _an } from "../src/lib/financial-ledger";
+_t("applied deposit is neither cash nor accrual", () => {
+  _e(_b("deposit_applied")).toBe("none");
+  const rows: any[] = [
+    { txn_type: "deposit_received", basis: "cash", direction: "in", status: "posted", amount: 300, recognition_date: null, cash_date: "2026-09-01" },
+    { txn_type: "deposit_applied", basis: "none", direction: "in", status: "posted", amount: 200, recognition_date: "2026-09-29", cash_date: "2026-09-29" },
+    { txn_type: "deposit_returned", basis: "cash", direction: "out", status: "posted", amount: 100, recognition_date: null, cash_date: "2026-09-29" },
+  ];
+  _e(_cn(rows, "2026-09-01", "2026-09-30")).toBe(200);
+  _e(_an(rows, "2026-09-01", "2026-09-30")).toBe(0);
+});
