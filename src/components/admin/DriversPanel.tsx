@@ -845,7 +845,7 @@ export function DriversPanel({
                         <a
                           href={`mailto:${a.email}`}
                           title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[145px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                          className="inline-flex items-center gap-1 max-w-[130px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
                         >
                           <Mail className="w-3 h-3 shrink-0" />
                           <span className="truncate">{a.email}</span>
