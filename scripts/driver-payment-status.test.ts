@@ -1,5 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { derivePaymentStatus as s, deriveDepositDisplay as d, type PayRental, type PayRow } from "./driver-payment-status";
+// Run: bun scripts/driver-payment-status.test.ts
+let fail = 0, pass = 0;
+const describe = (_n: string, f: () => void) => f();
+const it = (n: string, f: () => void) => { try { f(); pass++; } catch (e) { fail++; console.error("FAIL", n, (e as Error).message); } };
+const expect = (a: unknown) => ({
+  toBe: (b: unknown) => { if (a !== b) throw new Error(`${String(a)} !== ${String(b)}`); },
+  toEqual: (b: unknown) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${JSON.stringify(a)} != ${JSON.stringify(b)}`); },
+  not: { toBe: (b: unknown) => { if (a === b) throw new Error(`unexpected ${String(b)}`); } },
+});
+import { derivePaymentStatus as s, deriveDepositDisplay as d, type PayRental, type PayRow } from "../src/lib/driver-payment-status";
 
 const T = new Date("2026-10-08T12:00:00Z");
 const R = (o: Partial<PayRental> = {}): PayRental => ({ id: "r", status: "active", deposit_amount: null, deposit_held: false, deposit_status: null, deposit_refund_amount: null, ...o });
@@ -44,3 +52,6 @@ describe("deposit display", () => {
     expect(d([R({ deposit_amount: 500, deposit_status: "forfeited" })], []).detail).toBe("Applied");
   });
 });
+
+console.log(`${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);
