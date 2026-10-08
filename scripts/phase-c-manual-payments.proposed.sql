@@ -34,6 +34,7 @@ CREATE TABLE public.payment_collections (
 );
 COMMENT ON TABLE public.payment_collections IS 'Money received outside Stripe against one payments charge. Writes only via collection_* functions.';
 
+REVOKE ALL ON public.payment_collections FROM PUBLIC, anon, authenticated;  -- override platform default privileges
 GRANT SELECT ON public.payment_collections TO authenticated;
 GRANT ALL ON public.payment_collections TO service_role;
 ALTER TABLE public.payment_collections ENABLE ROW LEVEL SECURITY;
