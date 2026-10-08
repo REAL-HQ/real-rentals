@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { WelcomeBack } from "@/components/site/WelcomeBack";
 import { getAvailability, joinWaitlist } from "@/lib/waitlist.functions";
 import { getAttribution } from "@/lib/attribution";
 import { FadeUp } from "./FadeUp";
@@ -42,6 +43,7 @@ export function CityHeroLeadForm({
 
   const navigate = useNavigate();
   const saveApplication = useServerFn(savePartialApplication);
+  const [returning, setReturning] = useState<string | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
   // How many cars the team says are open right now, set in the back office.
@@ -141,9 +143,7 @@ export function CityHeroLeadForm({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        toast.success(
-          "You already have an application with us — we've emailed you the link to finish it.",
-        );
+        setReturning(form.email);
         return;
       }
       navigate({ to: "/thank-you", search: { t: data.token } });
