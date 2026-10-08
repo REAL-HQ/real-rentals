@@ -6,10 +6,10 @@ DECLARE
   mgr uuid := '194cec09-2d93-42d0-a5a7-04e8c931d7de';
   drv uuid := 'd4abe15b-8230-4597-837e-7e0449db364a';
   a uuid; w uuid; r uuid; p uuid; tc uuid; l uuid; v uuid;
-  out text := ''; n int; res jsonb; hb text; ha text; who record;
+  out text := ''; n int; res jsonb; h0 text; hb text; ha text; who record;
   pay0 bigint; fin0 bigint; aud0 bigint; wl0 bigint;
 BEGIN
-  SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO hb FROM applications x;
+  SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO h0 FROM applications x;
   SELECT count(*) INTO pay0 FROM payments; SELECT count(*) INTO fin0 FROM financial_transactions;
   SELECT count(*) INTO aud0 FROM audit_log; SELECT count(*) INTO wl0 FROM waitlist;
 
@@ -88,8 +88,7 @@ BEGIN
   SELECT string_agg(action, '>' ORDER BY created_at, action) INTO hb FROM deletion_events WHERE application_id = w;
   out := out || 'Waitlist driver events: ' || coalesce(hb,'') || E'\n';
   SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO ha FROM applications x WHERE id NOT IN (a,w,r,p,tc,l);
-  SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO hb FROM applications x WHERE id NOT IN (a,w,r,p,tc,l) AND created_at < now();
-  out := out || 'Other drivers unchanged: ' || (ha IS NOT NULL) || E'\n';
+  out := out || 'Other drivers byte-identical: ' || (ha = h0) || E'\n';
   out := out || 'Payments delta: ' || ((SELECT count(*) FROM payments) - pay0) || ' (1 fixture), financial delta: ' || ((SELECT count(*) FROM financial_transactions) - fin0)
        || ', audit delta: ' || ((SELECT count(*) FROM audit_log) - aud0) || ', waitlist delta: ' || ((SELECT count(*) FROM waitlist) - wl0) || ' (1 fixture)';
   RAISE EXCEPTION E'ROLLED BACK. RESULTS:\n%', out;
