@@ -36,3 +36,12 @@
 - [ ] Mail routing for inbox@ + receiving secret (blocked: user DNS/provider setup)
 - [ ] Real forwarded-email E2E (blocked on routing)
 - [ ] Body-only email fact extraction (deferred)
+
+## Automated Fleet Intelligence (plan approved 2026-10-08)
+- [x] Step A — background job queue, worker, retries/backoff/dead-letter, pause switch, live status (preview; worker live only after publish)
+- [ ] Step B — payment confirmation type, reconciliation, expense dedupe (awaiting go-ahead after Step A review)
+- [ ] Step C — match suggestions with evidence, nickname, indexes
+- [ ] Step D — searchable server-side vehicle picker
+- [ ] Step E — actionable de-duplicated notifications
+- [ ] Step F — policy engine (Auto-File first; financial posting off)
+- [ ] Step G — validation suite incl. 1,000-vehicle simulation
