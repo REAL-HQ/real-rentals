@@ -57,10 +57,8 @@ export function normalizeBodyType(raw: string, model: string | null | undefined)
   const s = raw.trim().toUpperCase().replace(/\s+/g, " ");
   if (!s) return null;
   if (BODY_WORDS[s]) return BODY_WORDS[s];
-  if (/^4\s?D(R|OOR)?$/.test(s) || s === "SEDAN 4D" || s === "4D SEDAN") {
-    const m = String(model ?? "").trim().toUpperCase().split(/\s+/)[0];
-    return FOUR_DOOR_SEDAN_MODELS.has(m) ? "sedan" : null;
-  }
+  // "4D" (doors only) is NOT mapped: no reliable body-style source (e.g. VIN decode)
+  // is wired in yet, so it always stays for human review.
   return null;
 }
 
