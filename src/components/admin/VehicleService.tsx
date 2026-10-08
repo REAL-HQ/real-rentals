@@ -11,11 +11,12 @@ import {
 import { SOURCE_LABELS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SERVICE_CATEGORIES, categoryLabel, dueLabel } from "@/lib/maintenance-rules";
 import { SectionCard, EmptyState } from "./ui";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalSection, ModalButton, Field, FormGrid, inputCls, UploadDropzone } from "./modal";
+import { fmtDate } from "@/lib/date-format";
 
 type Data = Awaited<ReturnType<typeof getVehicleService>>;
 const mi = (n: unknown) => (n == null || n === "" ? "—" : `${Number(n).toLocaleString("en-US")} mi`);
 const usd = (n: unknown) => (n == null || n === "" ? "—" : Number(n).toLocaleString("en-US", { style: "currency", currency: "USD" }));
-const d = (s: string | null | undefined) => (s ? new Date(s.length === 10 ? s + "T12:00:00" : s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Date Unknown");
+const d = (s: string | null | undefined) => (s ? fmtDate(s.length === 10 ? s + "T12:00:00" : s) : "Date Unknown");
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const TONE: Record<string, string> = {
   overdue: "bg-brand/10 text-brand", due: "bg-brand/10 text-brand", due_soon: "bg-warning/15 text-warning-foreground",

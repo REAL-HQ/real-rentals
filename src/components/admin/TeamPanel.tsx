@@ -13,6 +13,7 @@ import {
   type TeamMember,
   type PendingInvite,
 } from "@/lib/team.functions";
+import { fmtDate } from "@/lib/date-format";
 
 // Team management.
 //
@@ -147,7 +148,7 @@ export function TeamPanel() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {new Date(m.created_at).toLocaleDateString()}
+                          {fmtDate(m.created_at)}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {canManage && (
@@ -200,7 +201,7 @@ export function TeamPanel() {
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Clock className="w-3.5 h-3.5" />
-                          expires {new Date(i.expires_at).toLocaleDateString()}
+                          expires {fmtDate(i.expires_at)}
                         </span>
                       )}
                       <button

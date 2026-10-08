@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { parseTollStatement, normalizePlate } from "@/lib/toll-import";
+import { fmtDate } from "@/lib/date-format";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -488,7 +489,7 @@ export const rebillCharges = createServerFn({ method: "POST" })
           const lines = list
             .map(
               (c) =>
-                `<tr><td style="padding:4px 12px 4px 0;color:#555">${new Date(c.occurred_at).toLocaleDateString()}</td>` +
+                `<tr><td style="padding:4px 12px 4px 0;color:#555">${fmtDate(c.occurred_at)}</td>` +
                 `<td style="padding:4px 12px 4px 0;color:#555">${String(c.charge_type).replace(/_/g, " ")}</td>` +
                 `<td style="padding:4px 0;text-align:right">$${(Number(c.amount) + Number(c.admin_fee)).toFixed(2)}</td></tr>`,
             )

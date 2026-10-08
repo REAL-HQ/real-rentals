@@ -10,6 +10,7 @@ import {
   confirmDocumentUpload,
   type VaultDocument,
 } from "@/lib/documents.functions";
+import { fmtDate } from "@/lib/date-format";
 
 // The insurance verification call recording. Owner only.
 //
@@ -156,7 +157,7 @@ export function VerificationRecording({
             <div className="text-[11px] text-[#9A9AA3]">
               {current.file_name}
               {fmtSize(current.size_bytes) ? ` · ${fmtSize(current.size_bytes)}` : ""} ·{" "}
-              {new Date(current.created_at).toLocaleDateString()}
+              {fmtDate(current.created_at)}
             </div>
           </div>
         ) : (
@@ -179,7 +180,7 @@ export function VerificationRecording({
                 <li key={d.id}>
                   {d.url && <audio controls src={d.url} className="w-full h-8" />}
                   <div className="text-[10px] text-[#9A9AA3]">
-                    {d.file_name} · {new Date(d.created_at).toLocaleDateString()}
+                    {d.file_name} · {fmtDate(d.created_at)}
                   </div>
                 </li>
               ))}

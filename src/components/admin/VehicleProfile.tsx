@@ -47,6 +47,7 @@ import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
 import { rentalReadyItems, listingReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 // The vehicle as a record you read.
 //
@@ -82,16 +83,12 @@ const money = (v: unknown) =>
 const date = (v: unknown) =>
   !v
     ? null
-    : new Date(String(v).slice(0, 10) + "T00:00:00").toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+    : fmtDate(String(v).slice(0, 10) + "T00:00:00");
 
 const when = (v: unknown) =>
   !v
     ? null
-    : new Date(String(v)).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    : fmtDateTime(String(v));
 
 const miles = (v: unknown) =>
   v === null || v === undefined || v === "" ? null : `${Number(v).toLocaleString()} mi`;

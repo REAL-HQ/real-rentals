@@ -5,8 +5,9 @@ import { getVehicleTimeline } from "@/lib/maintenance.functions";
 import { TIMELINE_FILTERS, type TimelineEvent } from "@/lib/maintenance-rules";
 import { EmptyState } from "./ui";
 import { useOpenEvidence } from "./VehicleService";
+import { fmtDate } from "@/lib/date-format";
 
-const when = (s: string) => new Date(s.length === 10 ? s + "T12:00:00" : s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const when = (s: string) => fmtDate(s.length === 10 ? s + "T12:00:00" : s);
 
 // The vehicle's story, read from the canonical records — nothing stored twice.
 export function VehicleTimeline({ vehicleId }: { vehicleId: string }) {

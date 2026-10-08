@@ -68,6 +68,7 @@ import {
   type RangeKey,
   type DayRange,
 } from "@/lib/date-range";
+import { fmtDate } from "@/lib/date-format";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -116,7 +117,7 @@ function initials(name?: string | null) {
 }
 function shortDate(iso?: string | null) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return fmtDate(iso);
 }
 /**
  * How long ago the person applied, counted in whole calendar days so an
@@ -146,11 +147,7 @@ function appliedLine(iso?: string | null) {
   const rel = appliedAgo(iso);
   if (!rel) return "Date Unknown";
   const d = new Date(iso as string);
-  return `Applied ${d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })} · ${rel}`;
+  return `Applied ${fmtDate(d)} · ${rel}`;
 }
 
 export function OverviewPanel() {
@@ -282,7 +279,7 @@ export function OverviewPanel() {
       for (let i = 0; i < 12; i++) {
         const d = new Date(start.getTime() + i * 7 * 864e5);
         series.push({
-          label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          label: fmtDate(d),
           iso: d.toISOString(),
           collected: 0,
           billed: 0,

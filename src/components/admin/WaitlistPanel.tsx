@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { fmtDate } from "@/lib/date-format";
 
 // Waitlist back office.
 //
@@ -246,10 +247,7 @@ export function WaitlistPanel({
                       <StatusPill tone={statusTone(e.status)}>{statusLabel(e.status)}</StatusPill>
                     </td>
                     <td className="px-5 py-3 text-[13px] text-[#55555E]">
-                      {new Date(e.created_at).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       {e.status !== "promoted" ? (

@@ -1,3 +1,4 @@
+import { fmtDate } from "@/lib/date-format";
 // Server-only Resend email helper.
 // Never import from client code — the .server.ts suffix keeps it out of
 // the browser bundle. Read process.env INSIDE the function (Cloudflare
@@ -527,7 +528,7 @@ type PastDueArgs = {
 
 export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const when = args.dueDate ? new Date(args.dueDate).toLocaleDateString("en-US") : "recently";
+  const when = args.dueDate ? fmtDate(args.dueDate) : "recently";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
@@ -544,7 +545,7 @@ type LicenseExpiryArgs = {
 
 export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const when = new Date(args.expiration).toLocaleDateString("en-US");
+  const when = fmtDate(args.expiration);
   const expired = args.daysLeft <= 0;
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>

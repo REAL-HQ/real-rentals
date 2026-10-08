@@ -26,6 +26,7 @@ import {
   confirmConditionUpload,
   type InspectionDetail,
 } from "@/lib/inspections.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 type Row = {
   id: string;
@@ -154,7 +155,7 @@ export function InspectionsPanel() {
                     {r.inspection_type.replace(/_/g, " ")}
                     {r.odometer ? ` · ${r.odometer.toLocaleString()} mi` : ""}
                     {r.inspector_name ? ` · ${r.inspector_name}` : ""} ·{" "}
-                    {new Date(r.completed_at ?? r.started_at).toLocaleString()}
+                    {fmtDateTime(r.completed_at ?? r.started_at)}
                   </p>
                 </div>
                 <button
@@ -411,7 +412,7 @@ function InspectionRunner({
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {data.inspection_type.replace(/_/g, " ")} · started{" "}
-              {new Date(data.started_at).toLocaleString()}
+              {fmtDateTime(data.started_at)}
             </p>
           </div>
           {!readOnly ? (
@@ -555,7 +556,7 @@ function InspectionRunner({
           {data.driver_signed_at ? (
             <p className="mt-1 text-sm text-[#55555E]">
               Signed by <strong>{data.driver_signature_name}</strong> on{" "}
-              {new Date(data.driver_signed_at).toLocaleString()}.
+              {fmtDateTime(data.driver_signed_at)}.
             </p>
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">

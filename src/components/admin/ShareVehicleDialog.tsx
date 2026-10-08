@@ -5,6 +5,7 @@ import { X, Loader2, Copy, Printer, Check, ShieldCheck } from "lucide-react";
 import { getVehicleShare, type VehicleShare } from "@/lib/vehicles.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { MicroLabel } from "./ui";
+import { fmtDate } from "@/lib/date-format";
 
 // Hand someone the details on a car without retyping them.
 //
@@ -162,11 +163,7 @@ export function ShareVehicleDialog({
                   <div className="text-right text-[11px] text-[#9A9AA3]">
                     <div className="font-medium text-[#111114]">{data.unitLabel}</div>
                     <div>
-                      {new Date(data.generatedAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      {fmtDate(data.generatedAt)}
                     </div>
                   </div>
                 </div>

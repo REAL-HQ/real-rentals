@@ -32,6 +32,7 @@ import {
 import { PlatformLogo, platformLabel } from "./PlatformLogo";
 import { computeReadiness, type ReadinessInput } from "@/lib/readiness";
 import { VerificationRecording } from "./VerificationRecording";
+import { fmtDateTime } from "@/lib/date-format";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -810,7 +811,7 @@ export function InsuranceVerificationCard({
           <Field label="Verified At">
             <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
               {screening?.insurance_verified_at
-                ? new Date(screening.insurance_verified_at).toLocaleString()
+                ? fmtDateTime(screening.insurance_verified_at)
                 : "—"}
             </div>
           </Field>

@@ -10,6 +10,7 @@ import {
   settleDeposit,
   type DepositSummary,
 } from "@/lib/incidents.functions";
+import { fmtDate } from "@/lib/date-format";
 
 function money(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -143,7 +144,7 @@ export function DepositDialog({
                 <Lock className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
                   <div className="font-semibold">
-                    Settled {new Date(summary.settledAt as string).toLocaleDateString()}
+                    Settled {fmtDate(summary.settledAt as string)}
                   </div>
                   <div className="text-xs">
                     <StatusPill status="active">

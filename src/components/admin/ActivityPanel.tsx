@@ -5,6 +5,7 @@ import { History, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react"
 import { EmptyState } from "./ui";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
 import { listExpiring, type ExpiringItem } from "@/lib/vehicle-docs.functions";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 // Activity: who did what, plus what is about to lapse.
 //
@@ -98,7 +99,7 @@ export function ActivityPanel() {
                       ? "expires today"
                       : `${e.days}d`}
                   <span className="text-muted-foreground ml-2">
-                    {new Date(e.expires_on + "T00:00:00").toLocaleDateString()}
+                    {fmtDate(e.expires_on + "T00:00:00")}
                   </span>
                 </span>
               </div>
@@ -150,7 +151,7 @@ export function ActivityPanel() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(r.created_at).toLocaleString()}
+                        {fmtDateTime(r.created_at)}
                       </span>
                       {hasMeta && (
                         <button
