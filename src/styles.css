@@ -267,10 +267,15 @@
             height published as --admin-sticky-h.
    Layer 2: one filter/toolbar row per page — add class "admin-sticky-bar";
             height published as --admin-bar-h. z-15.
-   Table column headers are NOT sticky: every list table sits in a
-   rounded card that clips/scrolls sideways, which disables sticky and
-   unclipping it cut off columns. Revisit per table if needed.
-   Mobile (<768px): only the top bar locks; filter chips scroll sideways. */
+   Layer 3: list-table column headers — wrap the table in AdminTableScroll
+            (components/admin/AdminTableScroll.tsx). When the table fits the
+            card it renders overflow: clip (not a scroll container, so sticky
+            works — auto/hidden ancestors disable it and clipped columns);
+            th then sticks below chrome + filter row. When the table is
+            wider than the card the wrapper falls back to a horizontal
+            scroller and headers scroll with it.
+   Mobile (<768px): only the top bar locks; filter chips scroll sideways;
+            table headers do not stick. */
 .admin-sticky-bar {
   background: #fafafb;
   padding-top: 4px;
