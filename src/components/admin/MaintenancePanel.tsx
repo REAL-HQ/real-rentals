@@ -3,6 +3,7 @@ import { FleetServiceCenter } from "./FleetServiceCenter";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
 
 type Row = {
@@ -337,7 +338,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           hint="Log a service item or odometer reading to start tracking vehicle upkeep."
         />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+        <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
@@ -374,7 +375,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       )}
 
       {showForm && (

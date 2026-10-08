@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
 import {
   DropdownMenu,
@@ -172,7 +173,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+      <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
             <tr>
@@ -289,7 +290,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
             )}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       {showAdd && (
         <AddPayment

@@ -9,6 +9,7 @@ import {
   promoteToApplicant,
   type WaitlistEntry,
 } from "@/lib/waitlist.functions";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, MicroLabel, SectionCard, StatusPill } from "./ui";
 import {
   Dialog,
@@ -213,7 +214,7 @@ export function WaitlistPanel({
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <AdminTableScroll>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#EDEDF0] text-left">
@@ -271,7 +272,7 @@ export function WaitlistPanel({
                 ))}
               </tbody>
             </table>
-          </div>
+          </AdminTableScroll>
         )}
       </SectionCard>
 

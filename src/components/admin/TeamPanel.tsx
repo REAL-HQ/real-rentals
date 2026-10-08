@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { UserPlus, X, Users, Mail, Clock, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, MicroLabel, StatusPill } from "./ui";
 import {
   listTeam,
@@ -120,7 +121,7 @@ export function TeamPanel() {
                 hint="Invite a teammate by email to get them into the back office."
               />
             ) : (
-              <div className="mt-2 overflow-x-auto rounded-xl border border-border">
+              <AdminTableScroll className="mt-2 rounded-xl border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-[#FAFAFB] text-left">
                     <tr>
@@ -168,7 +169,7 @@ export function TeamPanel() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </AdminTableScroll>
             )}
           </section>
 
