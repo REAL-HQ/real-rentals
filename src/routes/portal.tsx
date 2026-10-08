@@ -363,6 +363,7 @@ function fmt(amount: number) {
 }
 
 function DocumentsView() {
+  const docsPreviewId = usePreviewDriver();
   const fetchDocs = usePortalRead(getDriverDocuments);
   const { data, isLoading } = useQuery({
     queryKey: ["driver-documents"],
@@ -381,7 +382,7 @@ function DocumentsView() {
           keep the history.
         </p>
         <div className="mt-4">
-          {usePreviewDriver() ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
+          {docsPreviewId ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
         </div>
       </div>
 
@@ -863,6 +864,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function PicturesView() {
+  const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
   const fetchDashboard = usePortalRead(getDriverDashboard);
@@ -902,6 +904,7 @@ function PicturesView() {
             </p>
           </div>
 
+          {picsPreviewId ? <ReadOnlyNote what="Condition photo uploads" /> : (<>
           <ConditionUploader
             title="Before — at Pickup"
             vehicleId={vehicleId}
@@ -919,6 +922,7 @@ function PicturesView() {
             media={after}
             onChanged={() => refetchCondition()}
           />
+          </>)}
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-white p-5">
