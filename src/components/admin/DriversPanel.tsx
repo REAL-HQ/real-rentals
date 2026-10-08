@@ -221,6 +221,9 @@ const DRIVER_STATUSES = [
   "declined",
   "closed",
 ] as const;
+// "active" is set only by activate_rental_tx when a rental really starts;
+// staff can no longer pick it by hand.
+const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active");
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
@@ -365,6 +368,18 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
+  // Active Renter source of truth: drivers with a rentals row in status 'active'.
+  const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
+  const refreshActiveRenters = useCallback(() => {
+    supabase
+      .from("rentals")
+      .select("application_id")
+      .eq("status", "active")
+      .then(({ data }) =>
+        setActiveRenters(new Set((data ?? []).map((r: any) => r.application_id).filter(Boolean))),
+      );
+  }, []);
+  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
