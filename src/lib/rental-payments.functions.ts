@@ -286,6 +286,8 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
     return data;
   })
   .handler(async ({ data, context }): Promise<{ ok: true; paymentIntentId: string } | { error: string }> => {
+    // Driver-only: staff (including Driver Preview) are refused before any lookup.
+    await (await import('@/lib/driver-preview.server')).refuseStaffPortalWrite(context.userId);
     try {
       // Verify driver owns rental via authenticated supabase (RLS)
       const { data: rental } = await (context.supabase as any)
