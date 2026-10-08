@@ -81,7 +81,7 @@ BEGIN
 
   -- 5. Overdue / partial / failed payments do not change Active
   INSERT INTO payments(driver_id,rental_id,amount,balance_due,status,type,due_date) VALUES
-    (a,rid,350,350,'unpaid','rent',current_date-14),(a,rid,350,100,'partial','rent',current_date-7),(a,rid,350,350,'failed','rent',current_date);
+    (a,rid,350,350,'unpaid','rent',current_date-14),(a,rid,350,100,'overdue','rent',current_date-7),(a,rid,350,350,'failed','rent',current_date);
   out := out || '5 with overdue/partial/failed payments: stage='||(SELECT status FROM applications WHERE id=a)||', running rental='||EXISTS(SELECT 1 FROM rentals WHERE id=rid AND status='active')||E'\n';
 
   -- 3. Ending the rental removes Active
