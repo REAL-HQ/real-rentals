@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
-import { maxMbFor } from "@/lib/image-optimize";
 
 // Photographing a document on a phone, without wondering whether it worked.
 //
