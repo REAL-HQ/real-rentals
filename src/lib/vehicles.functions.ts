@@ -621,8 +621,12 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     // printed on drivereal.com; hiding them from a Coordinator withheld
     // nothing from anyone and made the fleet list read wrongly.
 
+    // Title number and lien-type title status are Owner View only; others see "on file" style metadata.
+    const shapedVehicle = isOwnerView
+      ? v
+      : { ...v, title_number: null, title_status: v.title_status && /lien|financ/i.test(String(v.title_status)) ? "on_file" : v.title_status };
     return {
-      vehicle: v,
+      vehicle: shapedVehicle,
       finance,
       canSeeFinance: isOwnerView,
       canEdit: isManager,
