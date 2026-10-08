@@ -44,23 +44,12 @@ const BODY_WORDS: Record<string, string> = {
   PICKUP: "truck", PK: "truck", TRUCK: "truck",
   MINIVAN: "minivan", VAN: "van", VN: "van",
 };
-/**
- * "4D" only says four doors. It means Sedan only for nameplates whose
- * four-door body is sold solely as a sedan (their hatchbacks/wagons are 5D,
- * coupes 2D). Anything not listed stays for review.
- */
-const FOUR_DOOR_SEDAN_MODELS = new Set([
-  "FUSION", "TAURUS", "CAMRY", "AVALON", "COROLLA", "ACCORD", "CIVIC", "ALTIMA", "MAXIMA", "SENTRA", "VERSA",
-  "MALIBU", "IMPALA", "CRUZE", "SONATA", "ELANTRA", "OPTIMA", "K5", "FORTE", "CHARGER", "300", "PASSAT", "JETTA", "LEGACY",
-]);
 export function normalizeBodyType(raw: string, model: string | null | undefined): string | null {
   const s = raw.trim().toUpperCase().replace(/\s+/g, " ");
   if (!s) return null;
   if (BODY_WORDS[s]) return BODY_WORDS[s];
-  if (/^4\s?D(R|OOR)?$/.test(s) || s === "SEDAN 4D" || s === "4D SEDAN") {
-    const m = String(model ?? "").trim().toUpperCase().split(/\s+/)[0];
-    return FOUR_DOOR_SEDAN_MODELS.has(m) ? "sedan" : null;
-  }
+  // "4D" (doors only) is NOT mapped: no reliable body-style source (e.g. VIN decode)
+  // is wired in yet, so it always stays for human review.
   return null;
 }
 
