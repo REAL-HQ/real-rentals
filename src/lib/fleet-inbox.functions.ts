@@ -600,3 +600,74 @@ export const ignoreServiceTransaction = createServerFn({ method: "POST" })
     if (t) await refreshBatchStatus(t.batch_id);
     return { ok: !!t };
   });
+
+// ---------------------------------------------------------------- vehicle profile suggestions
+/**
+ * Evidence-backed suggestions for one vehicle, re-derived from existing Fleet Inbox
+ * extractions (no new document processing). Only exact-VIN or explicitly matched
+ * proposals produce suggestions; near-VIN / plate-only items are listed as
+ * possible matches for review and never contribute values. Owner-only fields are
+ * removed server-side for everyone else.
+ */
+export const getVehicleSuggestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
+    const sb = await admin();
+    const vehicles = await loadVehicles(sb);
+    const target = vehicles.find((v) => v.id === data.vehicleId);
+    if (!target) throw new Error("Vehicle not found");
+    const vin = (target.vin ?? "").toUpperCase();
+    const plate = (target.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const { data: props } = await sb.from("fleet_import_proposals")
+      .select("id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at")
+      .in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(2000);
+    const itemIds = [...new Set((props ?? []).map((p: any) => p.item_id))];
+    const { data: items } = itemIds.length
+      ? await sb.from("fleet_import_items").select("id,document_id,file_name,doc_class,analyzed_at").in("id", itemIds)
+      : { data: [] as any[] };
+    const itemBy = Object.fromEntries((items ?? []).map((i: any) => [i.id, i]));
+    const prov = await loadProvenance(sb, [target.id]);
+    const diff = (a: string, b: string) => { let n = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++; return n; };
+
+    const suggestions: any[] = [];
+    const conflicts: any[] = [];
+    const possible: any[] = [];
+    for (const p of props ?? []) {
+      const it = itemBy[p.item_id];
+      if (!it) continue;
+      const pVin = String(p.vin ?? "").toUpperCase();
+      const exact = !!vin && pVin === vin;
+      const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at };
+      if (!exact) {
+        // Ambiguous evidence: report why, never its values.
+        const pPlate = String((p.fields as any)?.license_plate?.value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        let reason: string | null = null;
+        if (vin && pVin.length === 17 && diff(pVin, vin) <= 2) reason = `VIN ${pVin} differs from this car by ${diff(pVin, vin)} character(s)`;
+        else if (vin && pVin.length >= 6 && pVin.length < 17 && vin.endsWith(pVin.slice(-6))) reason = "Partial VIN ends like this car's VIN";
+        else if (plate && pPlate && pPlate === plate) reason = "License plate matches, but no VIN on the document";
+        if (reason) possible.push({ ...source, reason });
+        continue;
+      }
+      const entry: ExtractedEntry = { page: p.page, fields: ((p.fields ?? {}) as unknown) as Record<string, ExtractedField> };
+      const fresh = buildProposal(entry, it.doc_class ?? "unknown", [target], prov);
+      for (const c of fresh.changes) {
+        if (!canOwnership && isOwnerOnlyField(c.field)) continue;
+        const f: any = (entry.fields as any)[c.field] ?? {};
+        const row = {
+          ...source, field: c.field, label: c.label, current: c.current, proposed: normalizeDisplayField(c.field, c.proposed),
+          confidence: c.confidence, risk: c.risk, kind: c.kind,
+          // Safe = blank, non-sensitive field. VIN, plate, title, finance and mileage always need individual confirmation.
+          safe: c.kind === "fill" && c.risk === "normal" && !["license_plate", "plate_state", "current_odometer", "vin"].includes(c.field),
+          evidence: { raw: f.raw ?? null, note: f.note ?? null },
+        };
+        (c.kind === "fill" ? suggestions : conflicts).push(row);
+      }
+    }
+    // One suggestion per field: highest-authority/most recent first already (ordered by created_at desc).
+    const seen = new Set<string>();
+    const unique = suggestions.filter((s) => (seen.has(s.field) ? false : (seen.add(s.field), true)));
+    return { suggestions: unique, conflicts, possibleMatches: possible, canOwnership };
+  });
