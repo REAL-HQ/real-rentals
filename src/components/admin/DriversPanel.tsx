@@ -572,7 +572,9 @@ export function DriversPanel({
         ? drivers
         : filter === "waitlist"
           ? drivers.filter((a) => held.has(a.id))
-          : drivers.filter((a) => a.status === filter && !held.has(a.id))
+          : filter === "active"
+            ? drivers.filter((a) => activeRenters.has(a.id))
+            : drivers.filter((a) => a.status === filter && !held.has(a.id))
     ).filter((a) => {
       if (!q) return true;
       const hay =
@@ -709,6 +711,11 @@ export function DriversPanel({
         vehicles={vehicles}
         onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
+        hasActiveRental={activeRenters.has(open.id)}
+        onRentalStarted={() => {
+          setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
+          refreshActiveRenters();
+        }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
@@ -731,7 +738,9 @@ export function DriversPanel({
         : waitlistCount + drivers.filter((a) => held.has(a.id)).length
       : s === "all"
         ? drivers.length
-        : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+        : s === "active"
+          ? drivers.filter((a) => activeRenters.has(a.id)).length
+          : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -898,7 +907,18 @@ export function DriversPanel({
                               Waitlist
                             </span>
                           ) : a.status ? (
-                            <StatusPill status={a.status} />
+                            activeRenters.has(a.id) ? (
+                              <StatusPill status="active" />
+                            ) : a.status === "active" ? (
+                              <span
+                                title="Marked Active, but no active rental exists. Status unchanged pending review."
+                                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                              >
+                                Marked Active, No Rental
+                              </span>
+                            ) : (
+                              <StatusPill status={a.status} />
+                            )
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
                               Select status <ChevronDown className="w-3 h-3" />
@@ -906,7 +926,7 @@ export function DriversPanel({
                           )}
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
-                          {DRIVER_STATUSES.map((s) => (
+                          {SELECTABLE_STATUSES.map((s) => (
                             <SelectItem key={s} value={s} className="capitalize text-[13px]">
                               {s}
                             </SelectItem>
