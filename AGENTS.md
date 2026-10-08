@@ -17,3 +17,4 @@
 - Driver Preview: staff view a driver only via portal reads carrying previewDriverId, checked in driver-preview.server.ts (Manager+, real driver, audited); driver write actions call refuseStaffPortalWrite; no driver tokens ever — so preview can never act as the driver.
 - Vehicle titles: title_number/title_status live only in Owner-only public.vehicle_titles (vehicles columns deprecated; a trigger diverts writes); staff see vehicles.title_on_file — because staff-readable vehicles rows leaked title identifiers.
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
+- Back-office sticky layout: page chrome is locked once in admin.tsx; a page opts its filter row in with the `admin-sticky-bar` class (styles.css standard) — never write per-page sticky code, so layers never overlap.
