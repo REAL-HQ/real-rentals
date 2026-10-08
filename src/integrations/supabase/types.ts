@@ -371,6 +371,9 @@ export type Database = {
           contract_start_date: string | null
           created_at: string | null
           current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
           deposit_amount: number | null
           deposit_paid: number | null
           deposit_status: string
@@ -396,6 +399,7 @@ export type Database = {
           insurance_rideshare_endorsement: boolean | null
           insurance_status: string
           landing_page: string | null
+          legal_hold: boolean
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
@@ -414,6 +418,7 @@ export type Database = {
           platforms: string[] | null
           primary_application_id: string | null
           profile_screenshot_url: string | null
+          purged_at: string | null
           rating: number | null
           recovery_email_sent_24h: string | null
           recovery_email_sent_72h: string | null
@@ -488,6 +493,9 @@ export type Database = {
           contract_start_date?: string | null
           created_at?: string | null
           current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
@@ -513,6 +521,7 @@ export type Database = {
           insurance_rideshare_endorsement?: boolean | null
           insurance_status?: string
           landing_page?: string | null
+          legal_hold?: boolean
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -531,6 +540,7 @@ export type Database = {
           platforms?: string[] | null
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
+          purged_at?: string | null
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
@@ -605,6 +615,9 @@ export type Database = {
           contract_start_date?: string | null
           created_at?: string | null
           current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
@@ -630,6 +643,7 @@ export type Database = {
           insurance_rideshare_endorsement?: boolean | null
           insurance_status?: string
           landing_page?: string | null
+          legal_hold?: boolean
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -648,6 +662,7 @@ export type Database = {
           platforms?: string[] | null
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
+          purged_at?: string | null
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
@@ -1062,6 +1077,69 @@ export type Database = {
           message?: string | null
           name?: string
           phone?: string | null
+        }
+        Relationships: []
+      }
+      deletion_events: {
+        Row: {
+          action: string
+          actor: string | null
+          application_id: string
+          created_at: string
+          details: Json
+          id: string
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          application_id: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          application_id?: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Relationships: []
+      }
+      deletion_file_jobs: {
+        Row: {
+          application_id: string
+          attempts: number
+          bucket: string
+          created_at: string
+          id: string
+          last_error: string | null
+          path: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          application_id: string
+          attempts?: number
+          bucket: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          path: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string
+          attempts?: number
+          bucket?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          path?: string
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5872,9 +5950,16 @@ export type Database = {
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
+      purge_application: { Args: { _id: string }; Returns: Json }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      restore_application: { Args: { _id: string }; Returns: Json }
+      set_legal_hold: { Args: { _id: string; _on: boolean }; Returns: Json }
+      soft_delete_application: {
+        Args: { _id: string; _reason: string }
+        Returns: Json
       }
       submission_accepts_uploads: {
         Args: { _submission_id: string }
