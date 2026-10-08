@@ -9,7 +9,7 @@ DECLARE
   a uuid; b uuid; v uuid; rid uuid; res text; who record; n int;
   out text := ''; h0 text; h1 text; s0 text; s1 text; aud0 bigint; pay0 bigint; fin0 bigint;
 BEGIN
-  SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO h0 FROM applications x;
+  SELECT md5(string_agg((to_jsonb(x)-'updated_at')::text, ',' ORDER BY id)) INTO h0 FROM applications x;
   SELECT md5(coalesce(string_agg(row_to_json(x)::text, ',' ORDER BY id),'')) INTO s0 FROM driver_screenings x;
   SELECT count(*) INTO aud0 FROM audit_log; SELECT count(*) INTO pay0 FROM payments; SELECT count(*) INTO fin0 FROM financial_transactions;
 
@@ -97,7 +97,7 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   out := out || '6 non-status edit on existing Marked-Active rows: ok ('||n||' rows, stage unchanged)'||E'\n';
   DELETE FROM payments WHERE driver_id=a; DELETE FROM driver_screenings WHERE lead_id IN (a,b);
-  SELECT md5(string_agg(row_to_json(x)::text, ',' ORDER BY id)) INTO h1 FROM applications x WHERE id NOT IN (a,b);
+  SELECT md5(string_agg((to_jsonb(x)-'updated_at')::text, ',' ORDER BY id)) INTO h1 FROM applications x WHERE id NOT IN (a,b);
   SELECT md5(coalesce(string_agg(row_to_json(x)::text, ',' ORDER BY id),'')) INTO s1 FROM driver_screenings x;
   out := out || '6 real applications byte-identical (excl. updated_at touch): '||(h1 = h0)||'; screenings identical: '||(s1 = s0)||E'\n';
   out := out || 'deltas before rollback: audit '||((SELECT count(*) FROM audit_log)-aud0)||', payments '||((SELECT count(*) FROM payments)-pay0)||', financial '||((SELECT count(*) FROM financial_transactions)-fin0);
