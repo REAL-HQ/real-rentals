@@ -48,7 +48,7 @@ export const TABS: readonly TabDef[] = [
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
   { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
-  { id: "settings", label: "Settings", icon: SettingsIcon, minTier: "manager", group: "MANAGE", description: "Company Configuration, Automations And Team" },
+  // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */
