@@ -121,10 +121,20 @@ export function useUploadQueue(upload: UploadFn | undefined, onAllDone?: () => v
 }
 
 function Thumb({ file }: { file: File }) {
-  const url = useMemo(() => (file.type.startsWith("image/") ? URL.createObjectURL(file) : null), [file]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-  return url
-    ? <img src={url} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+  // Local preview only — the stored file is never touched. The URL is created
+  // and revoked inside one effect so a re-run (Strict Mode, remount) can never
+  // leave the <img> pointing at an already-revoked URL (the broken thumbnail).
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!file.type.startsWith("image/")) { setUrl(null); return; }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    setFailed(false);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return url && !failed
+    ? <img src={url} alt="" onError={() => setFailed(true)} className="h-10 w-10 shrink-0 rounded object-cover" />
     : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></span>;
 }
 
