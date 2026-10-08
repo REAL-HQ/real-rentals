@@ -61,6 +61,7 @@ import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { fmtDate } from "@/lib/date-format";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
@@ -366,7 +367,7 @@ function DocumentsView() {
                 <div className="min-w-0">
                   <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
                   <div className="text-xs text-muted-foreground">
-                    Added {new Date(d.created_at).toLocaleDateString()}
+                    Added {new fmtDate(Date(d.created_at))}
                     {d.notes ? ` · ${d.notes}` : ""}
                   </div>
                 </div>
@@ -417,7 +418,7 @@ function AgreementsView() {
                 <div className="text-sm font-medium truncate">{a.title}</div>
                 <div className="text-xs text-muted-foreground">
                   {a.signed_at
-                    ? `Signed ${new Date(a.signed_at).toLocaleDateString()}`
+                    ? `Signed ${new fmtDate(Date(a.signed_at))}`
                     : "Awaiting your signature"}
                 </div>
               </div>
@@ -664,7 +665,7 @@ function CheckoutSignOffCard() {
           <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
-              ? `You signed this on ${new Date(data.signedAt as string).toLocaleDateString()}.`
+              ? `You signed this on ${new fmtDate(Date(data.signedAt as string))}.`
               : "Please review how the car was handed over and confirm you agree. This protects you if there is ever a question about damage."}
           </p>
         </div>
@@ -688,7 +689,7 @@ function CheckoutSignOffCard() {
         <Fact label="Fuel" value={data.fuelLevel ? data.fuelLevel.replace(/_/g, " ") : "—"} />
         <Fact
           label="Inspected"
-          value={data.completedAt ? new Date(data.completedAt).toLocaleDateString() : "—"}
+          value={data.completedAt ? new fmtDate(Date(data.completedAt)) : "—"}
         />
       </dl>
 
@@ -997,7 +998,7 @@ function SettingsView() {
           <div className="py-2.5 flex items-center justify-between gap-4">
             <dt className="text-sm text-muted-foreground">Applied</dt>
             <dd className="text-sm font-medium text-right">
-              {data?.applied_at ? new Date(data.applied_at).toLocaleDateString() : "—"}
+              {data?.applied_at ? new fmtDate(Date(data.applied_at)) : "—"}
             </dd>
           </div>
         </dl>
@@ -1180,7 +1181,7 @@ function IssuesViewInner() {
                   <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{i.body}</p>
                 )}
                 <div className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(i.created_at).toLocaleDateString()} · {i.severity}
+                  {new fmtDate(Date(i.created_at))} · {i.severity}
                 </div>
               </li>
             ))}
@@ -1273,7 +1274,7 @@ function ReferralsView() {
                 <div className="min-w-0">
                   <div className="text-sm truncate">{r.referred_email ?? "Referred driver"}</div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(r.created_at).toLocaleDateString()}
+                    {new fmtDate(Date(r.created_at))}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
@@ -1394,7 +1395,7 @@ function DashboardView({
                 .slice(0, 2)
                 .map(
                   (m) =>
-                    `${m.item}${m.due_date ? ` (due ${new Date(m.due_date).toLocaleDateString()})` : ""}`,
+                    `${m.item}${m.due_date ? ` (due ${new fmtDate(Date(m.due_date))})` : ""}`,
                 )
                 .join(" • ")}
             </div>
@@ -1450,7 +1451,7 @@ function DashboardView({
             <div className="mt-2 text-3xl font-semibold">{fmt(rental.weekly_rate)}</div>
             <div className="mt-1 text-sm text-muted-foreground">
               {rental.next_payment_due
-                ? `Due ${new Date(rental.next_payment_due).toLocaleDateString()}`
+                ? `Due ${new fmtDate(Date(rental.next_payment_due))}`
                 : "Scheduled by your rental agreement"}
             </div>
             <button
@@ -1473,7 +1474,7 @@ function DashboardView({
             label="Next Payment Due"
             value={fmt(rental.weekly_rate)}
             sub={
-              rental.next_payment_due ? new Date(rental.next_payment_due).toLocaleDateString() : "—"
+              rental.next_payment_due ? new fmtDate(Date(rental.next_payment_due)) : "—"
             }
           />
           <MetricTile
@@ -1486,7 +1487,7 @@ function DashboardView({
             label="Weeks Rented"
             value={`${rental.weeks_rented}`}
             sub={
-              rental.start_date ? `Since ${new Date(rental.start_date).toLocaleDateString()}` : "—"
+              rental.start_date ? `Since ${new fmtDate(Date(rental.start_date))}` : "—"
             }
           />
         </div>
@@ -1499,7 +1500,7 @@ function DashboardView({
             {lastPayment && (
               <span className="text-xs text-muted-foreground">
                 Last paid{" "}
-                {lastPayment.paid_date ? new Date(lastPayment.paid_date).toLocaleDateString() : ""}
+                {lastPayment.paid_date ? new fmtDate(Date(lastPayment.paid_date)) : ""}
               </span>
             )}
           </div>
@@ -1511,7 +1512,7 @@ function DashboardView({
                 <li key={p.id} className="py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm">
-                      {p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "Pending"}
+                      {p.paid_date ? new fmtDate(Date(p.paid_date)) : "Pending"}
                     </div>
                     <div className="text-xs text-muted-foreground capitalize">
                       {p.type} · {p.status}
@@ -1673,7 +1674,7 @@ function MyChargesCard() {
                 {c.charge_type.replace(/_/g, " ")}
               </div>
               <div className="text-xs text-muted-foreground">
-                {new Date(c.occurred_at).toLocaleDateString()}
+                {new fmtDate(Date(c.occurred_at))}
                 {c.location ? ` · ${c.location}` : ""}
                 {c.agency ? ` · ${c.agency}` : ""}
               </div>
@@ -1762,7 +1763,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
               </div>
               <div className="mt-1 font-medium">
                 {billing.nextChargeDate
-                  ? new Date(billing.nextChargeDate).toLocaleDateString()
+                  ? new fmtDate(Date(billing.nextChargeDate))
                   : "—"}
               </div>
             </div>
@@ -1811,7 +1812,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
               {data.payments.map((p) => (
                 <tr key={p.id}>
                   <td className="py-2">
-                    {p.paid_date ? new Date(p.paid_date).toLocaleDateString() : "—"}
+                    {p.paid_date ? new fmtDate(Date(p.paid_date)) : "—"}
                   </td>
                   <td className="capitalize">{p.type}</td>
                   <td className="capitalize">
@@ -1888,7 +1889,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {m.due_date ? new Date(m.due_date).toLocaleDateString() : "TBD"}
+                  {m.due_date ? new fmtDate(Date(m.due_date)) : "TBD"}
                 </div>
               </li>
             ))}

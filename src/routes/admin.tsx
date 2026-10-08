@@ -60,6 +60,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { fmtDateTime } from "@/lib/date-format";
 
 /** Deep-link parameters the Overview cards and applicant rows send. */
 type AdminSearch = {
@@ -614,7 +615,7 @@ function Admin() {
                           </div>
                           <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
                             {n.email || n.phone || "—"} ·{" "}
-                            {created ? created.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                            {created ? fmtDateTime(created) : ""}
                           </div>
                         </DropdownMenuItem>
                       );
