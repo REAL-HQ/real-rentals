@@ -142,7 +142,85 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   return pdf.save({ useObjectStreams: false });
 }
 
-export async function sha256Hex(bytes: Uint8Array | string): Promise<string> {
+export type PreviewDocInput = {
+  title: string;
+  body: string;
+  fingerprint: string;
+  templateLabel: string;
+  companySignerName: string;
+  companySignerTitle: string | null;
+  generatedAt: string;
+};
+
+/**
+ * Pre-send preview of the exact agreement text a send would freeze.
+ * Title and body are laid out with the same fonts, sizes, margins and wrapping
+ * as renderCompletedPdf, so pages break identically; the signature block is
+ * shown unsigned and every page carries a PREVIEW watermark.
+ */
+export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const fixed = new Date(d.generatedAt);
+  pdf.setTitle(clean(`PREVIEW - ${d.title}`));
+  pdf.setAuthor("REAL RENTALS");
+  pdf.setProducer("REAL RENTALS eSign");
+  pdf.setCreator("REAL RENTALS eSign");
+  pdf.setCreationDate(fixed);
+  pdf.setModificationDate(fixed);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const ink = rgb(0.07, 0.07, 0.08), muted = rgb(0.45, 0.45, 0.5), wm = rgb(0.82, 0.19, 0.13);
+
+  const pages: PDFPage[] = [];
+  const footer = (p: PDFPage) =>
+    p.drawText(clean(`PREVIEW - NOT SENT - ${d.templateLabel} - Fingerprint ${d.fingerprint.slice(0, 16)}`), { x: M, y: 30, size: 8, font, color: muted });
+  const newPage = () => { const p = pdf.addPage([W, H]); pages.push(p); footer(p); return p; };
+  let page: PDFPage = newPage();
+  let y = H - M;
+  const ensure = (h: number) => {
+    if (y - h < M) { page = newPage(); y = H - M; }
+  };
+  const write = (t: string, size = 10.5, f = font, color = ink, lh = 1.45) => {
+    for (const l of wrap(t, f, size, W - 2 * M)) {
+      ensure(size * lh);
+      page.drawText(l, { x: M, y: y - size, size, font: f, color });
+      y -= size * lh;
+    }
+  };
+  const field = (label: string) => {
+    ensure(40);
+    y -= 22;
+    page.drawLine({ start: { x: M, y }, end: { x: M + 260, y }, thickness: 0.8, color: ink });
+    y -= 12;
+    page.drawText(clean(label), { x: M, y, size: 9, font, color: muted });
+    y -= 6;
+  };
+
+  // Identical to the completed document from here to the signature block.
+  write(d.title, 16, bold);
+  y -= 8;
+  write(d.body);
+  y -= 18;
+  ensure(140);
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: ink });
+  y -= 16;
+  write("SIGNATURES", 11, bold);
+  y -= 4;
+  write("Renter: (unsigned)", 12, bold);
+  field("Renter signature - typed legal name with consent checkbox");
+  field("Date signed");
+  y -= 6;
+  write(`Company: ${d.companySignerName}`, 12, bold);
+  if (d.companySignerTitle) write(d.companySignerTitle, 10.5);
+  write("Company countersignature is applied when the agreement is sent", 9.5, font, muted);
+
+  for (const p of pages) {
+    p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: { type: "degrees" as any, angle: 35 } as any });
+  }
+  return pdf.save({ useObjectStreams: false });
+}
+
+export async function sha256Hex(bytes: Uint8Array | string): Promise<string>
   const buf = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
   const d = await crypto.subtle.digest("SHA-256", buf as BufferSource);
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
