@@ -60,6 +60,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const [enh, setEnh] = useState<{ available: boolean; reason: string }>({ available: false, reason: "Checking…" });
   const [progress, setProgress] = useState<Record<string, string>>({});
   const [failures, setFailures] = useState<Record<string, { mode: EnhanceMode; error: string }>>({});
+  const [viewIdx, setViewIdx] = useState<number | null>(null);
   const [compare, setCompare] = useState<VehicleMedia | null>(null);
 
   const refreshEnh = useCallback(async () => {
@@ -293,6 +294,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 enhancement={enh}
                 progress={progress[m.id]}
                 failure={failures[m.id]}
+                onView={() => setViewIdx(items.indexOf(m))}
                 onCompare={() => setCompare(m)}
                 onReview={(d) => review(m, d)}
                 onPrimary={() => patch(m, { id: m.id, makePrimary: true })}
@@ -329,6 +331,9 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             </div>
           </div>
         </SectionCard>
+      )}
+      {viewIdx != null && items[viewIdx] && (
+        <PhotoViewer items={items} index={viewIdx} onIndex={setViewIdx} onClose={() => setViewIdx(null)} />
       )}
       {compare && (
         <CompareModal
@@ -435,6 +440,7 @@ function PhotoTile({
   onCaption: (c: string) => void;
   onDelete: () => void;
   onEnhance: (mode: string) => void;
+  onView: () => void;
 }) {
   const [caption, setCaption] = useState(m.caption ?? "");
   const [url, setUrl] = useState<string | null>(null);
@@ -453,11 +459,13 @@ function PhotoTile({
     >
       <div className="relative aspect-[4/3] bg-[#F4F4F6]">
         {url ? (
-          <img
-            src={url}
-            alt={m.caption ?? ""}
-            className={`w-full h-full object-cover ${m.published ? "" : "opacity-60"}`}
-          />
+          <button type="button" onClick={onView} aria-label={`View Full Size${m.caption ? `: ${m.caption}` : ""}`} className="w-full h-full block cursor-zoom-in">
+            <img
+              src={url}
+              alt={m.caption ?? ""}
+              className={`w-full h-full object-cover ${m.published ? "" : "opacity-60"}`}
+            />
+          </button>
         ) : (
           <div className="w-full h-full grid place-items-center text-[#C4C4CB]">
             <ImageOff className="w-5 h-5" />
@@ -663,5 +671,46 @@ function Tag({ children, tone }: { children: React.ReactNode; tone: "dark" | "vi
     >
       {children}
     </span>
+  );
+}
+
+/** Full-size viewer for any gallery photo; bytes come from the same staff-only loader. */
+function PhotoViewer({ items, index, onIndex, onClose }: {
+  items: VehicleMedia[]; index: number; onIndex: (i: number) => void; onClose: () => void;
+}) {
+  const m = items[index];
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setUrl(null);
+    loadStaffPhoto(m.storage_path).then((u) => live && setUrl(u));
+    return () => { live = false; };
+  }, [m.storage_path]);
+  const go = (d: number) => onIndex((index + d + items.length) % items.length);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex flex-col" onClick={onClose}>
+      <div role="dialog" aria-label="Photo Viewer" className="flex flex-col h-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 text-white/90 text-[13px]">
+          <span>{index + 1} Of {items.length}{m.caption ? ` · ${m.caption}` : ""}</span>
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20">Close</button>
+        </div>
+        <div className="flex-1 min-h-0 flex items-center justify-center gap-2 px-2 pb-4">
+          {items.length > 1 && <button type="button" aria-label="Previous Photo" onClick={() => go(-1)} className="shrink-0 px-3 py-6 rounded bg-white/10 text-white hover:bg-white/20">‹</button>}
+          <div className="flex-1 h-full min-w-0 flex items-center justify-center">
+            {url ? <img src={url} alt={m.caption ?? "Vehicle Photo"} data-media-id={m.id} className="max-w-full max-h-full object-contain" /> : <Loader2 className="w-6 h-6 animate-spin text-white/70" />}
+          </div>
+          {items.length > 1 && <button type="button" aria-label="Next Photo" onClick={() => go(1)} className="shrink-0 px-3 py-6 rounded bg-white/10 text-white hover:bg-white/20">›</button>}
+        </div>
+      </div>
+    </div>
   );
 }
