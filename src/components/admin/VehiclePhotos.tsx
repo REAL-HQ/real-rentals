@@ -320,8 +320,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 {enh.reason}
               </p>
               <p>
-                Enhanced adjusts lighting and color on the photograph you took. Studio keeps the car's
-                own pixels and only replaces the background. Nothing is redrawn. Each result must be
+                Enhanced adjusts lighting, color, white balance and sharpness on the photograph you
+                took. Nothing is redrawn. Each result must be
                 approved, and then separately published, before it can reach the website.
               </p>
               <p className="text-[#9A9AA3]">
@@ -349,9 +349,13 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   );
 }
 
+// Studio (background replacement) is deferred: browser segmentation exceeds
+// device memory. The implementation stays in photo-enhance.worker.ts; flip
+// STUDIO_ENABLED here and in photo-enhance.functions.ts to bring it back.
+const STUDIO_ENABLED = false;
 const MODES = [
   { value: "enhanced", label: "Enhanced" },
-  { value: "studio", label: "Studio" },
+  ...(STUDIO_ENABLED ? [{ value: "studio", label: "Studio" }] : []),
 ];
 
 function CompareModal({ m, source, busy, canReview, onClose, onReview }: {

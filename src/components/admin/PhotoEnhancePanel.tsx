@@ -42,8 +42,8 @@ export function PhotoEnhancePanel() {
           Photo Enhancement {data.enabled ? "On" : "Off"}
         </label>
         <p className="text-[12px] text-[#55555E] leading-relaxed">
-          Photos are processed free on the device of the person who clicks Enhance. The car itself is never redrawn —
-          Studio only replaces the background. Results stay private until someone approves and then separately publishes them.
+          Photos are processed free on the device of the person who clicks Enhance. Enhanced corrects lighting,
+          color, white balance and sharpness; the car itself is never redrawn. Results stay private until someone approves and then separately publishes them.
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="text-[12px] text-[#55555E] space-y-1">
