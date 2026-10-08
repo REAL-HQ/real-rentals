@@ -14,7 +14,8 @@ import {
   getAgreementPdf,
   type AgreementRow,
 } from "@/lib/agreements.functions";
-import { fmtDateTime } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { AgreementPdfViewer } from "./AgreementPdfViewer";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -27,7 +28,19 @@ function toneFor(status: string) {
   return "bg-[#EEF3FF] text-[#2B4FA0] border-[#DAE3FA]";
 }
 
-export function AgreementsCard({ applicationId }: { applicationId: string }) {
+type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type PreviewRes = {
+  pdfBase64: string | null;
+  fingerprint: string | null;
+  template: { label: string; version: number; approvalStatus: string; effectiveDate: string | null; versioningActive: boolean };
+  canSend: boolean;
+  sendRefusal: string | null;
+  missing: string[];
+  blockers: Blocker[];
+  generatedAt: string;
+};
+
+export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: string; onOpenTab?: (tab: string) => void }) {
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
@@ -38,11 +51,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [missing, setMissing] = useState<string[]>([]);
-  const [blockers, setBlockers] = useState<
-    { field: string; label: string; why: string }[]
-  >([]);
+  const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Latest signing link per agreement, held only in memory for Copy.
@@ -57,19 +66,11 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   async function refresh() {
     try {
       const res = await load({ data: { applicationId } });
-      // Whatever comes back, this component renders rows.length. A transport
-      // that hands back null instead of a list would throw during render,
-      // and this card is the first child of the Documents tab — so the error
-      // boundary would replace the entire driver drawer with "This page
-      // didn't load", and the documents beneath it with nothing at all.
+      // A non-list transport result must not crash the driver drawer.
       setRows(Array.isArray(res) ? res : []);
       setLoadError(Array.isArray(res) ? null : "Agreements came back in a shape we didn't expect.");
     } catch (e) {
-      // Not swallowed. "No agreement sent yet" is a fact about this
-      // applicant; a failed lookup is a fact about us, and showing the first
-      // in place of the second is how a permissions error reads as a clean
-      // record. The card says so and offers a retry; the rest of the tab,
-      // documents included, still renders.
+      // Not swallowed: a failed lookup must not read as "no agreement".
       setRows([]);
       setLoadError(e instanceof Error ? e.message : "Could not load agreements.");
     } finally {
@@ -85,15 +86,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   async function openPreview() {
     setBusy(true);
     try {
-      const res = await doPreview({ data: { applicationId } });
-      // The server withholds the body while anything blocks the send. Showing
-      // an editable draft with blanks in it and a Send button next to it read
-      // as permission to proceed, which is how a contract could be signed with
-      // "__________" where its dates belong.
-      setPreview(res.body);
-      setMissing(res.missing);
-      setBlockers((res as { blockers?: typeof blockers }).blockers ?? []);
-      if (!res.body) setPreview(null);
+      setPreview((await doPreview({ data: { applicationId } })) as PreviewRes);
     } catch (e: any) {
       toast.error(e?.message || "Could not build the agreement");
     } finally {
@@ -102,13 +95,13 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
   }
 
   async function send() {
+    if (!preview?.fingerprint || !preview.canSend) return;
     setBusy(true);
     try {
-      const res = await doSend({ data: { applicationId, body: preview ?? undefined } });
+      const res = await doSend({ data: { applicationId, fingerprint: preview.fingerprint } });
       reportDelivery(res.delivery, "Agreement sent for signature");
       if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
       setPreview(null);
-      setBlockers([]);
       await refresh();
     } catch (e: any) {
       toast.error(e?.message || "Could not send the agreement");
@@ -116,6 +109,24 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
       setBusy(false);
     }
   }
+
+  function fixLink(b: Blocker) {
+    if (!b.fix) return null;
+    if ("vehicleId" in b.fix)
+      return (
+        <a href={`/admin?tab=vehicles&id=${b.fix.vehicleId}`} target="_blank" rel="noreferrer" className="ml-1 font-semibold underline">
+          Open Vehicle
+        </a>
+      );
+    const tab = b.fix.tab;
+    return onOpenTab ? (
+      <button onClick={() => onOpenTab(tab)} className="ml-1 font-semibold underline">
+        {tab === "payments" ? "Open Payments" : "Open Rental"}
+      </button>
+    ) : null;
+  }
+
+  const t = preview?.template;
 
   return (
     <SectionCard
@@ -127,59 +138,86 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
           disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
         >
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
-          Prepare Agreement
+          {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
+          Preview Agreement
         </button>
       }
     >
       <div className="p-5 space-y-4">
-        {blockers.length > 0 ? (
-          <div className="rounded-lg border border-[#F3C2BC] bg-[#FDF3F2] p-4">
-            <div className="text-[12px] font-semibold text-[#8A1F12]">
-              This agreement cannot be sent yet
-            </div>
-            <ul className="mt-2 space-y-2">
-              {blockers.map((b) => (
-                <li key={b.field} className="text-[12px] text-[#6B2A20]">
-                  <span className="font-semibold">{b.label}.</span> {b.why}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">
-              Driver, licence, rate and deposit details are on the Payments tab. Vehicle
-              VIN, colour and model are on the vehicle's page in Fleet. Then prepare the
-              agreement again.
-            </p>
-          </div>
-        ) : null}
-        {preview !== null ? (
-          <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB]">
-            <div className="px-4 py-2.5 border-b border-[#EDEDF0] flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-[#111114]">Review before sending</span>
+        {preview ? (
+          <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB]" data-testid="agreement-preview">
+            <div className="px-4 py-2.5 border-b border-[#EDEDF0] flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-[#111114]">Agreement Preview — Not Sent</div>
+                <div className="text-[11px] text-[#55555E]">
+                  Template: <span className="font-semibold">{t?.label}</span>
+                  {" · "}Effective: {t?.effectiveDate ? fmtDate(t.effectiveDate) : "Not Set"}
+                  {" · "}Generated {fmtDateTime(preview.generatedAt)}
+                </div>
+                {preview.fingerprint ? (
+                  <div className="text-[10.5px] font-mono text-[#9A9AA2] truncate" title={preview.fingerprint}>
+                    Fingerprint {preview.fingerprint.slice(0, 16)}…
+                  </div>
+                ) : null}
+              </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setPreview(null)} className="text-[12px] text-[#55555E] px-2 py-1">
-                  Cancel
+                  Close
                 </button>
                 <button
-                  onClick={send}
+                  onClick={openPreview}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#111114] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6E6EA] bg-white text-[12px] font-semibold px-3 py-1.5 text-[#28282E] disabled:opacity-50"
                 >
-                  <Send className="w-3.5 h-3.5" /> Send for Signature
+                  <RefreshCw className="w-3.5 h-3.5" /> Regenerate
                 </button>
               </div>
             </div>
-            {missing.length ? (
+
+            {t && !t.versioningActive ? (
               <div className="px-4 py-2 text-[11.5px] text-[#8A6A00] bg-[#FFF8E5] border-b border-[#F6E7B8]">
-                Missing details: {missing.join(", ").replace(/_/g, " ")} — blanks appear as underscores.
+                This wording is Draft v1 and has not been approved by the Owner or reviewed by a lawyer. Template approval isn't switched on yet.
               </div>
             ) : null}
-            <textarea
-              value={preview}
-              onChange={(e) => setPreview(e.target.value)}
-              rows={16}
-              className="w-full bg-white p-4 text-[12.5px] leading-6 font-mono text-[#28282E] focus:outline-none"
-            />
+
+            {preview.blockers.length > 0 ? (
+              <div className="m-4 rounded-lg border border-[#F3C2BC] bg-[#FDF3F2] p-4">
+                <div className="text-[12px] font-semibold text-[#8A1F12]">This agreement cannot be sent yet</div>
+                <ul className="mt-2 space-y-2">
+                  {preview.blockers.map((b, i) => (
+                    <li key={b.field + i} className="text-[12px] text-[#6B2A20]">
+                      <span className="font-semibold">{b.label}.</span> {b.why}
+                      {fixLink(b)}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">Correct the details, then press Regenerate.</p>
+              </div>
+            ) : null}
+            {preview.sendRefusal ? (
+              <div className="m-4 rounded-lg border border-[#F3C2BC] bg-[#FDF3F2] p-3 text-[12px] text-[#8A1F12]">{preview.sendRefusal}</div>
+            ) : null}
+
+            {preview.pdfBase64 ? (
+              <div className="max-h-[75vh] overflow-y-auto bg-[#EDEDF0]">
+                <AgreementPdfViewer base64={preview.pdfBase64} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {preview ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#EDEDF0] bg-white px-4 py-3">
+            <p className="text-[11.5px] text-[#55555E] min-w-0">
+              Send Agreement emails exactly this document to the driver. If any detail changes first, sending is refused until you regenerate.
+            </p>
+            <button
+              onClick={send}
+              disabled={busy || !preview.canSend}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#111114] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-40"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send Agreement
+            </button>
           </div>
         ) : null}
 
@@ -204,7 +242,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
           </div>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">
-            No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle.
+            No agreement sent yet. Preview one to pre-fill it with this driver's details and assigned vehicle.
           </p>
         ) : (
           <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-lg overflow-hidden">

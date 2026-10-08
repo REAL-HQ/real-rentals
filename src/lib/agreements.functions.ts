@@ -287,15 +287,94 @@ async function buildMergeData(
   return { data, app, vehicle, blockers };
 }
 
-async function activeTemplateBody(admin: any): Promise<{ id: string | null; body: string }> {
-  const { data } = await admin
+/** Title every rental agreement row carries (agreements.title column default). */
+const AGREEMENT_TITLE = "Vehicle Rental Agreement";
+
+export type TemplateMeta = {
+  id: string | null;
+  name: string;
+  version: number;
+  /** draft | approved | retired — "draft" for the in-code baseline. */
+  approvalStatus: string;
+  label: string;
+  effectiveDate: string | null;
+  approvedAt: string | null;
+  /** True once the versioning migration exists (approval_status column present). */
+  versioningActive: boolean;
+};
+
+/**
+ * The template a send would use. Reads `*` so it works both before and after
+ * the versioning migration. Before it, there is no saved row and the in-code
+ * wording is the Draft v1 baseline; after it, the newest APPROVED version is
+ * used, falling back to the newest draft (which send then refuses).
+ */
+async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
+  const { data: rows } = await admin
     .from("agreement_templates")
-    .select("id,body")
-    .eq("is_active", true)
+    .select("*")
     .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return { id: data?.id ?? null, body: data?.body ?? DEFAULT_AGREEMENT_BODY };
+    .limit(20);
+  const list = (rows ?? []) as any[];
+  const versioningActive = list.some((r) => "approval_status" in r);
+  const pick = versioningActive
+    ? list.find((r) => r.approval_status === "approved") ?? list.find((r) => r.approval_status === "draft") ?? null
+    : list.find((r) => r.is_active) ?? null;
+  if (!pick) {
+    return {
+      body: DEFAULT_AGREEMENT_BODY,
+      meta: {
+        id: null, name: "Rental Agreement", version: 1, approvalStatus: "draft",
+        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive,
+      },
+    };
+  }
+  const status = versioningActive ? String(pick.approval_status) : "draft";
+  return {
+    body: String(pick.body),
+    meta: {
+      id: pick.id, name: pick.name ?? "Rental Agreement", version: Number(pick.version ?? 1),
+      approvalStatus: status,
+      label: status === "approved" ? `Approved v${pick.version}` : `Draft v${pick.version} — Legal Review Required`,
+      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive,
+    },
+  };
+}
+
+/** Back-compat for callers that only need id + body. */
+async function activeTemplateBody(admin: any): Promise<{ id: string | null; body: string }> {
+  const t = await activeTemplate(admin);
+  return { id: t.meta.id, body: t.body };
+}
+
+/**
+ * Server-validated snapshot of what staff reviewed: template identity and the
+ * exact rendered text + every merge value. Any change to driver, vehicle,
+ * dates, rate, deposit, template or wording changes it, and Send refuses.
+ */
+async function agreementFingerprint(meta: TemplateMeta, body: string, merge: MergeData): Promise<string> {
+  const { sha256Hex } = await import("@/lib/esign-pdf.server");
+  const sorted = Object.fromEntries(Object.keys(merge).sort().map((k) => [k, merge[k]]));
+  return sha256Hex(JSON.stringify({ t: AGREEMENT_TITLE, tid: meta.id, tv: meta.version, ts: meta.approvalStatus, body, merge: sorted }));
+}
+
+/** Once versioning is active, only an Owner-approved template can be sent. */
+function templateSendRefusal(meta: TemplateMeta): string | null {
+  if (meta.versioningActive && meta.approvalStatus !== "approved")
+    return `The agreement template (${meta.label}) has not been approved by the Owner, so it cannot be sent.`;
+  return null;
+}
+
+/**
+ * The ONE generation step for preview and send: readiness, template,
+ * rendered text and fingerprint.
+ */
+async function prepareAgreement(admin: any, applicationId: string) {
+  const built = await buildMergeData(admin, applicationId);
+  const tpl = await activeTemplate(admin);
+  const body = renderTemplate(tpl.body, built.data);
+  const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
+  return { ...built, tpl, body, fingerprint };
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -374,23 +453,46 @@ export const previewAgreement = createServerFn({ method: "POST" })
     const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: merge, app, blockers } = await buildMergeData(supabaseAdmin, data.applicationId);
-    const tpl = await activeTemplateBody(supabaseAdmin);
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId);
+    const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
+    const refusal = templateSendRefusal(tpl.meta);
+    let pdfBase64: string | null = null;
+    // The document is withheld while anything blocks the send: blanks are
+    // exactly what must not reach a signature.
+    if (!blockers.length) {
+      const { getCompanySigner } = await import("@/lib/esign.server");
+      const company = await getCompanySigner(supabaseAdmin);
+      const { renderPreviewPdf } = await import("@/lib/esign-pdf.server");
+      const bytes = await renderPreviewPdf({
+        title: AGREEMENT_TITLE,
+        body: prep.body,
+        fingerprint: prep.fingerprint,
+        templateLabel: tpl.meta.label,
+        companySignerName: company.name,
+        companySignerTitle: company.title,
+        generatedAt: new Date().toISOString(),
+      });
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      pdfBase64 = btoa(bin);
+    }
     return {
-      // Withheld while anything blocks the send: a preview the staff member
-      // can edit and press Send on reads as permission to proceed, and the
-      // blanks in it are exactly what must not reach a signature.
-      body: blockers.length ? null : renderTemplate(tpl.body, merge),
+      body: blockers.length ? null : prep.body,
+      pdfBase64,
+      fingerprint: blockers.length ? null : prep.fingerprint,
+      template: tpl.meta,
+      canSend: !blockers.length && !refusal,
+      sendRefusal: refusal,
       merge,
       missing,
-      // Everything in `missing` is worth a staff member's attention; these are
-      // the ones that stop the agreement being sent at all.
       blockers,
+      vehicleId: (app.vehicle_id as string | null) ?? null,
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
+      generatedAt: new Date().toISOString(),
     };
   });
 
@@ -407,9 +509,12 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { body?: string; createdBy?: string | null } = {},
+  opts: { fingerprint?: string; createdBy?: string | null } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
-  const { data: merge, app, blockers } = await buildMergeData(admin, applicationId);
+  // Same generation step as the preview — the stored text is re-rendered here
+  // on the server, never taken from the browser.
+  const prep = await prepareAgreement(admin, applicationId);
+  const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
   // worth sending, and an applicant who signs one has signed terms nobody
@@ -418,20 +523,14 @@ export async function issueAgreement(
     throw new Error(
       `This agreement is missing ${blockers.map((b) => b.label.toLowerCase()).join(" and ")}. ${blockers[0].why}`,
     );
-  const tpl = await activeTemplateBody(admin);
-
-  /*
-   * The staff member's edited text is honoured — but not if it still carries
-   * the blanks renderTemplate leaves for missing merge fields.
-   *
-   * The guard above checks the row as it stands now; the body being stored is
-   * whatever the preview produced, possibly minutes earlier and before the
-   * missing dates were filled in. Those two can disagree, and when they do the
-   * applicant signs a contract whose start date, return date and address read
-   * "__________" while merge_data records the right ones. Re-render instead.
-   */
-  const rendered = renderTemplate(tpl.body, merge);
-  const body = opts.body && !opts.body.includes(BLANK) ? opts.body : rendered;
+  const refusal = templateSendRefusal(tpl.meta);
+  if (refusal) throw new Error(refusal);
+  // Staff sends must match exactly what was previewed.
+  if (opts.fingerprint !== undefined && opts.fingerprint !== prep.fingerprint)
+    throw new Error(
+      "The agreement changed since it was previewed (driver, vehicle, dates, rate, deposit or template). Regenerate the preview and review it again before sending.",
+    );
+  if (body.includes(BLANK)) throw new Error("The agreement still contains blank fields. Regenerate the preview.");
 
   const token = randomToken();
   const tokenHash = await hashToken(token);
@@ -447,7 +546,7 @@ export async function issueAgreement(
       company_signer_title: company.title,
       application_id: applicationId,
       vehicle_id: app.vehicle_id ?? null,
-      template_id: tpl.id,
+      template_id: tpl.meta.id,
       body,
       merge_data: merge,
       status: "sent",
@@ -518,7 +617,10 @@ export const sendAgreement = createServerFn({ method: "POST" })
     z
       .object({
         applicationId: z.string().uuid(),
-        body: z.string().min(50).max(80000).optional(),
+        // The fingerprint of the preview the staff member reviewed. There is
+        // no free-text body any more: contract wording changes only through
+        // the Owner's template.
+        fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
       })
       .parse(d),
   )
@@ -527,7 +629,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     return issueAgreement(supabaseAdmin, data.applicationId, {
-      body: data.body,
+      fingerprint: data.fingerprint,
       createdBy: context.userId,
     });
   });
