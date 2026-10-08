@@ -13,8 +13,8 @@ import {
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { DepositDialog } from "./DepositDialog";
-import { supabase as _sbPay } from "@/integrations/supabase/client";
-import { derivePaymentStatus, deriveDepositDisplay, PAYMENT_STATUS_LABEL, type PayRental, type PayRow } from "@/lib/driver-payment-status";
+import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
+import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental } from "@/lib/rentals.functions";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
@@ -285,25 +285,8 @@ function useNow(intervalMs = 30000) {
 }
 
 
-const PAY_RENTAL_COLS = "id,application_id,status,deposit_amount,deposit_held,deposit_status,deposit_refund_amount";
-const PAY_ROW_COLS = "driver_id,rental_id,type,amount,balance_due,net_collected,refunded_amount,status,due_date";
-type PayIndex = Record<string, { rentals: PayRental[]; payments: PayRow[] }>;
-/** Bulk-load rentals + payments for the given applicants (null = all) and group by applicant. */
-async function loadPayIndex(ids: string[] | null): Promise<PayIndex> {
-  let rq = _sbPay.from("rentals").select(PAY_RENTAL_COLS);
-  let pq = _sbPay.from("payments").select(PAY_ROW_COLS);
-  if (ids) { rq = rq.in("application_id", ids); pq = pq.in("driver_id", ids); }
-  const [{ data: r }, { data: p }] = await Promise.all([rq, pq]);
-  const idx: PayIndex = {};
-  const slot = (k: string) => (idx[k] ??= { rentals: [], payments: [] });
-  for (const x of (r ?? []) as any[]) if (x.application_id) slot(x.application_id).rentals.push(x);
-  for (const x of (p ?? []) as any[]) if (x.driver_id) slot(x.driver_id).payments.push(x);
-  return idx;
-}
-function payCells(e: PayIndex[string] | undefined) {
-  const v = e ?? { rentals: [], payments: [] };
-  return { pay: PAYMENT_STATUS_LABEL[derivePaymentStatus(v.rentals, v.payments)], dep: deriveDepositDisplay(v.rentals, v.payments) };
-}
+type PayIndex = Record<string, PayCells>;
+function payCells(e: PayCells | undefined): PayCells { return e ?? NO_PAY_CELLS; }
 
 export function DriversPanel({
   externalSearch = "",
@@ -376,7 +359,8 @@ export function DriversPanel({
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
   const [payIndex, setPayIndex] = useState<PayIndex>({});
-  useEffect(() => { void loadPayIndex(null).then(setPayIndex); }, []);
+  const loadPay = useServerFn(getDriverPayStatuses);
+  useEffect(() => { void loadPay({ data: {} }).then(setPayIndex).catch(() => setPayIndex({})); }, [loadPay]);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -3066,8 +3050,9 @@ function RequestDocumentsAction({
 
 /** Read-only: the same calculation the Drivers list uses, for one driver. */
 function DerivedPayFields({ driverId }: { driverId: string }) {
-  const [e, setE] = useState<PayIndex[string] | undefined>();
-  useEffect(() => { void loadPayIndex([driverId]).then((i) => setE(i[driverId])); }, [driverId]);
+  const [e, setE] = useState<PayCells | undefined>();
+  const loadPay = useServerFn(getDriverPayStatuses);
+  useEffect(() => { void loadPay({ data: { driverIds: [driverId] } }).then((i) => setE(i[driverId])).catch(() => setE(undefined)); }, [driverId, loadPay]);
   const { pay, dep } = payCells(e);
   return (
     <>
