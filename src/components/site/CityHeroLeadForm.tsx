@@ -240,6 +240,12 @@ export function CityHeroLeadForm({
                   </>
                 )}
 
+                {returning !== null && (
+                  <div className="mt-5">
+                    <WelcomeBack email={returning} />
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={submit}
