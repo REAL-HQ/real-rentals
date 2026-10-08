@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState } from "./ui";
 
 type Lead = {
@@ -33,8 +34,7 @@ export function LeadsPanel({ table, label }: { table: "contact_leads" | "investo
   }
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden bg-white">
-      <div className="overflow-x-auto">
+    <AdminTableScroll className="rounded-lg border border-border bg-white">
         <table className="w-full text-sm">
           <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>
@@ -86,7 +86,6 @@ export function LeadsPanel({ table, label }: { table: "contact_leads" | "investo
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+    </AdminTableScroll>
   );
 }

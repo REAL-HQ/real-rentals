@@ -12,6 +12,7 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
@@ -754,10 +755,9 @@ export function DriversPanel({
           </button>
         </div>
       </div>
-      <div className="rounded-lg border border-border overflow-hidden bg-white">
-        <div className="overflow-x-auto">
+      <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
                 <th className="text-left font-medium px-4 py-2.5 border-b border-border">Phone</th>
@@ -997,8 +997,7 @@ export function DriversPanel({
               )}
             </tbody>
           </table>
-        </div>
-      </div>
+      </AdminTableScroll>
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
