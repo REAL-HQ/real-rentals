@@ -874,7 +874,7 @@ export function DriversPanel({
                         value={a.status || ""}
                         onValueChange={(status) => update(a.id, { status })}
                       >
-                        <SelectTrigger className="h-7 w-auto min-w-[7rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
+                        <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
                           {held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
