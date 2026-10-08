@@ -57,6 +57,20 @@
       "when": 1791459951490,
       "tag": "0007_safe_autofill",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791462253541,
+      "tag": "0008_fin_core_c1",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791462346435,
+      "tag": "0009_fin_core_c1_tables",
+      "breakpoints": true
     }
   ]
 }
