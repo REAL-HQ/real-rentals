@@ -69,7 +69,11 @@ console.log("\nNO APPLICANT INPUT IS SPLICED INTO A POSTGREST FILTER");
   // esign.server.ts interpolates a server-computed ISO timestamp; the payments
   // webhook interpolates a Stripe id from a signature-verified event and a
   // status from a fixed enum. None is applicant input.
-  const ALLOWED = ["src/components/site/Nav.tsx", "src/lib/esign.server.ts", "src/routes/api/public/payments/webhook.ts"];
+  // fleet-inbox.functions.ts interpolates a stored VIN only after an
+  // alphanumeric whitelist plus a DB uuid; safe-autofill.server.ts a column
+  // name from the fixed AUTO_FIELDS list; photo-enhance.functions.ts a
+  // server-computed ISO timestamp.
+  const ALLOWED = ["src/components/site/Nav.tsx", "src/lib/esign.server.ts", "src/routes/api/public/payments/webhook.ts", "src/lib/fleet-inbox.functions.ts", "src/lib/safe-autofill.server.ts", "src/lib/photo-enhance.functions.ts"];
   const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)));
   ok(unexpected.length === 0, `no unreviewed interpolated filter (found ${unexpected.length})`);
   for (const o of unexpected) console.log(`       ${o}`);
