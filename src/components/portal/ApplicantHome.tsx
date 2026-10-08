@@ -113,7 +113,7 @@ function ApplicationCard({
   return (
     <div className="mt-8 space-y-4">
       <div className="rounded-xl border border-border p-6">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">Status</div>
+        <div className="text-xs text-muted-foreground">Status</div>
         <div className="mt-1 text-xl font-semibold">{status}</div>
         <div className="mt-4 text-sm text-muted-foreground">
           Progress: <span className="text-foreground font-medium">{STEP_LABEL[app.step ?? ""] ?? "Getting Started"}</span>
@@ -183,7 +183,7 @@ function WaitlistCard({
   return (
     <div className="mt-8 space-y-4">
       <div className="rounded-xl border border-border p-6">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">Waitlist Status</div>
+        <div className="text-xs text-muted-foreground">Waitlist Status</div>
         <div className="mt-1 text-xl font-semibold">On The Waitlist</div>
         <p className="mt-2 text-sm text-muted-foreground">Joined {new Date(w.createdAt).toLocaleDateString()}. We'll reach out when a car is available.</p>
         <Link to="/apply" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-real-red text-primary-foreground px-6 py-2.5 text-sm font-medium">
