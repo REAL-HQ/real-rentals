@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -97,6 +97,33 @@ type Tab = (typeof TABS)[number]["id"];
  */
 const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
 
+
+/** Staff read-only "Viewing as" preview: the selected driver's account id, or null. */
+const PreviewDriverCtx = createContext<string | null>(null);
+function usePreviewDriver() {
+  return useContext(PreviewDriverCtx);
+}
+/** Portal read: in preview, asks the server for that driver's data (server re-checks Owner/Manager). */
+function usePortalRead(fn: any): any {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (..._a: any[]) => f({ data: id ? { previewDriverId: id } : {} });
+}
+/** Portal write: refused in preview (and refused again on the server for staff). */
+function usePortalWrite(fn: any): any {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return id ? async () => { throw new Error("Driver Preview is read-only."); } : f;
+}
+function usePreviewNull(fn: any, empty: any): any {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return id ? async () => empty : f;
+}
+function ReadOnlyNote({ what }: { what: string }) {
+  return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
+}
+
 function Portal() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
@@ -132,7 +159,7 @@ function Portal() {
 
   // Shares PortalBody's query key, so this costs no extra request — it only
   // lets the shell know whether there is a rental before it draws the nav.
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data: dash } = useQuery({
     queryKey: ["driver-dashboard"],
     queryFn: () => fetchDashboard(),
@@ -277,7 +304,7 @@ function Portal() {
 }
 
 function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => void }) {
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data, isLoading, error } = useQuery({
     queryKey: ["driver-dashboard"],
     queryFn: () => fetchDashboard(),
@@ -336,7 +363,7 @@ function fmt(amount: number) {
 }
 
 function DocumentsView() {
-  const fetchDocs = useServerFn(getDriverDocuments);
+  const fetchDocs = usePortalRead(getDriverDocuments);
   const { data, isLoading } = useQuery({
     queryKey: ["driver-documents"],
     queryFn: () => fetchDocs(),
@@ -354,7 +381,7 @@ function DocumentsView() {
           keep the history.
         </p>
         <div className="mt-4">
-          <DocumentVault mode="driver" />
+          {usePreviewDriver() ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
         </div>
       </div>
 
@@ -391,8 +418,8 @@ function DocumentsView() {
 }
 
 function AgreementsView() {
-  const fetchAgreements = useServerFn(getMyAgreements);
-  const sign = useServerFn(signMyAgreement);
+  const fetchAgreements = usePortalRead(getMyAgreements);
+  const sign = usePortalWrite(signMyAgreement);
   const getPdf = useServerFn(getAgreementPdf);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-agreements"],
@@ -512,7 +539,7 @@ function IssuesView() {
 }
 
 function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }) {
-  const save = useServerFn(updateDriverProfile);
+  const save = usePortalWrite(updateDriverProfile);
   const [f, setF] = useState({
     full_name: profile?.full_name ?? "",
     email: profile?.email ?? "",
@@ -616,8 +643,8 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
  * of them, with room to note anything they disagree with, before they sign.
  */
 function CheckoutSignOffCard() {
-  const fetchInspection = useServerFn(getMyCheckoutInspection);
-  const sign = useServerFn(signCheckoutInspection);
+  const fetchInspection = usePreviewNull(getMyCheckoutInspection, null);
+  const sign = usePortalWrite(signCheckoutInspection);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["checkout-inspection"],
     queryFn: () => fetchInspection(),
@@ -836,9 +863,9 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 function PicturesView() {
-  const fetchPics = useServerFn(getDriverPictures);
-  const fetchCondition = useServerFn(listConditionMedia);
-  const fetchDashboard = useServerFn(getDriverDashboard);
+  const fetchPics = usePortalRead(getDriverPictures);
+  const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
+  const fetchDashboard = usePortalRead(getDriverDashboard);
 
   const { data: dash } = useQuery({
     queryKey: ["driver-dashboard"],
@@ -942,8 +969,8 @@ function PicturesView() {
 }
 
 function SettingsView() {
-  const fetchProfile = useServerFn(getDriverProfile);
-  const submitIssue = useServerFn(createDriverIssue);
+  const fetchProfile = usePortalRead(getDriverProfile);
+  const submitIssue = usePortalWrite(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-profile"],
     queryFn: () => fetchProfile(),
@@ -1049,8 +1076,8 @@ function SettingsView() {
 
 function IssuesViewInner() {
   const businessPhone = useBusinessPhone();
-  const fetchIssues = useServerFn(getDriverIssues);
-  const submitIssue = useServerFn(createDriverIssue);
+  const fetchIssues = usePortalRead(getDriverIssues);
+  const submitIssue = usePortalWrite(createDriverIssue);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-issues"],
     queryFn: () => fetchIssues(),
@@ -1190,8 +1217,8 @@ function IssuesViewInner() {
 }
 
 function ReferralsView() {
-  const fetchReferrals = useServerFn(getDriverReferrals);
-  const submitReferral = useServerFn(createDriverReferral);
+  const fetchReferrals = usePortalRead(getDriverReferrals);
+  const submitReferral = usePortalWrite(createDriverReferral);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["driver-referrals"],
     queryFn: () => fetchReferrals(),
@@ -1636,7 +1663,7 @@ function Field({ label, value }: { label: string; value: any }) {
  * put in front of them.
  */
 function MyChargesCard() {
-  const fetchCharges = useServerFn(getMyCharges);
+  const fetchCharges = usePortalRead(getMyCharges);
   const { data, isLoading } = useQuery({
     queryKey: ["driver-charges"],
     queryFn: () => fetchCharges(),
@@ -1697,14 +1724,17 @@ function MyChargesCard() {
 function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
+  const previewId = usePreviewDriver();
+  const loadBilling = () => getRentalBilling({ data: previewId ? { previewDriverId: previewId } : {} });
 
   useEffect(() => {
-    getRentalBilling()
+    loadBilling()
       .then(setBilling)
       .catch(() => setBilling(null));
   }, []);
 
   async function payNow() {
+    if (previewId) { toast.error("Driver Preview is read-only."); return; }
     if (!billing?.rentalId || billing.outstandingCents < 50) return;
     setBusy(true);
     try {
@@ -1717,7 +1747,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
       });
       if ("error" in res) throw new Error(res.error);
       toast.success("Payment submitted");
-      const b = await getRentalBilling();
+      const b = await loadBilling();
       setBilling(b);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Payment failed");
