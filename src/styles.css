@@ -314,6 +314,6 @@
     top: calc(var(--admin-sticky-h, 0px) + var(--admin-bar-h, 0px) - 1px); /* 1px overlap: no sub-pixel gap */
     z-index: 10;
     background-color: #fafafb; /* rows scroll beneath the pinned header */
-    box-shadow: inset 0 -1px 0 0 var(--color-border, #e5e5e7); /* collapsed borders scroll away */
+    box-shadow: inset 0 -1px 0 0 var(--color-border, #e5e5e7), 0 -32px 0 0 #fafafb; /* bottom rule + paint upward so no row can peek through a sub-pixel gap */
   }
 }
