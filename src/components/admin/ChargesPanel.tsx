@@ -183,7 +183,7 @@ export function ChargesPanel() {
               ) : (
                 <Send className="w-3.5 h-3.5" />
               )}
-              Bill to renters
+              Bill to Renters
             </button>
           </div>
         </div>

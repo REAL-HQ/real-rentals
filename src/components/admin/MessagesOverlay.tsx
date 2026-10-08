@@ -224,7 +224,7 @@ export function MessagesOverlay({
                 <li key={c.applicationId}>
                   <button onClick={() => onSelect(c.applicationId)}
                     className={`w-full text-left px-4 py-4 flex gap-3 border-b border-[#EDEDF0] ${active ? "bg-[#FAFAFB]" : "hover:bg-[#FAFAFB]"}`}>
-                    <Avatar name={c.name} id={c.applicationId} />
+                    <Avatar name={c.name} Id={c.applicationId} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[15px] font-semibold truncate text-[#111114]">{c.name}</span>

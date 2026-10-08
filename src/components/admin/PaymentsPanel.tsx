@@ -260,7 +260,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                             })
                           }
                         >
-                          <Check className="w-4 h-4 mr-2" /> Mark as paid
+                          <Check className="w-4 h-4 mr-2" /> Mark as Paid
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
                           Waive

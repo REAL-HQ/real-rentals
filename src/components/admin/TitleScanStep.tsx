@@ -242,7 +242,7 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
               disabled={!usable.length}
               className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              Review {usable.length} field{usable.length === 1 ? "" : "s"}{" "}
+              Review {usable.length} Field{usable.length === 1 ? "" : "s"}{" "}
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

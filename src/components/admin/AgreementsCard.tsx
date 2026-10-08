@@ -127,7 +127,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
-          Prepare agreement
+          Prepare Agreement
         </button>
       }
     >

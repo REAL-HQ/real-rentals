@@ -404,7 +404,7 @@ export function InterviewTab({
                         : "border-border bg-white hover:bg-soft"
                     }`}
                   >
-                    <PlatformLogo platform={a} size={14} />
+                    <PlatformLogo platform={a} Size={14} />
                     <span>{platformLabel(a)}</span>
                     {on && <CheckCircle2 className="h-3 w-3" />}
                   </button>

@@ -305,7 +305,7 @@ function EmailDeliveryStatus() {
           className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-soft disabled:opacity-60"
         >
           {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          Send test email
+          Send Test Email
         </button>
         {!loading && (
           <button type="button" onClick={refresh} className="text-xs text-muted-foreground underline">

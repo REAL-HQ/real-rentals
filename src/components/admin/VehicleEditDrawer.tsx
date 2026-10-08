@@ -92,7 +92,7 @@ export function VehicleEditDrawer({
             className="inline-flex items-center gap-2 rounded-md bg-[#D03020] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save changes
+            Save Changes
           </button>
         </footer>
       </div>

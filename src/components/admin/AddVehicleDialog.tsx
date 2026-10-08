@@ -330,7 +330,7 @@ function ManualForm({
                 className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border px-3 text-xs hover:bg-soft disabled:opacity-50"
               >
                 {decoding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                Look up
+                Look Up
               </button>
             </div>
             {vinState && !vinState.formatValid && (

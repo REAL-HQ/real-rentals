@@ -273,7 +273,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
             disabled={busy || !hasRequired}
             className="inline-flex items-center gap-2 rounded-md bg-[#111114] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Check this file
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Check This File
           </button>
         ) : (
           <button
@@ -282,7 +282,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
             className="inline-flex items-center gap-2 rounded-md bg-[#D03020] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Add {summary?.create ?? 0} vehicle{summary?.create === 1 ? "" : "s"}
+            Add {summary?.create ?? 0} Vehicle{summary?.create === 1 ? "" : "s"}
           </button>
         )}
       </div>

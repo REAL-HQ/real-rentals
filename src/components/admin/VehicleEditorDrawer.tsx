@@ -964,7 +964,7 @@ export function VehicleEditorDrawer({
             className="inline-flex items-center gap-2 rounded-md bg-[#D03020] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save changes
+            Save Changes
           </button>
         </footer>
       </div>
@@ -1023,7 +1023,7 @@ function PhotoSummary({ profile, onOpen }: { profile: Profile; onOpen: () => voi
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[13px] text-[#111114]">
-          {n === 0 ? "No Photos" : `${n} photo${n === 1 ? "" : "s"}`}
+          {n === 0 ? "No Photos" : `${n} Photo${n === 1 ? "" : "s"}`}
           {lead && <span className="text-[#9A9AA3]"> · lead photo set</span>}
         </div>
         <div className="text-[11px] text-[#9A9AA3]">

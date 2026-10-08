@@ -450,7 +450,7 @@ function FaqRow({ item, defaultOpen = false }: { item: FaqItem; defaultOpen?: bo
         aria-expanded={open}
       >
         <span className="text-base font-semibold text-foreground">{item.q}</span>
-        <ChevronDown className={`h-5 w-5 shrink-0 text-real-red transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2} />
+        <ChevronDown className={`h-5 w-5 shrink-0 text-real-red transition-transform ${open ? "rotate-180" : ""}`} StrokeWidth={2} />
       </button>
       {open && (
         <div className="px-5 pb-5 text-sm leading-relaxed text-muted-foreground">{item.a}</div>

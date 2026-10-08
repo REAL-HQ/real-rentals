@@ -864,7 +864,7 @@ export function DriversPanel({
                           </DropdownMenuItem>
                           {!contactedMs && (
                             <DropdownMenuItem onClick={() => markContacted(a.id)}>
-                              <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark contacted
+                              <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark Contacted
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
@@ -2632,7 +2632,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <a
                 href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
               >
-                <MessageSquare className="w-4 h-4 mr-2" /> Text link to driver
+                <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
               </a>
             </DropdownMenuItem>
           )}
@@ -2641,7 +2641,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <a
                 href={`mailto:${driver.email}?subject=${encodeURIComponent("Save Your Card on File")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
               >
-                <Mail className="w-4 h-4 mr-2" /> Email link to driver
+                <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
               </a>
             </DropdownMenuItem>
           )}

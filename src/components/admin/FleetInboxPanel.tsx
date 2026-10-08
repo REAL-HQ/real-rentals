@@ -177,7 +177,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-[#111114] truncate">{b.label}</div>
                   <div className="text-xs text-[#9A9AA3]">
-                    {b.source === "email" ? "Email · " : "Upload · "}{b.files} file{b.files === 1 ? "" : "s"} · {b.vehicles} vehicle entr{b.vehicles === 1 ? "y" : "ies"}
+                    {b.source === "email" ? "Email · " : "Upload · "}{b.files} File{b.files === 1 ? "" : "s"} · {b.vehicles} Vehicle Entr{b.vehicles === 1 ? "y" : "ies"}
                     {b.newVehicles ? ` · ${b.newVehicles} new` : ""}{b.conflicts ? ` · ${b.conflicts} conflicts` : ""}
                   </div>
                 </div>
