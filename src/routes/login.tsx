@@ -28,16 +28,22 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
-  const [mode, setMode] = useState<"signin" | "forgot">("signin");
+  const [mode, setMode] = useState<"signin" | "forgot" | "link">("signin");
   const [err, setErr] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Already signed in? There is nothing to do here.
+  // Already signed in (including arriving back from an emailed sign-in link)?
+  // The link lands on this public page, so wait for the session to hydrate
+  // before moving on — never point the link straight at the portal.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate({ to: "/portal" });
     });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) navigate({ to: "/portal" });
+    });
+    return () => sub.subscription.unsubscribe();
   }, [navigate]);
 
   async function submit(e: React.FormEvent) {
@@ -52,6 +58,19 @@ function LoginPage() {
       // Deliberately not branching on the result. Telling the visitor whether
       // the address exists turns this box into a way to find out who rents
       // from us, so the answer is the same either way.
+      setLoading(false);
+      setSent(true);
+      return;
+    }
+
+    if (mode === "link") {
+      // shouldCreateUser:false — this box never makes an account. Accounts are
+      // still created only by the approval path, so a typed email can't claim
+      // an applicant's identity. Same answer whether or not the address exists.
+      await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/login` },
+      });
       setLoading(false);
       setSent(true);
       return;
@@ -73,7 +92,12 @@ function LoginPage() {
         <h1 className="mt-5 text-2xl font-semibold">Check Your Email</h1>
         <p className="mt-3 text-sm text-muted-foreground">
           If an account exists for <span className="font-medium text-foreground">{email}</span>,
-          we've sent a link to set a new password. It expires in an hour.
+          {mode === "link"
+            ? " we've sent a one-time sign-in link. It expires in an hour and works once."
+            : " we've sent a link to set a new password. It expires in an hour."}
+        </p>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Not there in a few minutes? Check Spam or Promotions, or call (888) 833-8280.
         </p>
         <button
           type="button"
@@ -92,12 +116,18 @@ function LoginPage() {
   return (
     <Shell>
       <h1 className="text-3xl font-semibold">
-        {mode === "signin" ? "Driver Sign In" : "Reset Your Password"}
+        {mode === "signin"
+          ? "Driver Sign In"
+          : mode === "link"
+            ? "Sign In Without A Password"
+            : "Reset Your Password"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         {mode === "signin"
           ? "Your documents, agreement, vehicle and payments."
-          : "We'll email you a link to set a new one."}
+          : mode === "link"
+            ? "We'll email a one-time sign-in link to the address on your account."
+            : "We'll email you a link to set a new one."}
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-3 text-left">
@@ -137,20 +167,34 @@ function LoginPage() {
           className="w-full min-h-11 rounded-lg bg-real-red text-white py-3 text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          {mode === "signin" ? "Sign In" : "Send Reset Link"}
+          {mode === "signin" ? "Sign In" : mode === "link" ? "Send Sign-In Link" : "Send Reset Link"}
         </button>
       </form>
 
-      <button
-        type="button"
-        onClick={() => {
-          setMode(mode === "signin" ? "forgot" : "signin");
-          setErr(null);
-        }}
-        className="mt-4 text-sm text-real-red hover:underline font-medium"
-      >
-        {mode === "signin" ? "Forgot Your Password?" : "Back to Sign In"}
-      </button>
+      <div className="mt-4 flex flex-col items-center gap-2">
+        {mode !== "link" && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode("link");
+              setErr(null);
+            }}
+            className="text-sm text-real-red hover:underline font-medium"
+          >
+            Email Me A Sign-In Link
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "signin" ? "forgot" : "signin");
+            setErr(null);
+          }}
+          className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          {mode === "signin" ? "Forgot Your Password?" : "Back To Password Sign In"}
+        </button>
+      </div>
 
       {/* No Create Account. A driver account is made when we approve the
           application — there is nothing here for somebody to sign up to. */}
