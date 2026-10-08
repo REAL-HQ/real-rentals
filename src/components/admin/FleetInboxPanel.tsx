@@ -45,54 +45,84 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   const analyze = useServerFn(analyzeInboxItem);
   const [batches, setBatches] = useState<any[] | null>(null);
   const [drag, setDrag] = useState(false);
+  const dragDepth = useRef(0);
   const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const [rows, setRows] = useState<{ key: string; name: string; status: "queued" | "uploading" | "done" | "duplicate" | "rejected" | "failed"; note?: string; file?: File }[]>([]);
+  const [lastBatch, setLastBatch] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => setBatches(await list()), [list]);
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function ingest(files: File[]) {
-    if (!files.length) return;
-    const tooBig = files.filter((f) => f.size > 20 * 1024 * 1024);
-    if (tooBig.length) toast.error(`${tooBig.length} file(s) over 20 MB were skipped.`);
-    const ok = files.filter((f) => f.size <= 20 * 1024 * 1024);
-    if (!ok.length) return;
+  const MAX = 20 * 1024 * 1024;
+  const isAccepted = (f: File) => {
+    const t = (f.type || "").toLowerCase();
+    if (t.startsWith("image/") || t === "application/pdf") return true;
+    return !t && /\.(pdf|png|jpe?g|gif|webp|heic|heif)$/i.test(f.name);
+  };
+  const patch = (key: string, p: Partial<(typeof rows)[number]>) => setRows((r) => r.map((x) => (x.key === key ? { ...x, ...p } : x)));
+
+  // Single pipeline for Upload Files, Take Photo, drag-and-drop and Retry.
+  async function ingest(files: File[], reuseBatch?: string) {
+    if (!files.length || busyRef.current) return; // ignore double-clicks / repeated drops while uploading
+    const entries = files.map((f) => ({ key: crypto.randomUUID(), name: f.name, file: f,
+      status: (!isAccepted(f) ? "rejected" : f.size > MAX ? "rejected" : "queued") as (typeof rows)[number]["status"],
+      note: !isAccepted(f) ? "Unsupported type — use PDF or an image" : f.size > MAX ? "Over 20 MB — compress or split it" : undefined }));
+    setRows(reuseBatch ? (r) => [...r.filter((x) => x.status !== "failed"), ...entries] : entries);
+    const ok = entries.filter((e) => e.status === "queued");
+    if (!ok.length) { toast.error("No supported files to upload."); return; }
+    busyRef.current = true;
     setBusy(`Uploading 0 of ${ok.length}…`);
     try {
-      const { id } = await create({ data: {} });
-      const itemIds: string[] = [];
-      let dups = 0;
+      const id = reuseBatch ?? (await create({ data: {} })).id;
+      setLastBatch(id);
+      let dups = 0, failed = 0;
       for (let i = 0; i < ok.length; i++) {
-        const f = ok[i];
+        const { file: f, key } = ok[i];
         setBusy(`Uploading ${i + 1} of ${ok.length}…`);
+        patch(key, { status: "uploading" });
         const ext = (f.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
         const path = `inbox/${id}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("vehicle-docs").upload(path, f, { contentType: f.type || undefined });
-        if (error) { toast.error(`Could not upload ${f.name}`); continue; }
+        if (error) { failed++; patch(key, { status: "failed", note: "Upload failed — check your connection and retry" }); continue; }
         try {
+          // Server hashes the stored bytes; identical content is never stored twice (safe on retry).
           const r = await register({ data: { batchId: id, path, fileName: f.name, mimeType: f.type || null, sizeBytes: f.size } });
-          if (r.duplicate) dups++; else itemIds.push(r.itemId);
-        } catch { toast.error(`Could not register ${f.name}`); }
+          if (r.duplicate) { dups++; patch(key, { status: "duplicate", note: "Already uploaded — not stored again" }); }
+          else patch(key, { status: "done", note: "Queued for analysis" });
+        } catch { failed++; patch(key, { status: "failed", note: "Could not register — retry" }); }
       }
       if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again.`);
-      onOpen(id);
+      if (failed) { toast.error(`${failed} file(s) failed. Use Retry Failed.`); void refresh(); }
+      else onOpen(id);
       // Analysis is queued server-side at registration; the worker processes it without this page open.
-      void itemIds;
     } catch {
-      toast.error("Could not start the import.");
+      toast.error("Could not start the import. Retry.");
+      setRows((r) => r.map((x) => (x.status === "queued" ? { ...x, status: "failed", note: "Not uploaded — retry" } : x)));
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   }
+  const failedFiles = rows.filter((r) => r.status === "failed" && r.file).map((r) => r.file!);
+
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
 
   return (
     <div className="space-y-6">
       <div
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); void ingest(Array.from(e.dataTransfer.files)); }}
-        className={`rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition-colors ${drag ? "border-[#D03020] bg-[rgba(208,48,32,0.04)]" : "border-[#E2E2E7] bg-white"}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload fleet files. Press Enter to choose files, or drop files here."
+        aria-busy={!!busy}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); if (!busy) fileRef.current?.click(); } }}
+        onDragEnter={(e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); dragDepth.current++; setDrag(true); }}
+        onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? "none" : "copy"; if (!drag) setDrag(true); }}
+        onDragLeave={(e) => { if (!hasFiles(e)) return; e.stopPropagation(); dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDrag(false); }}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dragDepth.current = 0; setDrag(false); const f = Array.from(e.dataTransfer.files ?? []); if (busyRef.current) { toast.message("Upload in progress — drop again when it finishes."); return; } void ingest(f); }}
+        className={`rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#D03020] ${drag ? "border-[#D03020] bg-[rgba(208,48,32,0.06)]" : "border-[#E2E2E7] bg-white"}`}
       >
         <Upload className="w-8 h-8 mx-auto text-[#9A9AA3]" />
         <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop Fleet Files Here</h2>
