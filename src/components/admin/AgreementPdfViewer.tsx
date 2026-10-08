@@ -14,15 +14,15 @@ export function AgreementPdfViewer({ base64 }: { base64: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const pdfjs: any = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+        const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
         const bin = atob(base64);
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         const doc = await pdfjs.getDocument({ data: bytes }).promise;
         if (cancelled || !host.current) return;
         host.current.innerHTML = "";
-        const width = Math.min(host.current.clientWidth || 800, 900);
+        const width = Math.min((host.current.clientWidth || 800) - 8, 900);
         for (let n = 1; n <= doc.numPages; n++) {
           const page = await doc.getPage(n);
           const base = page.getViewport({ scale: 1 });
@@ -33,7 +33,7 @@ export function AgreementPdfViewer({ base64 }: { base64: string }) {
           canvas.width = vp.width;
           canvas.height = vp.height;
           canvas.style.width = `${vp.width / dpr}px`;
-          canvas.style.height = `${vp.height / dpr}px`;
+          canvas.style.maxWidth = "100%"; canvas.style.height = "auto";
           canvas.className = "mx-auto block bg-card shadow-sm border border-border rounded-sm";
           canvas.setAttribute("aria-label", `Agreement Page ${n} of ${doc.numPages}`);
           const wrap = document.createElement("div");
