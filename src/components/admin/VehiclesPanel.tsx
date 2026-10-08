@@ -162,7 +162,7 @@ export function VehiclesPanel({
 
   return (
     <div>
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
+      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
         <div className="flex-1 flex flex-wrap gap-2">
           <input
             value={search}

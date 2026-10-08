@@ -736,7 +736,7 @@ export function DriversPanel({
           }
         />
       )}
-      <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
+      <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
         {isOwner && (
           <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>

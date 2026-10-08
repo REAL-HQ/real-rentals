@@ -261,3 +261,12 @@
   background-color: color-mix(in oklab, var(--primary) 6%, transparent);
   transition: background-color 120ms ease;
 }
+
+/* Back-office filter/toolbar rows lock under the sticky page header. */
+.admin-sticky-bar {
+  position: sticky;
+  top: var(--admin-sticky-h, 0px);
+  z-index: 15;
+  background: #fafafb;
+  padding-top: 4px;
+}

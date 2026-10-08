@@ -140,7 +140,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
       <FleetServiceCenter autoOpenAdd={autoOpenAdd} />
 
       {/* Status filter chips */}
-      <div className="flex flex-wrap gap-2 text-xs">
+      <div className="admin-sticky-bar flex flex-wrap gap-2 text-xs pb-2">
         {[
           {
             id: "all",
