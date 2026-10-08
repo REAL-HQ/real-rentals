@@ -1525,6 +1525,364 @@ export type Database = {
           },
         ]
       }
+      financial_settlements: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string
+          id: string
+          idempotency_key: string
+          obligation_id: string
+          payment_txn_id: string
+          reverse_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by: string
+          id?: string
+          idempotency_key: string
+          obligation_id: string
+          payment_txn_id: string
+          reverse_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          idempotency_key?: string
+          obligation_id?: string
+          payment_txn_id?: string
+          reverse_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_settlements_obligation_id_fkey"
+            columns: ["obligation_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_settlements_payment_txn_id_fkey"
+            columns: ["payment_txn_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transaction_events: {
+        Row: {
+          actor: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          event: string
+          from_status: string | null
+          id: number
+          reason: string | null
+          to_status: string | null
+          transaction_id: string
+        }
+        Insert: {
+          actor?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          event: string
+          from_status?: string | null
+          id?: never
+          reason?: string | null
+          to_status?: string | null
+          transaction_id: string
+        }
+        Update: {
+          actor?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          event?: string
+          from_status?: string | null
+          id?: never
+          reason?: string | null
+          to_status?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transaction_events_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transaction_evidence: {
+        Row: {
+          confidence: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          field: string | null
+          id: string
+          import_item_id: string | null
+          page: number | null
+          raw_text: string | null
+          service_transaction_id: string | null
+          transaction_id: string
+        }
+        Insert: {
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          field?: string | null
+          id?: string
+          import_item_id?: string | null
+          page?: number | null
+          raw_text?: string | null
+          service_transaction_id?: string | null
+          transaction_id: string
+        }
+        Update: {
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          field?: string | null
+          id?: string
+          import_item_id?: string | null
+          page?: number | null
+          raw_text?: string | null
+          service_transaction_id?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transaction_evidence_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_import_item_id_fkey"
+            columns: ["import_item_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_service_transaction_id_fkey"
+            columns: ["service_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transactions: {
+        Row: {
+          amount: number
+          basis: string
+          cash_date: string | null
+          category: string
+          close_reason: string | null
+          closed_at: string | null
+          closed_by: string | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          corrects_id: string | null
+          created_at: string
+          created_by: string
+          currency: string
+          direction: string
+          document_date: string | null
+          due_date: string | null
+          expense_id: string | null
+          id: string
+          idempotency_key: string
+          interest_amount: number | null
+          memo: string | null
+          payee_raw: string | null
+          payment_id: string | null
+          payment_method: string | null
+          posted_at: string | null
+          posted_by: string | null
+          recognition_date: string | null
+          reference_norm: string | null
+          reference_raw: string | null
+          rental_id: string | null
+          reverses_id: string | null
+          sensitivity: string
+          service_date: string | null
+          source_type: string
+          status: string
+          txn_type: string
+          updated_at: string
+          vehicle_hint_id: string | null
+          vendor_id: string | null
+        }
+        Insert: {
+          amount: number
+          basis: string
+          cash_date?: string | null
+          category: string
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          corrects_id?: string | null
+          created_at?: string
+          created_by: string
+          currency?: string
+          direction: string
+          document_date?: string | null
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          idempotency_key: string
+          interest_amount?: number | null
+          memo?: string | null
+          payee_raw?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          posted_at?: string | null
+          posted_by?: string | null
+          recognition_date?: string | null
+          reference_norm?: string | null
+          reference_raw?: string | null
+          rental_id?: string | null
+          reverses_id?: string | null
+          sensitivity?: string
+          service_date?: string | null
+          source_type: string
+          status?: string
+          txn_type: string
+          updated_at?: string
+          vehicle_hint_id?: string | null
+          vendor_id?: string | null
+        }
+        Update: {
+          amount?: number
+          basis?: string
+          cash_date?: string | null
+          category?: string
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          corrects_id?: string | null
+          created_at?: string
+          created_by?: string
+          currency?: string
+          direction?: string
+          document_date?: string | null
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          idempotency_key?: string
+          interest_amount?: number | null
+          memo?: string | null
+          payee_raw?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          posted_at?: string | null
+          posted_by?: string | null
+          recognition_date?: string | null
+          reference_norm?: string | null
+          reference_raw?: string | null
+          rental_id?: string | null
+          reverses_id?: string | null
+          sensitivity?: string
+          service_date?: string | null
+          source_type?: string
+          status?: string
+          txn_type?: string
+          updated_at?: string
+          vehicle_hint_id?: string | null
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_corrects_id_fkey"
+            columns: ["corrects_id"]
+            isOneToOne: true
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_reverses_id_fkey"
+            columns: ["reverses_id"]
+            isOneToOne: true
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vehicle_hint_id_fkey"
+            columns: ["vehicle_hint_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vehicle_hint_id_fkey"
+            columns: ["vehicle_hint_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_import_batches: {
         Row: {
           created_at: string
@@ -5278,6 +5636,63 @@ export type Database = {
         Returns: string
       }
       esign_void: { Args: { _id: string }; Returns: string }
+      fin__basis: { Args: { _type: string }; Returns: string }
+      fin__insert: {
+        Args: {
+          _corrects: string
+          _idem: string
+          _p: Json
+          _reverses: string
+          _status: string
+        }
+        Returns: string
+      }
+      fin__log: {
+        Args: {
+          _after: Json
+          _before: Json
+          _event: string
+          _from: string
+          _id: string
+          _reason: string
+          _to: string
+        }
+        Returns: undefined
+      }
+      fin__require: { Args: { _sensitivity: string }; Returns: undefined }
+      fin__reverse: {
+        Args: { _final: string; _id: string; _idem: string; _reason: string }
+        Returns: string
+      }
+      fin_add_evidence: { Args: { _e: Json; _id: string }; Returns: string }
+      fin_confirm: { Args: { _id: string }; Returns: string }
+      fin_correct: {
+        Args: { _id: string; _idem: string; _p: Json; _reason: string }
+        Returns: string
+      }
+      fin_discard: { Args: { _id: string; _reason: string }; Returns: string }
+      fin_post: {
+        Args: { _cash: string; _id: string; _recognition: string }
+        Returns: string
+      }
+      fin_propose: { Args: { _idem: string; _p: Json }; Returns: string }
+      fin_reverse: {
+        Args: { _id: string; _idem: string; _reason: string }
+        Returns: string
+      }
+      fin_settle: {
+        Args: {
+          _amount: number
+          _idem: string
+          _obligation: string
+          _payment: string
+        }
+        Returns: string
+      }
+      fin_unsettle: {
+        Args: { _reason: string; _settlement: string }
+        Returns: string
+      }
       fleet_inbox_acquire_lease: {
         Args: { _seconds: number }
         Returns: boolean
