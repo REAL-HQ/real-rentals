@@ -1,3 +1,4 @@
+import { useUnsavedGuard } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -754,7 +755,9 @@ function SectionDrawer({
   const [saving, setSaving] = useState(false);
   const [fieldError, setFieldError] = useState<{ field?: string; message: string } | null>(null);
 
-  const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const [touched, setTouched] = useState(false);
+  useUnsavedGuard("vehicle-section-drawer", touched);
+  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);
@@ -1153,7 +1156,9 @@ function FinanceDrawer({
     };
   }, [load, vehicleId, onClose]);
 
-  const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const [touched, setTouched] = useState(false);
+  useUnsavedGuard("vehicle-finance-drawer", touched);
+  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);
