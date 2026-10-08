@@ -287,15 +287,94 @@ async function buildMergeData(
   return { data, app, vehicle, blockers };
 }
 
-async function activeTemplateBody(admin: any): Promise<{ id: string | null; body: string }> {
-  const { data } = await admin
+/** Title every rental agreement row carries (agreements.title column default). */
+const AGREEMENT_TITLE = "Vehicle Rental Agreement";
+
+export type TemplateMeta = {
+  id: string | null;
+  name: string;
+  version: number;
+  /** draft | approved | retired — "draft" for the in-code baseline. */
+  approvalStatus: string;
+  label: string;
+  effectiveDate: string | null;
+  approvedAt: string | null;
+  /** True once the versioning migration exists (approval_status column present). */
+  versioningActive: boolean;
+};
+
+/**
+ * The template a send would use. Reads `*` so it works both before and after
+ * the versioning migration. Before it, there is no saved row and the in-code
+ * wording is the Draft v1 baseline; after it, the newest APPROVED version is
+ * used, falling back to the newest draft (which send then refuses).
+ */
+async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
+  const { data: rows } = await admin
     .from("agreement_templates")
-    .select("id,body")
-    .eq("is_active", true)
+    .select("*")
     .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return { id: data?.id ?? null, body: data?.body ?? DEFAULT_AGREEMENT_BODY };
+    .limit(20);
+  const list = (rows ?? []) as any[];
+  const versioningActive = list.some((r) => "approval_status" in r);
+  const pick = versioningActive
+    ? list.find((r) => r.approval_status === "approved") ?? list.find((r) => r.approval_status === "draft") ?? null
+    : list.find((r) => r.is_active) ?? null;
+  if (!pick) {
+    return {
+      body: DEFAULT_AGREEMENT_BODY,
+      meta: {
+        id: null, name: "Rental Agreement", version: 1, approvalStatus: "draft",
+        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive,
+      },
+    };
+  }
+  const status = versioningActive ? String(pick.approval_status) : "draft";
+  return {
+    body: String(pick.body),
+    meta: {
+      id: pick.id, name: pick.name ?? "Rental Agreement", version: Number(pick.version ?? 1),
+      approvalStatus: status,
+      label: status === "approved" ? `Approved v${pick.version}` : `Draft v${pick.version} — Legal Review Required`,
+      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive,
+    },
+  };
+}
+
+/** Back-compat for callers that only need id + body. */
+async function activeTemplateBody(admin: any): Promise<{ id: string | null; body: string }> {
+  const t = await activeTemplate(admin);
+  return { id: t.meta.id, body: t.body };
+}
+
+/**
+ * Server-validated snapshot of what staff reviewed: template identity and the
+ * exact rendered text + every merge value. Any change to driver, vehicle,
+ * dates, rate, deposit, template or wording changes it, and Send refuses.
+ */
+async function agreementFingerprint(meta: TemplateMeta, body: string, merge: MergeData): Promise<string> {
+  const { sha256Hex } = await import("@/lib/esign-pdf.server");
+  const sorted = Object.fromEntries(Object.keys(merge).sort().map((k) => [k, merge[k]]));
+  return sha256Hex(JSON.stringify({ t: AGREEMENT_TITLE, tid: meta.id, tv: meta.version, ts: meta.approvalStatus, body, merge: sorted }));
+}
+
+/** Once versioning is active, only an Owner-approved template can be sent. */
+function templateSendRefusal(meta: TemplateMeta): string | null {
+  if (meta.versioningActive && meta.approvalStatus !== "approved")
+    return `The agreement template (${meta.label}) has not been approved by the Owner, so it cannot be sent.`;
+  return null;
+}
+
+/**
+ * The ONE generation step for preview and send: readiness, template,
+ * rendered text and fingerprint.
+ */
+async function prepareAgreement(admin: any, applicationId: string) {
+  const built = await buildMergeData(admin, applicationId);
+  const tpl = await activeTemplate(admin);
+  const body = renderTemplate(tpl.body, built.data);
+  const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
+  return { ...built, tpl, body, fingerprint };
 }
 
 // ---------------------------------------------------------------- admin reads
