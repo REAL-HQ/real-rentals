@@ -30,7 +30,7 @@ import {
   failPhotoEnhance,
   reviewPhotoEnhance,
 } from "@/lib/photo-enhance.functions";
-import { localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.client";
+import { localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
 
 // The gallery.
