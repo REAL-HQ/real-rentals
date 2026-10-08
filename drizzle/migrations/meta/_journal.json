@@ -71,6 +71,20 @@
       "when": 1791462346435,
       "tag": "0009_fin_core_c1_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791463536348,
+      "tag": "0010_fin_c1_deposit_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791463558283,
+      "tag": "0011_fin_c1_deposit_reverse_guard",
+      "breakpoints": true
     }
   ]
 }
