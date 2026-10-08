@@ -209,7 +209,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
         {preview ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#EDEDF0] bg-white px-4 py-3">
             <p className="text-[11.5px] text-[#55555E] min-w-0">
-              Send emails exactly this document to the driver. If any detail changes first, sending is refused until you regenerate.
+              Send Agreement emails exactly this document to the driver. If any detail changes first, sending is refused until you regenerate.
             </p>
             <button
               onClick={send}
@@ -242,7 +242,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
           </div>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">
-            No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle.
+            No agreement sent yet. Preview one to pre-fill it with this driver's details and assigned vehicle.
           </p>
         ) : (
           <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-lg overflow-hidden">
