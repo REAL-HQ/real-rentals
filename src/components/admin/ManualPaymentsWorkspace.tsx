@@ -6,7 +6,7 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import type { Payment, Application } from "./types";
 import {
   MANUAL_PAYMENTS_LIVE, PENDING_HOURS, METHOD_LABEL, STATUS_LABEL, addHours, reserved, sweepExpired,
-  validateRecord, validateVerify, validateReason, validateExtend, canRecord, canDecide,
+  validateRecord, validateVerify, validateReconcile, timeLeft, validateReason, validateExtend, canRecord, canDecide,
   type Collection, type Method, type Role, type Charge,
 } from "@/lib/manual-payments";
 
@@ -15,7 +15,7 @@ import {
 // rentals or the ledger. Real charges are read for display only.
 
 const ACTORS: Record<Role, string> = { owner: "Owner", manager: "Manager A", coordinator: "Coordinator", driver: "Driver" };
-type Dialog = null | { kind: "record"; chargeId: string } | { kind: "verify" | "reject" | "reverse" | "extend"; id: string };
+type Dialog = null | { kind: "record"; chargeId: string } | { kind: "verify" | "reject" | "reverse" | "extend" | "reconcile"; id: string };
 
 export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
   payments: Payment[]; driverMap: Record<string, Application>; onClose: () => void;
@@ -40,7 +40,8 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
       return { id: p.id, amount: Number(p.amount || 0), balance: Math.max(0, open - (verified[p.id] ?? 0)), status: String(p.status), stripeInProgress: String(p.status) === "pending" };
     })], [payments, verified]);
   const chargeMap = Object.fromEntries(charges.map((c) => [c.id, c]));
-  const label = (id: string) => { if (id === "sample") return "Sample Charge (Practice) · rent · $350"; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return `${d?.full_name ?? "Driver"} · ${String((p as any)?.type ?? "charge").replace(/_/g, " ")} · due ${fmtDate((p as any)?.due_date)}`; };
+  const info = (id: string) => { if (id === "sample") return { driver: "Sample Driver (Practice)", purpose: "Rent" }; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return { driver: d?.full_name ?? "Driver", purpose: String((p as any)?.type ?? "charge").replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) }; };
+  const label = (id: string) => { if (id === "sample") return "Sample Charge (Practice) · Rent · $350"; const p = payments.find((x) => x.id === id); const d = p && driverMap[(p as any).driver_id]; return `${d?.full_name ?? "Driver"} · ${String((p as any)?.type ?? "charge").replace(/_/g, " ")} · due ${fmtDate((p as any)?.due_date)}`; };
 
   const pending = colls.filter((c) => c.status === "pending");
   const switchRole = (r: Role) => { setRole(r); setActor(ACTORS[r]); };
@@ -62,8 +63,9 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
             <button key={r} onClick={() => switchRole(r)} className={`rounded-md border px-3 py-1 ${role === r ? "border-foreground bg-foreground text-background" : "border-border bg-card"}`}>{r === "manager" ? "Manager" : ACTORS[r]}</button>
           ))}
           {role === "manager" && (
-            <button onClick={() => setActor(actor === "Manager A" ? "Manager B" : "Manager A")} className="rounded-md border border-border px-3 py-1">Switch To {actor === "Manager A" ? "Manager B" : "Manager A"}</button>
+            <button onClick={() => setActor(actor === "Manager A" ? "Manager B" : "Manager A")} className="rounded-md border border-border px-3 py-1">{actor === "Manager A" ? "Manager B" : "Manager A"}</button>
           )}
+          <span className="text-xs text-muted-foreground">Simulation only — your real access is unchanged.</span>
           <span className="ml-auto text-muted-foreground">Acting: <b className="text-foreground">{actor}</b></span>
         </div>
         <div className="mb-3 flex gap-2 text-sm">
@@ -83,19 +85,24 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
           </Table>
         )}
         {(tab === "pending" || tab === "history") && (
-          <Table head={["Charge", "Method", "Amount", "Received", "Status", "Deadline", "Recorded By", ""]} empty={tab === "pending" ? "Nothing waiting for verification." : "No payments recorded yet."}>
+          <Table head={["Driver", "Purpose", "Amount", "Method", "Received", "Reference", "Evidence", "Recorded By", "Deadline", "Time Left", "Status", ""]} empty={tab === "pending" ? "Nothing waiting for verification." : "No payments recorded yet."}>
             {(tab === "pending" ? pending : colls).map((c) => (
               <tr key={c.id} className="border-t border-border align-top">
-                <td className="p-2">{label(c.chargeId)}<History c={c} /></td>
-                <td className="p-2">{METHOD_LABEL[c.method]}{c.reference ? ` · ${c.reference}` : ""}{c.hasReceipt ? " · Receipt" : ""}</td>
-                <td className="p-2">${c.amount.toFixed(2)}</td><td className="p-2">{fmtDate(c.receivedOn)}</td>
-                <td className="p-2">{STATUS_LABEL[c.status]}</td>
-                <td className="p-2">{c.status === "pending" ? fmtDateTime(c.expiresAt) : "—"}</td>
+                <td className="p-2">{info(c.chargeId).driver}<History c={c} /></td>
+                <td className="p-2">{info(c.chargeId).purpose}</td>
+                <td className="p-2">${c.amount.toFixed(2)}</td><td className="p-2">{METHOD_LABEL[c.method]}</td>
+                <td className="p-2">{fmtDate(c.receivedOn)}</td><td className="p-2">{c.reference ?? "—"}</td>
+                <td className="p-2">{c.hasReceipt ? "Receipt" : c.method === "cash" ? `Cash Note · ${c.cashRecipient}` : "Reference Only"}</td>
                 <td className="p-2">{c.recordedBy}</td>
+                <td className="p-2">{c.status === "pending" ? fmtDateTime(c.expiresAt) : "—"}</td>
+                <td className="p-2">{c.status === "pending" ? timeLeft(c.expiresAt, now) : "—"}</td>
+                <td className="p-2"><span className={c.status === "expired" ? "font-medium text-amber-700" : ""}>{STATUS_LABEL[c.status]}</span></td>
                 <td className="p-2 text-right space-x-1 whitespace-nowrap">
                   {c.status === "pending" && canDecide(role) && <><Btn onClick={() => setDlg({ kind: "verify", id: c.id })}>Verify</Btn><Btn onClick={() => setDlg({ kind: "reject", id: c.id })}>Reject</Btn></>}
                   {c.status === "verified" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reverse", id: c.id })}>Reverse</Btn>}
-                  {(c.status === "pending" || c.status === "expired") && role === "owner" && <Btn onClick={() => setDlg({ kind: "extend", id: c.id })}>Extend</Btn>}
+                  {c.status === "pending" && role === "owner" && <Btn onClick={() => setDlg({ kind: "extend", id: c.id })}>Extend</Btn>}
+                  {c.status === "pending" && !MANUAL_PAYMENTS_LIVE && <Btn onClick={() => setColls((cs) => sweepExpired(cs.map((x) => x.id === c.id ? { ...x, expiresAt: new Date(Date.now() - 1000).toISOString() } : x), new Date()))}>Fast Expire</Btn>}
+                  {c.status === "expired" && canDecide(role) && <Btn onClick={() => setDlg({ kind: "reconcile", id: c.id })}>Reconcile</Btn>}
                 </td>
               </tr>
             ))}
@@ -121,11 +128,13 @@ export function ManualPaymentsWorkspace({ payments, driverMap, onClose }: {
           if (dlg.kind === "reject") err = validateReason(role, c, "pending", f.text);
           if (dlg.kind === "reverse") err = validateReason(role, c, "verified", f.text);
           if (dlg.kind === "extend") err = validateExtend(role, c, f.text, t);
+          if (dlg.kind === "reconcile") err = validateReconcile(role, c, ch, colls, f.text, t);
           if (err) return toast.error(err);
           if (dlg.kind === "verify") { setVerified((v) => ({ ...v, [c.chargeId]: (v[c.chargeId] ?? 0) + c.amount })); patch(c.id, (x) => ({ ...x, status: "verified", decidedBy: actor, selfException: f.self || undefined, audit: log(x, f.self ? "Verified — Owner self-verification exception" : "Verified", f.self || f.text) })); }
           if (dlg.kind === "reject") patch(c.id, (x) => ({ ...x, status: "rejected", reason: f.text, audit: log(x, "Rejected", f.text) }));
           if (dlg.kind === "reverse") { setVerified((v) => ({ ...v, [c.chargeId]: (v[c.chargeId] ?? 0) - c.amount })); patch(c.id, (x) => ({ ...x, status: "reversed", reason: f.text, audit: log(x, "Reversed", f.text) })); }
           if (dlg.kind === "extend") patch(c.id, (x) => ({ ...x, status: "pending", expiresAt: addHours(t, PENDING_HOURS), audit: log(x, `Deadline extended ${PENDING_HOURS} hours`, f.text) }));
+          if (dlg.kind === "reconcile") patch(c.id, (x) => ({ ...x, status: "pending", expiresAt: addHours(t, PENDING_HOURS), audit: log(x, "Reconciled — back to verification", f.text) }));
           toast.success("Done (practice only)"); setDlg(null);
         }} />); })()}
     </ModalShell>
@@ -187,7 +196,7 @@ function RecordDialog({ charge, title, onClose, onSubmit }: { charge: Charge; ti
   );
 }
 
-const DTITLE = { verify: "Verify Payment", reject: "Reject Payment", reverse: "Reverse Payment", extend: "Extend Deadline" } as const;
+const DTITLE = { verify: "Verify Payment", reject: "Reject Payment", reverse: "Reverse Payment", extend: "Extend Deadline", reconcile: "Reconcile Payment" } as const;
 function DecisionDialog({ kind, c, isSelf, onClose, onSubmit }: { kind: keyof typeof DTITLE; c: Collection; isSelf: boolean; onClose: () => void; onSubmit: (f: { confirmed: boolean; text: string; self: string }) => void }) {
   const [confirmed, setConfirmed] = useState(false);
   const [text, setText] = useState("");

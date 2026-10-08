@@ -15,7 +15,7 @@ export const METHOD_LABEL: Record<Method, string> = {
   bank_transfer: "Bank Transfer", check: "Check", money_order: "Money Order", other: "Other",
 };
 export const STATUS_LABEL: Record<CollStatus, string> = {
-  pending: "Pending Verification", verified: "Verified", rejected: "Rejected", reversed: "Reversed", expired: "Expired",
+  pending: "Pending Verification", verified: "Verified", rejected: "Rejected", reversed: "Reversed", expired: "Expired — Review Needed",
 };
 
 export type Charge = { id: string; amount: number; balance: number; status: string; stripeInProgress?: boolean };
@@ -52,8 +52,11 @@ export function validateRecord(i: Input, charge: Charge, all: Collection[], role
   if (i.method === "other" && (!i.notes?.trim() || (!i.hasReceipt && !ref))) return "Other needs supporting evidence and an explanation";
   if (CLOSED.has(charge.status)) return `This charge is already ${charge.status}`;
   if (charge.stripeInProgress) return "A card payment is in progress for this charge";
-  if (ref && all.some((c) => normRef(c.reference) === ref && c.method === i.method && c.status !== "rejected" && c.status !== "expired"))
+  // Expired entries still count: expiry is not proof money never arrived — reconcile the original instead.
+  if (ref && all.some((c) => normRef(c.reference) === ref && c.method === i.method && c.status !== "rejected"))
     return "This reference was already recorded";
+  if (i.method === "cash" && all.some((c) => c.chargeId === charge.id && c.method === "cash" && c.status === "expired" && c.amount === i.amount && c.receivedOn === i.receivedOn))
+    return "A matching expired cash entry exists — reconcile it instead";
   const res = reserved(charge.id, all, now);
   if (i.amount > charge.balance - res + 0.0001) return `Amount is more than the remaining balance ($${charge.balance} open, $${res} already pending)`;
   return null;
@@ -88,6 +91,22 @@ export function validateExtend(role: Role, c: Collection, reason: string, now: D
   if (c.status !== "pending" && c.status !== "expired") return "Only pending or expired payments can be extended";
   void now;
   return null;
+}
+
+/** Reconcile an expired entry: Manager/Owner, reason required, re-reserves only if still available. */
+export function validateReconcile(role: Role, c: Collection, charge: Charge, all: Collection[], reason: string, now: Date): string | null {
+  if (!canDecide(role)) return "Only a Manager or Owner can reconcile";
+  if (!reason.trim()) return "A reason is required";
+  if (c.status !== "expired") return "Only expired payments can be reconciled";
+  if (c.amount > charge.balance - reserved(charge.id, all, now, c.id) + 0.0001) return `Amount is more than the remaining balance ($${charge.balance})`;
+  return null;
+}
+
+export function timeLeft(expiresAt: string, now: Date) {
+  const ms = new Date(expiresAt).getTime() - now.getTime();
+  if (ms <= 0) return "Expired";
+  const h = Math.floor(ms / 3600_000), m = Math.floor((ms % 3600_000) / 60_000);
+  return h ? `${h}h ${m}m` : `${m}m`;
 }
 
 /** Expiry sweep: pending past deadline → expired. Releases reservation; no money moves. */
