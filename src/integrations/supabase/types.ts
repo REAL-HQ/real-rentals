@@ -1836,6 +1836,102 @@ export type Database = {
           },
         ]
       }
+      fleet_inbox_jobs: {
+        Row: {
+          attempts: number
+          batch_id: string
+          created_at: string
+          finished_at: string | null
+          id: string
+          item_id: string
+          kind: string
+          last_error: string | null
+          lease_expires_at: string | null
+          max_attempts: number
+          next_run_at: string
+          source: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          batch_id: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          item_id: string
+          kind?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          source?: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          batch_id?: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          item_id?: string
+          kind?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          source?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_inbox_jobs_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_inbox_jobs_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_inbox_worker_state: {
+        Row: {
+          id: number
+          last_run_at: string | null
+          last_run_summary: Json | null
+          lease_until: string | null
+          paused_at: string | null
+          paused_reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          last_run_at?: string | null
+          last_run_summary?: Json | null
+          lease_until?: string | null
+          paused_at?: string | null
+          paused_reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          last_run_at?: string | null
+          last_run_summary?: Json | null
+          lease_until?: string | null
+          paused_at?: string | null
+          paused_reason?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       fleet_owner_submissions: {
         Row: {
           condition: string | null
@@ -5065,6 +5161,41 @@ export type Database = {
         Returns: string
       }
       esign_void: { Args: { _id: string }; Returns: string }
+      fleet_inbox_acquire_lease: {
+        Args: { _seconds: number }
+        Returns: boolean
+      }
+      fleet_inbox_claim_jobs: {
+        Args: { _lease_seconds: number; _limit: number }
+        Returns: {
+          attempts: number
+          batch_id: string
+          created_at: string
+          finished_at: string | null
+          id: string
+          item_id: string
+          kind: string
+          last_error: string | null
+          lease_expires_at: string | null
+          max_attempts: number
+          next_run_at: string
+          source: string
+          state: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "fleet_inbox_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      fleet_inbox_disarm_if_idle: { Args: never; Returns: boolean }
+      fleet_inbox_release_lease: {
+        Args: { _summary: Json }
+        Returns: undefined
+      }
+      fleet_inbox_wake: { Args: never; Returns: undefined }
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       rental_at_time: {
