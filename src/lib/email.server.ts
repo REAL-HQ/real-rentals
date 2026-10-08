@@ -25,7 +25,13 @@ type SendArgs = {
   idempotencyKey?: string;
 };
 
-export type SendResult = { uncertain?: boolean; ok: boolean; error?: string; id?: string; deliveryId?: string };
+export type SendResult = {
+  uncertain?: boolean;
+  ok: boolean;
+  error?: string;
+  id?: string;
+  deliveryId?: string;
+};
 
 /**
  * Record one send attempt in email_deliveries. Never throws, never delays the
@@ -84,7 +90,15 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey }: SendArgs): Promise<SendResult> {
+export async function sendEmail({
+  to,
+  subject,
+  html: rawHtml,
+  from,
+  replyTo,
+  track,
+  idempotencyKey,
+}: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -125,13 +139,21 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     if (!res.ok) {
       const body = await res.text();
       console.error(`[email] Resend send failed [${res.status}]`, body, { subject });
-      return done({ ok: false, uncertain: res.status >= 500 || res.status === 409, error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}` });
+      return done({
+        ok: false,
+        uncertain: res.status >= 500 || res.status === 409,
+        error: `Resend rejected the send (${res.status}): ${body.slice(0, 300)}`,
+      });
     }
     const json = (await res.json().catch(() => ({}))) as { id?: string };
     return done({ ok: true, id: json.id });
   } catch (err) {
     console.error("[email] Resend send threw", err, { subject });
-    return done({ ok: false, uncertain: true, error: err instanceof Error ? err.message : "Could not reach Resend." });
+    return done({
+      ok: false,
+      uncertain: true,
+      error: err instanceof Error ? err.message : "Could not reach Resend.",
+    });
   }
 }
 
@@ -341,7 +363,8 @@ export async function sendApplicationResumeEmail(args: {
 }): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   // Short-lived, single-use recovery link (see resume-tokens.server.ts).
-  const { resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  const { resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } =
+    await import("@/lib/resume-tokens.server");
   const resumeUrl = buildUrl(args.token);
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application, ${escapeHtml(name)}</h1>

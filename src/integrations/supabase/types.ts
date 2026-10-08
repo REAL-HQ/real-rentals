@@ -268,62 +268,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "applicant_upload_grants_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "applications"
-            referencedColumns: ["id"]
+            columns: ["application_id"];
+            isOneToOne: false;
+            referencedRelation: "applications";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       application_identity_reviews: {
         Row: {
-          application_id: string
-          created_at: string
-          id: string
-          kind: string
-          resolution: string | null
-          resolution_note: string | null
-          resolved_at: string | null
-          resolved_by: string | null
-          source: string | null
-          status: string
-          submitted_email: string | null
-          submitted_full_name: string | null
-          submitted_phone: string | null
-        }
+          application_id: string;
+          created_at: string;
+          id: string;
+          kind: string;
+          resolution: string | null;
+          resolution_note: string | null;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          source: string | null;
+          status: string;
+          submitted_email: string | null;
+          submitted_full_name: string | null;
+          submitted_phone: string | null;
+        };
         Insert: {
-          application_id: string
-          created_at?: string
-          id?: string
-          kind: string
-          resolution?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          source?: string | null
-          status?: string
-          submitted_email?: string | null
-          submitted_full_name?: string | null
-          submitted_phone?: string | null
-        }
+          application_id: string;
+          created_at?: string;
+          id?: string;
+          kind: string;
+          resolution?: string | null;
+          resolution_note?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          source?: string | null;
+          status?: string;
+          submitted_email?: string | null;
+          submitted_full_name?: string | null;
+          submitted_phone?: string | null;
+        };
         Update: {
-          application_id?: string
-          created_at?: string
-          id?: string
-          kind?: string
-          resolution?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          source?: string | null
-          status?: string
-          submitted_email?: string | null
-          submitted_full_name?: string | null
-          submitted_phone?: string | null
-        }
+          application_id?: string;
+          created_at?: string;
+          id?: string;
+          kind?: string;
+          resolution?: string | null;
+          resolution_note?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          source?: string | null;
+          status?: string;
+          submitted_email?: string | null;
+          submitted_full_name?: string | null;
+          submitted_phone?: string | null;
+        };
         Relationships: [
           {
-            foreignKeyName: "application_identity_reviews_application_id_fkey"
+            foreignKeyName: "application_identity_reviews_application_id_fkey";
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
@@ -433,6 +433,7 @@ export type Database = {
           platform_active: boolean | null
           platform_status: string | null
           platforms: string[] | null
+          purged_at: string | null;
           primary_application_id: string | null
           profile_screenshot_url: string | null
           rating: number | null
@@ -548,6 +549,7 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          purged_at?: string | null;
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
@@ -663,6 +665,7 @@ export type Database = {
           platform_active?: boolean | null
           platform_status?: string | null
           platforms?: string[] | null
+          purged_at?: string | null;
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
           rating?: number | null
@@ -5276,17 +5279,17 @@ export type Database = {
     }
     Functions: {
       reserve_application_recovery: {
-        Args: { _application_id: string; _token_hash: string }
-        Returns: Json
-      }
+        Args: { _application_id: string; _token_hash: string };
+        Returns: Json;
+      };
       finish_application_recovery: {
-        Args: { _attempt_id: string; _status: string; _provider_id?: string | null }
-        Returns: undefined
-      }
+        Args: { _attempt_id: string; _status: string; _provider_id?: string | null };
+        Returns: undefined;
+      };
       resolve_application_identity_review: {
-        Args: { _review_id: string; _resolution: string; _note: string }
-        Returns: Json
-      }
+        Args: { _review_id: string; _resolution: string; _note: string };
+        Returns: Json;
+      };
 
       activate_rental_tx: {
         Args: {

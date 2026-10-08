@@ -178,7 +178,8 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
   if (row.revoked_at) throw new Error(generic);
   const expires = new Date(row.expires_at as string).getTime();
   const created = new Date(row.created_at as string).getTime();
-  if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now()) throw new Error(generic);
+  if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now())
+    throw new Error(generic);
   // Recovery credentials must be consumed by exchangeResumeToken before any
   // applicant read/write/upload handler can use them as a session credential.
   if (expires - created <= RECOVERY_MAX_MS) throw new Error(generic);
@@ -191,7 +192,6 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
 
   return row.application_id as string;
 }
-
 
 /**
  * Open a link. A recovery link is consumed atomically (only the first open
@@ -210,7 +210,8 @@ export async function exchangeResumeToken(admin: AdminClient, raw: string): Prom
   if (!row || row.revoked_at) throw new Error(generic);
   const exp = new Date(row.expires_at as string).getTime();
   const created = new Date(row.created_at as string).getTime();
-  if (!Number.isFinite(exp) || !Number.isFinite(created) || exp <= Date.now()) throw new Error(generic);
+  if (!Number.isFinite(exp) || !Number.isFinite(created) || exp <= Date.now())
+    throw new Error(generic);
   const isRecovery = exp - created <= RECOVERY_MAX_MS;
   if (!isRecovery) return raw;
   const now = new Date().toISOString();
