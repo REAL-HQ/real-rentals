@@ -99,7 +99,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop Fleet Files Here</h2>
         <p className="mt-1 text-sm text-[#55555E] max-w-lg mx-auto">
           Titles, registrations, insurance, receipts, photos — one file or a whole stack.{" "}
-          <span className="whitespace-nowrap">REAL RENTALS</span> sorts each document, matches the vehicles and prepares
+          <span className="sm:whitespace-nowrap">REAL RENTALS</span> sorts each document, matches the vehicles and prepares
           updates for your review. Nothing changes until you approve.
         </p>
         <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
