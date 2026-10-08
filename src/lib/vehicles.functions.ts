@@ -877,8 +877,22 @@ async function applySection(
     const allowed: readonly string[] = VEHICLE_SECTIONS[data.section as VehicleSection];
 
     const patch: Record<string, unknown> = {};
+    // Title identifiers are Owner-only (public.vehicle_titles). Only the Owner
+    // view may write them, and they go straight to that table, never vehicles.
+    const canTitle = (await import("@/lib/experience.server")).ownerView(actor);
+    const TITLE_KEYS = ["title_number", "title_status"];
+    if (canTitle && TITLE_KEYS.some((k) => k in data.values)) {
+      const clean = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
+      const row: Record<string, unknown> = { vehicle_id: data.id, updated_by: actor.userId, updated_at: new Date().toISOString() };
+      for (const k of TITLE_KEYS) if (k in data.values) row[k] = clean(data.values[k]);
+      const { error: tErr } = await supabaseAdmin.from("vehicle_titles").upsert(row, { onConflict: "vehicle_id" });
+      if (tErr) throw new Error("Could not save title details");
+      const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
+      await supabaseAdmin.from("vehicles").update({ title_on_file: !!(t?.title_number || t?.title_status) }).eq("id", data.id);
+    }
     for (const key of allowed) {
       if (!(key in data.values)) continue;
+      if (TITLE_KEYS.includes(key)) continue;
       let v = data.values[key];
 
       if (typeof v === "string") {
