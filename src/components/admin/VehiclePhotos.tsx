@@ -420,6 +420,7 @@ function PhotoTile({
   onCaption,
   onDelete,
   onEnhance,
+  onView,
   progress,
   failure,
   onCompare,
