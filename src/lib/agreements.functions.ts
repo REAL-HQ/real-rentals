@@ -309,7 +309,7 @@ export type TemplateMeta = {
  * wording is the Draft v1 baseline; after it, the newest APPROVED version is
  * used, falling back to the newest draft (which send then refuses).
  */
-async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
+export async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
   const { data: rows } = await admin
     .from("agreement_templates")
     .select("*")
