@@ -128,6 +128,7 @@ export function ScreeningPipeline({
   screening,
   docCount,
   hasRecording,
+  hasActiveRental = false,
   onAdvance,
 }: {
   screening: DriverScreening | null;
@@ -222,8 +223,9 @@ export function ScreeningPipeline({
                 key={p.key}
                 type="button"
                 onClick={() => attempt(p.key)}
-                title={p.label}
-                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors ${dotCls}`}
+                disabled={p.key === "active_renter" && !hasActiveRental && current !== "active_renter"}
+                title={p.key === "active_renter" && !hasActiveRental && current !== "active_renter" ? "Active Renter: Available Once A Rental Is Running" : p.label}
+                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${dotCls}`}
               >
                 {done ? (
                   <CheckCircle2 className="h-3 w-3" />
