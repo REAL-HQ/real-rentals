@@ -161,13 +161,14 @@ export function VehicleEditorDrawer({
   // The browser's own guard, for a refresh or a closed tab — the confirm()
   // above cannot run then.
   useEffect(() => {
+    setUnsaved("vehicle-editor", hasChanges);
     if (!hasChanges) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    return () => { setUnsaved("vehicle-editor", false); window.removeEventListener("beforeunload", warn); };
   }, [hasChanges]);
 
   /** Record a change against its owning section, and drop it again if it returns to the stored value. */

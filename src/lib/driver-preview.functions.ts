@@ -43,7 +43,7 @@ export const searchPreviewDrivers = createServerFn({ method: "POST" })
 /** Records start/end of a preview session and returns the driver's display name. */
 export const recordDriverPreview = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ driverId: z.string().uuid(), event: z.enum(["start", "end"]) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ driverId: z.string().uuid(), event: z.enum(["start", "end"]), sessionKey: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context }): Promise<{ name: string }> => {
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);
@@ -52,13 +52,21 @@ export const recordDriverPreview = createServerFn({ method: "POST" })
     if (!(await isDriverAccount(supabaseAdmin, data.driverId))) throw new Error("Driver not found");
     const { data: app } = await supabaseAdmin.from("applications").select("full_name,email").eq("user_id", data.driverId).order("created_at", { ascending: false }).limit(1).maybeSingle();
     const name = app?.full_name || app?.email || "Driver";
+    const action = data.event === "start" ? "driver_preview.started" : "driver_preview.ended";
+    if (data.sessionKey) {
+      // Idempotent: one start/end event per preview session key.
+      const { data: existing } = await supabaseAdmin.from("audit_log").select("id")
+        .eq("action", action).eq("entity_id", data.driverId)
+        .contains("metadata", { session_key: data.sessionKey }).limit(1);
+      if (existing && existing.length) return { name };
+    }
     const { logAudit } = await import("@/lib/audit");
     await logAudit(actor, {
       action: data.event === "start" ? "driver_preview.started" : "driver_preview.ended",
       summary: data.event === "start" ? "Started read-only driver preview" : "Ended read-only driver preview",
       entityType: "driver",
       entityId: data.driverId,
-      metadata: { context: "experience_selector_driver_preview", at: new Date().toISOString() },
+      metadata: { context: "experience_selector_driver_preview", session_key: data.sessionKey ?? null, at: new Date().toISOString() },
     });
     return { name };
   });

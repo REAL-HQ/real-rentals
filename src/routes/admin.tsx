@@ -836,29 +836,18 @@ function SignIn() {
   );
 }
 
-function NoAccess({ userId, onSignOut }: { userId: string; onSignOut: () => void }) {
+function NoAccess({ onSignOut }: { userId?: string; onSignOut: () => void }) {
   return (
     <AdminShell>
       <div className="container-real py-32 text-center max-w-lg">
-        <h1 className="text-2xl font-semibold">No Admin Access</h1>
+        <h1 className="text-2xl font-semibold">Access Restricted</h1>
         <p className="mt-3 text-muted-foreground text-sm">
-          Your account ID:
-          <br />
-          <code className="text-xs">{userId}</code>
+          This account doesn't have permission to access the management area.
         </p>
-        <p className="mt-3 text-muted-foreground text-sm">
-          Ask an existing admin to grant access by running:
-          <br />
-          <code className="text-xs">
-            INSERT INTO user_roles (user_id, role) VALUES ('{userId}', 'admin');
-          </code>
-        </p>
-        <button
-          onClick={onSignOut}
-          className="mt-6 rounded-lg border border-border px-6 py-2 text-sm"
-        >
-          Sign Out
-        </button>
+        <div className="mt-6 flex justify-center gap-3">
+          <a href="/portal" className="rounded-lg bg-real-red px-6 py-2 text-sm font-medium text-primary-foreground">Go To Driver Portal</a>
+          <button onClick={onSignOut} className="rounded-lg border border-border px-6 py-2 text-sm">Sign Out</button>
+        </div>
       </div>
     </AdminShell>
   );

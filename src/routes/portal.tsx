@@ -1987,10 +1987,14 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
   useEffect(() => {
     if (!validId) return;
     let live = true;
-    record({ data: { driverId: validId, event: "start" } })
+    // One key per genuine preview session (survives Strict Mode re-runs and refresh).
+    const k = `driver-preview-session:${validId}`;
+    let sessionKey = sessionStorage.getItem(k);
+    if (!sessionKey) { sessionKey = crypto.randomUUID(); sessionStorage.setItem(k, sessionKey); }
+    record({ data: { driverId: validId, event: "start", sessionKey } })
       .then((r) => live && setDriverName(r.name))
       .catch((e) => live && setPreviewError(e instanceof Error ? e.message : "Could not open this driver."));
-    const end = () => { record({ data: { driverId: validId, event: "end" } }).catch(() => {}); };
+    const end = () => { sessionStorage.removeItem(k); record({ data: { driverId: validId, event: "end", sessionKey: sessionKey! } }).catch(() => {}); };
     window.addEventListener("pagehide", end);
     return () => { live = false; window.removeEventListener("pagehide", end); };
   }, [validId]);

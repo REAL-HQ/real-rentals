@@ -1,3 +1,4 @@
+import { confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import { Briefcase, Car, Check, ChevronsUpDown, Crown } from "lucide-react";
 import {
   DropdownMenu,
@@ -38,7 +39,7 @@ export function ExperienceSwitcher({ value, options, onChange }: {
         {options.map((o) => {
           const I = ICONS[o];
           return (
-            <DropdownMenuItem key={o} onSelect={() => onChange(o)} className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-[#111114] focus:bg-[#F4F4F6] focus:text-[#111114]">
+            <DropdownMenuItem key={o} onSelect={() => { if (o !== value && confirmLeaveIfUnsaved()) onChange(o); }} className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-[#111114] focus:bg-[#F4F4F6] focus:text-[#111114]">
               <I className="h-4 w-4 text-[#55555E]" strokeWidth={1.75} />
               <span className="flex-1">
                 <span className="block text-[13px] font-medium">{EXPERIENCE_LABELS[o]}</span>
