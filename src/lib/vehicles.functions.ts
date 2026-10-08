@@ -621,6 +621,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     return {
       vehicle: v,
       finance,
+      canSeeFinance: actor.tier === "owner",
       canEdit: isManager,
       unitLabel: v.unit_number || `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim(),
       vinLast4: v.vin ? String(v.vin).slice(-4) : "",
