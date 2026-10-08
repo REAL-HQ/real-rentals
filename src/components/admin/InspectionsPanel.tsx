@@ -112,7 +112,7 @@ export function InspectionsPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="admin-sticky-bar flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{rows.length} inspection(s)</span>
         <button
           onClick={() => setStarting(true)}
