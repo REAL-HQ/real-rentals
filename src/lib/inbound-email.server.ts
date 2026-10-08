@@ -166,10 +166,12 @@ export async function ingestResendEmail(eventId: string | null, data: any): Prom
         is_current: true, visibility: ["admin"], uploaded_by_role: "email", source: "email", review_status: "uploaded",
       }).select("id").single();
       if (dErr || !doc) { await sb.storage.from(BUCKET).remove([path]); entry.outcome = "failed_store"; manifest.push(entry); continue; }
-      await sb.from("fleet_import_items").insert({
+      const { data: newItem } = await sb.from("fleet_import_items").insert({
         batch_id: batchId, document_id: doc.id, file_name: fileName, mime_type: type.mime, size_bytes: bytes.byteLength,
         content_sha256: sha, status: "uploaded", source_channel: "email", inbound_email_id: inboundId, source_attachment_id: entry.id,
-      });
+      }).select("id").single();
+      // Queue background analysis (the webhook itself never runs AI).
+      if (newItem?.id) await sb.from("fleet_inbox_jobs").insert({ item_id: newItem.id, batch_id: batchId, source: "email" });
       stored++; entry.outcome = "stored"; manifest.push(entry);
     } catch (e) {
       console.error("[inbound] attachment failed", String(e).slice(0, 200));

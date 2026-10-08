@@ -112,6 +112,8 @@ export const registerInboxFile = createServerFn({ method: "POST" })
       size_bytes: bytes.byteLength, content_sha256: sha, status: "uploaded",
     }).select("id").single();
     await sb.from("fleet_import_batches").update({ status: "processing" }).eq("id", data.batchId);
+    // Background analysis starts now, whether or not anyone keeps the import open.
+    if (item?.id) await enqueueAnalysis(sb, item.id as string, data.batchId, "upload");
     return { itemId: item?.id as string, duplicate: false, existingFileName: null };
   });
 
