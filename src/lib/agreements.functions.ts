@@ -546,7 +546,7 @@ export async function issueAgreement(
       company_signer_title: company.title,
       application_id: applicationId,
       vehicle_id: app.vehicle_id ?? null,
-      template_id: tpl.id,
+      template_id: tpl.meta.id,
       body,
       merge_data: merge,
       status: "sent",
