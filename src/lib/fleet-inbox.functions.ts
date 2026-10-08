@@ -8,6 +8,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff } from "@/lib/roles.server";
+import { normalizeBodyType } from "@/lib/safe-autofill";
 import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
@@ -268,6 +269,13 @@ const Decision = z.object({
 type ApplyResult = { proposalId: string; ok: boolean; vehicleId?: string; message: string };
 
 const DATE_FIELDS = new Set(["registration_expires_on", "insurance_effective_on", "insurance_expires_on"]);
+/** Body-type codes ("4D") become a body type only via verified model mappings; otherwise left for review. */
+function withBodyType(fields: Record<string, ExtractedField>, model: string | null | undefined): Record<string, ExtractedField> {
+  const b = fields.body_type;
+  if (!b?.value) return fields;
+  const mapped = normalizeBodyType(String(b.value), model);
+  return mapped ? { ...fields, body_type: { ...b, raw: b.raw ?? b.value, value: mapped } } : fields;
+}
 function coerce(field: string, v: string): unknown {
   if (field === "year" || field === "current_odometer") { const n = parseInt(v.replace(/[^0-9]/g, ""), 10); return Number.isFinite(n) ? n : null; }
   if (DATE_FIELDS.has(field)) return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
@@ -314,6 +322,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         if (dec.action === "match") {
           target = vehicles.find((v) => v.id === dec.vehicleId) ?? null;
           if (!target) throw new Error("Vehicle to match was not found.");
+          entry.fields = withBodyType(entry.fields, (target as any).model);
         }
         const prov = await loadProvenance(sb, target ? [target.id] : []);
         const fresh = target ? buildProposal(entry, docClass, [target], prov) : buildProposal(entry, docClass, vehicles, prov);
@@ -663,7 +672,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
         if (reason) possible.push({ ...source, reason });
         continue;
       }
-      const entry: ExtractedEntry = { page: p.page, fields: ((p.fields ?? {}) as unknown) as Record<string, ExtractedField> };
+      const entry: ExtractedEntry = { page: p.page, fields: withBodyType(((p.fields ?? {}) as unknown) as Record<string, ExtractedField>, target.model) };
       const fresh = buildProposal(entry, it.doc_class ?? "unknown", [target], prov);
       for (const c of fresh.changes) {
         if (!canOwnership && isOwnerOnlyField(c.field)) continue;
