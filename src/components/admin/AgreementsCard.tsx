@@ -14,7 +14,8 @@ import {
   getAgreementPdf,
   type AgreementRow,
 } from "@/lib/agreements.functions";
-import { fmtDateTime } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { AgreementPdfViewer } from "./AgreementPdfViewer";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -208,7 +209,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
         {preview ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#EDEDF0] bg-white px-4 py-3">
             <p className="text-[11.5px] text-[#55555E] min-w-0">
-              Send emails exactly this document to {""}the driver. If any detail changes first, sending is refused until you regenerate.
+              Send emails exactly this document to the driver. If any detail changes first, sending is refused until you regenerate.
             </p>
             <button
               onClick={send}
