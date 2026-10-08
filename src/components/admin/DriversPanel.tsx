@@ -249,7 +249,7 @@ function ReadinessCell({ result, docCount }: { result?: ReadinessResult; docCoun
     <div className="flex flex-col items-start gap-0.5">
       <ReadinessStatePill state={result.state} short />
       <span className="text-[10px] text-muted-foreground tabular-nums">
-        {result.coverage}% Known · {docCount}/4 Docs
+        {result.coverage}% Known · {docCount}/4
       </span>
     </div>
   );
@@ -801,7 +801,7 @@ export function DriversPanel({
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
                     <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 max-w-[150px]">
+                      <span className="inline-flex items-center gap-1.5 max-w-[115px]">
                         <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
                       <SourceBadge
@@ -845,7 +845,7 @@ export function DriversPanel({
                         <a
                           href={`mailto:${a.email}`}
                           title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[160px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                          className="inline-flex items-center gap-1 max-w-[145px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
                         >
                           <Mail className="w-3 h-3 shrink-0" />
                           <span className="truncate">{a.email}</span>
