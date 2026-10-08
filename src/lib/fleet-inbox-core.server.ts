@@ -197,6 +197,17 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
     await refreshBatchStatus(claimed.batch_id);
     return { ok: true as const };
   }
+  const { isFinancialClass } = await import("@/lib/financial-docs");
+  if (isFinancialClass(docClass)) {
+    // Payments / receipts: read the money event and build a review. Never posts an expense or touches a vehicle.
+    const { readFinancialItem, buildFinancialReview } = await import("@/lib/financial-ingest.server");
+    const r = await readFinancialItem(sb, data.itemId);
+    if (!r.ok) return fail(r.error, { retryable: r.status == null ? undefined : r.status === 429 || r.status >= 500, providerStatus: r.status });
+    await buildFinancialReview(sb, data.itemId);
+    await sb.from("fleet_import_items").update({ status: "needs_attention" }).eq("id", data.itemId);
+    await refreshBatchStatus(claimed.batch_id);
+    return { ok: true as const };
+  }
   if (docGroupOf(docClass) === "Finance") await sb.from("documents").update({ evidence_class: "financial" }).eq("id", claimed.document_id as string);
   await buildItemProposals(sb, data.itemId);
   const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;

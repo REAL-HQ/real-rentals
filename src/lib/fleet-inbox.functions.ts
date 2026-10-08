@@ -148,6 +148,17 @@ export const classifyInboxItem = createServerFn({ method: "POST" })
     if (!item) return { ok: false as const, error: "File is busy." };
     if (item.document_id) await sb.from("documents").update({ kind: data.docClass, category: data.docClass }).eq("id", item.document_id);
     const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+    const { isFinancialClass } = await import("@/lib/financial-docs");
+    if (isFinancialClass(data.docClass)) {
+      // Payments / receipts: review only, never an expense or vehicle change.
+      const { readFinancialItem, buildFinancialReview } = await import("@/lib/financial-ingest.server");
+      if (!(item.extraction as any)?.financial) await readFinancialItem(sb, data.itemId);
+      await buildFinancialReview(sb, data.itemId);
+      await sb.from("fleet_import_proposals").update({ status: "superseded" }).eq("item_id", data.itemId).in("status", ["pending", "failed"]);
+      if (item.status !== "duplicate") await sb.from("fleet_import_items").update({ status: "needs_attention" }).eq("id", data.itemId);
+      await refreshBatchStatus(item.batch_id);
+      return { ok: true as const };
+    }
     if (isServiceClass(data.docClass)) {
       if (!(item.extraction as any)?.service) await readServiceItem(sb, data.itemId);
       await rebuildServiceTransactions(sb, item.batch_id);
@@ -202,7 +213,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
       const strip = (o: any) => Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => canFinance || (!isFinanceField(k) && !SERVICE_COST_FIELDS.has(k))));
-      return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length } : null };
+      return { ...i, extraction: ex ? { shared: strip(ex.shared), vehicleCount: (ex.vehicles ?? []).length, ...(canFinance && ex.financial ? { financial: ex.financial, financialReview: ex.financial_review ?? null } : {}) } : null };
     });
     // Coordinators never receive service amounts (totals, parts, labor, tax, line amounts) — stripped here, not hidden in the UI.
     const live = (proposals ?? []).filter((p: any) => p.status !== "superseded");
@@ -212,7 +223,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     // Coordinators get the operational half only; the financial half (amounts, payment, raw model text) never leaves the server.
     const transactions = canFinance ? txs ?? [] : (txs ?? []).map(operationalView);
     const serviceItemIds = new Set((txs ?? []).flatMap((t: any) => t.item_ids ?? []));
-    const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
+    const itemsOut = canFinance ? safeItems : safeItems.map((i: any) => serviceItemIds.has(i.id) || /receipt|invoice|oil_service|tires|brakes|payment|transfer|refund|deposit/.test(i.doc_class ?? "") ? { ...i, warnings: [], extraction: null } : i);
     // Email source: Managers/Owners see the preserved body; Coordinators get envelope only, money redacted.
     let email: any = null;
     if (batch.inbound_email_id) {

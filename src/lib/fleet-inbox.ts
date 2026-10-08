@@ -9,6 +9,7 @@ export const DOC_GROUPS = [
   { group: "Maintenance", classes: ["service_receipt", "repair_invoice", "oil_service", "tires", "brakes", "parts_receipt"] },
   { group: "Inspections", classes: ["inspection"] },
   { group: "Finance", classes: ["purchase_document", "loan_document", "payoff_statement", "lender_statement"] },
+  { group: "Payments / Receipts", classes: ["payment_confirmation", "bank_transfer", "vendor_invoice", "expense_receipt", "purchase_payment", "prep_cost_receipt", "registration_fee_receipt", "refund_confirmation", "deposit_receipt"] },
   { group: "Incidents", classes: ["accident_report", "damage_document", "police_report", "tow_receipt"] },
   { group: "Photos / Evidence", classes: ["odometer_photo", "vin_photo", "acquisition_photo", "condition_photo", "repair_photo", "damage_photo"] },
   { group: "Other", classes: ["gps_document", "warranty", "other", "unknown"] },
