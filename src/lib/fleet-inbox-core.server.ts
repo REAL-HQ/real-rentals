@@ -132,3 +132,75 @@ export async function refreshBatchStatus(batchId: string) {
   else if (status === "ready" && (txs ?? []).some((t: any) => t.status === "applied") && !openTx.length) status = "applied";
   await sb.from("fleet_import_batches").update({ status }).eq("id", batchId);
 }
+
+export type AnalyzeOutcome = { ok: true } | { ok: false; error: string; retryable?: boolean; providerStatus?: number; notClaimed?: boolean };
+
+/**
+ * Analyze one item. Claims it atomically so a staff click and the worker can
+ * never analyze the same file at once. `allowStuck` lets the worker reclaim an
+ * item left in "analyzing" by a crashed run.
+ */
+export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boolean } = {}): Promise<AnalyzeOutcome> {
+  const data = { itemId };
+  const sb = await admin();
+  // Claim: only one analysis per item at a time.
+  const { data: claimed } = await sb.from("fleet_import_items")
+    .update({ status: "analyzing", error: null })
+    .eq("id", data.itemId).in("status", opts.allowStuck ? ["uploaded", "failed", "needs_attention", "ready", "analyzing"] : ["uploaded", "failed", "needs_attention", "ready"])
+    .select("*").maybeSingle();
+  if (!claimed) return { ok: false as const, error: "This file is already being analyzed or has been applied.", notClaimed: true };
+  await sb.from("fleet_import_items").update({ attempts: (claimed.attempts ?? 0) + 1 }).eq("id", data.itemId);
+
+  const fail = async (msg: string, extra: { retryable?: boolean; providerStatus?: number } = {}) => {
+    await sb.from("fleet_import_items").update({ status: "failed", error: msg }).eq("id", data.itemId);
+    await refreshBatchStatus(claimed.batch_id);
+    return { ok: false as const, error: msg, ...extra };
+  };
+  const { data: doc } = await sb.from("documents").select("storage_bucket,storage_path,mime_type").eq("id", claimed.document_id as string).single();
+  if (!doc) return fail("The original file record is missing.");
+  const { data: file } = await sb.storage.from(doc.storage_bucket || BUCKET).download(doc.storage_path as string);
+  if (!file) return fail("Could not read the original file.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = doc.mime_type || file.type || "application/octet-stream";
+  if (!/^image\/(jpeg|png|webp|gif)$|^application\/pdf$/.test(mime)) {
+    return fail(`This file type (${mime}) can't be analyzed. Classify it manually or attach it to a vehicle.`);
+  }
+  const { readDocument, parseModelJson } = await import("@/lib/document-reader.server");
+  const read = await readDocument({ bytes, mime, system: SYSTEM, prompt: "Read this fleet document. Strict JSON only.", maxTokens: 8000 });
+  if (!read.ok) return fail(read.error, { retryable: read.status == null || read.status === 429 || read.status >= 500, providerStatus: read.status });
+  let parsed: any;
+  try { parsed = parseModelJson(read.text); } catch { return fail("The document could not be read. Retry, or classify it manually."); }
+
+  const docClass = DOC_CLASSES.includes(parsed?.documentClass) ? parsed.documentClass : "unknown";
+  const classConf = ["high", "medium", "low"].includes(parsed?.classConfidence) ? parsed.classConfidence : "low";
+  const extraction = {
+    shared: cleanFields(parsed?.shared),
+    vehicles: (Array.isArray(parsed?.vehicles) ? parsed.vehicles : []).slice(0, 100).map((v: any) => ({
+      page: Number.isFinite(Number(v?.page)) ? Number(v.page) : null, fields: withServiceItems(cleanFields(v?.fields), v?.serviceItems),
+    })),
+  };
+  const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.filter((w: unknown) => typeof w === "string").slice(0, 10) : [];
+  const pageCount = Number.isFinite(Number(parsed?.pageCount)) ? Number(parsed.pageCount) : null;
+
+  await sb.from("fleet_import_items").update({
+    status: "matching", doc_class: docClass, class_confidence: classConf, extraction, warnings, analyzed_at: new Date().toISOString(),
+  }).eq("id", data.itemId);
+  await sb.from("documents").update({ kind: docClass, category: docClass, page_count: pageCount }).eq("id", claimed.document_id as string);
+
+  const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
+  if (isServiceClass(docClass)) {
+    // Service evidence is reviewed as a TRANSACTION across files, never one proposal per file.
+    const r = await readServiceItem(sb, data.itemId);
+    if (!r.ok) return fail(r.error);
+    await rebuildServiceTransactions(sb, claimed.batch_id);
+    await sb.from("fleet_import_items").update({ status: "ready" }).eq("id", data.itemId);
+    await refreshBatchStatus(claimed.batch_id);
+    return { ok: true as const };
+  }
+  if (docGroupOf(docClass) === "Finance") await sb.from("documents").update({ evidence_class: "financial" }).eq("id", claimed.document_id as string);
+  await buildItemProposals(sb, data.itemId);
+  const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
+  await sb.from("fleet_import_items").update({ status: needs ? "needs_attention" : "ready" }).eq("id", data.itemId);
+  await refreshBatchStatus(claimed.batch_id);
+  return { ok: true as const };
+}
