@@ -281,8 +281,12 @@ function Admin() {
   });
   const [mobileNav, setMobileNav] = useState(false);
   const [experience, setExperience] = useState<Experience | null>(null);
-  useEffect(() => { if (tier) setExperience(resolveExperience(tier, false)); }, [tier]);
-  const navigate = useNavigate();
+  useEffect(() => {
+    if (!tier) return;
+    const r = resolveExperience(tier, false);
+    // Landing on /admin means a staff view; a stored "driver" falls back to the default staff view.
+    setExperience(r === "driver" ? availableExperiences(tier, false)[0] : r);
+  }, [tier]);
   function chooseExperience(e: Experience) {
     storeExperience(e);
     if (e === "driver") { navigate({ to: "/portal", search: { preview: "1" } as any }); return; }
