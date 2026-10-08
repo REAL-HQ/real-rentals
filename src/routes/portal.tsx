@@ -102,7 +102,7 @@ function Portal() {
   const [checking, setChecking] = useState(true);
   const [isDriver, setIsDriver] = useState(false);
   const [staffTier, setStaffTier] = useState<StaffTier | null>(null);
-  const wantsPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "1";
+  const wantsPreview = typeof window !== "undefined" && /^"?1"?$/.test(new URLSearchParams(window.location.search).get("preview") ?? "");
   const [tab, setTab] = useState<Tab>("dashboard");
 
   useEffect(() => {
