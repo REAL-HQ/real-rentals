@@ -6,7 +6,7 @@ import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ApplicationWizard, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
-import { WelcomeBack } from "@/components/site/WelcomeBack";
+import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { useResumeToken } from "@/lib/resume-token";
@@ -108,7 +108,7 @@ function ContactStep({
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; ok: boolean; retryAfterSeconds: number } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [hp, setHp] = useState("");
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", sms_consent: false });
@@ -174,7 +174,7 @@ function ContactStep({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, ok: data.linkOk !== false, retryAfterSeconds: data.retryAfterSeconds ?? 120 });
+        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
         return;
       }
       navigate({ to: "/thank-you", search: { t: data.token } });
@@ -193,11 +193,11 @@ function ContactStep({
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
 
-        {returning !== null && (
+        {returning !== null ? (
           <div className="mt-8">
-            <WelcomeBack email={returning.email} initial={returning} />
+            <WelcomeBack email={returning.email} initial={returning} onBack={() => setReturning(null)} />
           </div>
-        )}
+        ) : (
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
           <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />
           <div className="grid grid-cols-1 gap-5">
@@ -222,6 +222,7 @@ function ContactStep({
             <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
           </p>
         </div>
+        )}
         <div className="mt-5 text-center text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">Need Help Applying?</span>{" "}
           Questions about availability, pricing, deposits or your application? Call{" "}
