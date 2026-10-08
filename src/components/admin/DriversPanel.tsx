@@ -113,7 +113,8 @@ import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
-import { listWaitlist, listWaitlistHolds, setWaitlistHold, getDeleteBlockers } from "@/lib/waitlist.functions";
+import { DeleteDriverDialog } from "./DeleteDriverDialog";
+import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -360,7 +361,6 @@ export function DriversPanel({
   // stage underneath is never changed, so Remove restores it automatically.
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
-  const deleteBlockersFn = useServerFn(getDeleteBlockers);
   const [held, setHeld] = useState<Set<string>>(new Set());
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
@@ -654,8 +654,23 @@ export function DriversPanel({
     );
   }
 
+  const deleteDialog = deleting ? (
+    <DeleteDriverDialog
+      applicationId={deleting}
+      mode="soft"
+      onClose={() => setDeleting(null)}
+      onDone={() => {
+        const id = deleting;
+        setDeleting(null);
+        setDrivers((a) => a.filter((x) => x.id !== id));
+        setOpenId(null);
+      }}
+    />
+  ) : null;
+
   if (open) {
     return (
+      <>
       <DriverDetail
         /*
          * Keyed by applicant, so switching applicants rebuilds the drawer
@@ -680,6 +695,8 @@ export function DriversPanel({
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
       />
+      {deleteDialog}
+      </>
     );
   }
 
