@@ -56,6 +56,7 @@ import {
   XCircle,
   RefreshCw,
 } from "lucide-react";
+import { ApplicantHome } from "@/components/portal/ApplicantHome";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -209,38 +210,7 @@ function Portal() {
     return <DriverPreview tier={staffTier} />;
   }
   if (!isDriver) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Nav />
-        <div className="container-real py-32 text-center max-w-lg">
-          <h1 className="text-2xl font-semibold">No Driver Access</h1>
-          <p className="mt-3 text-muted-foreground text-sm">
-            This account isn't linked to an application yet. Your portal opens as soon as your
-            application is approved — we'll email you the moment it is.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3 justify-center">
-            <Link
-              to="/apply"
-              className="inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
-            >
-              Start an Application
-            </Link>
-            <button
-              type="button"
-              onClick={() => supabase.auth.signOut()}
-              className="inline-flex min-h-11 items-center rounded-lg border border-border px-6 py-2.5 text-sm font-medium"
-            >
-              Sign Out
-            </button>
-          </div>
-          <p className="mt-6 text-xs text-muted-foreground">
-            Already approved and still seeing this? Send support your account ID:
-            <br />
-            <code className="text-xs">{session.user.id}</code>
-          </p>
-        </div>
-      </div>
-    );
+    return <ApplicantHome />;
   }
 
   const current = TABS.find((t) => t.id === tab)!;

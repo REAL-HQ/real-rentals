@@ -14,7 +14,7 @@ import { requestPortalSignIn, verifyPortalSignIn } from "@/lib/portal-signin.fun
  * in the same Supabase session — there is one login system.
  */
 export const Route = createFileRoute("/login")({
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (s: Record<string, unknown>): { signin?: string } => ({
     signin: typeof s.signin === "string" ? s.signin : undefined,
   }),
   head: () => ({
