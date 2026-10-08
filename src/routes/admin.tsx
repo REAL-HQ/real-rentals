@@ -49,6 +49,8 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
+import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
+import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
@@ -278,6 +280,14 @@ function Admin() {
     return Number(window.localStorage.getItem("admin-notif-seen-at") || 0);
   });
   const [mobileNav, setMobileNav] = useState(false);
+  const [experience, setExperience] = useState<Experience | null>(null);
+  useEffect(() => { if (tier) setExperience(resolveExperience(tier, false)); }, [tier]);
+  const navigate = useNavigate();
+  function chooseExperience(e: Experience) {
+    storeExperience(e);
+    if (e === "driver") { navigate({ to: "/portal", search: { preview: "1" } as any }); return; }
+    setExperience(e);
+  }
 
 
 
@@ -374,11 +384,17 @@ function Admin() {
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const createActions = visibleCreateActions(tier);
+  // Display-only tier: Owner in Admin view sees the Manager layout. Servers/RLS still use the real role.
+  const navTier = navTierFor(tier, experience === "driver" ? null : experience);
+  const createActions = visibleCreateActions(navTier);
   const ownerTab = navOwner(tab);
-  const appTabs = railEntries(tier);
+  const appTabs = railEntries(navTier);
+  const expOptions = availableExperiences(tier, false);
+  const switcher = experience && experience !== "driver"
+    ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
+    : null;
   const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
-  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, tier) : [];
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
@@ -424,6 +440,7 @@ function Admin() {
           <div className="flex justify-center pt-6 pb-4">
             <Logo offset={false} />
           </div>
+          {switcher}
           <nav className="flex-1 px-2.5 pb-4 overflow-y-auto">{groupedNav()}</nav>
         </aside>
 
@@ -432,6 +449,7 @@ function Admin() {
           <SheetContent side="left" className="w-[280px] p-0 bg-[#141416] border-r-0 text-white">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <div className="flex justify-center pt-6 pb-3"><Logo offset={false} /></div>
+            {switcher}
             <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
               {(() => {
                 // Drawer always lists Operations destinations.
