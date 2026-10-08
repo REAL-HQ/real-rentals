@@ -478,6 +478,7 @@ export function DriversPanel({
       .from("applications")
       .select("*")
       .neq("status", "duplicate")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         setDrivers(data || []);
@@ -641,6 +642,7 @@ export function DriversPanel({
         .from("applications")
         .select("*")
         .neq("status", "duplicate")
+      .is("deleted_at", null)
         .order("created_at", { ascending: false });
       setDrivers(data || []);
     } catch (e: any) {
@@ -993,6 +995,7 @@ export function DriversPanel({
                 .from("applications")
                 .select("*")
                 .neq("status", "duplicate")
+      .is("deleted_at", null)
                 .order("created_at", { ascending: false })
                 .then(({ data }) => data && setDrivers(data))
             }

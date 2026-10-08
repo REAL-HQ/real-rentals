@@ -202,11 +202,13 @@ export function OverviewPanel() {
           .from("applications")
           .select("id", { count: "exact", head: true })
           .eq("status", "new")
-          .is("reviewed_at", null),
+          .is("reviewed_at", null)
+          .is("deleted_at", null),
         supabase
           .from("applications")
           .select("id", { count: "exact", head: true })
-          .eq("status", "partial"),
+          .eq("status", "partial")
+          .is("deleted_at", null),
         // Collections: due and not received. `current` is issued-but-not-yet-due
         // and is deliberately absent.
         supabase

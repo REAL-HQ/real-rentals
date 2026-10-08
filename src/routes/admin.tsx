@@ -336,6 +336,7 @@ function Admin() {
       const { data } = await supabase
         .from("applications")
         .select("id, full_name, email, phone, created_at, status")
+        .is("deleted_at", null)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(15);
