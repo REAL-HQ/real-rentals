@@ -616,14 +616,22 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
-    const vehicles = await loadVehicles(sb);
-    const target = vehicles.find((v) => v.id === data.vehicleId);
+    // Scale: one vehicle row, indexed proposal lookups — never the whole fleet.
+    const { data: target } = await sb.from("vehicles").select("*").eq("id", data.vehicleId).maybeSingle();
     if (!target) throw new Error("Vehicle not found");
     const vin = (target.vin ?? "").toUpperCase();
     const plate = (target.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const { data: props } = await sb.from("fleet_import_proposals")
-      .select("id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at")
-      .in("status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(2000);
+    const cols = "id,batch_id,item_id,page,kind,vin,fields,match_vehicle_id,status,created_at";
+    const open = ["pending", "failed"];
+    const [{ data: exactRows }, { data: looseRows }] = await Promise.all([
+      vin
+        ? sb.from("fleet_import_proposals").select(cols).in("status", open).or(`vin.eq.${vin},match_vehicle_id.eq.${target.id}`).order("created_at", { ascending: false }).limit(200)
+        : sb.from("fleet_import_proposals").select(cols).in("status", open).eq("match_vehicle_id", target.id).order("created_at", { ascending: false }).limit(200),
+      // Unmatched open items only (small review queue), for possible-match hints.
+      sb.from("fleet_import_proposals").select(cols).in("status", open).in("kind", ["unidentified", "new", "conflict"]).order("created_at", { ascending: false }).limit(500),
+    ]);
+    const seenIds = new Set<string>();
+    const props = [...(exactRows ?? []), ...(looseRows ?? [])].filter((p: any) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
     const itemIds = [...new Set((props ?? []).map((p: any) => p.item_id))];
     const { data: items } = itemIds.length
       ? await sb.from("fleet_import_items").select("id,document_id,file_name,doc_class,analyzed_at").in("id", itemIds)
@@ -639,7 +647,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       const it = itemBy[p.item_id];
       if (!it) continue;
       const pVin = String(p.vin ?? "").toUpperCase();
-      const exact = !!vin && pVin === vin;
+      const exact = (!!vin && pVin === vin) || (!pVin && p.match_vehicle_id === target.id);
       const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at };
       if (!exact) {
         // Ambiguous evidence: report why, never its values.
