@@ -6,11 +6,12 @@ import { FileText, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import { getFleetDocumentFile, listVehicleLinkedDocs } from "@/lib/fleet-inbox.functions";
 import { docClassLabel, docGroupOf, DOC_GROUPS } from "@/lib/fleet-inbox";
-import { vehicleDocPresence, type DocSlot } from "@/lib/vehicle-doc-presence";
+import { vehicleDocPresence, isFinanceKind, type DocSlot } from "@/lib/vehicle-doc-presence";
 import {
   listVehicleDocs,
   registerVehicleDoc,
   deleteVehicleDoc,
+  getVehicleDocAccess,
   VEHICLE_DOC_TYPES,
   type VehicleDoc,
 } from "@/lib/vehicle-docs.functions";
@@ -31,6 +32,13 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
   const remove = useServerFn(deleteVehicleDoc);
   const loadLinked = useServerFn(listVehicleLinkedDocs);
   const fileFn = useServerFn(getFleetDocumentFile);
+  const accessFn = useServerFn(getVehicleDocAccess);
+  // Owner-only finance slots (lien release, purchase/finance paperwork) are
+  // hidden until the server confirms an Owner view; fail closed.
+  const [financeSlots, setFinanceSlots] = useState(false);
+  useEffect(() => {
+    accessFn().then((r) => setFinanceSlots(!!r.financeSlots)).catch(() => setFinanceSlots(false));
+  }, [accessFn]);
   const [linked, setLinked] = useState<any[]>([]);
 
   async function openDoc(id: string) {
@@ -141,7 +149,7 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
               ? "No documents on file yet."
               : `${presence.documentCount} document${presence.documentCount > 1 ? "s" : ""} on file${presence.sharedCount ? ` · ${presence.sharedCount} shared with other vehicles` : ""}`}
           </p>
-          {VEHICLE_DOC_TYPES.map((t) => {
+          {VEHICLE_DOC_TYPES.filter((t) => financeSlots || !isFinanceKind(t.value)).map((t) => {
             const doc = byKind.get(t.value);
             const ev = presence.bySlot.get(t.value as DocSlot);
             const evidence = !doc && ev?.source === "linked" ? ev : undefined;
