@@ -11,6 +11,7 @@ import {
   INCIDENT_TYPES,
   type Incident,
 } from "@/lib/incidents.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 type VehicleLite = {
   id: string;
@@ -137,7 +138,7 @@ export function IncidentsPanel() {
                       {r.injuries ? <StatusPill tone="red">injuries</StatusPill> : null}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {new Date(r.occurred_at).toLocaleString()} ·{" "}
+                      {fmtDateTime(r.occurred_at)} ·{" "}
                       {r.vehicle_label ?? "unknown vehicle"}
                       {r.driver_name ? ` · ${r.driver_name}` : " · no renter assigned"}
                       {r.location ? ` · ${r.location}` : ""}

@@ -15,6 +15,7 @@ import {
   type VaultDocument,
   type DocCategory,
 } from "@/lib/documents.functions";
+import { fmtDate } from "@/lib/date-format";
 
 const MAX_MB = 15;
 
@@ -156,9 +157,9 @@ export function DocumentVault({
                 </div>
                 <div className="text-[11.5px] text-[#77777F] mt-0.5 truncate">
                   {doc
-                    ? `${doc.file_name ?? "Document"} · ${fmtSize(doc.size_bytes)} · uploaded ${new Date(doc.created_at).toLocaleDateString()}${
+                    ? `${doc.file_name ?? "Document"} · ${fmtSize(doc.size_bytes)} · uploaded ${fmtDate(doc.created_at)}${
                         doc.expires_at
-                          ? ` · expires ${new Date(doc.expires_at).toLocaleDateString()}`
+                          ? ` · expires ${fmtDate(doc.expires_at)}`
                           : ""
                       }`
                     : "Not on file"}
@@ -254,7 +255,7 @@ export function DocumentVault({
                 <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <span className="text-[12px] text-[#55555E] truncate">
                     {d.label || d.file_name || d.category} ·{" "}
-                    {new Date(d.created_at).toLocaleDateString()}
+                    {fmtDate(d.created_at)}
                   </span>
                   {d.url ? (
                     <a

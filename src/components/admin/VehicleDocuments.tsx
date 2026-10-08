@@ -15,6 +15,7 @@ import {
   VEHICLE_DOC_TYPES,
   type VehicleDoc,
 } from "@/lib/vehicle-docs.functions";
+import { fmtDate } from "@/lib/date-format";
 
 // Per-vehicle paperwork.
 //
@@ -184,7 +185,7 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{l.file_name ?? l.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        {docClassLabel(l.kind)} · {new Date(l.created_at).toLocaleDateString()}
+                        {docClassLabel(l.kind)} · {fmtDate(l.created_at)}
                         {l.page ? ` · page ${l.page}` : ""} · {l.is_current ? "Current" : "Historical"}
                         {l.relatedVehicles > 1 ? ` · Related vehicles: ${l.relatedVehicles}` : ""}
                       </p>
@@ -245,11 +246,11 @@ function DocRow({
                 {" · "}
                 {lapsed ? (
                   <span className="text-[#D03020] font-medium">
-                    expired {new Date(doc.expires_at).toLocaleDateString()}
+                    expired {fmtDate(doc.expires_at)}
                   </span>
                 ) : (
                   <span className={soon ? "text-[#B45309] font-medium" : ""}>
-                    expires {new Date(doc.expires_at).toLocaleDateString()}
+                    expires {fmtDate(doc.expires_at)}
                     {soon ? ` (${days}d)` : ""}
                   </span>
                 )}

@@ -15,6 +15,7 @@ import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from 
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
+import { fmtDateTime } from "@/lib/date-format";
 
 const BATCH_LABEL: Record<string, string> = {
   uploading: "Uploading", processing: "Processing", ready: "Ready for Review", needs_attention: "Needs Attention",
@@ -302,7 +303,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
           <div className="px-4 py-3 space-y-1 text-sm">
             <div><span className="text-[#9A9AA3]">From:</span> {d.email.from_name ? `${d.email.from_name} <${d.email.from_address}>` : d.email.from_address}</div>
             <div><span className="text-[#9A9AA3]">Subject:</span> {d.email.subject || "(No Subject)"}</div>
-            <div><span className="text-[#9A9AA3]">Received:</span> {new Date(d.email.received_at).toLocaleString("en-US", { timeZone: "America/New_York" })}</div>
+            <div><span className="text-[#9A9AA3]">Received:</span> {fmtDateTime(d.email.received_at)}</div>
             {(d.email.attachments ?? []).filter((a: any) => a.outcome && a.outcome !== "stored" && a.outcome !== "duplicate_of_existing").map((a: any, i: number) => (
               <div key={i} className="text-xs text-[#B45309]">{a.file_name ?? "Attachment"} — Not Imported ({String(a.outcome).replace(/_/g, " ")})</div>
             ))}

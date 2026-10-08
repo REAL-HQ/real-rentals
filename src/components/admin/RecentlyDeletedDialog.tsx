@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { listDeletedDrivers, restoreDriver, setLegalHold, retryFileCleanup } from "@/lib/driver-deletion.functions";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
+import { fmtDate } from "@/lib/date-format";
 
 type Data = Awaited<ReturnType<typeof listDeletedDrivers>>;
 
@@ -59,7 +60,7 @@ export function RecentlyDeletedDialog({ onClose, onRestored }: { onClose: () => 
               <div className="flex-1 min-w-[160px]">
                 <p className="font-medium">{r.full_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {r.purged_at ? "Permanently Deleted" : `Deleted ${new Date(r.deleted_at).toLocaleDateString()}`}
+                  {r.purged_at ? "Permanently Deleted" : `Deleted ${fmtDate(r.deleted_at)}`}
                   {r.legal_hold ? " · Legal Hold" : ""}
                 </p>
               </div>

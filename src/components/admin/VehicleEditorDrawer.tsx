@@ -31,6 +31,7 @@ import { readStoredExperience } from "@/lib/experience";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { MicroLabel } from "./ui";
+import { fmtDateTime } from "@/lib/date-format";
 
 // Edit a vehicle without walking every tab.
 //
@@ -818,7 +819,7 @@ export function VehicleEditorDrawer({
               <Text
                 label="Last Ping"
                 value={
-                  v.gps_last_ping_at ? new Date(String(v.gps_last_ping_at)).toLocaleString() : ""
+                  v.gps_last_ping_at ? fmtDateTime(String(v.gps_last_ping_at)) : ""
                 }
                 onChange={() => {}}
                 readOnly

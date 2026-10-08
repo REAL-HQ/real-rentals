@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { listIdentityReviews, resolveIdentityReview } from "@/lib/identity-review.functions";
 import { Button } from "@/components/ui/button";
+import { fmtDateTime } from "@/lib/date-format";
 
 /** Staff-only identity-review warnings; resolve is Manager+ (server-checked). */
 export function IdentityReviewCard({ applicationId }: { applicationId: string }) {
@@ -31,7 +32,7 @@ export function IdentityReviewCard({ applicationId }: { applicationId: string })
       {open.map((r) => (
         <div key={r.id} className="space-y-2 text-xs">
           <p className="text-foreground">
-            Same phone submitted with a different email on {new Date(r.created_at).toLocaleString()}. Not linked or merged.
+            Same phone submitted with a different email on {fmtDateTime(r.created_at)}. Not linked or merged.
           </p>
           <p className="text-muted-foreground">
             Submitted: {r.submitted_full_name ?? "—"} · {r.submitted_email ?? "—"} · {r.submitted_phone ?? "—"}

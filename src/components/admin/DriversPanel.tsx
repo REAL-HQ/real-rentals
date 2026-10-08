@@ -127,6 +127,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 /**
  * What arrived, at a glance, above the tabs.
@@ -936,7 +937,7 @@ export function DriversPanel({
                       </Select>
                     </td>
                     <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
-                      <div>{new Date(a.created_at!).toLocaleDateString()}</div>
+                      <div>{fmtDate(a.created_at!)}</div>
                       <div className="text-[10px] opacity-70">
                         {new Date(a.created_at!).toLocaleTimeString([], {
                           hour: "numeric",
@@ -1008,7 +1009,7 @@ export function DriversPanel({
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         <td className="px-4 py-2">
-                          <div>{new Date(h.created_at!).toLocaleDateString()}</div>
+                          <div>{fmtDate(h.created_at!)}</div>
                           <div className="opacity-70">
                             {new Date(h.created_at!).toLocaleTimeString([], {
                               hour: "numeric",
@@ -1485,7 +1486,7 @@ function DriverDetail({
             label="Needed By"
             value={
               (screening as any)?.needed_by_date
-                ? new Date((screening as any).needed_by_date).toLocaleDateString()
+                ? fmtDate((screening as any).needed_by_date)
                 : "—"
             }
           />
@@ -1603,7 +1604,7 @@ function DriverDetail({
           {activity.map((e, i) => (
             <li key={`${e.at}-${i}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-[12px]">
               <span className="text-[#9A9AA3] tabular-nums">
-                {new Date(e.at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                {fmtDate(e.at)}
               </span>
               <span className="min-w-0 text-[#111114]">
                 {e.label}
@@ -1682,12 +1683,12 @@ function DriverDetail({
                   )}
                   {driver.created_at && (
                     <span className="text-[#9A9AA3]">
-                      Applied {new Date(driver.created_at).toLocaleDateString()}
+                      Applied {fmtDate(driver.created_at)}
                     </span>
                   )}
                   {driver.contacted_at && (
                     <span className="text-[#9A9AA3]">
-                      · Last Contact {new Date(driver.contacted_at).toLocaleDateString()}
+                      · Last Contact {fmtDate(driver.contacted_at)}
                     </span>
                   )}
                 </div>
@@ -2010,7 +2011,7 @@ function DriverDetail({
                     They asked to start{" "}
                     <span className="font-medium text-[#55555E]">
                       {driver.pickup_date
-                        ? new Date(driver.pickup_date).toLocaleDateString()
+                        ? fmtDate(driver.pickup_date)
                         : "— no date given"}
                     </span>
                     {(driver as any).expected_duration
@@ -2376,7 +2377,7 @@ function AISnapshotCard({ driver }: { driver: Application }) {
       <div className="shrink-0 flex items-center gap-2">
         {scoredAt && (
           <span className="hidden sm:block text-[11px] text-[#9A9AA3]">
-            {scoredAt.toLocaleDateString()}
+            {fmtDate(scoredAt)}
           </span>
         )}
         <button
@@ -3005,7 +3006,7 @@ function CardOnFileCard({
           )}
           {driver.card_on_file_at && (
             <div className="text-xs text-muted-foreground">
-              Saved {new Date(driver.card_on_file_at).toLocaleDateString()}
+              Saved {fmtDate(driver.card_on_file_at)}
             </div>
           )}
         </div>
@@ -3116,7 +3117,7 @@ function RequestDocumentsAction({
           !driver.email
             ? "No Email on File"
             : sentAt && !canResend
-              ? `Sent ${sentAt.toLocaleString()} — can resend after 24h`
+              ? `Sent ${fmtDateTime(sentAt)} — can resend after 24h`
               : "Request Missing Documents"
         }
         className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -3127,7 +3128,7 @@ function RequestDocumentsAction({
 
       {sentAt && (
         <span className="text-[10px] text-muted-foreground hidden md:inline">
-          Sent {sentAt.toLocaleDateString()} ({requested.length} items)
+          Sent {fmtDate(sentAt)} ({requested.length} items)
         </span>
       )}
 

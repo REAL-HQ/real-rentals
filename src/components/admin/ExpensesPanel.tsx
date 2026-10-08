@@ -24,6 +24,7 @@ import {
   type Expense,
   type VehiclePL,
 } from "@/lib/expenses.functions";
+import { fmtDate } from "@/lib/date-format";
 
 // Expenses and per-vehicle P&L.
 //
@@ -378,7 +379,7 @@ function Ledger({
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-border">
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                    {new Date(r.incurred_on + "T00:00:00").toLocaleDateString()}
+                    {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>
                   <td className="px-4 py-3">{r.vehicle_label}</td>
                   <td className="px-4 py-3 capitalize">

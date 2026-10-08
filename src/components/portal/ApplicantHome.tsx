@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Nav } from "@/components/site/Nav";
 import { getMyPortalAccess, openMyApplication, updateMyWaitlist } from "@/lib/portal-access.functions";
+import { fmtDate } from "@/lib/date-format";
 
 /**
  * The Driver Portal for people who are not drivers yet (Lead / Waitlist,
@@ -185,7 +186,7 @@ function WaitlistCard({
       <div className="rounded-xl border border-border p-6">
         <div className="text-xs text-muted-foreground">Waitlist Status</div>
         <div className="mt-1 text-xl font-semibold">On The Waitlist</div>
-        <p className="mt-2 text-sm text-muted-foreground">Joined {new Date(w.createdAt).toLocaleDateString()}. We'll reach out when a car is available.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Joined {fmtDate(w.createdAt)}. We'll reach out when a car is available.</p>
         <Link to="/apply" className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-real-red text-primary-foreground px-6 py-2.5 text-sm font-medium">
           Start My Application
         </Link>

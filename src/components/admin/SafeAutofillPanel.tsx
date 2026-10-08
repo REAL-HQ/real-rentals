@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getAutofillStatus, saveAutofillSettingsFn, undoAutofillFn } from "@/lib/safe-autofill.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 const LABEL: Record<string, string> = { trim: "Trim", body_type: "Body Type", color: "Color", fuel_type: "Fuel Type", seats: "Seats" };
 
@@ -62,7 +63,7 @@ export function SafeAutofillPanel() {
               <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F2F2F4] pb-2 text-[12px]">
                 <div className="min-w-0">
                   <span className="font-medium">{e.vehicles?.unit_number ?? "Vehicle"}</span> · {LABEL[e.field] ?? e.field}: {e.previous_value ?? "Not Set"} → {e.new_value}
-                  <div className="text-[#55555E]">{new Date(e.created_at).toLocaleString()} · {e.doc_class}{e.page ? ` · Page ${e.page}` : ""} · “{e.evidence_raw}” · {e.confidence}{e.undone_at ? ` · ${e.undo_result === "reverted" ? "Undone" : "Kept (Edited Since)"}` : ""}</div>
+                  <div className="text-[#55555E]">{fmtDateTime(e.created_at)} · {e.doc_class}{e.page ? ` · Page ${e.page}` : ""} · “{e.evidence_raw}” · {e.confidence}{e.undone_at ? ` · ${e.undo_result === "reverted" ? "Undone" : "Kept (Edited Since)"}` : ""}</div>
                 </div>
                 {!e.undone_at && (
                   <div className="flex gap-1.5">

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-react";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
+import { fmtDate } from "@/lib/date-format";
 
 type Row = {
   id: string;
@@ -368,7 +369,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
                   </td>
                   <td>{r.item}</td>
                   <td className="capitalize">{r.category ?? "—"}</td>
-                  <td>{r.due_date ? new Date(r.due_date).toLocaleDateString() : "—"}</td>
+                  <td>{r.due_date ? fmtDate(r.due_date) : "—"}</td>
                   <td>{r.total_cost ? `$${r.total_cost}` : "—"}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{r.notes}</td>
                 </tr>

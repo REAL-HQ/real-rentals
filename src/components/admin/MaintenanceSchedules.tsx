@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CalendarClock, Plus, X, Check, Wrench, Trash2 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { fmtDate } from "@/lib/date-format";
 
 type Schedule = {
   id: string;
@@ -253,7 +254,7 @@ export function MaintenanceSchedules() {
                               ]
                                 .filter(Boolean)
                                 .join(" / ")}
-                              {s.last_done_on ? ` · last ${s.last_done_on}` : " · never done"}
+                              {s.last_done_on ? ` · last ${fmtDate(s.last_done_on)}` : " · never done"}
                             </div>
                           </div>
 
@@ -269,7 +270,7 @@ export function MaintenanceSchedules() {
                             {state.reasons.length
                               ? state.reasons.join(" · ")
                               : s.next_due_on
-                                ? `due ${s.next_due_on}`
+                                ? `due ${fmtDate(s.next_due_on)}`
                                 : s.next_due_miles
                                   ? `due ${s.next_due_miles.toLocaleString()} mi`
                                   : "—"}

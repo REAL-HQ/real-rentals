@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { fmtDate } from "@/lib/date-format";
 
 // Incidents, insurance claims and deposit disposition.
 //
@@ -316,7 +317,7 @@ export const getDepositSummary = createServerFn({ method: "POST" })
       suggestions.push({
         kind: "toll",
         id: t.id as string,
-        label: `${String(t.charge_type).replace(/_/g, " ")} on ${new Date(t.occurred_at).toLocaleDateString()}`,
+        label: `${String(t.charge_type).replace(/_/g, " ")} on ${fmtDate(t.occurred_at)}`,
         amount: amt,
       });
     }
@@ -325,7 +326,7 @@ export const getDepositSummary = createServerFn({ method: "POST" })
       suggestions.push({
         kind: "incident",
         id: i.id as string,
-        label: `${String(i.incident_type).replace(/_/g, " ")} on ${new Date(i.occurred_at).toLocaleDateString()}`,
+        label: `${String(i.incident_type).replace(/_/g, " ")} on ${fmtDate(i.occurred_at)}`,
         amount: Number(i.driver_responsible_amount ?? 0),
       });
     }

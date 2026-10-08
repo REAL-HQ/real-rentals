@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Zap, MessageSquare, Mail, Clock, Trash2, Send } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { fmtDateTime } from "@/lib/date-format";
 
 type Workflow = {
   id: string;
@@ -301,7 +302,7 @@ function RecentSends({ rows }: { rows: LogRow[] }) {
             <div className="min-w-0 flex-1">
               <div className="text-xs text-muted-foreground">
                 {r.channel.toUpperCase()} → {r.to_address}
-                {r.kind ? ` · ${r.kind}` : ""} · {new Date(r.created_at).toLocaleString()}
+                {r.kind ? ` · ${r.kind}` : ""} · {fmtDateTime(r.created_at)}
               </div>
               <p className="truncate">{r.body}</p>
               {r.error ? <p className="text-xs text-[#D03020]">{r.error}</p> : null}

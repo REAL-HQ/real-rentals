@@ -8,6 +8,7 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
+import { fmtDate } from "@/lib/date-format";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -281,11 +282,7 @@ async function buildMergeData(
     start_date: startDate ?? "",
     return_date: endDate ?? "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
+    today: fmtDate(new Date()),
   };
   return { data, app, vehicle, blockers };
 }

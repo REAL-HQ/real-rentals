@@ -16,6 +16,7 @@ import {
   type TollCharge,
   type ImportOutcome,
 } from "@/lib/charges.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 type VehicleLite = {
   id: string;
@@ -238,7 +239,7 @@ export function ChargesPanel() {
                       ) : null}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {new Date(r.occurred_at).toLocaleString()} ·{" "}
+                      {fmtDateTime(r.occurred_at)} ·{" "}
                       {r.vehicle_label ?? "unknown vehicle"}
                       {r.location ? ` · ${r.location}` : ""}
                       {r.agency ? ` · ${r.agency}` : ""}

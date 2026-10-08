@@ -9,6 +9,7 @@ import {
   listConversations, getConversation, markConversationRead, searchMessagePeople, sendStaffMessage,
   type ConversationSummary, type ThreadMessage, type PersonInfo, type RentalInfo,
 } from "@/lib/messages.functions";
+import { fmtDate } from "@/lib/date-format";
 
 function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase() ?? "").join("") || "?";
@@ -34,7 +35,7 @@ function fmtWhen(iso: string) {
   const d = new Date(iso);
   return d.toDateString() === new Date().toDateString()
     ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+    : fmtDate(d);
 }
 function dayLabel(iso: string) {
   const d = new Date(iso);
@@ -42,7 +43,7 @@ function dayLabel(iso: string) {
   const y = new Date(Date.now() - 864e5);
   if (d.toDateString() === today.toDateString()) return "Today";
   if (d.toDateString() === y.toDateString()) return "Yesterday";
-  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
+  return fmtDate(d);
 }
 const STATE_LABEL: Record<string, string> = {
   sending: "Sending…", accepted: "Sent", sent: "Sent", delivered: "Delivered", failed: "Not delivered",
@@ -408,8 +409,8 @@ export function MessagesOverlay({
             ["Status", <span className="capitalize">{thread.rental.status.replace(/_/g, " ")}</span>],
             ["Vehicle", thread.rental.vehicle ?? "—"],
             ["Unit", thread.rental.unitNumber ?? "—"],
-            ["Start", thread.rental.start ? new Date(thread.rental.start + "T00:00").toLocaleDateString() : "—"],
-            ["Expected Return", thread.rental.end ? new Date(thread.rental.end + "T00:00").toLocaleDateString() : "—"],
+            ["Start", thread.rental.start ? fmtDate(thread.rental.start + "T00:00") : "—"],
+            ["Expected Return", thread.rental.end ? fmtDate(thread.rental.end + "T00:00") : "—"],
             ["Weekly Rate", thread.rental.weeklyRate == null ? "Not Set" : `$${thread.rental.weeklyRate.toLocaleString()}`],
             ...(thread.rental.balanceDue != null ? [["Balance Due", `$${thread.rental.balanceDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`] as const] : []),
           ] as const).map(([k, v]) => (

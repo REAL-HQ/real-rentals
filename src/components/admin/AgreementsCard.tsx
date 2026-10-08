@@ -14,6 +14,7 @@ import {
   getAgreementPdf,
   type AgreementRow,
 } from "@/lib/agreements.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -218,10 +219,10 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                   </div>
                   <div className="text-[11.5px] text-[#77777F] mt-0.5">
                     {a.signed_at
-                      ? `Signed by ${a.signer_name ?? "renter"} · ${new Date(a.signed_at).toLocaleString()}`
+                      ? `Signed by ${a.signer_name ?? "renter"} · ${fmtDateTime(a.signed_at)}`
                       : a.sent_at
-                        ? `Sent ${new Date(a.sent_at).toLocaleString()}`
-                        : `Created ${new Date(a.created_at).toLocaleString()}`}
+                        ? `Sent ${fmtDateTime(a.sent_at)}`
+                        : `Created ${fmtDateTime(a.created_at)}`}
                   </div>
                   {a.status === "signed" && a.archive_status !== "archived" ? (
                     <div className="mt-1 text-[11.5px] font-medium text-[#8A1F12]">
@@ -249,7 +250,7 @@ export function AgreementsCard({ applicationId }: { applicationId: string }) {
                   {a.timeline?.length ? (
                     <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10.5px] text-[#77777F]">
                       {a.timeline.map((t, i) => (
-                        <span key={i} title={new Date(t.at).toLocaleString()} className={/failed/i.test(t.label) ? "text-[#8A1F12]" : ""}>
+                        <span key={i} title={fmtDateTime(t.at)} className={/failed/i.test(t.label) ? "text-[#8A1F12]" : ""}>
                           {i ? "→ " : ""}{t.label}
                         </span>
                       ))}

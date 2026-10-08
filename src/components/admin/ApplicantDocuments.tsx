@@ -27,6 +27,7 @@ import {
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
+import { fmtDate } from "@/lib/date-format";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -80,10 +81,6 @@ function fmtSize(n: number | null) {
     : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
-function fmtDate(iso: string | null) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
 
 function isImageDoc(d: VaultDocument): boolean {
   if ((d.mime_type ?? "").startsWith("image/")) return true;

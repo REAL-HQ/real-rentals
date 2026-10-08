@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "./ui";
 import { Building2 } from "lucide-react";
+import { fmtDateTime } from "@/lib/date-format";
 
 const STATUSES = ["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"];
 
@@ -36,7 +37,7 @@ export function FleetOwnersPanel() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="font-medium">{f.full_name} <span className="text-muted-foreground text-sm">· {f.email} · {f.phone}</span></div>
-              <div className="text-xs text-muted-foreground mt-1">{new Date(f.created_at!).toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground mt-1">{fmtDateTime(f.created_at!)}</div>
               <div className="text-sm mt-2">{f.year} {f.make} {f.model} {f.trim || ""} · VIN {f.vin} · {f.mileage ?? "—"} mi</div>
               <div className="text-xs text-muted-foreground mt-1">
                 Title: {f.title_status || "—"} · Lien: {f.lien_status || "—"} · State: {f.registration_state || "—"} · Insured: {f.currently_insured === null ? "—" : f.currently_insured ? "Yes" : "No"} · Condition: {f.condition || "—"}

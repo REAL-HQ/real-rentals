@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getPhotoEnhanceStatus, savePhotoEnhanceSettings } from "@/lib/photo-enhance.functions";
+import { fmtDateTime } from "@/lib/date-format";
 
 type Status = Awaited<ReturnType<typeof getPhotoEnhanceStatus>>;
 
@@ -73,7 +74,7 @@ export function PhotoEnhancePanel() {
             <ul className="divide-y divide-[#EDEDF0] text-[12px]">
               {data.recent.map((r: any) => (
                 <li key={r.id} className="py-1.5 flex flex-wrap gap-x-3">
-                  <span className="text-[#9A9AA3]">{new Date(r.created_at).toLocaleString()}</span>
+                  <span className="text-[#9A9AA3]">{fmtDateTime(r.created_at)}</span>
                   <span className="capitalize">{r.mode}</span>
                   <span className={r.status === "failed" ? "text-[#D03020]" : "text-[#55555E]"}>{r.status === "failed" ? "Failed" : r.status === "succeeded" ? "Done" : "Started"}</span>
                   {r.processing_ms != null && <span className="text-[#9A9AA3]">{(r.processing_ms / 1000).toFixed(1)}s</span>}
