@@ -18,7 +18,10 @@ CREATE TABLE public.payment_collections (
   receipt_document_id uuid REFERENCES public.documents(id),
   cash_recipient text,
   notes text,
-  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','rejected','reversed')),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','rejected','reversed','expired')),
+  expires_at timestamptz NOT NULL DEFAULT now() + interval '48 hours',
+  expired_at timestamptz,
+  extended_count int NOT NULL DEFAULT 0,
   recorded_by uuid NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT now(),
   decided_by uuid,
@@ -45,14 +48,21 @@ CREATE INDEX payment_collections_payment_idx ON public.payment_collections(payme
 CREATE INDEX payment_collections_driver_idx ON public.payment_collections(driver_id, received_on DESC);
 CREATE INDEX payment_collections_queue_idx ON public.payment_collections(status, recorded_at);
 CREATE UNIQUE INDEX payment_collections_reference_uniq ON public.payment_collections(method, reference_norm)
-  WHERE method <> 'cash' AND reference_norm IS NOT NULL AND status IN ('pending','verified');
+  WHERE method <> 'cash' AND reference_norm IS NOT NULL AND status IN ('pending','verified','expired');
+-- expired keeps its reference claimed: reconcile the original, never re-enter it.
+CREATE INDEX payment_collections_expiry_idx ON public.payment_collections(expires_at) WHERE status = 'pending';
 
--- Immutability: only pending→verified/rejected and verified→reversed; core details never change.
+-- Immutability. Allowed transitions:
+--   pending→verified|rejected|expired, verified→reversed,
+--   expired→pending (Owner extend / Manager+ reconcile), pending→pending (deadline extension only).
+-- Core details never change; expires_at may only move forward.
 CREATE FUNCTION public.payment_collections_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Payment records cannot be deleted'; END IF;
-  IF NOT ((OLD.status='pending' AND NEW.status IN ('verified','rejected'))
-       OR (OLD.status='verified' AND NEW.status='reversed')) THEN
+  IF NOT ((OLD.status='pending' AND NEW.status IN ('verified','rejected','expired'))
+       OR (OLD.status='verified' AND NEW.status='reversed')
+       OR (OLD.status='expired' AND NEW.status='pending')
+       OR (OLD.status='pending' AND NEW.status='pending' AND NEW.expires_at > OLD.expires_at)) THEN
     RAISE EXCEPTION 'Payment record is %, it cannot change', OLD.status;
   END IF;
   IF (NEW.payment_id, NEW.method, NEW.amount, NEW.received_on, NEW.reference_raw, NEW.receipt_document_id,
@@ -62,6 +72,7 @@ BEGIN
       OLD.cash_recipient, OLD.notes, OLD.recorded_by, OLD.recorded_at, OLD.purpose, OLD.idempotency_key) THEN
     RAISE EXCEPTION 'Payment details are permanent; reverse and record a new payment';
   END IF;
+  IF NEW.expires_at < OLD.expires_at THEN RAISE EXCEPTION 'A deadline can only be extended'; END IF;
   RETURN NEW;
 END $$;
 CREATE TRIGGER payment_collections_guard BEFORE UPDATE OR DELETE ON public.payment_collections
@@ -107,7 +118,7 @@ BEGIN
     RAISE EXCEPTION 'Receipt not found'; END IF;
 
   v_open := coalesce(c.balance_due, c.amount);
-  SELECT coalesce(sum(amount),0) INTO v_pending FROM public.payment_collections WHERE payment_id = c.id AND status = 'pending';
+  SELECT coalesce(sum(amount),0) INTO v_pending FROM public.payment_collections WHERE payment_id = c.id AND status = 'pending' AND expires_at > now();
   IF round(_amount,2) > v_open - v_pending THEN
     RAISE EXCEPTION 'Amount is more than the remaining balance (% open, % already pending)', v_open, v_pending; END IF;
 
@@ -133,6 +144,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Payment record not found'; END IF;
   IF r.status = 'verified' THEN RETURN 'already_verified'; END IF;
   IF r.status <> 'pending' THEN RAISE EXCEPTION 'Payment record is %', r.status; END IF;
+  IF r.expires_at <= now() THEN RAISE EXCEPTION 'This pending payment has expired; reconcile it first'; END IF;
   IF NOT coalesce(_funds_confirmed,false) OR coalesce(btrim(_note),'') = '' THEN
     RAISE EXCEPTION 'Confirm the money arrived and say how you checked (a screenshot alone is not proof)'; END IF;
   IF r.method = 'cash' AND NOT private.is_owner() THEN RAISE EXCEPTION 'Cash payments need Owner verification' USING ERRCODE = '42501'; END IF;
@@ -146,7 +158,10 @@ BEGIN
   SELECT * INTO c FROM public.payments WHERE id = r.payment_id FOR UPDATE;
   IF c.status IN ('paid','refunded','waived','void') THEN RAISE EXCEPTION 'This charge is already %', c.status; END IF;
   v_open := coalesce(c.balance_due, c.amount);
-  IF r.amount > v_open THEN RAISE EXCEPTION 'Amount is more than the remaining balance (%)', v_open; END IF;
+  -- Atomic recheck under the charge lock: balance minus OTHER live reservations.
+  IF r.amount > v_open - (SELECT coalesce(sum(amount),0) FROM public.payment_collections
+       WHERE payment_id = c.id AND id <> r.id AND status = 'pending' AND expires_at > now()) THEN
+    RAISE EXCEPTION 'Amount is more than the remaining balance (%)', v_open; END IF;
   v_new := round(v_open - r.amount, 2);
 
   UPDATE public.payments SET
