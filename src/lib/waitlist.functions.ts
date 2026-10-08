@@ -330,7 +330,23 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
       console.error("[waitlist] promote failed", error?.message);
       return { ok: false as const, error: "Could not move this person into Drivers. Please try again." };
     }
-    const r = res as { application_id: string; created: boolean; already: boolean };
+    const r = res as { application_id: string; created: boolean; already: boolean; needs_review?: boolean; reason?: string };
+    if (r.needs_review) {
+      await logAudit(actor, {
+        action: "waitlist.promotion_needs_review",
+        summary: "Waitlist promotion held for manual identity review",
+        entityType: "waitlist",
+        entityId: data.entryId,
+        metadata: { reason: r.reason },
+      });
+      const why =
+        r.reason === "phone_only_match"
+          ? "the phone number matches an existing driver but the email doesn't"
+          : r.reason === "email_match_phone_differs"
+            ? "the email matches an existing driver but the phone number is different"
+            : "the email and phone point to different existing drivers";
+      return { ok: false as const, error: `Needs manual review: ${why}. Nothing was created or merged.` };
+    }
     if (r.already) return { ok: true as const, applicationId: r.application_id, token: null, reused: true };
 
     let token: string | null = null;

@@ -111,7 +111,7 @@ import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocume
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Clock as ClockIcon } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold, getDeleteBlockers } from "@/lib/waitlist.functions";
 import {
@@ -916,7 +916,7 @@ export function DriversPanel({
                               disabled={holdBusy === a.id}
                               onClick={() => void toggleHold(a.id, !held.has(a.id))}
                             >
-                              <Clock className="w-4 h-4 mr-2" /> {held.has(a.id) ? "Remove Waitlist" : "Add Waitlist"}
+                              <ClockIcon className="w-4 h-4 mr-2" /> {held.has(a.id) ? "Remove Waitlist" : "Add Waitlist"}
                             </DropdownMenuItem>
                           )}
                           {!contactedMs && (
