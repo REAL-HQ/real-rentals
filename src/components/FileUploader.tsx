@@ -28,7 +28,7 @@ export type UploadCtx = { onProgress: (pct: number) => void };
 export type UploadFn = (file: File, ctx: UploadCtx) => Promise<unknown>;
 
 export type FileUploaderProps = {
-  onFiles?: (files: File[]) => void | Promise<void>;
+  onFiles?: (files: File[]) => unknown;
   upload?: UploadFn;
   autoStart?: boolean;
   submitLabel?: string;
