@@ -8,23 +8,27 @@ import { requestApplicationLink } from "@/lib/applications.functions";
  * and it only reports what really happened: a provider failure is shown as a
  * failure, never as "sent". Resend is rate-limited with a visible countdown.
  */
+/** What really happened on the last request. "recent" = rate-limited, nothing new sent. */
+export type LinkStatus = "sent" | "recent" | "failed" | "review" | "requested";
+
 export function WelcomeBack({
   email,
   dark = false,
   expired = false,
   initial,
+  onBack,
 }: {
   email?: string;
   dark?: boolean;
   expired?: boolean;
   /** Result of the form submission that led here, if any. */
-  initial?: { ok: boolean; retryAfterSeconds: number };
+  initial?: { status: LinkStatus; retryAfterSeconds: number };
+  /** Return to the form (e.g. to fix a typo). */
+  onBack?: () => void;
 }) {
   const requestLink = useServerFn(requestApplicationLink);
   const [value, setValue] = useState(email ?? "");
-  const [state, setState] = useState<"idle" | "sending" | "requested" | "failed">(
-    initial ? (initial.ok ? "requested" : "failed") : "idle",
-  );
+  const [state, setState] = useState<"idle" | "sending" | LinkStatus>(initial?.status ?? "idle");
   const [wait, setWait] = useState(initial?.retryAfterSeconds ?? 0);
   const muted = dark ? "text-white/75" : "text-muted-foreground";
 
@@ -40,6 +44,7 @@ export function WelcomeBack({
     try {
       const r = await requestLink({ data: { email: value } });
       setState(r.ok ? "requested" : "failed");
+      // r.ok never distinguishes matched from unmatched addresses.
       setWait(r.retryAfterSeconds);
     } catch {
       setState("failed");
@@ -58,15 +63,32 @@ export function WelcomeBack({
           ? "This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link."
           : "For your security, we continue applications through a secure link sent to the email on the application."}
       </p>
+      {state === "sent" && (
+        <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
+          We've sent a secure link to the email on the application. It works once and expires in 30 minutes. It can
+          take a few minutes — please check your Spam or Promotions folder too.
+        </p>
+      )}
+      {state === "recent" && (
+        <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
+          We recently sent you an application link. Please check your inbox, Spam or Promotions folder.
+        </p>
+      )}
       {state === "requested" && (
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
-          If that email matches an application, a secure link is on its way. It works once and expires in 30 minutes.
-          It can take a few minutes — please check your Spam or Promotions folder too.
+          If that email matches an application, a secure link is on its way (or was sent recently). It works once and
+          expires in 30 minutes. Please check your inbox, Spam or Promotions folder.
+        </p>
+      )}
+      {state === "review" && (
+        <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
+          Thanks — we've received your details. For your security, a team member will review them and follow up. You can
+          also request a secure link using the email you applied with.
         </p>
       )}
       {state === "failed" && (
         <p className="mt-3 text-sm leading-relaxed text-real-red font-medium">
-          We couldn't send the email just now. Please try again shortly, or contact us below.
+          We couldn't send the email just now. Please try again when the button is ready, or contact us below.
         </p>
       )}
       <div className="mt-4 flex flex-col sm:flex-row gap-2">
@@ -88,11 +110,16 @@ export function WelcomeBack({
             ? "Sending…"
             : wait > 0
               ? `Resend In ${mins}:${secs}`
-              : state === "idle"
+              : state === "idle" || state === "review"
                 ? "Send Secure Link"
                 : "Resend Link"}
         </button>
       </div>
+      {onBack && (
+        <button type="button" onClick={onBack} className={`mt-3 text-xs underline underline-offset-4 ${muted}`}>
+          Back To The Form
+        </button>
+      )}
       <p className={`mt-4 text-xs leading-relaxed ${muted}`}>
         Need help? Call (888) 833-8280 or email team@drivereal.com.
       </p>
