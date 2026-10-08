@@ -520,13 +520,6 @@ export function VehicleEditorDrawer({
           <Group id="dmv" title="Registration" icon={ScrollText}>
             <Grid>
               <Text
-                label="Plate"
-                value={str("license_plate")}
-                onChange={(x) => set("dmv", "license_plate", x)}
-                error={fieldErr("license_plate")}
-                mono
-              />
-              <Text
                 label="Plate State"
                 value={str("plate_state")}
                 onChange={(x) => set("dmv", "plate_state", x)}
