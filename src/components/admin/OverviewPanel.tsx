@@ -202,11 +202,13 @@ export function OverviewPanel() {
           .from("applications")
           .select("id", { count: "exact", head: true })
           .eq("status", "new")
-          .is("reviewed_at", null),
+          .is("reviewed_at", null)
+          .is("deleted_at", null),
         supabase
           .from("applications")
           .select("id", { count: "exact", head: true })
-          .eq("status", "partial"),
+          .eq("status", "partial")
+          .is("deleted_at", null),
         // Collections: due and not received. `current` is issued-but-not-yet-due
         // and is deliberately absent.
         supabase
@@ -245,6 +247,7 @@ export function OverviewPanel() {
             `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}`,
           )
           .neq("status", "duplicate")
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(APPLICANT_WINDOW),
         supabase.from("driver_screenings").select(READINESS_SCREENING_SELECT),

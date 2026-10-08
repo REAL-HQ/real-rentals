@@ -113,7 +113,9 @@ import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
-import { listWaitlist, listWaitlistHolds, setWaitlistHold, getDeleteBlockers } from "@/lib/waitlist.functions";
+import { DeleteDriverDialog } from "./DeleteDriverDialog";
+import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
+import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -360,7 +362,6 @@ export function DriversPanel({
   // stage underneath is never changed, so Remove restores it automatically.
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
-  const deleteBlockersFn = useServerFn(getDeleteBlockers);
   const [held, setHeld] = useState<Set<string>>(new Set());
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
@@ -478,6 +479,7 @@ export function DriversPanel({
       .from("applications")
       .select("*")
       .neq("status", "duplicate")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         setDrivers(data || []);
@@ -601,29 +603,13 @@ export function DriversPanel({
     toast.success("Marked contacted");
   }
 
-  async function remove(id: string) {
-    // Waitlist links keep a person's signup history. Never strip them to
-    // force a delete; say why and point at Close instead.
-    try {
-      const b = await deleteBlockersFn({ data: { applicationId: id } });
-      if (b.waitlistLinked) {
-        return void toast.error(
-          "This driver has waitlist history, so the record can't be deleted. Set the status to Closed instead.",
-        );
-      }
-    } catch {
-      return void toast.error("Could not check this record. Please try again.");
-    }
-    if (!confirm("Delete this driver record? This cannot be undone.")) return;
-    const { error } = await supabase.from("applications").delete().eq("id", id);
-    if (error) {
-      if ((error as any).code === "23503")
-        return void toast.error("This record is linked to other history and can't be deleted. Set the status to Closed instead.");
-      return toast.error(error.message);
-    }
-    setDrivers((a) => a.filter((x) => x.id !== id));
-    setOpenId(null);
-    toast.success("Deleted");
+  // Owner-only, through the Owner-checked deletion functions (driver-deletion.functions.ts).
+  // No raw deletes from the browser: they cascaded agreements and documents.
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  function remove(id: string) {
+    if (!isOwner) return void toast.error("Only the Owner can delete drivers. Set the status to Closed instead.");
+    setDeleting(id);
   }
 
   async function handleMerge() {
@@ -641,6 +627,7 @@ export function DriversPanel({
         .from("applications")
         .select("*")
         .neq("status", "duplicate")
+      .is("deleted_at", null)
         .order("created_at", { ascending: false });
       setDrivers(data || []);
     } catch (e: any) {
@@ -669,8 +656,23 @@ export function DriversPanel({
     );
   }
 
+  const deleteDialog = deleting ? (
+    <DeleteDriverDialog
+      applicationId={deleting}
+      mode="soft"
+      onClose={() => setDeleting(null)}
+      onDone={() => {
+        const id = deleting;
+        setDeleting(null);
+        setDrivers((a) => a.filter((x) => x.id !== id));
+        setOpenId(null);
+      }}
+    />
+  ) : null;
+
   if (open) {
     return (
+      <>
       <DriverDetail
         /*
          * Keyed by applicant, so switching applicants rebuilds the drawer
@@ -695,6 +697,8 @@ export function DriversPanel({
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
       />
+      {deleteDialog}
+      </>
     );
   }
 
@@ -723,8 +727,22 @@ export function DriversPanel({
 
   return (
     <div>
+      {showDeleted && (
+        <RecentlyDeletedDialog
+          onClose={() => setShowDeleted(false)}
+          onRestored={() =>
+            void supabase.from("applications").select("*").neq("status", "duplicate").is("deleted_at", null)
+              .order("created_at", { ascending: false }).then(({ data }) => data && setDrivers(data))
+          }
+        />
+      )}
       <div className="flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {isOwner && (
+          <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
+            Recently Deleted
+          </button>
+        )}
         <div className="ml-auto shrink-0">
           <button
             onClick={handleMerge}
@@ -993,6 +1011,7 @@ export function DriversPanel({
                 .from("applications")
                 .select("*")
                 .neq("status", "duplicate")
+      .is("deleted_at", null)
                 .order("created_at", { ascending: false })
                 .then(({ data }) => data && setDrivers(data))
             }
@@ -1685,12 +1704,12 @@ function DriverDetail({
                   <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
                   <ReissueLinkAction applicationId={driver.id} />
                   <CardOnFileActions driver={driver} onUpdate={onUpdate} />
-                  <DropdownMenuItem
+{isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
                   >
                     <Trash2 className="w-4 h-4 mr-2" /> Delete Driver
-                  </DropdownMenuItem>
+                  </DropdownMenuItem>)}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

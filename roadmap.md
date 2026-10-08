@@ -10,4 +10,4 @@
 - [ ] Email: business postal address (waiting on user)
 
 - [ ] Waitlist acceptance check: automated Coordinator denial test (add/remove/promote), reconcile application/Waitlist counts incl. Dustin Arango. No historical changes, unpublished.
-- [ ] Owner driver deletion (approved plan, archived in .lovable/plan/) — migration pending.
+- [ ] Owner driver deletion: Stage 1 (0016) applied + preview UI built; Stage 2 (0017) waits for publish approval; live role tests need temporary Manager/Coordinator accounts.
