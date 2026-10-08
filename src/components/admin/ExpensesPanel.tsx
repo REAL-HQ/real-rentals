@@ -10,10 +10,10 @@ import {
   Paperclip,
   TrendingUp,
   TrendingDown,
-  Upload,
   Loader2,
 } from "lucide-react";
 import { EmptyState, MicroLabel } from "./ui";
+import { FileUploader } from "@/components/FileUploader";
 import {
   listExpenses,
   createExpense,
@@ -456,10 +456,10 @@ function ExpenseForm({
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  async function handleReceipt(file: File) {
-    if (file.size > 10 * 1024 * 1024) return toast.error("Receipt must be under 10MB.");
+  async function handleReceipt(file: File, onProgress: (pct: number) => void) {
     setUploading(true);
     try {
+      onProgress(10);
       const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
       // Same shape as every other upload in the app: unique key, never an
       // overwrite, so two receipts in the same second cannot collide.
@@ -468,11 +468,13 @@ function ExpenseForm({
         .from("receipts")
         .upload(path, file, { contentType: file.type || undefined });
       if (error) throw error;
+      onProgress(90);
       setReceipt({ path, name: file.name, mime: file.type || "application/octet-stream" });
       toast.success("Receipt attached");
     } catch (e: any) {
       console.error("[receipt] upload failed", e);
       toast.error("Could not upload that receipt. Check you have Manager access.");
+      throw e;
     } finally {
       setUploading(false);
     }
@@ -616,31 +618,19 @@ function ExpenseForm({
 
         <div>
           <MicroLabel>Receipt</MicroLabel>
-          <label className="mt-1 flex items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground cursor-pointer hover:border-[#D03020]">
-            {uploading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Uploading…
-              </>
-            ) : receipt ? (
-              <>
-                <Paperclip className="w-4 h-4" /> {receipt.name} — tap to replace
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4" /> Attach a photo or PDF
-              </>
-            )}
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleReceipt(f);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <FileUploader
+            className="mt-1"
+            variant="zone"
+            title="Drop The Receipt Here"
+            label={receipt ? "Replace Receipt" : "Attach Receipt"}
+            hint="Photo or PDF, up to 10 MB"
+            context={`${vehicles.find((v) => v.id === vehicleId)?.label ?? "Expense"} · Receipt`}
+            accept="image/*,application/pdf"
+            maxBytes={10 * 1024 * 1024}
+            camera
+            disabled={saving}
+            upload={(file, { onProgress }) => handleReceipt(file, onProgress)}
+          />
         </div>
 
         <button

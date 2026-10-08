@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
-  Upload,
   Trash2,
   Loader2,
   AlertTriangle,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/documents.functions";
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
+import { FileUploader } from "@/components/FileUploader";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -129,8 +129,6 @@ export function ApplicantDocuments({
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const pending = useRef<DocCategory | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     await onRefresh();
@@ -158,23 +156,10 @@ export function ApplicantDocuments({
     [docs, current],
   );
 
-  function pick(category: DocCategory) {
-    pending.current = category;
-    fileInput.current?.click();
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    const category = pending.current;
-    pending.current = null;
-    if (!file || !category) return;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`Files must be under ${MAX_MB} MB`);
-      return;
-    }
+  async function uploadCategory(category: DocCategory, file: File, onProgress: (pct: number) => void) {
     setBusy(category);
     try {
+      onProgress(10);
       const signed = await startUpload({
         data: {
           applicationId,
@@ -183,10 +168,12 @@ export function ApplicantDocuments({
           mimeType: file.type || "application/octet-stream",
         },
       });
+      onProgress(40);
       const { error } = await supabase.storage
         .from(signed.bucket)
         .uploadToSignedUrl(signed.path, signed.token, file);
       if (error) throw new Error(error.message);
+      onProgress(80);
       await confirmUpload({
         data: {
           applicationId: signed.applicationId!,
@@ -197,10 +184,12 @@ export function ApplicantDocuments({
           sizeBytes: file.size,
         },
       });
+      onProgress(100);
       toast.success("Document uploaded");
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
+      throw err;
     } finally {
       setBusy(null);
     }
@@ -281,14 +270,6 @@ export function ApplicantDocuments({
 
   return (
     <div className="space-y-4">
-      <input
-        ref={fileInput}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={onFile}
-      />
-
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <MicroLabel>
           {received} of {ORDER.length} document types received
@@ -408,18 +389,16 @@ export function ApplicantDocuments({
                       <AlertTriangle className="w-3 h-3" /> Needs New
                     </button>
                   )}
-                  <button
-                    onClick={() => pick(key)}
+                  <FileUploader
+                    variant="inline"
+                    label={d ? "Replace" : "Upload"}
+                    context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
+                    accept="image/*,application/pdf"
+                    maxBytes={MAX_MB * 1024 * 1024}
+                    camera
                     disabled={!!working}
-                    className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#C4C4CB] disabled:opacity-50"
-                  >
-                    {working ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Upload className="w-3 h-3" />
-                    )}
-                    {d ? "Replace" : "Upload"}
-                  </button>
+                    upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
+                  />
                   {d && (
                     <button
                       onClick={() => void drop(d)}

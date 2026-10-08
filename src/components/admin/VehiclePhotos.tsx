@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Upload,
   Loader2,
   Trash2,
   Star,
@@ -14,6 +13,7 @@ import {
   ImageOff,
   Link2,
 } from "lucide-react";
+import { FileUploader } from "@/components/FileUploader";
 import {
   listVehicleMedia,
   registerVehicleMedia,
@@ -49,9 +49,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 
   const [data, setData] = useState<VehicleMediaList | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -68,50 +66,39 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
     void refresh();
   }, [refresh]);
 
-  async function upload(files: FileList | null) {
-    if (!files?.length) return;
-    const list = Array.from(files);
-    setUploading(list.length);
-    let ok = 0;
-    for (const file of list) {
-      try {
-        if (file.size > MAX_BYTES) {
-          toast.error(`${file.name} is over 15MB.`);
-          continue;
-        }
-        const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const path = `${vehicleId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error } = await supabase.storage
-          .from("vehicle-photos")
-          .upload(path, file, { contentType: file.type || undefined });
-        if (error) throw error;
+  async function uploadOne(file: File) {
+    if (file.size > MAX_BYTES) throw new Error(`${file.name} is over 15MB.`);
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const path = `${vehicleId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage
+        .from("vehicle-photos")
+        .upload(path, file, { contentType: file.type || undefined });
+      if (error) throw error;
 
-        const res = await register({
-          data: {
-            vehicleId,
-            path,
-            fileName: file.name,
-            mimeType: file.type || null,
-            sizeBytes: file.size,
-          },
-        });
-        if (!res.ok) throw new Error(res.error);
-        ok++;
-      } catch (e: any) {
-        console.error("[photos] upload failed", e);
-        toast.error(
-          e?.message?.includes("row-level security")
-            ? "You do not have permission to add photos."
-            : `Could not upload ${file.name}.`,
-        );
-      } finally {
-        setUploading((n) => n - 1);
-      }
+      const res = await register({
+        data: {
+          vehicleId,
+          path,
+          fileName: file.name,
+          mimeType: file.type || null,
+          sizeBytes: file.size,
+        },
+      });
+      if (!res.ok) throw new Error(res.error);
+    } catch (e: any) {
+      console.error("[photos] upload failed", e);
+      throw new Error(
+        e?.message?.includes("row-level security")
+          ? "You do not have permission to add photos."
+          : `Could not upload ${file.name}.`,
+      );
     }
-    if (ok) toast.success(`${ok} photo${ok === 1 ? "" : "s"} added`);
-    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function afterUpload() {
     void refresh();
-    if (ok) window.dispatchEvent(new Event("vehicle-profile-refresh"));
+    window.dispatchEvent(new Event("vehicle-profile-refresh"));
   }
 
   type MediaPatch = {
@@ -199,28 +186,17 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
         }
         right={
           canEdit ? (
-            <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept={ACCEPT}
-                multiple
-                className="hidden"
-                onChange={(e) => upload(e.target.files)}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading > 0}
-                className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60"
-              >
-                {uploading > 0 ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Upload className="w-3.5 h-3.5" />
-                )}
-                {uploading > 0 ? `Uploading ${uploading}…` : "Add Photos"}
-              </button>
-            </>
+            <FileUploader
+              variant="inline"
+              label="Add Photos"
+              accept={ACCEPT}
+              multiple
+              camera
+              maxBytes={MAX_BYTES}
+              context={`Vehicle ${vehicleId} · Photos`}
+              upload={uploadOne}
+              onAllDone={afterUpload}
+            />
           ) : null
         }
       >

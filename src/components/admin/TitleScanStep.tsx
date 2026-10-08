@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Camera, Loader2, AlertTriangle, ArrowRight, FileText } from "lucide-react";
+import { FileUploader } from "@/components/FileUploader";
 import { scanVehicleTitle, type TitleScanResult } from "@/lib/vehicle-title-scan.functions";
 import { MicroLabel } from "./ui";
 
@@ -60,7 +61,6 @@ const CONF: Record<string, { label: string; bg: string; fg: string }> = {
 
 export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, string>) => void }) {
   const scan = useServerFn(scanVehicleTitle);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TitleScanResult | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -87,7 +87,6 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
       toast.error("Could not upload that document.");
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -102,37 +101,17 @@ export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, strin
 
   return (
     <div className="p-6 space-y-4">
-      <input
-        ref={fileRef}
-        type="file"
-        accept={ACCEPT}
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && run(e.target.files[0])}
-      />
-
       {!result && (
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
+        <FileUploader
+          onFiles={(files) => files[0] && run(files[0])}
+          accept={ACCEPT}
+          maxBytes={MAX_BYTES}
+          camera
           disabled={busy}
-          className="w-full rounded-xl border border-dashed border-border p-8 text-center hover:border-[#D03020] hover:bg-[rgba(208,48,32,0.02)] transition-colors disabled:opacity-60"
-        >
-          {busy ? (
-            <>
-              <Loader2 className="w-6 h-6 mx-auto text-[#D03020] animate-spin" />
-              <div className="mt-3 text-sm font-medium">Reading the Document…</div>
-            </>
-          ) : (
-            <>
-              <Camera className="w-6 h-6 mx-auto text-[#D03020]" strokeWidth={1.75} />
-              <div className="mt-3 text-sm font-medium">Photograph the Title or Registration</div>
-              <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
-                Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is
-                saved until you confirm what was read.
-              </p>
-            </>
-          )}
-        </button>
+          busy={busy}
+          title={busy ? "Reading the Document…" : "Photograph the Title or Registration"}
+          hint="Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is saved until you confirm what was read."
+        />
       )}
 
       {result && !result.ok && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   Car,
 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { FileUploader } from "@/components/FileUploader";
 import {
   startInspection,
   getInspection,
@@ -648,51 +649,33 @@ export function ConditionUploader({
 }) {
   const startUpload = useServerFn(createConditionUploadUrl);
   const confirm = useServerFn(confirmConditionUpload);
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const [angle, setAngle] = useState("front");
 
-  async function handleFiles(files: FileList) {
-    setUploading(true);
-    let done = 0;
-    for (const file of Array.from(files)) {
-      if (file.size > 50 * 1024 * 1024) {
-        toast.error(`${file.name} is over 50MB.`);
-        continue;
-      }
-      try {
-        const { path, token, bucket } = await startUpload({
-          data: { vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" },
-        });
-        const { error } = await supabase.storage
-          .from(bucket)
-          .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
-        if (error) throw error;
-        await confirm({
-          data: {
-            vehicleId,
-            rentalId: rentalId ?? null,
-            inspectionId: inspectionId ?? null,
-            phase,
-            angle: angle as any,
-            path,
-            fileName: file.name,
-            mimeType: file.type || undefined,
-            sizeBytes: file.size,
-          },
-        });
-        done++;
-      } catch (e: any) {
-        console.error("[condition-upload] failed", e);
-        toast.error(e?.message ?? `Could not upload ${file.name}`);
-      }
-    }
-    setUploading(false);
-    if (inputRef.current) inputRef.current.value = "";
-    if (done) {
-      toast.success(`${done} file${done === 1 ? "" : "s"} uploaded`);
-      onChanged();
-    }
+  async function uploadOne(file: File, onProgress: (pct: number) => void) {
+    onProgress(10);
+    const { path, token, bucket } = await startUpload({
+      data: { vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" },
+    });
+    onProgress(40);
+    const { error } = await supabase.storage
+      .from(bucket)
+      .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
+    if (error) throw error;
+    onProgress(80);
+    await confirm({
+      data: {
+        vehicleId,
+        rentalId: rentalId ?? null,
+        inspectionId: inspectionId ?? null,
+        phase,
+        angle: angle as any,
+        path,
+        fileName: file.name,
+        mimeType: file.type || undefined,
+        sizeBytes: file.size,
+      },
+    });
+    onProgress(100);
   }
 
   const ANGLES = [
@@ -733,30 +716,18 @@ export function ConditionUploader({
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-3 rounded-lg border border-dashed border-[#EDEDF0] p-4 cursor-pointer hover:border-[#D03020]/60">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*,video/mp4,video/quicktime"
-              multiple
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files;
-                if (f && f.length) handleFiles(f);
-              }}
-            />
-            {uploading ? (
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            ) : (
-              <Camera className="h-5 w-5 text-muted-foreground" />
-            )}
-            <span className="text-sm text-muted-foreground">
-              {uploading
-                ? "Uploading…"
-                : `Add ${ANGLES.find((a) => a[0] === angle)?.[1]} photo or video`}
-            </span>
-          </label>
+          <FileUploader
+            variant="zone"
+            title={`Drop ${ANGLES.find((a) => a[0] === angle)?.[1]} Photos Or Video Here`}
+            label={`Add ${ANGLES.find((a) => a[0] === angle)?.[1]} Photo Or Video`}
+            context={`${phase} · ${ANGLES.find((a) => a[0] === angle)?.[1]}`}
+            accept="image/*,video/mp4,video/quicktime"
+            maxBytes={50 * 1024 * 1024}
+            multiple
+            camera
+            upload={(file, { onProgress }) => uploadOne(file, onProgress)}
+            onAllDone={onChanged}
+          />
         </div>
       ) : null}
 

@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
-  Upload,
   Loader2,
   ArrowRight,
   Check,
@@ -23,6 +22,7 @@ import {
   type RowVerdict,
 } from "@/lib/vehicle-import.functions";
 import { MicroLabel, EmptyState } from "./ui";
+import { FileUploader } from "@/components/FileUploader";
 
 // Bringing a fleet in from a spreadsheet.
 //
@@ -40,7 +40,6 @@ const MAX_ROWS = 500;
 export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
   const preview = useServerFn(previewVehicleImport);
   const commit = useServerFn(commitVehicleImport);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const [headers, setHeaders] = useState<string[]>([]);
   const [body, setBody] = useState<string[][]>([]);
@@ -116,25 +115,12 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
   if (!headers.length) {
     return (
       <div className="p-6 space-y-3">
-        <input
-          ref={fileRef}
-          type="file"
+        <FileUploader
+          onFiles={(files) => files[0] && read(files[0])}
           accept=".csv,text/csv"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && read(e.target.files[0])}
+          title="Choose a CSV File"
+          hint={`Any column order. You will map the columns and see exactly what will happen to each row before anything is created. Up to ${MAX_ROWS} rows at a time.`}
         />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="w-full rounded-xl border border-dashed border-border p-8 text-center hover:border-[#D03020] hover:bg-[rgba(208,48,32,0.02)] transition-colors"
-        >
-          <Upload className="w-6 h-6 mx-auto text-[#D03020]" strokeWidth={1.75} />
-          <div className="mt-3 text-sm font-medium">Choose a CSV File</div>
-          <p className="text-xs text-muted-foreground mt-1.5 max-w-sm mx-auto leading-relaxed">
-            Any column order. You will map the columns and see exactly what will happen to each row
-            before anything is created. Up to {MAX_ROWS} rows at a time.
-          </p>
-        </button>
         <button
           type="button"
           onClick={() => {

@@ -1,7 +1,6 @@
-import { toast } from "sonner";
-import { acceptsFile } from "@/components/FileDropBridge";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { X, ArrowLeft, ImagePlus, Check, Circle } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { X, ArrowLeft, Check, Circle } from "lucide-react";
+import { FileUploader } from "@/components/FileUploader";
 
 // Shared back-office modal system. Visual behavior only — no business logic.
 // Sizes: sm (confirmations), md (normal forms), lg (multi-section forms),
@@ -128,58 +127,21 @@ export function ModalButton({ variant = "secondary", className = "", ...p }: Rea
     className={`inline-flex h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium transition disabled:cursor-not-allowed ${v} ${className}`} />;
 }
 
-export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add Photo", hint = "Drag & drop or browse", note }: {
-  file: File | null; onFile: (f: File | null) => void; accept?: string; title?: string; hint?: string; note?: string;
+export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add Photo", hint = "Drag & drop or browse", note, context, camera }: {
+  file: File | null; onFile: (f: File | null) => void; accept?: string; title?: string; hint?: string; note?: string; context?: string; camera?: boolean;
 }) {
-  const [over, setOver] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (!file || !file.type.startsWith("image/")) { setUrl(null); return; }
-    const u = URL.createObjectURL(file); setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [file]);
-  const depth = useRef(0);
-  const pick = (f?: File | null) => {
-    if (!f) return;
-    if (!acceptsFile(accept, f)) { toast.error(`${f.name}: unsupported file type.`); return; }
-    onFile(f);
-  };
-  const input = <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />;
-
-  if (file) {
-    return (
-      <div className="flex items-center gap-4 rounded-xl border border-border p-3">
-        {url
-          ? <img src={url} alt="Selected" className="h-24 w-36 shrink-0 rounded-lg object-cover bg-muted" />
-          : <div className="grid h-24 w-36 shrink-0 place-items-center rounded-lg bg-muted"><ImagePlus className="h-6 w-6 text-muted-foreground" /></div>}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{file.name}</div>
-          <div className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} MB{note ? ` · ${note}` : ""}</div>
-          <div className="mt-2 flex gap-3 text-sm">
-            <button type="button" onClick={() => inputRef.current?.click()} className="font-medium text-foreground hover:underline">Replace</button>
-            <button type="button" onClick={() => onFile(null)} className="text-muted-foreground hover:text-brand">Remove</button>
-          </div>
-        </div>
-        {input}
-      </div>
-    );
-  }
   return (
-    <div role="button" tabIndex={0}
-      onClick={() => inputRef.current?.click()}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
-      onDragEnter={(e) => { e.preventDefault(); depth.current++; setOver(true); }}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-      onDragLeave={() => { depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); }}
-      onDrop={(e) => { e.preventDefault(); depth.current = 0; setOver(false); pick(e.dataTransfer.files?.[0]); }}
-      className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-center transition ${over ? "border-brand bg-brand/5" : "border-border bg-muted/40 hover:bg-muted"}`}>
-      <div className="mb-1 grid h-10 w-10 place-items-center rounded-full bg-card shadow-sm"><ImagePlus className="h-5 w-5 text-foreground" /></div>
-      <div className="text-sm font-semibold">{title}</div>
-      <div className="text-xs text-muted-foreground">{hint}</div>
-      {note && <div className="text-[11px] text-muted-foreground/80">{note}</div>}
-      {input}
-    </div>
+    <FileUploader
+      value={file ? [file] : []}
+      onChange={(files) => onFile(files[0] ?? null)}
+      accept={accept}
+      multiple={false}
+      camera={camera}
+      title={title}
+      hint={note ? `${hint} · ${note}` : hint}
+      context={context}
+      label="Browse Files"
+    />
   );
 }
 

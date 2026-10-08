@@ -4,7 +4,8 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import { createFleetOwnerSubmission, updateFleetOwnerPhotos } from "@/lib/partner-submissions.functions";
-import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText, Upload, X } from "lucide-react";
+import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText } from "lucide-react";
+import { FileUploader } from "@/components/FileUploader";
 
 export const Route = createFileRoute("/partners")({
   head: () => ({
@@ -91,12 +92,6 @@ function Partners() {
 
   function scrollToForm() {
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function onPhotos(files: FileList | null) {
-    if (!files) return;
-    const next = [...photos, ...Array.from(files)].slice(0, 6);
-    setPhotos(next);
   }
 
   function validate(): boolean {
@@ -268,36 +263,19 @@ function Partners() {
               <Select label="Vehicle Condition" value={form.condition} onChange={(v) => set("condition", v)} options={CONDITIONS} />
 
               <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle photos (4–6)</label>
-                <label className="mt-1 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-soft py-8 cursor-pointer hover:border-foreground/40 transition">
-                  <Upload className="h-5 w-5 text-muted-foreground" />
-                  <div className="text-sm text-muted-foreground">Click to upload photos</div>
-                  <div className="text-xs text-muted-foreground/70">{photos.length}/6 selected</div>
-                  <input
-                    type="file"
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle Photos (4–6)</label>
+                <div className="mt-1">
+                  <FileUploader
+                    value={photos}
+                    onChange={setPhotos}
                     accept="image/*"
                     multiple
-                    className="hidden"
-                    onChange={(e) => onPhotos(e.target.files)}
+                    maxFiles={6}
+                    title="Drop Vehicle Photos Here"
+                    label="Browse Photos"
+                    hint={`${photos.length}/6 selected`}
                   />
-                </label>
-                {photos.length > 0 && (
-                  <div className="mt-3 grid grid-cols-3 md:grid-cols-6 gap-2">
-                    {photos.map((p, i) => (
-                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-soft">
-                        <img src={URL.createObjectURL(p)} alt={`Vehicle ${i + 1}`} className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
-                          className="absolute top-1 right-1 rounded-full bg-black/70 text-white p-1 hover:bg-black"
-                          aria-label="Remove photo"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                </div>
               </div>
 
               <div className="md:col-span-2">

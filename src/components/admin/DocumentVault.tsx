@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Upload, Trash2, ExternalLink, Lock, History, Loader2, AlertTriangle } from "lucide-react";
+import { Trash2, ExternalLink, Lock, History, Loader2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { FileUploader } from "@/components/FileUploader";
 import {
   DOC_CATEGORIES,
   adminListDriverDocuments,
@@ -54,10 +55,7 @@ export function DocumentVault({
   const [docs, setDocs] = useState<VaultDocument[]>([]);
   const [appId, setAppId] = useState<string | null>(applicationId ?? null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const pending = useRef<{ category: DocCategory; internal: boolean } | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     try {
@@ -81,26 +79,13 @@ export function DocumentVault({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicationId, mode]);
 
-  function pick(category: DocCategory, internal = false) {
-    pending.current = { category, internal };
-    fileInput.current?.click();
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    const ctx = pending.current;
-    if (!file || !ctx) return;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`Files must be under ${MAX_MB} MB`);
-      return;
-    }
-    setUploading(ctx.category);
+  async function uploadDoc(category: DocCategory, internal: boolean, file: File) {
+    if (file.size > MAX_MB * 1024 * 1024) throw new Error(`Files must be under ${MAX_MB} MB`);
     try {
       const signed = await startUpload({
         data: {
           applicationId: appId ?? undefined,
-          category: ctx.category,
+          category,
           fileName: file.name,
           mimeType: file.type || "application/octet-stream",
         },
@@ -112,21 +97,18 @@ export function DocumentVault({
       await confirmUpload({
         data: {
           applicationId: signed.applicationId!,
-          category: ctx.category,
+          category,
           path: signed.path,
           fileName: file.name,
           mimeType: file.type || (null as any),
           sizeBytes: file.size,
-          internal: ctx.internal,
+          internal,
         },
       });
       toast.success("Document uploaded");
       await refresh();
     } catch (err: any) {
-      toast.error(err?.message || "Upload failed");
-    } finally {
-      setUploading(null);
-      pending.current = null;
+      throw new Error(err?.message || "Upload failed");
     }
   }
 
@@ -145,14 +127,6 @@ export function DocumentVault({
 
   return (
     <div className="space-y-3">
-      <input
-        ref={fileInput}
-        type="file"
-        onChange={onFile}
-        className="hidden"
-        accept="image/*,application/pdf"
-      />
-
       <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-white">
         {categories.map((cat) => {
           const doc = current.find((d) => d.category === cat.key) ?? null;
@@ -222,18 +196,13 @@ export function DocumentVault({
                   </a>
                 ) : null}
                 {cat.key !== "agreement" ? (
-                  <button
-                    onClick={() => pick(cat.key as DocCategory)}
-                    disabled={uploading === cat.key}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#DEDEE3] text-[11.5px] font-semibold text-[#28282E] px-2.5 py-1.5 hover:bg-[#FAFAFB] disabled:opacity-50"
-                  >
-                    {uploading === cat.key ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5" />
-                    )}
-                    {doc ? "Replace" : "Upload"}
-                  </button>
+                  <FileUploader
+                    variant="inline"
+                    label={doc ? "Replace" : "Upload"}
+                    accept="image/*,application/pdf"
+                    context={cat.label}
+                    upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
+                  />
                 ) : null}
                 {mode === "admin" && doc ? (
                   <button
@@ -260,12 +229,14 @@ export function DocumentVault({
       </ul>
 
       {mode === "admin" ? (
-        <button
-          onClick={() => pick("other", true)}
-          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#55555E] hover:text-[#111114]"
-        >
-          <Lock className="w-3.5 h-3.5" /> Upload Team-only Document
-        </button>
+        <FileUploader
+          variant="inline"
+          label="Upload Team-only Document"
+          accept="image/*,application/pdf"
+          context="Team-only Document"
+          upload={(file) => uploadDoc("other", true, file)}
+          className="text-[#55555E]"
+        />
       ) : null}
 
       {history.length ? (

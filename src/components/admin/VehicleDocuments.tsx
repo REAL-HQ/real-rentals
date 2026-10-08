@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { FileText, Upload, Trash2, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
+import { FileText, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
+import { FileUploader } from "@/components/FileUploader";
 import { getFleetDocumentFile, listVehicleLinkedDocs } from "@/lib/fleet-inbox.functions";
 import { docClassLabel, docGroupOf, DOC_GROUPS } from "@/lib/fleet-inbox";
 import { vehicleDocPresence, type DocSlot } from "@/lib/vehicle-doc-presence";
@@ -48,7 +49,6 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
 
   const [docs, setDocs] = useState<VehicleDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyKind, setBusyKind] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -73,8 +73,7 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
   }, [refresh]);
 
   async function upload(kind: string, file: File, expiresAt: string | null) {
-    if (file.size > 20 * 1024 * 1024) return toast.error("File must be under 20MB.");
-    setBusyKind(kind);
+    if (file.size > 20 * 1024 * 1024) throw new Error("File must be under 20MB.");
     try {
       const ext = (file.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, "");
       const path = `${vehicleId}/${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -94,14 +93,12 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
           expiresAt,
         },
       });
-      if (!res.ok) return toast.error(res.error);
+      if (!res.ok) throw new Error(res.error);
       toast.success("Document saved");
       void refresh();
     } catch (e: any) {
       console.error("[vehicle-docs] upload failed", e);
-      toast.error("Could not upload that document.");
-    } finally {
-      setBusyKind(null);
+      throw new Error(e?.message || "Could not upload that document.");
     }
   }
 
@@ -155,7 +152,6 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
                 doc={doc}
                 evidence={evidence}
                 onOpenEvidence={evidence ? () => openDoc(evidence.id) : undefined}
-                busy={busyKind === t.value}
                 onUpload={(file, expires) => upload(t.value, file, expires)}
                 onOpen={doc ? () => openDoc(doc.id) : undefined}
                 onDelete={doc ? () => onDelete(doc) : undefined}
@@ -202,7 +198,6 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
 function DocRow({
   type,
   doc,
-  busy,
   onUpload,
   onDelete,
   onOpen,
@@ -214,8 +209,7 @@ function DocRow({
   onOpenEvidence?: () => void;
   type: (typeof VEHICLE_DOC_TYPES)[number];
   doc?: VehicleDoc;
-  busy: boolean;
-  onUpload: (file: File, expiresAt: string | null) => void;
+  onUpload: (file: File, expiresAt: string | null) => Promise<void>;
   onDelete?: () => void;
 }) {
   const [expires, setExpires] = useState("");
@@ -288,21 +282,13 @@ function DocRow({
         </button>
       )}
 
-      <label className="text-xs rounded-md border border-border px-2.5 py-1.5 cursor-pointer hover:bg-soft inline-flex items-center gap-1.5">
-        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-        {doc ? "Replace" : "Upload"}
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          className="hidden"
-          disabled={busy}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onUpload(f, type.expires ? expires || null : null);
-            e.currentTarget.value = "";
-          }}
-        />
-      </label>
+      <FileUploader
+        variant="inline"
+        label={doc ? "Replace" : "Upload"}
+        accept="image/*,application/pdf"
+        context={type.label}
+        upload={(file) => onUpload(file, type.expires ? expires || null : null)}
+      />
 
       {onDelete && (
         <button

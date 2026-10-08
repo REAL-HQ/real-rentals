@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Upload, Camera, FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2,
+  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2,
 } from "lucide-react";
 import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
@@ -13,6 +13,7 @@ import {
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
+import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
 
 const BATCH_LABEL: Record<string, string> = {
@@ -44,14 +45,10 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   const register = useServerFn(registerInboxFile);
   const analyze = useServerFn(analyzeInboxItem);
   const [batches, setBatches] = useState<any[] | null>(null);
-  const [drag, setDrag] = useState(false);
-  const dragDepth = useRef(0);
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [rows, setRows] = useState<{ key: string; name: string; status: "queued" | "uploading" | "done" | "duplicate" | "rejected" | "failed"; note?: string; file?: File }[]>([]);
   const [lastBatch, setLastBatch] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const camRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => setBatches(await list()), [list]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -108,42 +105,19 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   }
   const failedFiles = rows.filter((r) => r.status === "failed" && r.file).map((r) => r.file!);
 
-  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
-
   return (
     <div className="space-y-6">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload fleet files. Press Enter to choose files, or drop files here."
-        aria-busy={!!busy}
-        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) { e.preventDefault(); if (!busy) fileRef.current?.click(); } }}
-        onDragEnter={(e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); dragDepth.current++; setDrag(true); }}
-        onDragOver={(e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = busy ? "none" : "copy"; if (!drag) setDrag(true); }}
-        onDragLeave={(e) => { if (!hasFiles(e)) return; e.stopPropagation(); dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDrag(false); }}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dragDepth.current = 0; setDrag(false); const f = Array.from(e.dataTransfer.files ?? []); if (busyRef.current) { toast.message("Upload in progress — drop again when it finishes."); return; } void ingest(f); }}
-        className={`rounded-2xl border-2 border-dashed p-8 sm:p-12 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#D03020] ${drag ? "border-[#D03020] bg-[rgba(208,48,32,0.06)]" : "border-[#E2E2E7] bg-white"}`}
-      >
-        <Upload className="w-8 h-8 mx-auto text-[#9A9AA3]" />
-        <h2 className="mt-3 text-lg font-semibold text-[#111114]">Drop Fleet Files Here</h2>
-        <p className="mt-1 text-sm text-[#55555E] max-w-lg mx-auto">
-          Titles, registrations, insurance, receipts, photos — one file or a whole stack.{" "}
-          <span className="sm:whitespace-nowrap">REAL RENTALS</span> sorts each document, matches the vehicles and prepares
-          updates for your review. Nothing changes until you approve.
-        </p>
-        <div className="mt-5 flex flex-col sm:flex-row gap-2 justify-center">
-          <button disabled={!!busy} onClick={() => fileRef.current?.click()} className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-md bg-[#D03020] text-white px-5 text-sm font-medium disabled:opacity-50">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} {busy ?? "Upload Files"}
-          </button>
-          <button disabled={!!busy} onClick={() => camRef.current?.click()} className="sm:hidden inline-flex items-center justify-center gap-2 min-h-[44px] rounded-md border border-[#EDEDF0] bg-white px-5 text-sm font-medium">
-            <Camera className="w-4 h-4" /> Take Photo
-          </button>
-        </div>
-        <input ref={fileRef} type="file" multiple accept="image/*,application/pdf" className="hidden"
-          onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void ingest(f); }} />
-        <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden"
-          onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void ingest(f); }} />
-      </div>
+      <FileUploader
+        onFiles={(f) => { if (busyRef.current) { toast.message("Upload in progress — drop again when it finishes."); return; } void ingest(f); }}
+        accept="image/*,application/pdf"
+        multiple
+        maxBytes={MAX}
+        camera
+        disabled={!!busy}
+        busy={!!busy}
+        title="Drop Fleet Files Here"
+        hint="Titles, registrations, insurance, receipts, photos — one file or a whole stack. REAL RENTALS sorts each document, matches the vehicles and prepares updates for your review. Nothing changes until you approve."
+      />
 
       {rows.length > 0 && (
         <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]" aria-live="polite">
