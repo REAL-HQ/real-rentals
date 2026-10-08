@@ -286,6 +286,12 @@
     top: var(--admin-sticky-h, 0px);
     z-index: 15;
   }
+  /* Extend the bar's background over its 16px bottom margin so scrolling
+     rows can't peek through the gap above the sticky table header. */
+  .admin-sticky-bar.admin-sticky-bar {
+    padding-bottom: 16px;
+    margin-bottom: -16px;
+  }
 }
 @media (max-width: 767px) {
   .admin-sticky-bar,
