@@ -262,11 +262,41 @@
   transition: background-color 120ms ease;
 }
 
-/* Back-office filter/toolbar rows lock under the sticky page header. */
+/* ===== Back-office sticky layout standard =====
+   Layer 1: page chrome (top bar + title + section tabs) — admin.tsx, z-20,
+            height published as --admin-sticky-h.
+   Layer 2: one filter/toolbar row per page — add class "admin-sticky-bar";
+            height published as --admin-bar-h. z-15.
+   Layer 3: table column headers inside [data-admin-main] — automatic, z-10,
+            desktop only (>=1280px) where tables fit without sideways scroll.
+   Mobile (<768px): only the top bar locks; filter chips scroll sideways. */
 .admin-sticky-bar {
-  position: sticky;
-  top: var(--admin-sticky-h, 0px);
-  z-index: 15;
   background: #fafafb;
   padding-top: 4px;
+}
+@media (min-width: 768px) {
+  .admin-sticky-bar {
+    position: sticky;
+    top: var(--admin-sticky-h, 0px);
+    z-index: 15;
+  }
+}
+@media (max-width: 767px) {
+  .admin-sticky-bar,
+  .admin-sticky-bar > .flex-wrap {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .admin-sticky-bar > * { flex-shrink: 0; }
+  .admin-sticky-bar.flex-col > * { flex-shrink: 1; }
+}
+@media (min-width: 1280px) {
+  [data-admin-main] .overflow-x-auto:has(> table) { overflow-x: visible; }
+  [data-admin-main] .overflow-x-auto:has(> table) > table > thead > tr > th {
+    position: sticky;
+    top: calc(var(--admin-sticky-h, 0px) + var(--admin-bar-h, 0px));
+    z-index: 10;
+    background: #fafafb;
+  }
 }
