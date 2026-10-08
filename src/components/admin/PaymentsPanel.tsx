@@ -132,7 +132,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2">
         <div className="flex flex-wrap gap-2 text-xs">
           {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
             <button
