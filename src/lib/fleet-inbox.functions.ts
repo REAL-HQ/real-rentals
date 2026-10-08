@@ -261,6 +261,8 @@ const Decision = z.object({
   acceptFields: z.array(z.string()).max(60).default([]),
   confirmHighRisk: z.array(z.string()).max(60).default([]),
   applyFinance: z.boolean().default(false),
+  // Vehicle-profile review accepts some fields; the rest stay pending for later review.
+  partial: z.boolean().default(false),
 });
 
 type ApplyResult = { proposalId: string; ok: boolean; vehicleId?: string; message: string };
@@ -322,6 +324,8 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
 
         const changeBy = new Map<string, Change>(fresh.changes.map((c) => [c.field, c]));
         const accept = new Set(dec.action === "create" ? [...changeBy.keys()] : dec.acceptFields);
+        // Title identifiers are Owner-only: a non-Owner request can never write them, even via the diverting trigger.
+        if (!canOwnership) for (const f of [...accept]) if (isOwnerOnlyField(f)) accept.delete(f);
         const toWrite: Record<string, unknown> = {};
         const written: Change[] = [];
         for (const f of accept) {
