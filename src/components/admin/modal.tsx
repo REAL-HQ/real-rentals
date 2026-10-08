@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+import { acceptsFile } from "@/components/FileDropBridge";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, ArrowLeft, ImagePlus, Check, Circle } from "lucide-react";
 
@@ -137,7 +139,12 @@ export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add 
     const u = URL.createObjectURL(file); setUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [file]);
-  const pick = (f?: File | null) => { if (f) onFile(f); };
+  const depth = useRef(0);
+  const pick = (f?: File | null) => {
+    if (!f) return;
+    if (!acceptsFile(accept, f)) { toast.error(`${f.name}: unsupported file type.`); return; }
+    onFile(f);
+  };
   const input = <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />;
 
   if (file) {
@@ -162,10 +169,11 @@ export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add 
     <div role="button" tabIndex={0}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}
-      className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-center transition ${over ? "border-foreground/50 bg-muted" : "border-border bg-muted/40 hover:bg-muted"}`}>
+      onDragEnter={(e) => { e.preventDefault(); depth.current++; setOver(true); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+      onDragLeave={() => { depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); }}
+      onDrop={(e) => { e.preventDefault(); depth.current = 0; setOver(false); pick(e.dataTransfer.files?.[0]); }}
+      className={`flex h-40 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed text-center transition ${over ? "border-brand bg-brand/5" : "border-border bg-muted/40 hover:bg-muted"}`}>
       <div className="mb-1 grid h-10 w-10 place-items-center rounded-full bg-card shadow-sm"><ImagePlus className="h-5 w-5 text-foreground" /></div>
       <div className="text-sm font-semibold">{title}</div>
       <div className="text-xs text-muted-foreground">{hint}</div>

@@ -12,12 +12,12 @@
     "format": "prettier --write .",
     "test:readiness": "bash scripts/readiness-test.sh",
     "test:public-copy": "node scripts/public-copy.test.mjs",
-    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs && node scripts/marketing-fleet.test.mjs && node scripts/driver-access.test.mjs",
+    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs && node scripts/marketing-fleet.test.mjs && node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs",
     "test:grants": "node scripts/grants.test.mjs",
     "test:nav": "node scripts/admin-navigation.test.mjs",
     "test:fleet": "node scripts/marketing-fleet.test.mjs",
     "test:fleet-e2e": "node scripts/marketing-fleet-e2e.test.mjs",
-    "test:driver": "node scripts/driver-access.test.mjs",
+    "test:driver": "node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs",
     "test:session": "node scripts/session-isolation.test.mjs"
   },
   "dependencies": {
