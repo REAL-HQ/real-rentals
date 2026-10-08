@@ -60,7 +60,7 @@ async function ensureAuthUser(
   admin: AdminClient,
   email: string,
   fullName: string | null,
-): Promise<{ userId: string; created: boolean }> {
+): Promise<{ userId: string; created: boolean; verified: boolean }> {
   const target = email.trim().toLowerCase();
 
   for (let page = 1; page <= 20; page++) {
@@ -68,7 +68,8 @@ async function ensureAuthUser(
     if (error) throw new Error(error.message);
     const users = data?.users ?? [];
     const hit = users.find((u) => String(u.email ?? "").toLowerCase() === target);
-    if (hit) return { userId: hit.id as string, created: false };
+    if (hit)
+      return { userId: hit.id as string, created: false, verified: Boolean((hit as any).app_metadata?.portal_verified) };
     if (users.length < 200) break;
   }
 
@@ -79,7 +80,7 @@ async function ensureAuthUser(
   });
   if (createErr || !created?.user)
     throw new Error(createErr?.message || "Could not create driver login");
-  return { userId: created.user.id as string, created: true };
+  return { userId: created.user.id as string, created: true, verified: true };
 }
 
 /**
@@ -138,7 +139,7 @@ export async function provisionDriverAccount(
     // re-running, and nothing is created because the user already exists.
   }
 
-  const { userId, created } = await ensureAuthUser(admin, target, args.fullName);
+  const { userId, created, verified } = await ensureAuthUser(admin, target, args.fullName);
 
   /*
    * A pre-existing account is only adopted when it is plausibly the same
@@ -157,7 +158,9 @@ export async function provisionDriverAccount(
    * case and is also safe. Anything else is a stranger holding the address, so
    * nothing is granted, linked or emailed and a human is told.
    */
-  if (!created && !ownerId) {
+  // An account made by verified passwordless sign-in (portal-signin.server.ts)
+  // proved control of this exact inbox, so it is the same person — adopt it.
+  if (!created && !ownerId && !verified) {
     const { data: owned } = await admin
       .from("applications")
       .select("id")
