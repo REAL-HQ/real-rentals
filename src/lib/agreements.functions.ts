@@ -3,10 +3,6 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
-
-const previewInput = (d: unknown): { previewDriverId?: string } => {
-  const id = (d as any)?.previewDriverId;
-  if (id == null || id === "") return {};
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
   return { previewDriverId: id };
 };
@@ -16,6 +12,11 @@ const previewInput = (d: unknown): { previewDriverId?: string } => {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
+
+const previewInput = (d: unknown): { previewDriverId?: string } => {
+  const id = (d as any)?.previewDriverId;
+  if (id == null || id === "") return {};
+
 
 export type AgreementRow = {
   id: string;
