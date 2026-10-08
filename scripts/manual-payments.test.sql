@@ -1,4 +1,17 @@
--- PROPOSED — NOT APPLIED. Phase C manual payments, stage 1 (additive only).
+-- Rolled-back test for scripts/phase-c-manual-payments.proposed.sql.
+-- Installs the proposal inside this one block, runs every scenario on throwaway fixtures,
+-- then ends with RAISE EXCEPTION so the schema, functions and fixtures are all rolled back.
+DO $t$
+DECLARE
+  out text := '';
+  own uuid := '15604112-1a62-4907-a92c-09045ee70ca6';
+  mgr uuid := '194cec09-2d93-42d0-a5a7-04e8c931d7de';
+  mgr2 uuid := 'd4abe15b-8230-4597-837e-7e0449db364a';  -- given test-only Manager role, then Coordinator, then Driver
+  a uuid; ch uuid; dep uuid; ch2 uuid; doc uuid; c1 uuid; c2 uuid; c3 uuid; cc uuid; x uuid; s text; n int;
+  pay0 bigint; fin0 bigint; rent0 bigint; app_status text; m text;
+  PROCEDURE_ok boolean;
+BEGIN
+  EXECUTE $ddl$-- PROPOSED — NOT APPLIED. Phase C manual payments, stage 1 (additive only).
 -- Stage 1 adds the records table and controlled functions. It does NOT remove existing
 -- charge editing, so the live site keeps working unchanged.
 -- Stage 2 (separate approval, after the new screens are published and verified):
@@ -34,7 +47,6 @@ CREATE TABLE public.payment_collections (
 );
 COMMENT ON TABLE public.payment_collections IS 'Money received outside Stripe against one payments charge. Writes only via collection_* functions.';
 
-REVOKE ALL ON public.payment_collections FROM PUBLIC, anon, authenticated;  -- override platform default privileges
 GRANT SELECT ON public.payment_collections TO authenticated;
 GRANT ALL ON public.payment_collections TO service_role;
 ALTER TABLE public.payment_collections ENABLE ROW LEVEL SECURITY;
@@ -224,3 +236,148 @@ GRANT EXECUTE ON FUNCTION public.collection_record(uuid,text,numeric,date,text,u
 GRANT EXECUTE ON FUNCTION public.collection_verify(uuid,boolean,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.collection_reject(uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.collection_reverse(uuid,text) TO authenticated;
+$ddl$;
+  SELECT count(*) INTO fin0 FROM financial_transactions; SELECT count(*) INTO rent0 FROM rentals;
+  INSERT INTO applications(full_name,email,phone,status) VALUES ('Zz Pay','zz-pay@invalid.example','0','approved') RETURNING id INTO a;
+  INSERT INTO payments(driver_id,amount,balance_due,status,type,due_date) VALUES (a,350,350,'unpaid','rent',current_date) RETURNING id INTO ch;
+  INSERT INTO payments(driver_id,amount,balance_due,status,type) VALUES (a,500,500,'unpaid','deposit') RETURNING id INTO dep;
+  INSERT INTO payments(driver_id,amount,balance_due,status,type,stripe_payment_intent_id) VALUES (a,100,100,'pending','fee','pi_test') RETURNING id INTO ch2;
+  INSERT INTO documents(kind, storage_bucket, storage_path, evidence_class) VALUES ('payment_receipt','documents','zz/r.png','financial') RETURNING id INTO doc;
+  INSERT INTO user_roles(user_id,role) VALUES (mgr2,'team');
+
+  -- Evidence rules per method (as Manager)
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  FOR m IN SELECT unnest(ARRAY['cash_app','venmo','zelle','bank_transfer','money_order','check','cash','other']) LOOP
+    BEGIN PERFORM collection_record(ch,m,1,current_date,NULL,NULL,NULL,NULL,'ev-'||m);
+      out := out || ('FAIL '||m||' with no evidence accepted') || E'\n';
+    EXCEPTION WHEN OTHERS THEN out := out || ('ok '||m||' no evidence refused: '||SQLERRM) || E'\n'; END;
+  END LOOP;
+
+  -- Partial payments: 150 Zelle (ref) + 200 Check (image)
+  c1 := collection_record(ch,'zelle',150,current_date,'ZL-0001',NULL,NULL,NULL,'k1');
+  x  := collection_record(ch,'zelle',150,current_date,'ZL-0001',NULL,NULL,NULL,'k1');
+  out := out || ((CASE WHEN x=c1 THEN 'ok' ELSE 'FAIL' END)||' repeated submission returns same record') || E'\n';
+  BEGIN PERFORM collection_record(ch,'zelle',10,current_date,'zl 0001',NULL,NULL,NULL,'k1b');
+    out := out || ('FAIL duplicate reference accepted') || E'\n';
+  EXCEPTION WHEN unique_violation THEN out := out || ('ok duplicate reference refused') || E'\n'; END;
+  c2 := collection_record(ch,'check',200,current_date,NULL,doc,NULL,NULL,'k2');
+  BEGIN PERFORM collection_record(ch,'venmo',1,current_date,'VM-9',NULL,NULL,NULL,'k3');
+    out := out || ('FAIL overpayment (pending counted) accepted') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok overpayment refused: '||SQLERRM) || E'\n'; END;
+  BEGIN PERFORM collection_record(ch2,'venmo',10,current_date,'VM-10',NULL,NULL,NULL,'k4');
+    out := out || ('FAIL charge with card payment in progress accepted') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok Stripe in-progress charge refused') || E'\n'; END;
+
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text||'/'||status INTO s FROM payments WHERE id=ch;
+  out := out || ((CASE WHEN s='350.00/unpaid' OR s='350/unpaid' THEN 'ok' ELSE 'FAIL' END)||' pending leaves balance unchanged: '||s) || E'\n';
+
+  -- Manager self-verify refused
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_verify(c1,true,'Seen in bank app');
+    out := out || ('FAIL manager self-verify accepted') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok manager self-verify refused') || E'\n'; END;
+  -- Second Manager: must confirm funds
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr2,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_verify(c1,false,'');
+    out := out || ('FAIL verify without funds confirmation') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok verify needs funds confirmation') || E'\n'; END;
+  s := collection_verify(c1,true,'Matched Zelle deposit in bank account');
+  s := s || '/' || collection_verify(c1,true,'again');
+  out := out || ('ok independent manager verify + repeat: '||s) || E'\n';
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text||'/'||status||'/'||net_collected INTO s FROM payments WHERE id=ch;
+  out := out || ('balance after 150 verified (expect 200/unpaid/0): '||s) || E'\n';
+
+  -- Immutable history
+  BEGIN UPDATE payment_collections SET amount=1 WHERE id=c1; out := out || ('FAIL verified edited') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok verified record cannot be edited') || E'\n'; END;
+  BEGIN DELETE FROM payment_collections WHERE id=c1; out := out || ('FAIL verified deleted') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok verified record cannot be deleted') || E'\n'; END;
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN UPDATE payment_collections SET status='verified' WHERE id=c2; out := out || ('FAIL browser update allowed') || E'\n';
+  EXCEPTION WHEN insufficient_privilege THEN out := out || ('ok browser update blocked') || E'\n'; END;
+
+  -- Owner verifies check → charge paid
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',own,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  s := collection_verify(c2,true,'Check deposited, cleared');
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text||'/'||status||'/'||net_collected INTO s FROM payments WHERE id=ch;
+  out := out || ('after second partial (expect 0/paid/350): '||s) || E'\n';
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_record(ch,'venmo',1,current_date,'VM-11',NULL,NULL,NULL,'k5');
+    out := out || ('FAIL payment on paid charge accepted') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok paid charge refuses more payments') || E'\n'; END;
+
+  -- Reverse (bounced check) restores balance
+  s := collection_reverse(c2,'Check bounced');
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text||'/'||status||'/'||net_collected INTO s FROM payments WHERE id=ch;
+  out := out || ('after reversal (expect 200/unpaid/0): '||s) || E'\n';
+
+  -- Reject: balance unchanged; reference reusable after rejection
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  c3 := collection_record(ch,'cash_app',50,current_date,'$CA-77',NULL,NULL,NULL,'k6');
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr2,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_reject(c3,''); out := out || ('FAIL reject without reason') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok reject needs reason') || E'\n'; END;
+  s := collection_reject(c3,'Not found in Cash App history');
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text INTO s FROM payments WHERE id=ch;
+  out := out || ('after rejection (expect 200): '||s) || E'\n';
+
+  -- Cash: Manager cannot verify; Owner self-verify needs exception reason
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',own,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  cc := collection_record(dep,'cash',300,current_date,NULL,NULL,'Owner','Cash handed over at office','k7');
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_verify(cc,true,'counted'); out := out || ('FAIL manager verified cash') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok cash needs Owner') || E'\n'; END;
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',own,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_verify(cc,true,'counted'); out := out || ('FAIL owner self-verify without reason') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok owner self-verify needs exception reason') || E'\n'; END;
+  s := collection_verify(cc,true,'Counted and deposited','Only staff member present today');
+  EXECUTE 'RESET ROLE';
+  SELECT balance_due::text||'/'||status||'/'||type INTO s FROM payments WHERE id=dep;
+  out := out || ('deposit partial (expect 200/unpaid/deposit, kept as deposit type): '||s) || E'\n';
+  SELECT count(*) INTO n FROM audit_log WHERE entity_type='payment_collection' AND action='payment_verified_self_exception';
+  out := out || ((CASE WHEN n=1 THEN 'ok' ELSE 'FAIL' END)||' owner exception separately logged') || E'\n';
+
+  -- Coordinator: record yes, verify no
+  DELETE FROM user_roles WHERE user_id=mgr2 AND role='team';
+  INSERT INTO user_roles(user_id,role) VALUES (mgr2,'coordinator');
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr2,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  x := collection_record(ch,'venmo',20,current_date,'VM-20',NULL,NULL,NULL,'k8');
+  out := out || ('ok coordinator can record') || E'\n';
+  BEGIN PERFORM collection_verify(x,true,'x'); out := out || ('FAIL coordinator verified') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok coordinator cannot verify') || E'\n'; END;
+  BEGIN PERFORM collection_reverse(c1,'x'); out := out || ('FAIL coordinator reversed') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok coordinator cannot reverse') || E'\n'; END;
+
+  -- Driver and signed-out
+  EXECUTE 'RESET ROLE';
+  DELETE FROM user_roles WHERE user_id=mgr2 AND role='coordinator';
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',mgr2,'role','authenticated')::text, true); EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN PERFORM collection_record(ch,'venmo',1,current_date,'VM-30',NULL,NULL,NULL,'k9'); out := out || ('FAIL driver recorded') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok driver cannot record') || E'\n'; END;
+  SELECT count(*) INTO n FROM payment_collections;
+  out := out || ((CASE WHEN n=0 THEN 'ok' ELSE 'FAIL' END)||' driver sees 0 payment records') || E'\n';
+  EXECUTE 'RESET ROLE'; PERFORM set_config('request.jwt.claims', json_build_object('sub',NULL,'role','anon')::text, true); EXECUTE 'SET LOCAL ROLE anon';
+  BEGIN PERFORM collection_record(ch,'venmo',1,current_date,'VM-31',NULL,NULL,NULL,'k10'); out := out || ('FAIL anon recorded') || E'\n';
+  EXCEPTION WHEN OTHERS THEN out := out || ('ok signed-out cannot record') || E'\n'; END;
+
+  -- Isolation: no rental, application status, ledger changes
+  EXECUTE 'RESET ROLE';
+  SELECT status INTO app_status FROM applications WHERE id=a;
+  out := out || ((CASE WHEN app_status='approved' THEN 'ok' ELSE 'FAIL' END)||' driver status unchanged: '||app_status) || E'\n';
+  out := out || ((CASE WHEN (SELECT count(*) FROM rentals)=rent0 THEN 'ok' ELSE 'FAIL' END)||' no rentals created/activated') || E'\n';
+  out := out || ((CASE WHEN (SELECT count(*) FROM financial_transactions)=fin0 THEN 'ok' ELSE 'FAIL' END)||' no ledger entries written') || E'\n';
+  SELECT stripe_payment_intent_id INTO s FROM payments WHERE id=ch;
+  out := out || ((CASE WHEN s IS NULL THEN 'ok' ELSE 'FAIL' END)||' no Stripe reference created') || E'\n';
+  -- Reconciliation: charge.net_collected = sum(verified) for manual-only charge
+  SELECT (SELECT net_collected FROM payments WHERE id=ch) = (SELECT sum(amount) FROM payment_collections WHERE payment_id=ch AND status='verified') INTO PROCEDURE_ok;
+  out := out || ((CASE WHEN PROCEDURE_ok THEN 'ok' ELSE 'FAIL' END)||' amount paid on charge equals verified records') || E'\n';
+  SELECT count(*) INTO n FROM audit_log WHERE entity_type='payment_collection';
+  out := out || ('audit entries written: '||n) || E'\n';
+  EXECUTE 'RESET ROLE';
+  RAISE EXCEPTION 'ROLLED BACK — RESULTS:%', E'\n' || out;
+END $t$;
