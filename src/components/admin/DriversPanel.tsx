@@ -1137,9 +1137,11 @@ function DriverDetail({
   // everything through the application still read as having sent nothing.
   const docsComplete = vaultDocCount >= REQUIRED_VAULT_CATEGORIES.length;
   const insuranceOk = !!(screening as any)?.insurance_verified;
+  // Active Renter = an actual active rental (rentals table), never the
+  // application stage alone. rentalActive is declared below with the lookup.
   const approved = dStatus === "approved" || dStatus === "active";
-  const pickedUp = !!(driver as any).pickup_at || dStatus === "active";
-  const active = dStatus === "active";
+  const pickedUp = !!(driver as any).pickup_at || rentalActiveFlag;
+  const active = rentalActiveFlag;
 
   const stageFlags: { key: string; label: string; done: boolean }[] = [
     { key: "applied", label: "Applied", done: true },
@@ -1197,6 +1199,7 @@ function DriverDetail({
   const [approving, setApproving] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
+  const [rentalStatus, setRentalStatus] = useState<string | null>(null);
 
   // The rental is what deposit disposition and ending hang off, so look it up
   // once the driver is active.
@@ -1210,7 +1213,9 @@ function DriverDetail({
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setActiveRentalId((data?.id as string) ?? null);
+        if (cancelled) return;
+        setActiveRentalId((data?.id as string) ?? null);
+        setRentalStatus((data?.status as string) ?? null);
       });
     return () => {
       cancelled = true;
@@ -1298,7 +1303,7 @@ function DriverDetail({
               onClick: approveAndSend,
               icon: Check,
             }
-          : driver.status !== "active"
+          : !rentalActive
             ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
             : {
                 label: "View Rental",
@@ -1332,7 +1337,7 @@ function DriverDetail({
   // Where the person is in the journey decides what Overview leads with.
   // Derived from the same flags the lifecycle rail uses — no new state.
   const phase: "screening" | "pickup" | "active" =
-    driver.status === "active" ? "active" : approved ? "pickup" : "screening";
+    rentalActive ? "active" : approved ? "pickup" : "screening";
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
@@ -1536,7 +1541,7 @@ function DriverDetail({
           <button className={btnSecondary} onClick={() => setDepositRentalId(activeRentalId)}>
             <Wallet className="w-3.5 h-3.5" /> Deposit Disposition
           </button>
-          {driver.status === "active" ? (
+          {rentalActive ? (
             <button className={btnSecondary} onClick={doEndRental}>
               <Car className="w-3.5 h-3.5" /> End Rental
             </button>
@@ -1846,8 +1851,8 @@ function DriverDetail({
                     <SelField
                       label="Driver Status"
                       value={driver.status}
-                      options={[...DRIVER_STATUSES]}
-                      onChange={(v) => onUpdate({ status: v })}
+                      options={driver.status === "active" ? [...DRIVER_STATUSES] : [...SELECTABLE_STATUSES]}
+                      onChange={(v) => { if (v !== "active") onUpdate({ status: v }); }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
@@ -2068,7 +2073,9 @@ function DriverDetail({
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);
-            onUpdate({ status: "active" });
+            // activate_rental_tx already set the stage in the same transaction;
+            // only refresh the screen — no second browser write.
+            onRentalStarted?.();
           }}
         />
       ) : null}
