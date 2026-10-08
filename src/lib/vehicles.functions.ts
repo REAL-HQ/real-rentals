@@ -490,6 +490,8 @@ export type VehicleProfile = {
    */
   finance: Record<string, any> | null;
   /** Writing to vehicles is manager-only at the RLS layer; the UI hides what the server would refuse. */
+  /** Owner only: acquisition, lender, lien, payoff. */
+  canSeeFinance: boolean;
   canEdit: boolean;
 };
 

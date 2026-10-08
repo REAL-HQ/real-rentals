@@ -34,6 +34,7 @@ import {
 } from "@/lib/vehicles.functions";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
@@ -461,7 +462,7 @@ function Overview({
           )}
         </SectionCard>
 
-        {p.finance !== null || p.canEdit ? (
+        {p.canSeeFinance && readStoredExperience() !== "admin" && (p.finance !== null || p.canEdit) ? (
           <SectionCard
             title="Acquisition & Financing"
             subtitle="Owners and managers only"
