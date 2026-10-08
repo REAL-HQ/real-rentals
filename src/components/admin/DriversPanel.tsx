@@ -1,3 +1,4 @@
+import { IdentityReviewCard } from "./IdentityReviewCard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -1722,6 +1723,7 @@ function DriverDetail({
                   }}
                   onRecordingChange={setHasRecording}
                 />
+                <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>
 

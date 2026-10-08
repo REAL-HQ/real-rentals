@@ -140,6 +140,102 @@ const stepUpdateSchema = z.object({
  * resurrect a writer for it.
  */
 
+// Returning applicants. The link always goes to the address already on file,
+// never to whoever typed the form, and is a short-lived single-use recovery
+// link. Rate limit per application, tracked in resubmission_history: one send
+// per LINK_RETRY_SECONDS and at most LINK_DAILY_MAX per 24h. Only sends the
+// email provider actually accepted are recorded as sent.
+export const LINK_RETRY_SECONDS = 120;
+const LINK_DAILY_MAX = 6;
+type LinkOutcome = "sent" | "recent" | "failed";
+/** Seconds until another send is allowed (0 = allowed now). */
+function linkWaitSeconds(history: unknown[]): number {
+  const now = Date.now();
+  const sends = history.filter((h: any) => h?.link_sent).map((h: any) => new Date(h.at).getTime()).filter(Number.isFinite);
+  const last = Math.max(0, ...sends);
+  const short = Math.ceil((last + LINK_RETRY_SECONDS * 1000 - now) / 1000);
+  const day = sends.filter((t) => t > now - 86400_000).sort((a, b) => a - b);
+  const daily = day.length >= LINK_DAILY_MAX ? Math.ceil((day[day.length - LINK_DAILY_MAX] + 86400_000 - now) / 1000) : 0;
+  return Math.max(0, short, daily);
+}
+async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string): Promise<boolean> {
+  try {
+    const { data: onFile } = await supabaseAdmin
+      .from("applications")
+      .select("email, full_name")
+      .eq("id", applicationId)
+      .maybeSingle();
+    if (!onFile?.email) return false;
+    const { sendApplicationResumeEmail } = await import("@/lib/email.server");
+    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
+    if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
+    return r.ok;
+  } catch (e) {
+    console.error("[resume-link] send failed", applicationId, e);
+    return false;
+  }
+}
+/** Append a history entry, send if not throttled, record the true outcome. */
+async function sendRecoveryLink(
+  supabaseAdmin: any,
+  primaryId: string,
+  entry: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+): Promise<{ outcome: LinkOutcome; wait: number }> {
+  const { data: row } = await supabaseAdmin
+    .from("applications")
+    .select("resubmission_history, purged_at")
+    .eq("id", primaryId)
+    .maybeSingle();
+  if (!row || row.purged_at) return { outcome: "recent", wait: LINK_RETRY_SECONDS };
+  const history = Array.isArray(row.resubmission_history) ? (row.resubmission_history as unknown[]) : [];
+  const pending = linkWaitSeconds(history);
+  const throttled = pending > 0;
+  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
+  history.push({ at: new Date().toISOString(), ...entry, link_sent: ok, link_failed: !throttled && !ok });
+  await supabaseAdmin
+    .from("applications")
+    .update({ resubmission_history: history.slice(-25), ...extra } as any)
+    .eq("id", primaryId);
+  if (throttled) return { outcome: "recent", wait: pending };
+  return ok ? { outcome: "sent", wait: LINK_RETRY_SECONDS } : { outcome: "failed", wait: 30 };
+}
+
+/**
+ * "Continue Application" / "Resend Link". Public. Matched, unmatched and
+ * throttled requests all get the same neutral answer; only a real provider
+ * failure for a matched address is reported, because the user asked that we
+ * never claim a send that did not happen.
+ */
+export const requestApplicationLink = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ email: z.string().trim().email().max(160) }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const emailLower = data.email.trim().toLowerCase();
+    const variants = Array.from(new Set([data.email.trim(), emailLower]));
+    const results = await Promise.all(
+      variants.map((e) =>
+        supabaseAdmin
+          .from("applications")
+          .select("id, primary_application_id, created_at")
+          .eq("email", e)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ),
+    );
+    const hit = results.flatMap((r) => r.data ?? []).sort((a: any, b: any) =>
+      String(b.created_at).localeCompare(String(a.created_at)),
+    )[0] as any;
+    let outcome: LinkOutcome | "none" = "none";
+    if (hit) {
+      outcome = (await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" })).outcome;
+    }
+    // Same answer and same countdown for unmatched, sent and recently-sent
+    // addresses, so this public endpoint can't be used to test for an application.
+    return { ok: outcome !== "failed", retryAfterSeconds: outcome === "failed" ? 30 : LINK_RETRY_SECONDS };
+  });
+
 export const savePartialApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     z
@@ -211,9 +307,10 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // second row with a working token for the caller, and then the next time
     // staff pressed Merge duplicates the newer row won and the victim's real
     // application was marked `duplicate` and hidden.
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // No time window: a returning applicant from any date must resume their
+    // existing record, never start a duplicate. Deleted records are skipped.
     const dupeCols =
-      "id, primary_application_id, resubmission_count, resubmission_history, created_at";
+      "id, email, primary_application_id, resubmission_count, resubmission_history, ai_flags, created_at";
     const emailLower = data.email.trim().toLowerCase();
     const emailVariants = Array.from(new Set([data.email, emailLower, data.email.trim()]));
     const [byPhone, ...byEmailResults] = await Promise.all([
@@ -221,7 +318,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .from("applications")
         .select(dupeCols)
         .eq("phone", data.phone)
-        .gte("created_at", cutoff)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
       ...emailVariants.map((e) =>
@@ -229,15 +326,16 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .from("applications")
           .select(dupeCols)
           .eq("email", e)
-          .gte("created_at", cutoff)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(1),
       ),
     ]);
     const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
-    const existing = [...(byPhone.data ?? []), ...(byEmail.data ?? [])].sort((a, b) =>
-      String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
-    )[0];
+    // An email match wins; a phone-only match is handled as an identity conflict below.
+    const newest = (rows: any[]) =>
+      [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
+    const existing = newest(byEmail.data ?? []) ?? newest(byPhone.data ?? []);
     if (existing) {
       const primaryId = existing.primary_application_id ?? existing.id;
 
@@ -275,68 +373,63 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       const history = Array.isArray(existing.resubmission_history)
         ? (existing.resubmission_history as unknown[])
         : [];
-      history.push({
-        at: new Date().toISOString(),
-        source: data.source,
-        pickup_date: data.pickup_date ?? null,
-        market_id: data.market_id ?? null,
-        // Submitted, not applied. Staff decide whether this is the same person.
-        submitted_full_name: data.full_name,
-        submitted_phone: data.phone,
-        submitted_email: data.email,
-      });
-      const { error: updErr } = await supabaseAdmin
-        .from("applications")
-        .update({
+      void history;
+      // Phone matched but the email differs: not the same identity on its own.
+      // Never link, send, merge or overwrite — file it for staff review.
+      const sameEmail = String(existing.email ?? "").trim().toLowerCase() === emailLower;
+      if (!sameEmail) {
+        const { data: row } = await supabaseAdmin
+          .from("applications").select("resubmission_history").eq("id", primaryId).maybeSingle();
+        const h = Array.isArray(row?.resubmission_history) ? (row!.resubmission_history as unknown[]) : [];
+        h.push({
+          at: new Date().toISOString(), source: data.source, identity_conflict: "phone_match_email_differs",
+          link_sent: false,
+        });
+        // Durable review row (survives AI re-scoring). Unique open index makes
+        // a repeat submission a no-op instead of a second warning.
+        const { error: revErr } = await supabaseAdmin.from("application_identity_reviews").insert({
+          application_id: primaryId, kind: "phone_match_email_differs",
+          submitted_full_name: data.full_name, submitted_email: emailLower,
+          submitted_phone: data.phone, source: data.source ?? null,
+        });
+        if (revErr && (revErr as any).code !== "23505") console.error("identity review insert failed", revErr.message);
+        await supabaseAdmin.from("applications").update({
+          resubmission_history: h.slice(-25),
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
-          // Bounded. An anonymous caller must not be able to grow a JSONB
-          // column without limit on a row of their choosing.
-          resubmission_history: history.slice(-25),
           updated_at: new Date().toISOString(),
-        } as any)
-        .eq("id", primaryId);
-      if (updErr) throw new Error(updErr.message);
-
-      /*
-       * One link per half hour, at most.
-       *
-       * Each send mints a token, and only five may be live at once — so six
-       * submissions with a stranger's email would revoke the link they are
-       * actually using, and mail them six times from our domain on the way.
-       * If a live token was issued recently, the applicant already has what
-       * this email would give them.
-       */
-      try {
-        const recent = new Date(Date.now() - 30 * 60_000).toISOString();
-        const { count } = await supabaseAdmin
-          .from("application_resume_tokens")
-          .select("id", { count: "exact", head: true })
-          .eq("application_id", primaryId)
-          .is("revoked_at", null)
-          .gte("created_at", recent);
-        if (!count) {
-          const { data: onFile } = await supabaseAdmin
-            .from("applications")
-            .select("email, full_name")
-            .eq("id", primaryId)
-            .maybeSingle();
-          if (onFile?.email) {
-            const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-            await sendApplicationResumeEmail({
-              to: onFile.email,
-              firstName: onFile.full_name ?? null,
-              applicationId: primaryId,
-            });
-          }
-        }
-      } catch (e) {
-        console.error("[lead-email] returning-applicant link failed", primaryId, e);
+        } as any).eq("id", primaryId);
+        return {
+          id: null as string | null, token: null as string | null, existing: true as const,
+          linkStatus: "review" as const, linkOk: true, retryAfterSeconds: 0,
+        };
       }
+      // Bounded history (25) — an anonymous caller must not grow JSONB without
+      // limit. Submitted, not applied: staff decide whether it's the same person.
+      const { outcome, wait } = await sendRecoveryLink(
+        supabaseAdmin,
+        primaryId,
+        {
+          source: data.source,
+          pickup_date: data.pickup_date ?? null,
+          market_id: data.market_id ?? null,
+          submitted_full_name: data.full_name,
+          submitted_phone: data.phone,
+          submitted_email: data.email,
+        },
+        { resubmission_count: (existing.resubmission_count ?? 0) + 1, updated_at: new Date().toISOString() },
+      );
 
       // No id. It authorizes nothing today, but handing an anonymous caller
       // the identifier of a record they guessed at is still telling them
       // something, and the browser has no use for it.
-      return { id: null as string | null, token: null as string | null, existing: true as const };
+      return {
+        id: null as string | null,
+        token: null as string | null,
+        existing: true as const,
+        linkStatus: outcome as "sent" | "recent" | "failed" | "review",
+        linkOk: outcome !== "failed",
+        retryAfterSeconds: wait,
+      };
     }
 
     /*
@@ -411,7 +504,13 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
-    return { id: row.id as string | null, token: token as string | null, existing: false as const };
+    return {
+      id: row.id as string | null,
+      token: token as string | null,
+      existing: false as const,
+      linkOk: true,
+      retryAfterSeconds: 0,
+    };
   });
 
 export const updateApplicationStep = createServerFn({ method: "POST" })
@@ -1242,5 +1341,22 @@ export const acknowledgeApplication = createServerFn({ method: "POST" })
     } catch {
       // Not worth an error toast on top of the record the person came to read.
       return { ok: false };
+    }
+  });
+
+/**
+ * Open a resume/recovery link. Recovery links are single-use and are swapped
+ * for a fresh session token that stays in this browser tab; ordinary links
+ * come back unchanged. Generic error for every failure.
+ */
+export const openResumeLink = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ token: z.string().min(20).max(200) }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { exchangeResumeToken } = await import("@/lib/resume-tokens.server");
+    try {
+      return { token: await exchangeResumeToken(supabaseAdmin, data.token) };
+    } catch {
+      return { token: null as string | null };
     }
   });

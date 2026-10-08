@@ -98,15 +98,16 @@ const save = src.slice(src.indexOf("export const savePartialApplication"), src.i
 const dedupe = save.slice(save.indexOf("if (existing) {"), save.indexOf("const { data: row, error }"));
 ok(!/issueResumeToken/.test(dedupe), "the dedupe branch never mints a token");
 ok(/token: null/.test(dedupe), "  it returns a null token");
-ok(/sendApplicationResumeEmail/.test(dedupe), "  and mails the link instead");
-ok(/\.select\("email, full_name"\)[\s\S]{0,200}sendApplicationResumeEmail/.test(dedupe),
+const recovery = src.slice(src.indexOf("async function emailLinkToAddressOnFile"), src.indexOf("export const requestApplicationLink"));
+ok(/sendRecoveryLink\(/.test(dedupe) && /sendApplicationResumeEmail/.test(recovery), "  and mails the link through the recovery helper instead");
+ok(/\.select\("email, full_name"\)[\s\S]{0,200}sendApplicationResumeEmail/.test(recovery),
    "  to the address on the matched record, not the submitted one");
 // Stronger than excluding the identity fields, which is what this used to
 // check: nothing the caller submitted is applied to a record they merely
 // matched. sms_consent was the one that mattered — an anonymous POST could
 // flip a stranger's recorded consent — but city, state, pickup date, market
 // and the attribution set all went the same way.
-const patch = dedupe.slice(dedupe.indexOf(".update({"), dedupe.indexOf('.eq("id", primaryId)'));
+const patch = dedupe.slice(dedupe.indexOf(".update({"), dedupe.indexOf('.eq("id", primaryId)', dedupe.indexOf(".update({")));
 const written = [...patch.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]).sort();
 ok(String(written) === "resubmission_count,resubmission_history,updated_at",
    `the patch writes only the counter and the history (writes: ${written.join(", ") || "nothing"})`);

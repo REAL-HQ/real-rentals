@@ -57,6 +57,97 @@
       "when": 1791459951490,
       "tag": "0007_safe_autofill",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791462253541,
+      "tag": "0008_fin_core_c1",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791462346435,
+      "tag": "0009_fin_core_c1_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791463536348,
+      "tag": "0010_fin_c1_deposit_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791463558283,
+      "tag": "0011_fin_c1_deposit_reverse_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791464019517,
+      "tag": "0012_photo_enhancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791471257211,
+      "tag": "0013_vehicle_docs_finance_owner_only_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791473301327,
+      "tag": "0014_waitlist_holds_and_safe_promotion",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791473830599,
+      "tag": "0015_waitlist_promotion_identity_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791477139776,
+      "tag": "0016_0016_driver_deletion_stage1",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791479523295,
+      "tag": "0017_0017_driver_deletion_security_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791480452755,
+      "tag": "0018_portal_signin_challenges",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791480942211,
+      "tag": "0019_application_identity_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791481035617,
+      "tag": "0020_identity_reviews_tighten_grants",
+      "breakpoints": true
     }
   ]
 }

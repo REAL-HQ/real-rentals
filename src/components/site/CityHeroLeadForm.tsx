@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { z } from "zod";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAvailability, joinWaitlist } from "@/lib/waitlist.functions";
 import { getAttribution } from "@/lib/attribution";
 import { FadeUp } from "./FadeUp";
@@ -42,6 +43,7 @@ export function CityHeroLeadForm({
 
   const navigate = useNavigate();
   const saveApplication = useServerFn(savePartialApplication);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number } | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
   // How many cars the team says are open right now, set in the back office.
@@ -141,9 +143,7 @@ export function CityHeroLeadForm({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        toast.success(
-          "You already have an application with us — we've emailed you the link to finish it.",
-        );
+        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
         return;
       }
       navigate({ to: "/thank-you", search: { t: data.token } });
@@ -179,7 +179,9 @@ export function CityHeroLeadForm({
 
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
-            {joined ? (
+            {returning !== null ? (
+              <WelcomeBack email={returning.email} initial={returning} onBack={() => setReturning(null)} />
+            ) : joined ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
                   <Check className="h-6 w-6 text-real-red" />

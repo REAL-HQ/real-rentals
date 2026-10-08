@@ -275,6 +275,62 @@ export type Database = {
           },
         ]
       }
+      application_identity_reviews: {
+        Row: {
+          application_id: string
+          created_at: string
+          id: string
+          kind: string
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source: string | null
+          status: string
+          submitted_email: string | null
+          submitted_full_name: string | null
+          submitted_phone: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source?: string | null
+          status?: string
+          submitted_email?: string | null
+          submitted_full_name?: string | null
+          submitted_phone?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source?: string | null
+          status?: string
+          submitted_email?: string | null
+          submitted_full_name?: string | null
+          submitted_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_identity_reviews_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_resume_tokens: {
         Row: {
           application_id: string

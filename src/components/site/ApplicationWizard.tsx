@@ -24,6 +24,7 @@ import { Logo } from "./Logo";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
+import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 
 /*
@@ -478,6 +479,10 @@ function LinkExpired({ message }: { message: string }) {
     <div className="mx-auto max-w-lg px-6 py-24 text-center">
       <h1 className="text-2xl font-semibold">We Couldn't Open That Link</h1>
       <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{message}</p>
+      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">Enter your email and we'll send a fresh link to the address on your application.</p>
+      <div className="mt-6 text-left">
+        <WelcomeBack expired />
+      </div>
       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
         <a
           href="mailto:team@drivereal.com"
@@ -489,7 +494,7 @@ function LinkExpired({ message }: { message: string }) {
           to="/apply"
           className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
-          Start a New Application
+          Start A New Application
         </Link>
       </div>
     </div>

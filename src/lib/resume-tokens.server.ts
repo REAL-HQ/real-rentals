@@ -35,6 +35,15 @@ type AdminClient = (typeof import("@/integrations/supabase/client.server"))["sup
 
 /** Matches the storage upload window in application_accepts_uploads(). */
 export const RESUME_TOKEN_DAYS = 14;
+/**
+ * Recovery links (emailed to someone coming back) are short-lived and
+ * single-use: the first open exchanges them for a fresh 14-day session token
+ * kept in that tab, and the emailed link dies. A recovery token is recognised
+ * by its lifetime (<= 1 hour), so no schema change was needed and every
+ * existing 14-day link keeps working exactly as before.
+ */
+export const RECOVERY_TOKEN_MINUTES = 30;
+const RECOVERY_MAX_MS = 60 * 60_000;
 
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -72,9 +81,14 @@ const MAX_LIVE_TOKENS = 5;
  *
  * Returns the raw token. This is the only moment it exists in plaintext.
  */
-export async function issueResumeToken(admin: AdminClient, applicationId: string): Promise<string> {
+export async function issueResumeToken(
+  admin: AdminClient,
+  applicationId: string,
+  opts: { recovery?: boolean } = {},
+): Promise<string> {
   const raw = newRawToken();
-  const expires = new Date(Date.now() + RESUME_TOKEN_DAYS * 86400_000).toISOString();
+  const ttl = opts.recovery ? RECOVERY_TOKEN_MINUTES * 60_000 : RESUME_TOKEN_DAYS * 86400_000;
+  const expires = new Date(Date.now() + ttl).toISOString();
 
   const { data: inserted, error } = await admin
     .from("application_resume_tokens")
@@ -171,4 +185,35 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
     .eq("id", row.id);
 
   return row.application_id as string;
+}
+
+
+/**
+ * Open a link. A recovery link is consumed atomically (only the first open
+ * wins — the conditional update is the lock) and swapped for a new session
+ * token; any other valid token is returned unchanged. Same generic error for
+ * every failure.
+ */
+export async function exchangeResumeToken(admin: AdminClient, raw: string): Promise<string> {
+  const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
+  if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
+  const { data: row } = await admin
+    .from("application_resume_tokens")
+    .select("id,application_id,created_at,expires_at,revoked_at")
+    .eq("token_hash", await hashResumeToken(raw))
+    .maybeSingle();
+  if (!row || row.revoked_at) throw new Error(generic);
+  const exp = new Date(row.expires_at as string).getTime();
+  if (exp < Date.now()) throw new Error(generic);
+  const isRecovery = exp - new Date(row.created_at as string).getTime() <= RECOVERY_MAX_MS;
+  if (!isRecovery) return raw;
+  const now = new Date().toISOString();
+  const { data: claimed } = await admin
+    .from("application_resume_tokens")
+    .update({ revoked_at: now, last_used_at: now })
+    .eq("id", row.id)
+    .is("revoked_at", null)
+    .select("id");
+  if (!claimed || claimed.length === 0) throw new Error(generic);
+  return issueResumeToken(admin, row.application_id as string);
 }

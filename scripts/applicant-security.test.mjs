@@ -91,7 +91,7 @@ console.log("\nEVERY APPLICATION ENDPOINT NAMES ITS AUTHORIZATION");
   // The public lead forms have to be callable by a stranger: that is what a
   // lead form is. It creates a row, and on a match it writes nothing and
   // returns no token — see resume-payload.test.mjs.
-  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication"]);
+  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication", "requestApplicationLink"]);
   let checked = 0;
   for (let i = 1; i < parts.length; i += 2) {
     const [name, body] = [parts[i], parts[i + 1]];
@@ -103,7 +103,7 @@ console.log("\nEVERY APPLICATION ENDPOINT NAMES ITS AUTHORIZATION");
     // Either spelling — updateApplicationStep destructures `token` out of
     // `data` before resolving it — but the argument must still be the one
     // that came off the request body, never an id.
-    const tokenGated = /resolveResumeToken\(supabaseAdmin, (data\.token|token)\)/.test(body);
+    const tokenGated = /(resolveResumeToken|exchangeResumeToken)\(supabaseAdmin, (data\.token|token)\)/.test(body);
     const staffGated = /\.middleware\(/.test(body);
     ok(tokenGated || staffGated,
        `${name} is ${tokenGated ? "token-gated" : staffGated ? "staff-gated" : "UNGATED"}`);
