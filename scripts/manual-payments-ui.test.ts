@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateRecord, validateVerify, validateReason, validateExtend, sweepExpired, reserved, addHours, type Collection, type Charge } from "./manual-payments";
+import { validateRecord, validateVerify, validateReason, validateExtend, sweepExpired, reserved, addHours, type Collection, type Charge } from "../src/lib/manual-payments";
 
 const now = new Date("2026-10-08T20:00:00Z");
 const charge: Charge = { id: "c1", amount: 350, balance: 350, status: "current" };
