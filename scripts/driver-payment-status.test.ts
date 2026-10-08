@@ -7,7 +7,7 @@ const expect = (a: unknown) => ({
   toEqual: (b: unknown) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${JSON.stringify(a)} != ${JSON.stringify(b)}`); },
   not: { toBe: (b: unknown) => { if (a === b) throw new Error(`unexpected ${String(b)}`); } },
 });
-import { derivePaymentStatus as s, deriveDepositDisplay as d, type PayRental, type PayRow } from "../src/lib/driver-payment-status";
+import { computePayCells, derivePaymentStatus as s, deriveDepositDisplay as d, type PayRental, type PayRow } from "../src/lib/driver-payment-status";
 
 const T = new Date("2026-10-08T12:00:00Z");
 const R = (o: Partial<PayRental> = {}): PayRental => ({ id: "r", status: "active", deposit_amount: null, deposit_held: false, deposit_status: null, deposit_refund_amount: null, ...o });
@@ -50,6 +50,37 @@ describe("deposit display", () => {
     expect(d([R({ deposit_amount: 500, deposit_status: "refunded", deposit_refund_amount: 500 })], [])).toEqual({ text: "$500", detail: "Refunded" });
     expect(d([R({ deposit_amount: 500, deposit_status: "partially_refunded", deposit_refund_amount: 300 })], []).detail).toBe("Partly Refunded");
     expect(d([R({ deposit_amount: 500, deposit_status: "forfeited" })], []).detail).toBe("Applied");
+  });
+});
+
+console.log(`${pass} passed, ${fail} failed`);
+describe("resolved failures and multiple charges", () => {
+  const paidOld = P({ status: "paid", balance_due: 0, due_date: "2026-09-24" });
+  it("failed then retried successfully (same charge now paid) → Current", () => expect(s([R()], [paidOld], T)).toBe("current"));
+  it("failed row with nothing left owing is resolved → Current", () => expect(s([R()], [P({ status: "failed", balance_due: 0, due_date: "2026-09-24" })], T)).toBe("current"));
+  it("waived / cancelled failed charge excluded → Current", () => {
+    expect(s([R()], [paidOld, P({ status: "waived", due_date: "2026-10-01" })], T)).toBe("current");
+    expect(s([R()], [paidOld, P({ status: "cancelled", due_date: "2026-10-01" })], T)).toBe("current");
+    expect(s([R()], [paidOld, P({ status: "canceled", due_date: "2026-10-01" })], T)).toBe("current");
+  });
+  it("unresolved failure still → Failed", () => expect(s([R()], [paidOld, P({ status: "failed", due_date: "2026-10-01" })], T)).toBe("failed"));
+  it("recent paid charge doesn't hide an older overdue one", () =>
+    expect(s([R()], [P({ status: "current", due_date: "2026-09-24" }), P({ status: "paid", balance_due: 0, due_date: "2026-10-08" })], T)).toBe("overdue"));
+  it("partial doesn't hide another unpaid charge (worst wins)", () => {
+    expect(s([R()], [P({ balance_due: 100 }), P({ due_date: "2026-10-01" })], T)).toBe("overdue");
+    expect(s([R()], [P({ balance_due: 100 }), P({})], T)).toBe("partial");
+  });
+  it("deposits stay separate from payment status", () => {
+    expect(s([R()], [paidOld, P({ type: "deposit", status: "failed", due_date: "2026-09-01" })], T)).toBe("current");
+    expect(d([R({ deposit_amount: 500 })], [P({ type: "deposit", status: "cancelled", amount: 500 })]).detail).toBe("Unpaid · $500 Due");
+  });
+  it("no rentals or obligations → — for both", () => { expect(s([], [], T)).toBe("none"); expect(d([], []).text).toBe("—"); });
+});
+describe("shared list/profile calculation", () => {
+  it("computePayCells groups by driver and matches the single-driver result", () => {
+    const out = computePayCells([{ ...R(), application_id: "a" }], [{ ...P({ status: "failed", due_date: "2026-10-01" }), driver_id: "a" }], T);
+    expect(out.a.pay).toBe("Failed");
+    expect(out.b).toBe(undefined);
   });
 });
 
