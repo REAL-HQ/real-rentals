@@ -113,7 +113,7 @@ export const updateMyWaitlist = createServerFn({ method: "POST" })
     if (!verified || !email) throw new Error("Verify your email to update your details.");
     const entry = (await myWaitlist(admin, email)).find((w: any) => !w.promoted_application_id);
     if (!entry) throw new Error("No waitlist entry is linked to this email.");
-    const patch: Record<string, unknown> = {};
+    const patch: Record<string, any> = {};
     const s = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
     if (data.name !== undefined) {
       if (s(data.name, 120).length < 2) throw new Error("Enter your full name.");
@@ -132,7 +132,7 @@ export const updateMyWaitlist = createServerFn({ method: "POST" })
       patch.pickup_date = data.pickupDate || null;
     }
     if (!Object.keys(patch).length) return { ok: true };
-    const { error } = await admin.from("waitlist").update(patch).eq("id", entry.id);
+    const { error } = await admin.from("waitlist").update(patch as any).eq("id", entry.id);
     if (error) throw new Error("Could not save your details.");
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(null, {
