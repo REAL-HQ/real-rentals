@@ -140,6 +140,77 @@ const stepUpdateSchema = z.object({
  * resurrect a writer for it.
  */
 
+// Returning applicants. The link always goes to the address already on file,
+// never to whoever typed the form. At most one link per application per
+// 10 minutes, tracked in resubmission_history (not by token age: the token
+// minted when the application was created used to suppress the email for
+// anyone who came back within half an hour — they were told "we've emailed
+// you" and nothing arrived).
+const LINK_COOLDOWN_MS = 10 * 60_000;
+function recentLinkSent(history: unknown[]): boolean {
+  const since = Date.now() - LINK_COOLDOWN_MS;
+  return history.some((h: any) => h?.link_sent && new Date(h.at).getTime() > since);
+}
+async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string) {
+  try {
+    const { data: onFile } = await supabaseAdmin
+      .from("applications")
+      .select("email, full_name")
+      .eq("id", applicationId)
+      .maybeSingle();
+    if (!onFile?.email) return;
+    const { sendApplicationResumeEmail } = await import("@/lib/email.server");
+    await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
+  } catch (e) {
+    console.error("[resume-link] send failed", applicationId, e);
+  }
+}
+
+/**
+ * "Continue Application" / "Send Me A New Link". Public, so it answers the
+ * same way whether or not the email matches anything — no enumeration — and
+ * never creates or changes an application beyond the bounded history entry.
+ */
+export const requestApplicationLink = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ email: z.string().trim().email().max(160) }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const emailLower = data.email.trim().toLowerCase();
+    const variants = Array.from(new Set([data.email.trim(), emailLower]));
+    const results = await Promise.all(
+      variants.map((e) =>
+        supabaseAdmin
+          .from("applications")
+          .select("id, primary_application_id, created_at")
+          .eq("email", e)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ),
+    );
+    const hit = results.flatMap((r) => r.data ?? []).sort((a: any, b: any) =>
+      String(b.created_at).localeCompare(String(a.created_at)),
+    )[0] as any;
+    if (hit) {
+      const primaryId = hit.primary_application_id ?? hit.id;
+      const { data: row } = await supabaseAdmin
+        .from("applications")
+        .select("resubmission_history, purged_at")
+        .eq("id", primaryId)
+        .maybeSingle();
+      const history = Array.isArray(row?.resubmission_history) ? (row!.resubmission_history as unknown[]) : [];
+      if (row && !row.purged_at && !recentLinkSent(history)) {
+        history.push({ at: new Date().toISOString(), source: "link_request", link_sent: true });
+        await supabaseAdmin
+          .from("applications")
+          .update({ resubmission_history: history.slice(-25) } as any)
+          .eq("id", primaryId);
+        await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
+      }
+    }
+    return { ok: true as const };
+  });
+
 export const savePartialApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     z
@@ -211,7 +282,8 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // second row with a working token for the caller, and then the next time
     // staff pressed Merge duplicates the newer row won and the victim's real
     // application was marked `duplicate` and hidden.
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // No time window: a returning applicant from any date must resume their
+    // existing record, never start a duplicate. Deleted records are skipped.
     const dupeCols =
       "id, primary_application_id, resubmission_count, resubmission_history, created_at";
     const emailLower = data.email.trim().toLowerCase();
@@ -221,7 +293,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .from("applications")
         .select(dupeCols)
         .eq("phone", data.phone)
-        .gte("created_at", cutoff)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
       ...emailVariants.map((e) =>
@@ -229,7 +301,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .from("applications")
           .select(dupeCols)
           .eq("email", e)
-          .gte("created_at", cutoff)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(1),
       ),
@@ -275,6 +347,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       const history = Array.isArray(existing.resubmission_history)
         ? (existing.resubmission_history as unknown[])
         : [];
+      const linkDue = !recentLinkSent(history);
       history.push({
         at: new Date().toISOString(),
         source: data.source,
@@ -284,6 +357,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         submitted_full_name: data.full_name,
         submitted_phone: data.phone,
         submitted_email: data.email,
+        link_sent: linkDue,
       });
       const { error: updErr } = await supabaseAdmin
         .from("applications")
@@ -296,42 +370,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         } as any)
         .eq("id", primaryId);
       if (updErr) throw new Error(updErr.message);
-
-      /*
-       * One link per half hour, at most.
-       *
-       * Each send mints a token, and only five may be live at once — so six
-       * submissions with a stranger's email would revoke the link they are
-       * actually using, and mail them six times from our domain on the way.
-       * If a live token was issued recently, the applicant already has what
-       * this email would give them.
-       */
-      try {
-        const recent = new Date(Date.now() - 30 * 60_000).toISOString();
-        const { count } = await supabaseAdmin
-          .from("application_resume_tokens")
-          .select("id", { count: "exact", head: true })
-          .eq("application_id", primaryId)
-          .is("revoked_at", null)
-          .gte("created_at", recent);
-        if (!count) {
-          const { data: onFile } = await supabaseAdmin
-            .from("applications")
-            .select("email, full_name")
-            .eq("id", primaryId)
-            .maybeSingle();
-          if (onFile?.email) {
-            const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-            await sendApplicationResumeEmail({
-              to: onFile.email,
-              firstName: onFile.full_name ?? null,
-              applicationId: primaryId,
-            });
-          }
-        }
-      } catch (e) {
-        console.error("[lead-email] returning-applicant link failed", primaryId, e);
-      }
+      if (linkDue) await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
 
       // No id. It authorizes nothing today, but handing an anonymous caller
       // the identifier of a record they guessed at is still telling them
