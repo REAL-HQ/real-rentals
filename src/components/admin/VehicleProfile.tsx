@@ -598,8 +598,14 @@ function Dmv({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         icon={<ScrollText className="w-4 h-4" strokeWidth={1.75} />}
       >
         <Row label="VIN" value={v.vin} mono />
-        <Row label="Title Status" value={titleCase(v.title_status)} />
-        <Row label="Title Number" value={v.title_number} mono />
+        {p.canSeeFinance ? (
+          <>
+            <Row label="Title Status" value={titleCase(v.title_status)} />
+            <Row label="Title Number" value={v.title_number} mono />
+          </>
+        ) : (
+          <Row label="Title" value={v.title_on_file ? "Title On File" : "Not On File"} />
+        )}
         <div className="mt-3 text-[11px] text-[#9A9AA3]">
           Changing a VIN or plate is recorded in Activity with what it was before.
         </div>
