@@ -419,6 +419,15 @@ function libraryAsActive(lib: LibraryTemplate): { body: string; meta: TemplateMe
   };
 }
 
+/** Library template with the Owner's latest saved draft values (still unapproved). */
+async function libraryWithDraft(admin: any, lib: LibraryTemplate) {
+  const { loadLibraryDraft } = await import("@/lib/agreement-templates.functions");
+  const last = (await loadLibraryDraft(admin, lib.key)).at(-1);
+  const t = libraryAsActive(lib);
+  if (!last) return t;
+  return { body: writeTerms(lib.source, last.terms), meta: { ...t.meta, version: last.n + 1, label: `${t.meta.label} (Draft Values #${last.n})` } };
+}
+
 /** Insurance Required templates: carrier/policy on file AND a staff verification. */
 function insuranceBlockers(data: MergeData, blockers: AgreementBlocker[]) {
   const none = (v: unknown) => { const s = String(v ?? "").trim(); return !s || s === "None on file"; };
@@ -476,7 +485,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   const built = await buildMergeData(admin, applicationId);
   const lib = templateKey ? libraryTemplate(templateKey) : null;
   if (templateKey && !lib) throw new Error("Unknown agreement template.");
-  const tpl = lib ? libraryAsActive(lib) : await activeTemplate(admin);
+  const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
   let tplBody = tpl.body;
   if (prep) {
     const terms = readTerms(tpl.body);
