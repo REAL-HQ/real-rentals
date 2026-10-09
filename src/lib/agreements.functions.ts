@@ -563,12 +563,12 @@ export const listAgreements = createServerFn({ method: "GET" })
 
 export const previewAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep);
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey);
     const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
@@ -627,11 +627,11 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep } = {},
+  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser.
-  const prep = await prepareAgreement(admin, applicationId, opts.prep);
+  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey);
   const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -746,6 +746,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
         fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
         companyAck: z.boolean().optional(),
         prep: PrepSchema.optional(),
+        templateKey: z.enum(LIBRARY_KEYS).optional(),
       })
       .parse(d),
   )
@@ -757,6 +758,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
       createdBy: context.userId,
       companyAck: data.companyAck,
       prep: data.prep,
+      templateKey: data.templateKey,
     });
     if (data.companyAck) {
       const { logAudit } = await import("@/lib/audit.server");
