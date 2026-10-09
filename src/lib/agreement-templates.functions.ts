@@ -186,6 +186,8 @@ export const approveTemplateVersion = createServerFn({ method: "POST" })
       const { readTerms, missingTerms, stripTerms } = await import("@/lib/agreement-builder");
       const miss = missingTerms(readTerms(v.body) ?? {}, stripTerms(v.body));
       if (miss.length) return { ok: false as const, error: `Set every contract value first (missing: ${miss.join(", ")}). Service Area / Mileage Limit must be chosen explicitly.` };
+      const open = Object.entries(readTerms(v.body) ?? {}).filter(([, val]) => /\[[^\]]*\]/.test(String(val))).map(([k]) => k);
+      if (open.length) return { ok: false as const, error: `Bracketed open values remain (${open.join(", ")}). Resolve them, or have legal review confirm them, before approval.` };
     }
     const { issues } = await companyChecks(supabaseAdmin);
     if (issues.length) return { ok: false as const, error: issues[0] };
