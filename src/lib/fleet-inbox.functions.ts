@@ -28,12 +28,13 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 // ---------------------------------------------------------------- batches
 export const createImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ label: z.string().trim().max(120).optional() }).parse(d ?? {}))
+  .inputValidator((d: unknown) => z.object({ label: z.string().trim().max(120).optional(), source: z.enum(["vehicle_profile"]).optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
     const label = data.label || `Fleet Import — ${fmtDate(new Date())}`;
-    const { data: row, error } = await sb.from("fleet_import_batches").insert({ label, created_by: actor.userId }).select("id").single();
+    // source "vehicle_profile": uploads from a vehicle's Documents tab. Safe Autofill never runs for these — staff review every field.
+    const { data: row, error } = await sb.from("fleet_import_batches").insert({ label, created_by: actor.userId, ...(data.source ? { source_channel: data.source } : {}) }).select("id").single();
     if (error) throw new Error("Could not start an import.");
     return { id: row.id as string };
   });
