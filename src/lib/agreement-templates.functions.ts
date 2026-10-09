@@ -129,7 +129,7 @@ export const previewTemplateVersion = createServerFn({ method: "POST" })
     const { renderPreviewPdf } = await import("@/lib/esign-pdf.server");
     const label = v.status === "approved" ? `Approved v${v.version}` : v.status === "retired" ? `Retired v${v.version}` : `Draft v${v.version} — Legal Review Required`;
     const bytes = await renderPreviewPdf({
-      title: "Vehicle Rental Agreement", body: renderTemplate(v.body, { ...SAMPLE, ...COMPANY_DEFAULTS, ...(await companyChecks(supabaseAdmin)).company }),
+      title: "Vehicle Rental Agreement", body: renderTemplate(v.body, { ...SAMPLE, ...COMPANY_DEFAULTS, ...(await companyChecks(supabaseAdmin)).company } as any),
       fingerprint: v.fingerprint, templateLabel: `${label} — Sample Fields`,
       companySignerName: signer.name, companySignerTitle: signer.title, generatedAt: new Date().toISOString(),
     });
