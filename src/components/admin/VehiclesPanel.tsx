@@ -189,15 +189,18 @@ export function VehiclesPanel({
   const partnerName = (id: string | null) => (id ? partners.find((p) => p.id === id)?.name ?? "—" : "Unassigned");
 
   async function assignPartner(v: VehicleListRow, partner_id: string | null) {
-    const { error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id);
+    const { data, error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id).select("id");
     if (error) return toast.error(error.message);
+    // A role without edit rights is refused by the database with zero rows, not an error.
+    if (!data?.length) return toast.error("You don't have permission to change this vehicle.");
     load();
   }
 
   async function remove(v: VehicleListRow) {
     if (!confirm(`Delete ${vehicleName(v)}? This cannot be undone.`)) return;
-    const { error } = await supabase.from("vehicles").delete().eq("id", v.id);
+    const { data, error } = await supabase.from("vehicles").delete().eq("id", v.id).select("id");
     if (error) return toast.error(error.message);
+    if (!data?.length) return toast.error("You don't have permission to delete this vehicle.");
     load();
     toast.success("Vehicle deleted");
   }
