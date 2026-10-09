@@ -34,7 +34,7 @@ server-host = "127.0.0.1"
 server-port = 55433
 C
 psql "$U" -qc "alter role authenticator with login; grant connect on database esign to authenticator"
-PGRST=$(nix run nixpkgs#postgrest -- --help >/dev/null 2>&1; nix eval --raw nixpkgs#postgrest.outPath 2>/dev/null)/bin/postgrest
+PGRST=$(nix build --no-link --print-out-paths github:NixOS/nixpkgs/nixos-24.05#postgrest 2>/dev/null | tail -1)/bin/postgrest  # v12.x, matches the hosted API generation
 (setsid nohup $PGRST $D/pgrst.conf > $D/pgrst.log 2>&1 < /dev/null &)
 (HARNESS_DB_URL="$U" setsid nohup bun scripts/esign-harness/proxy.ts > $D/proxy.log 2>&1 < /dev/null &)
 for i in $(seq 30); do curl -sf http://127.0.0.1:55433/ >/dev/null 2>&1 && curl -s http://127.0.0.1:55434/x >/dev/null 2>&1 && break; sleep 1; done
