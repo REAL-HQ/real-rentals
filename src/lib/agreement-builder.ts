@@ -202,7 +202,7 @@ To the fullest extent the law allows, you agree to defend, indemnify, and hold h
 Our vehicles are equipped with GPS and telematics technology that we use to manage the fleet, support maintenance and safety, monitor compliance with this Agreement, and locate and recover a vehicle when needed. By signing, you consent to the use of this technology during your rental.
 If the rental ends, payments stop, or this Agreement is breached, you authorize us to use any lawful means, including vehicle telematics technology, to prevent further use of and recover the vehicle. You authorize us and our agents to access the vehicle wherever it is located to do so. Recovery, towing, impound, and storage costs are your responsibility, as listed in the Fee Schedule.
 
-## 9. Ending The Rental & Return
+## 9. Ending the Rental & Return
 Either of us may end the rental as described in Section 1. If you breach this Agreement (for example, non-payment, unauthorized drivers, a prohibited use, excessive speeding), we may end it immediately and recover the vehicle, and amounts owed for the minimum term remain due. Return the vehicle on time, at the agreed place, with all personal items removed. Late returns are subject to the late return fee in the Fee Schedule. If the vehicle isn't returned and we can't reach you for [[unreachable_days]] days, we may report it as unauthorized use to law enforcement.
 
 ## 10. Who Can Rent
