@@ -12,19 +12,18 @@ export function PhotoEnhancePanel() {
   const [data, setData] = useState<Status | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [limit, setLimit] = useState(20);
-  const [cap, setCap] = useState(10);
   const [busy, setBusy] = useState(false);
 
   const load = () =>
     status()
-      .then((d) => { setData(d); setLimit(d.dailyLimit); setCap(d.monthlyPaidCapCents / 100); setErr(null); })
+      .then((d) => { setData(d); setLimit(d.dailyLimit); setErr(null); })
       .catch((e) => setErr(e?.message === "Forbidden" ? "Only Managers and Owners can view this." : "Could not load."));
   useEffect(() => { void load(); }, []);
 
   async function update(enabled: boolean) {
     setBusy(true);
     try {
-      await save({ data: { enabled, dailyLimit: limit, monthlyPaidCapCents: Math.round(cap * 100) } });
+      await save({ data: { enabled, dailyLimit: limit } });
       toast.success("Saved");
       await load();
     } catch (e: any) {
@@ -51,22 +50,27 @@ export function PhotoEnhancePanel() {
             <span className="block font-medium text-[#111114]">Daily Limit (Photos)</span>
             <input type="number" min={0} max={1000} value={limit} disabled={!owner} onChange={(e) => setLimit(Number(e.target.value))} className="w-full rounded-md border border-[#EDEDF0] px-2 py-1.5 text-[13px]" />
           </label>
-          <label className="text-[12px] text-[#55555E] space-y-1">
-            <span className="block font-medium text-[#111114]">Monthly Paid Processing Cap ($)</span>
-            <input type="number" min={0} step={1} value={cap} disabled={!owner} onChange={(e) => setCap(Number(e.target.value))} className="w-full rounded-md border border-[#EDEDF0] px-2 py-1.5 text-[13px]" />
-          </label>
         </div>
         {owner && (
           <button type="button" disabled={busy} onClick={() => update(data.enabled)} className="rounded-lg bg-[#111114] text-white px-3 py-1.5 text-[13px] disabled:opacity-50">
             Save Limits
           </button>
         )}
-        <p className="text-[12px] text-[#9A9AA3]">No paid provider is connected, so the paid cap is a safeguard only.</p>
+        {/* The "Monthly Paid Processing Cap" control used to sit here. Nothing in
+            this system can incur a charge, so it could never bind — and a spend
+            limit implies there is spending to limit. */}
+        <p className="text-[12px] text-[#9A9AA3]">
+          Processing is free: it runs in the browser of the person who clicks Enhance. No paid
+          provider is connected, and nothing here can incur a charge.
+        </p>
       </div>
 
       <div className="rounded-xl border border-[#EDEDF0] bg-white p-5 space-y-2">
         <h3 className="text-[14px] font-semibold text-[#111114]">Usage</h3>
-        <p className="text-[13px] text-[#55555E]">Today: {data.usedToday} of {data.dailyLimit} photos · Paid this month: ${(data.paidThisMonthCents / 100).toFixed(2)} of ${(data.monthlyPaidCapCents / 100).toFixed(2)}</p>
+        <p className="text-[13px] text-[#55555E]">
+          Today: {data.usedToday} of {data.dailyLimit} photos · Cost this month: $
+          {(data.paidThisMonthCents / 100).toFixed(2)}
+        </p>
         {owner && (
           data.recent.length === 0 ? (
             <p className="text-[12px] text-[#9A9AA3]">No enhancements yet.</p>
