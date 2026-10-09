@@ -20,3 +20,5 @@
 - Preserve in place: eSign (preview-only exact-PDF flow, Owner templates, enforcement switch Off), Manual Payments Practice Mode (migration proposal unapplied), Waitlist safeguards, sticky-header chrome, and other development features.
 - Standing holds: nothing published, no migrations applied, no production records modified. eSign PDF retry hotfix stays deferred.
 - [ ] Next Lovable task: waiting for user assignment.
+
+- [ ] Vehicle Readiness Phase B/C/D — awaiting approval (Phase A display-only done)
