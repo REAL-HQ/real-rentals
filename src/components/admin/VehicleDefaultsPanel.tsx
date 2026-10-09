@@ -45,7 +45,7 @@ export function VehicleDefaultsPanel() {
       toast.success(`${bodyTypeLabel(draft.body_type)} defaults saved`);
       setDraft(null); await load();
     } catch (e: any) {
-      toast.error(e?.message === "Forbidden" ? "Only an Owner can change Vehicle Defaults." : "Could not save.");
+      toast.error(e?.message === "Forbidden" ? "Only an Owner can change Vehicle Pricing." : "Could not save.");
     } finally { setBusy(false); }
   }
 
@@ -59,10 +59,10 @@ export function VehicleDefaultsPanel() {
 
   return (
     <div className="space-y-3">
-      {!canEdit && <p className="text-[12px] text-muted-foreground">Only an Owner can change Vehicle Defaults. They apply automatically when you add a vehicle.</p>}
+      {!canEdit && <p className="text-[12px] text-muted-foreground">Only an Owner can change Vehicle Pricing. They apply automatically when you add a vehicle.</p>}
       {rows.length === 0 && !draft && (
         <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-[13px] text-muted-foreground">
-          No Vehicle Defaults yet. New vehicles start with Weekly Rate, Monthly Rate and Deposit Not Set.
+          No Vehicle Pricing set yet. New vehicles start with Weekly Rate, Monthly Rate and Deposit Not Set.
         </div>
       )}
       {rows.map((r) => draft && !isNew && draft.body_type === r.body_type ? null : (

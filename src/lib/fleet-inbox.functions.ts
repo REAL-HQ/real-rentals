@@ -367,13 +367,15 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         delete toWrite.current_odometer;
         let vehicleId: string;
         if (dec.action === "create") {
+          // Documents never establish a price. The only pricing a new car gets
+          // is the Owner's Vehicle Pricing default for a known body type (same
+          // resolver as Add Vehicle / spreadsheet import); unknown type → Not Set.
+          const { resolveForCreate } = await import("@/lib/vehicle-defaults.server");
+          const priced = await resolveForCreate(typeof toWrite.body_type === "string" ? toWrite.body_type : null, {});
           const row: Record<string, unknown> = {
             ...toWrite, vin: fresh.vin,
             year: coerce("year", entry.fields.year!.value), make: normalizeDisplayText(String(entry.fields.make!.value)), model: normalizeDisplayText(String(entry.fields.model!.value)),
-            // Documents never establish a price: rate stays Not Set and the car
-            // starts as Needs Setup until a human prices it, adds a photo and
-            // chooses Make Available.
-            weekly_rate: null,
+            weekly_rate: priced.weekly_rate, monthly_rate: priced.monthly_rate, deposit: priced.deposit,
             status: "onboarding",
             // unit_number assigned by the vehicles_assign_unit_number trigger.
           };

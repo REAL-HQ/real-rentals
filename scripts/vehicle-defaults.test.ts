@@ -25,7 +25,7 @@ ok((fn.match(/requireOwner\(context\.userId\)/g) ?? []).length === 2, "J/K. save
 ok(/requireStaff\(context\.userId\)/.test(fn), "all staff tiers may read defaults");
 ok(visibleSettingsSections("coordinator").every((s) => s.id !== "vehicle_defaults"), "Coordinator: no Vehicle Defaults settings page");
 const fi = readFileSync("src/lib/fleet-inbox.functions.ts", "utf8");
-ok(/weekly_rate: null/.test(fi), "L. Fleet Inbox never derives a price from a document");
+ok(/resolveForCreate\([^)]*, \{\}\)/.test(fi) && !/weekly_rate: (toWrite|c\.|fresh)/.test(fi), "L. Fleet Inbox prices only from Vehicle Pricing defaults, never from a document");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall assertions passed");
 process.exit(fails ? 1 : 0);
