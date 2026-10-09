@@ -72,6 +72,14 @@ type AdminSearch = {
   section?: string;
   /** Messages overlay: "inbox" = open, or an application id = open on that conversation. Global, survives tab. */
   msg?: string;
+  /** Vehicles list state (List 1): search, filters, sort, page, view. */
+  q?: string;
+  vstatus?: string;
+  body?: string;
+  partner?: string;
+  sort?: string;
+  page?: string;
+  view?: string;
 };
 
 /**
@@ -94,6 +102,13 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
+  q: ["vehicles"],
+  vstatus: ["vehicles"],
+  body: ["vehicles"],
+  partner: ["vehicles"],
+  sort: ["vehicles"],
+  page: ["vehicles"],
+  view: ["vehicles"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -105,7 +120,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of ["id", "filter", "add", "section"] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -139,6 +154,9 @@ export const Route = createFileRoute("/admin")({
     // number 1 — and silently did nothing.
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
+    if (typeof raw.q === "number") out.q = String(raw.q);
+    for (const k of ["q", "vstatus", "body", "partner", "sort", "view"] as const) if (str(raw[k])) out[k] = str(raw[k]);
+    if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
     return out;
@@ -718,7 +736,7 @@ function Admin() {
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} />}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view }} />}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
