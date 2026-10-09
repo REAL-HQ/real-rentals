@@ -309,15 +309,16 @@ export const saveLibraryDraft = createServerFn({ method: "POST" })
     const known = new Set(ALL_TERM_FIELDS.map((f) => f.key));
     const unknown = Object.keys(data.terms).filter((k) => !known.has(k));
     if (unknown.length) return { ok: false as const, error: `Unknown contract values: ${unknown.join(", ")}` };
-    const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const versions = await loadLibraryDraft(supabaseAdmin, lib.key);
+    const prev = versions.at(-1)?.terms ?? lib.terms;
+    // Values not sent keep the last saved draft value.
+    const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? prev[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
     // Unlimited miles never carries an excess-mileage fee.
     if ("excess_mileage_fee" in terms) {
       const { excessFeeFor } = await import("@/lib/service-area");
       terms.excess_mileage_fee = excessFeeFor(terms.mileage_allowance ?? "", terms.excess_mileage_fee);
     }
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const versions = await loadLibraryDraft(supabaseAdmin, lib.key);
-    const prev = versions.at(-1)?.terms ?? lib.terms;
     if ([...used].every((k) => (prev[k] ?? "") === terms[k])) return { ok: false as const, error: "No changes to save." };
     const { sha256Hex } = await import("@/lib/esign-pdf.server");
     const sha256 = await sha256Hex(writeTerms(lib.source, terms));

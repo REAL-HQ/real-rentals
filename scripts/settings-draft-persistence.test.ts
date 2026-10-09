@@ -91,7 +91,6 @@ describe("Agreement library Save Draft persistence (disposable DB)", () => {
   it("Owner save writes a numbered draft that survives a fresh read (refresh/reopen)", async () => {
     const terms = { ...ni.terms, notice_hours: "48", service_area: "Florida only", mileage_allowance: "1,500 miles per week", excess_mileage_fee: "$0.25 per mile" };
     const r = await T.saveLibraryDraft.run({ key: "no_insurance", terms }, ctx("owner"));
-    if (!r.ok) console.log("SAVE ERROR", JSON.stringify(r));
     expect(r).toMatchObject({ ok: true, version: 1 });
     const fresh = await T.getLibraryDrafts.run(undefined, ctx("owner"));
     const v = fresh.no_insurance.at(-1)!;
@@ -145,16 +144,17 @@ describe("Agreement library Save Draft persistence (disposable DB)", () => {
 
 describe("Settings explicit Save Changes (disposable DB)", () => {
   it("Owner save merges only changed fields, verifies by read-back, and survives a fresh read", async () => {
-    await admin.from("app_settings").upsert({ key: "system_preferences", value: { business_phone: "+15550001111", company_name: "" } } as any, { onConflict: "key" });
-    const r = await saveSettingsSection(asUser("owner"), "system_preferences", { company_name: "Synthetic Rentals LLC" });
+    // Uses an isolated settings row so the shared harness company data is untouched.
+    await admin.from("app_settings").upsert({ key: "rental_terms", value: { min_term_weeks: 4, terms_text: "keep" } } as any, { onConflict: "key" });
+    const r = await saveSettingsSection(asUser("owner"), "rental_terms", { min_term_weeks: 6 });
     expect(r.ok).toBe(true);
-    const { data } = await asUser("owner").from("app_settings").select("value").eq("key", "system_preferences").single();
-    expect(data!.value).toMatchObject({ company_name: "Synthetic Rentals LLC", business_phone: "+15550001111" }); // other field preserved
+    const { data } = await asUser("owner").from("app_settings").select("value").eq("key", "rental_terms").single();
+    expect(data!.value).toMatchObject({ min_term_weeks: 6, terms_text: "keep" }); // other field preserved
   });
   it("a refused write reports an error, never Saved", async () => {
-    const r = await saveSettingsSection(asUser("driver"), "system_preferences", { company_name: "Hacked" });
+    const r = await saveSettingsSection(asUser("driver"), "rental_terms", { min_term_weeks: 1 });
     expect(r.ok).toBe(false);
-    const { data } = await admin.from("app_settings").select("value").eq("key", "system_preferences").single();
-    expect((data!.value as any).company_name).toBe("Synthetic Rentals LLC");
+    const { data } = await admin.from("app_settings").select("value").eq("key", "rental_terms").single();
+    expect((data!.value as any).min_term_weeks).toBe(6);
   });
 });
