@@ -126,12 +126,13 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
     const actor = await requireStaff(context.userId);
-    // Acquisition/lien/loan paperwork is Owner only — same boundary as RLS
-    // (private.is_ownership_finance_kind) and listVehicleDocs. This handler
-    // writes with the admin client, so the check must live here too.
-    const { isFinanceKind } = await import("@/lib/vehicle-doc-presence");
-    if (isFinanceKind(data.kind) && actor.tier !== "owner") {
-      return { ok: false, error: "Only the Owner can add purchase, loan or lien paperwork." };
+    // Title, acquisition, lien and loan paperwork is Owner only. Storage says
+    // the same (private.vehicle_doc_object_owner_only covers 'title'), but this
+    // handler writes with the admin client, which bypasses both RLS and the
+    // storage policies — so the boundary has to be enforced here as well.
+    const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+    if (isOwnerOnlyDocKind(data.kind) && actor.tier !== "owner") {
+      return { ok: false, error: "Only the Owner can add title, purchase, loan or lien paperwork." };
     }
     // The file must sit under this vehicle's folder, so a request cannot
     // attach some other object to this record.
@@ -197,7 +198,7 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
 export const deleteVehicleDoc = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ ok: boolean }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true } | { ok: false; error: string }> => {
     // Deleting paperwork outright is a manager decision; staff can only
     // supersede it by uploading a newer one.
     const actor = await requireManager(context.userId);
@@ -205,12 +206,21 @@ export const deleteVehicleDoc = createServerFn({ method: "POST" })
 
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,vehicle_id,kind,storage_bucket,storage_path")
+      .select("id,vehicle_id,kind,category,storage_bucket,storage_path")
       .eq("id", data.id)
       .maybeSingle();
-    { const { isFinanceKind } = await import("@/lib/vehicle-doc-presence"); if (doc && isFinanceKind(doc.kind) && actor.tier !== "owner") return { ok: false }; }
+    // Deleting is irreversible and this handler uses the admin client, so the
+    // Owner-only boundary is checked on BOTH columns: a Fleet Inbox original
+    // carries its class in `category`, a slot upload in `kind`.
+    if (!doc) return { ok: false, error: "That document no longer exists." };
+    {
+      const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+      if ((isOwnerOnlyDocKind(doc.kind) || isOwnerOnlyDocKind((doc as any).category)) && actor.tier !== "owner") {
+        return { ok: false, error: "Only the Owner can delete title, purchase, loan or lien paperwork." };
+      }
+    }
 
-    if (doc?.storage_path) {
+    if (doc.storage_path) {
       await supabaseAdmin.storage
         .from(doc.storage_bucket || "vehicle-docs")
         .remove([doc.storage_path]);
@@ -219,10 +229,10 @@ export const deleteVehicleDoc = createServerFn({ method: "POST" })
 
     await logAudit(actor, {
       action: "vehicle_doc.deleted",
-      summary: `Deleted ${labelFor(String(doc?.kind ?? ""))} from a vehicle record`,
+      summary: `Deleted ${labelFor(String(doc.kind ?? ""))} from a vehicle record`,
       entityType: "vehicle",
-      entityId: doc?.vehicle_id ?? null,
-      metadata: { kind: doc?.kind, path: doc?.storage_path },
+      entityId: doc.vehicle_id ?? null,
+      metadata: { kind: doc.kind, category: (doc as any).category ?? null, path: doc.storage_path },
     });
 
     return { ok: true };

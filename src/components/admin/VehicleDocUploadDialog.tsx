@@ -220,6 +220,13 @@ export function VehicleDocUploadDialog({
           <span>Read Document Details <span className="text-[#55555E]">— finds VIN, plate, dates and other details for you to review. Nothing is changed until you accept it.</span></span>
         </label>
 
+        {!financeSlots && (
+          <p className="text-[12px] text-[#55555E]">
+            Title, purchase, loan and lien paperwork is the Owner&apos;s. If a file turns out to be
+            one of those, it is filed correctly and kept — but you will no longer be able to open it.
+          </p>
+        )}
+
         <FileUploader
           multiple={read}
           accept="image/*,application/pdf"

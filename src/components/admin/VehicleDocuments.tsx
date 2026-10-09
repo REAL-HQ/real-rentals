@@ -115,7 +115,15 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
   async function onDelete(d: VehicleDoc) {
     if (!confirm(`Delete the ${d.kind_label} on file?\n\nThis removes the file permanently.`)) return;
     try {
-      await remove({ data: { id: d.id } });
+      // The server refuses some deletions (title and finance paperwork are the
+      // Owner's) by returning ok: false. Toasting "Deleted" over a refusal told
+      // staff a document was gone while it was still on file.
+      const res = await remove({ data: { id: d.id } });
+      if (!res.ok) {
+        toast.error(res.error);
+        void refresh();
+        return;
+      }
       toast.success("Deleted");
       void refresh();
     } catch (e: any) {
