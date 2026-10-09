@@ -8,8 +8,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewTemplateBody, saveTemplateDraft, unknownFieldsIn, type TemplateVersion } from "@/lib/agreement-templates.functions";
 import {
-  TERM_FIELDS, TERM_GROUPS, V16_SOURCE, V16_TERM_DEFAULTS, readTerms, stripTerms, writeTerms, missingTerms, unknownTermsIn,
+  TERM_FIELDS, ALL_TERM_FIELDS, TERM_GROUPS, V16_SOURCE, V16_TERM_DEFAULTS, readTerms, stripTerms, writeTerms, missingTerms, unknownTermsIn, termsIn,
 } from "@/lib/agreement-builder";
+
+/** Library templates: fixed legal wording; only contract values are edited and saved as a Draft. */
+export type LibraryEdit = {
+  key: string; name: string; versionLabel: string; source: string; terms: Record<string, string>;
+  save: (terms: Record<string, string>) => Promise<{ ok: boolean; error?: string; version?: number }>;
+};
+const isOpen = (v?: string) => /\[[^\]]*\]/.test(String(v ?? ""));
+const FIX_LINK: Record<string, string> = {
+  "Legal Business Name": "/admin?tab=settings&section=company", "Business Address": "/admin?tab=settings&section=company",
+  "Support Phone": "/admin?tab=settings&section=company", "Support Email": "/admin?tab=settings&section=company",
+  "Countersigner": "/admin?tab=settings&section=esign",
+};
 import { Diff } from "@/components/admin/AgreementTemplatesPanel";
 
 type Company = Record<string, any>;
@@ -30,8 +42,9 @@ function Section({ title, badge, children, open = false }: { title: string; badg
 }
 
 export function AgreementBuilder({
-  base, company, issues, onClose, onSaved, onApprove,
+  base, company, issues, onClose, onSaved, onApprove, library,
 }: {
+  library?: LibraryEdit;
   base: TemplateVersion;
   company: Company;
   issues: string[];
@@ -41,10 +54,13 @@ export function AgreementBuilder({
 }) {
   const previewFn = useServerFn(previewTemplateBody);
   const saveFn = useServerFn(saveTemplateDraft);
-  const baseTerms = readTerms(base.body);
-  const startsFromV16 = !baseTerms;
-  const [source, setSource] = useState(() => (baseTerms ? stripTerms(base.body) : V16_SOURCE));
-  const [terms, setTerms] = useState<Record<string, string>>(() => ({ ...V16_TERM_DEFAULTS, ...(baseTerms ?? {}) }));
+  const baseTerms = library ? library.terms : readTerms(base.body);
+  const startsFromV16 = !library && !baseTerms;
+  const [source, setSource] = useState(() => (library ? library.source : baseTerms ? stripTerms(base.body) : V16_SOURCE));
+  const [terms, setTerms] = useState<Record<string, string>>(() => (library ? { ...library.terms } : { ...V16_TERM_DEFAULTS, ...(baseTerms ?? {}) }));
+  const usedTerms = useMemo(() => new Set(termsIn(source)), [source]);
+  const fieldList = library ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key)) : TERM_FIELDS;
+  const openValues = fieldList.filter((f) => isOpen(terms[f.key])).map((f) => f.key);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [pdf, setPdf] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
@@ -57,7 +73,7 @@ export function AgreementBuilder({
   const dirty = body !== base.body;
   const missing = useMemo(() => missingTerms(terms, source), [terms, source]);
   const unknown = useMemo(() => [...unknownFieldsIn(source).map((f) => `{{${f}}}`), ...unknownTermsIn(source).map((f) => `[[${f}]]`)], [source]);
-  const canApprove = !dirty && base.status === "draft" && !!base.id;
+  const canApprove = !library && !dirty && base.status === "draft" && !!base.id;
 
   // Live preview through the canonical PDF pipeline, debounced.
   useEffect(() => {
@@ -79,10 +95,10 @@ export function AgreementBuilder({
   async function save() {
     setBusy(true);
     try {
-      const r = await saveFn({ data: { body, basedOn: base.version } });
+      const r: any = library ? await library.save(terms) : await saveFn({ data: { body, basedOn: base.version } });
       if (!r.ok) return void toast.error(r.error);
-      toast.success(`Draft v${r.version} Saved — Not Active`);
-      onSaved(r.version);
+      toast.success(library ? `Draft Saved — Not Approved Or Active` : `Draft v${r.version} Saved — Not Active`);
+      onSaved(r.version ?? base.version);
     } catch (e: any) {
       toast.error(e?.message ?? "Could not save the draft.");
     } finally { setBusy(false); }
@@ -110,10 +126,16 @@ export function AgreementBuilder({
           Starting from Vehicle Rental Agreement v1.6 (No Insurance). Saving creates a new Draft; v{base.version} is not changed.
         </p>
       )}
+      {openValues.length > 0 && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]" data-testid="open-values">
+          <p className="font-semibold">Bracketed open values ({openValues.length}) — approval stays blocked until each is resolved or confirmed by legal review:</p>
+          {openValues.map((k) => <p key={k}>- {ALL_TERM_FIELDS.find((f) => f.key === k)?.label}: {terms[k]} <button className="ml-1 font-semibold underline" onClick={() => document.getElementById(`term-${k}`)?.focus()}>Edit</button></p>)}
+        </div>
+      )}
       {(missing.length > 0 || unknown.length > 0 || issues.length > 0) && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive space-y-0.5">
           {issues.map((i) => <p key={i}>{i}</p>)}
-          {missing.length > 0 && <p>Missing values: {missing.map((k) => TERM_FIELDS.find((f) => f.key === k)?.label ?? k).join(", ")}</p>}
+          {missing.length > 0 && <p>Missing values: {missing.map((k) => ALL_TERM_FIELDS.find((f) => f.key === k)?.label ?? k).join(", ")}</p>}
           {unknown.length > 0 && <p>Unknown fields: {unknown.join(", ")}</p>}
         </div>
       )}
@@ -124,7 +146,8 @@ export function AgreementBuilder({
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
               {(() => { const unset = !v || issues.some((i) => i.startsWith(k === "Business Address" ? "Mailing Address" : k)); return (
-                <dd className={`min-w-0 break-words ${unset ? "text-destructive" : ""}`}>{unset ? (v ? `Not Set (fallback "${v}" would print)` : "Not Set") : v}</dd>); })()}
+                <dd className={`min-w-0 break-words ${unset ? "text-destructive" : ""}`}>{unset ? (v ? `Not Set (fallback "${v}" would print)` : "Not Set") : v}
+                  {unset && FIX_LINK[k] && <a className="ml-1.5 font-semibold underline" href={FIX_LINK[k]} target="_blank" rel="noreferrer">Fix</a>}</dd>); })()}
             </div>
           ))}
         </dl>
@@ -132,8 +155,9 @@ export function AgreementBuilder({
       </Section>
 
       {TERM_GROUPS.map((g) => {
-        const fields = TERM_FIELDS.filter((f) => f.group === g);
-        const miss = fields.filter((f) => missing.includes(f.key)).length;
+        const fields = fieldList.filter((f) => f.group === g);
+        if (!fields.length) return null;
+        const miss = fields.filter((f) => missing.includes(f.key) || openValues.includes(f.key)).length;
         return (
           <Section key={g} title={g} badge={miss}>
             {g === "Pricing & Deposit" && (
@@ -141,14 +165,14 @@ export function AgreementBuilder({
             )}
             {fields.map((f) => (
               <label key={f.key} className="block text-[12px]">
-                <span className="mb-1 block font-medium">{f.label}</span>
+                <span className="mb-1 block font-medium">{f.label}{isOpen(terms[f.key]) && <span className="ml-1.5 rounded bg-warning/15 px-1.5 text-[10.5px] font-normal">Open Value</span>}</span>
                 {f.key === "service_area" ? (
                   <ServiceAreaField value={terms[f.key] ?? ""} onChange={(v) => set(f.key, v)} missing={missing.includes(f.key)} />
                 ) : f.multiline ? (
-                  <Textarea rows={3} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
+                  <Textarea id={`term-${f.key}`} rows={3} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
                     className={`text-[12px] ${missing.includes(f.key) ? "border-destructive" : ""}`} />
                 ) : (
-                  <input value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
+                  <input id={`term-${f.key}`} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
                     className={`h-8 w-full rounded-md border bg-background px-2 text-[12px] ${missing.includes(f.key) ? "border-destructive" : ""}`} />
                 )}
               </label>
@@ -161,7 +185,8 @@ export function AgreementBuilder({
         <p className="text-[11px] text-muted-foreground">
           The full contract text. {"{{field}}"} values are filled per rental; [[term]] values come from the sections above. Any change saves as a new Draft.
         </p>
-        <Textarea value={source} onChange={(e) => setSource(e.target.value)} className="min-h-[60vh] font-mono text-[11px] leading-5" aria-label="Legal Wording" />
+        {library && <p className="text-[11px] text-muted-foreground">This agreement's legal wording is fixed; only the contract values above can change.</p>}
+        <Textarea readOnly={!!library} value={source} onChange={(e) => setSource(e.target.value)} className="min-h-[60vh] font-mono text-[11px] leading-5" aria-label="Legal Wording" />
       </Section>
     </div>
   );
@@ -195,8 +220,8 @@ export function AgreementBuilder({
       <header className="flex shrink-0 flex-col gap-2 border-b bg-card px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex min-w-0 items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) onClose(); }}><ArrowLeft className="h-4 w-4" /> Back</Button>
-          <span className="truncate text-[14px] font-semibold">{base.name}</span>
-          <span className="shrink-0 text-[12px] text-muted-foreground">{dirty ? `New Draft (from v${base.version})` : `v${base.version}`}</span>
+          <span className="truncate text-[14px] font-semibold">{library ? library.name : base.name}</span>
+          <span className="shrink-0 text-[12px] text-muted-foreground">{library ? library.versionLabel : dirty ? `New Draft (from v${base.version})` : `v${base.version}`}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${base.status === "approved" && !dirty ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
             {dirty ? "Unsaved" : base.status === "approved" ? "Approved" : base.status === "retired" ? "Retired" : "Draft"}
           </span>
