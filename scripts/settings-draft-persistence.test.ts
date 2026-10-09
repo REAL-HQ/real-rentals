@@ -91,6 +91,7 @@ describe("Agreement library Save Draft persistence (disposable DB)", () => {
   it("Owner save writes a numbered draft that survives a fresh read (refresh/reopen)", async () => {
     const terms = { ...ni.terms, notice_hours: "48", service_area: "Florida only", mileage_allowance: "1,500 miles per week", excess_mileage_fee: "$0.25 per mile" };
     const r = await T.saveLibraryDraft.run({ key: "no_insurance", terms }, ctx("owner"));
+    if (!r.ok) console.log("SAVE ERROR", JSON.stringify(r));
     expect(r).toMatchObject({ ok: true, version: 1 });
     const fresh = await T.getLibraryDrafts.run(undefined, ctx("owner"));
     const v = fresh.no_insurance.at(-1)!;

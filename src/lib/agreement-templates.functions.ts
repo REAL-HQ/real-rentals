@@ -321,7 +321,7 @@ export const saveLibraryDraft = createServerFn({ method: "POST" })
     const n = (versions.at(-1)?.n ?? 0) + 1;
     const next = [...versions, { n, terms, savedAt: new Date().toISOString(), savedBy: actor.email ?? actor.userId, sha256 }];
     const { error } = await supabaseAdmin.from("app_settings").upsert({ key: `agreement_library_draft:${lib.key}`, value: { versions: next } } as any, { onConflict: "key" });
-    if (error) return { ok: false as const, error: "Could not save the draft." };
+    if (error) { console.error("saveLibraryDraft", error.message); return { ok: false as const, error: "Could not save the draft." }; }
     const changed = [...used].filter((k) => (prev[k] ?? "") !== terms[k]);
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, { action: "template.library_draft_saved", summary: `Saved ${lib.name} v${lib.displayVersion} draft values #${n} (not approved): ${changed.join(", ")}`, entityType: "agreement_template", entityId: null as any, metadata: { key: lib.key, draft: n, sha256, changed } });
