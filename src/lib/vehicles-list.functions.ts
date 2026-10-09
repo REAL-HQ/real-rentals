@@ -30,7 +30,9 @@ export const listVehicles = createServerFn({ method: "POST" })
     const sort = (VEHICLE_SORTS as readonly string[]).includes(data.sort) ? data.sort : "unit";
 
     let query = supabaseAdmin.from("vehicles").select(LIST_COLUMNS, { count: "exact" });
+    // Archived vehicles leave the normal fleet view; the Archived filter shows them.
     if (data.status !== "all") query = query.eq("status", data.status);
+    else query = query.neq("status", "archived");
     if (data.body !== "all") query = query.eq("body_type", data.body);
     if (data.partner === "__none__") query = query.is("partner_id", null);
     else if (data.partner !== "all") query = query.eq("partner_id", data.partner);
@@ -63,7 +65,7 @@ export const listVehicles = createServerFn({ method: "POST" })
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
     }
 
-    const statuses = new Set<string>();
+    const statuses = new Set<string>(["archived"]);
     const bodies = new Set<string>();
     for (const f of facets.data ?? []) {
       if ((f as any).status) statuses.add((f as any).status);

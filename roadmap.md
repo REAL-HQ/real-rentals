@@ -25,3 +25,10 @@
 - [ ] Future UX: Open Inspections prefiltered to the selected vehicle (not started)
 
 - [ ] Vehicle Delete data protection (needs approval, not List 1): deleting a vehicle cascades expenses/maintenance/tolls/incidents/odometer/finance/titles and unlinks payments/documents; only rentals block. Decide archive-only or blockers.
+
+## Vehicle Delete Safety
+- [ ] Phase 1 safeguard (scripts/vehicle-delete-safety.proposed.sql) — awaiting Owner approval + migration number (not 0022)
+- [x] Phase 2 Archive/Restore in preview (no migration; previous status read from audit history)
+- [x] Phase 3 Owner-only Delete Permanently (server check-then-delete)
+- [ ] Future: move permanent delete into one locked DB function to close check-then-delete race
+- [ ] Live preview click-through of Archive/Restore/Delete dialogs per role

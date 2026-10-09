@@ -8,8 +8,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
+import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
 import {
@@ -196,14 +197,9 @@ export function VehiclesPanel({
     load();
   }
 
-  async function remove(v: VehicleListRow) {
-    if (!confirm(`Delete ${vehicleName(v)}? This cannot be undone.`)) return;
-    const { data, error } = await supabase.from("vehicles").delete().eq("id", v.id).select("id");
-    if (error) return toast.error(error.message);
-    if (!data?.length) return toast.error("You don't have permission to delete this vehicle.");
-    load();
-    toast.success("Vehicle deleted");
-  }
+  // No direct browser deletes: Archive / Restore / Delete Permanently all go
+  // through audited server actions.
+  const [lifecycle, setLifecycle] = useState<{ v: VehicleListRow; mode: LifecycleMode } | null>(null);
 
   function chooseView(next: "list" | "cards") {
     try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* ignore */ }
@@ -244,9 +240,20 @@ export function VehiclesPanel({
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => remove(v)} aria-label="Delete vehicle" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
-                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
-                </button>
+                {v.status === "archived" ? (
+                  <>
+                    <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                      <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                    <button onClick={() => setLifecycle({ v, mode: "delete" })} aria-label="Delete permanently" title="Delete Permanently" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
+                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setLifecycle({ v, mode: "archive" })} aria-label="Archive vehicle" title="Archive Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                    <Archive className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -383,6 +390,14 @@ export function VehiclesPanel({
         />
       )}
       {viewing && <VehicleProfile vehicleId={viewing} onClose={() => setViewing(null)} onChanged={load} />}
+      {lifecycle && (
+        <VehicleLifecycleDialog
+          vehicle={{ id: lifecycle.v.id, unit_number: lifecycle.v.unit_number, label: vehicleName(lifecycle.v) }}
+          mode={lifecycle.mode}
+          onClose={() => setLifecycle(null)}
+          onDone={() => { setLifecycle(null); load(); }}
+        />
+      )}
     </div>
   );
 }
