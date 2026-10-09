@@ -255,11 +255,11 @@ async function buildMergeData(
     marketName = m ? [m.name, m.state].filter(Boolean).join(", ") : null;
   }
 
-  const { getBusinessPhone } = await import("@/lib/company.server");
-  const companyPhone = (await getBusinessPhone(admin)).display;
+  const { getCompanyIdentity } = await import("@/lib/company-identity.server");
+  const company = await getCompanyIdentity(admin);
   const data: MergeData = {
     ...COMPANY_DEFAULTS,
-    company_phone: companyPhone,
+    ...company.merge,
     driver_name: app.full_name ?? "",
     driver_email: app.email ?? "",
     driver_phone: app.phone ?? "",
@@ -301,6 +301,8 @@ export type TemplateMeta = {
   approvedAt: string | null;
   /** True once the versioning migration exists (approval_status column present). */
   versioningActive: boolean;
+  /** True once the Phase A columns exist (Owner can save/approve/retire). */
+  schemaReady: boolean;
 };
 
 /**
@@ -316,27 +318,37 @@ export async function activeTemplate(admin: any): Promise<{ body: string; meta: 
     .order("version", { ascending: false })
     .limit(20);
   const list = (rows ?? []) as any[];
-  const versioningActive = list.some((r) => "approval_status" in r);
+  const hasVersioning = list.some((r) => "approval_status" in r);
+  const approved = hasVersioning ? list.find((r) => r.approval_status === "approved") ?? null : null;
+  // Staged rollout: approval enforcement is ON only when the Owner explicitly
+  // switched it on (app_settings.esign_template_enforcement.enabled) AND an
+  // approved version exists. The migration alone never changes what is sent.
+  let switchOn = false;
+  try {
+    const { data: s } = await admin.from("app_settings").select("value").eq("key", "esign_template_enforcement").maybeSingle();
+    switchOn = (s?.value as any)?.enabled === true;
+  } catch { switchOn = false; }
+  const versioningActive = hasVersioning && switchOn && !!approved;
   const pick = versioningActive
-    ? list.find((r) => r.approval_status === "approved") ?? list.find((r) => r.approval_status === "draft") ?? null
+    ? approved
     : list.find((r) => r.is_active) ?? null;
   if (!pick) {
     return {
       body: DEFAULT_AGREEMENT_BODY,
       meta: {
         id: null, name: "Rental Agreement", version: 1, approvalStatus: "draft",
-        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive,
+        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive, schemaReady: hasVersioning,
       },
     };
   }
-  const status = versioningActive ? String(pick.approval_status) : "draft";
+  const status = hasVersioning ? String(pick.approval_status ?? "draft") : "draft";
   return {
     body: String(pick.body),
     meta: {
       id: pick.id, name: pick.name ?? "Rental Agreement", version: Number(pick.version ?? 1),
       approvalStatus: status,
       label: status === "approved" ? `Approved v${pick.version}` : `Draft v${pick.version} — Legal Review Required`,
-      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive,
+      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive, schemaReady: hasVersioning,
     },
   };
 }

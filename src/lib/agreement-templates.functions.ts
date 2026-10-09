@@ -38,15 +38,11 @@ async function owner(userId: string) {
 
 async function companyChecks(admin: any) {
   const { getCompanySigner } = await import("@/lib/esign.server");
-  const signer = await getCompanySigner(admin);
-  const c = COMPANY_DEFAULTS;
-  const issues: string[] = [];
-  if (!c.company_name?.trim()) issues.push("Company name is missing.");
-  if (!/\d/.test(c.company_address ?? "")) issues.push(`Company address is incomplete ("${c.company_address}") — a full street address is needed.`);
-  if (!c.company_phone?.trim()) issues.push("Company phone is missing.");
-  if (!c.company_email?.includes("@")) issues.push("Company email is missing.");
+  const { getCompanyIdentity } = await import("@/lib/company-identity.server");
+  const [signer, id] = await Promise.all([getCompanySigner(admin), getCompanyIdentity(admin)]);
+  const issues = id.missing.map((m) => `${m} is missing in Settings → Company.`);
   if (!signer.title) issues.push("Countersigner title is not set (Settings → Agreements & eSign).");
-  return { company: { ...c, signer_name: signer.name, signer_title: signer.title }, issues };
+  return { company: { ...id.merge, signer_name: signer.name, signer_title: signer.title }, issues, missing: id.missing };
 }
 
 async function loadAll(admin: any) {
@@ -57,7 +53,8 @@ async function loadAll(admin: any) {
     activeTemplate(admin),
   ]);
   const list = (rows ?? []) as any[];
-  const versioningActive = active.meta.versioningActive;
+  const versioningActive = active.meta.schemaReady;
+  const enforcementOn = active.meta.versioningActive;
   const versions: TemplateVersion[] = [];
   const baselineFp = await sha256Hex(DEFAULT_AGREEMENT_BODY);
   if (!list.some((r) => Number(r.version) === 1)) {
@@ -132,7 +129,7 @@ export const previewTemplateVersion = createServerFn({ method: "POST" })
     const { renderPreviewPdf } = await import("@/lib/esign-pdf.server");
     const label = v.status === "approved" ? `Approved v${v.version}` : v.status === "retired" ? `Retired v${v.version}` : `Draft v${v.version} — Legal Review Required`;
     const bytes = await renderPreviewPdf({
-      title: "Vehicle Rental Agreement", body: renderTemplate(v.body, { ...SAMPLE, ...COMPANY_DEFAULTS }),
+      title: "Vehicle Rental Agreement", body: renderTemplate(v.body, { ...SAMPLE, ...COMPANY_DEFAULTS, ...(await companyChecks(supabaseAdmin)).company } as any),
       fingerprint: v.fingerprint, templateLabel: `${label} — Sample Fields`,
       companySignerName: signer.name, companySignerTitle: signer.title, generatedAt: new Date().toISOString(),
     });
@@ -180,5 +177,23 @@ export const retireTemplateVersion = createServerFn({ method: "POST" })
     if (error) return { ok: false as const, error: "Could not retire." };
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, { action: "template.retired", summary: `Retired v${v.version}: ${data.reason}`, entityType: "agreement_template", entityId: v.id, metadata: { version: v.version } });
+    return { ok: true as const };
+  });
+
+/** Stage 5: Owner explicitly turns on approved-template enforcement. Refused unless an approved version exists. */
+export const setTemplateEnforcement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ enabled: z.boolean(), reason: z.string().min(3).max(500) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await owner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { versions, versioningActive } = await loadAll(supabaseAdmin);
+    if (!versioningActive) return { ok: false as const, error: NEEDS_DB };
+    if (data.enabled && !versions.some((v) => v.status === "approved"))
+      return { ok: false as const, error: "Approve a version first — enforcement would block all sending." };
+    const { error } = await supabaseAdmin.from("app_settings").upsert({ key: "esign_template_enforcement", value: { enabled: data.enabled } } as any, { onConflict: "key" });
+    if (error) return { ok: false as const, error: "Could not save." };
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, { action: data.enabled ? "template.enforcement_on" : "template.enforcement_off", summary: data.reason, entityType: "agreement_template", entityId: null as any, metadata: {} });
     return { ok: true as const };
   });
