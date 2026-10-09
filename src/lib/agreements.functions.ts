@@ -309,7 +309,7 @@ export type TemplateMeta = {
  * wording is the Draft v1 baseline; after it, the newest APPROVED version is
  * used, falling back to the newest draft (which send then refuses).
  */
-async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
+export async function activeTemplate(admin: any): Promise<{ body: string; meta: TemplateMeta }> {
   const { data: rows } = await admin
     .from("agreement_templates")
     .select("*")
@@ -389,27 +389,8 @@ export const getAgreementTemplate = createServerFn({ method: "GET" })
     return t;
   });
 
-export const saveAgreementTemplate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ body: z.string().min(50).max(60000) }).parse(d))
-  .handler(async ({ data, context }) => {
-    const actor = await requireTierFor(context.userId, "owner");
-    void actor;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin
-      .from("agreement_templates")
-      .update({ is_active: false })
-      .eq("is_active", true);
-    const { data: row, error } = await supabaseAdmin
-      .from("agreement_templates")
-      .insert({ name: "Rental Agreement", body: data.body, is_active: true })
-      .select("id,body")
-      .single();
-    if (error) throw new Error(error.message);
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, { action: "template.updated", summary: "Rental agreement template updated", entityType: "agreement_template", entityId: row.id as string });
-    return row;
-  });
+// Template wording changes go only through agreement-templates.functions.ts
+// (saved as an unapproved Draft version that never changes what is sent).
 
 export const listAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
