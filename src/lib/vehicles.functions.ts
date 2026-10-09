@@ -494,6 +494,8 @@ export type VehicleProfile = {
   /** Owner only: acquisition, lender, lien, payoff. */
   canSeeFinance: boolean;
   canEdit: boolean;
+  /** Read-only facts for the display-only Vehicle Readiness checklist (Phase A). */
+  readinessFacts: import("@/lib/vehicle-readiness").ReadinessFacts;
 };
 
 export const getVehicleProfile = createServerFn({ method: "POST" })
@@ -679,6 +681,27 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           }
         : null,
       financials,
+      readinessFacts: await (async () => {
+        // Read-only lookups; no finance/title data. Each is a narrow per-vehicle query.
+        const [insp, sched, iss, inc] = await Promise.all([
+          supabaseAdmin.from("inspections").select("completed_at")
+            .eq("vehicle_id", data.id).eq("inspection_type", "pre_delivery").eq("status", "passed")
+            .order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+          supabaseAdmin.from("maintenance_schedules").select("item,next_due_on,next_due_miles")
+            .eq("vehicle_id", data.id).eq("is_active", true).limit(200),
+          supabaseAdmin.from("issues").select("title,severity,status")
+            .eq("vehicle_id", data.id).not("status", "in", "(resolved,closed)").limit(100),
+          supabaseAdmin.from("incidents").select("incident_type,severity,status,drivable")
+            .eq("vehicle_id", data.id).not("status", "in", "(closed,written_off)").limit(100),
+        ]);
+        return {
+          lastPreDeliveryPassedAt: (insp.data as any)?.completed_at ?? null,
+          schedules: ((sched.data ?? []) as any[]).map((s) => ({ item: s.item, next_due_on: s.next_due_on, next_due_miles: s.next_due_miles })),
+          openIssues: ((iss.data ?? []) as any[]).map((i) => ({ title: i.title, severity: i.severity })),
+          openIncidents: ((inc.data ?? []) as any[]).map((i) => ({ type: i.incident_type, severity: i.severity, drivable: i.drivable })),
+          hasActiveRental: !!rental,
+        };
+      })(),
     };
   });
 
