@@ -1,0 +1,11 @@
+import { planApplyTemplate, fieldsToApply, resolveVehicleDefaults } from "../src/lib/vehicle-defaults";
+const ok=(c:any,m:string)=>{console.log(c?"PASS":"FAIL",m);if(!c)process.exitCode=1};
+const sedan={body_type:"sedan",weekly_rate:350,monthly_rate:null,deposit:null};
+for (const [t,w] of [["sedan",350],["suv",375],["xl",400]] as const) ok(resolveVehicleDefaults({},{body_type:t,weekly_rate:w,monthly_rate:null,deposit:null}).weekly_rate===w,`${t} default ${w}`);
+ok(resolveVehicleDefaults({weekly_rate:299},sedan as any).weekly_rate===299,"manual override wins");
+ok(resolveVehicleDefaults({},null).weekly_rate===null,"unknown body type → Not Set");
+const p=planApplyTemplate({weekly_rate:320,monthly_rate:null,deposit:null},sedan as any);
+ok(p[0].change==="replace"&&p[2].change==="no_template_value","plan shows replace vs blank");
+ok(fieldsToApply(p,[]).length===0,"nothing applied without ticks");
+ok(fieldsToApply(p,["weekly_rate"]).length===1,"replace only when ticked");
+ok(planApplyTemplate({weekly_rate:350},sedan as any)[0].change==="same","same value not rewritten");
