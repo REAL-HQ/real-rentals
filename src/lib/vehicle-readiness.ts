@@ -96,7 +96,7 @@ export type ReadinessFacts = {
 };
 
 export type CheckStatus = "ready" | "attention" | "not_ready" | "info";
-export type FixTarget = { kind: "edit"; section: "identity" | "insurance" | "dmv" | "service" } | { kind: "tab"; tab: "photos" | "documents" | "service" | "insurance" | "dmv" };
+export type FixTarget = { kind: "edit"; section: "identity" | "insurance" | "dmv" | "service" } | { kind: "tab"; tab: "photos" | "documents" | "service" | "insurance" | "dmv" } | { kind: "admin"; tab: "inspections" };
 export type ReadinessCheck = { key: string; label: string; status: CheckStatus; value: string; reason: string; fix?: FixTarget; fixLabel?: string };
 export type OverallReadiness = "ready" | "attention" | "not_ready";
 
@@ -112,14 +112,14 @@ function daysUntil(date: string, today: Date): number {
 }
 const mdY = (iso: string) => { const [y, m, d] = iso.slice(0, 10).split("-"); return `${m}-${d}-${y}`; };
 
-function expiryCheck(key: string, label: string, date: string | null, hasDoc: boolean, today: Date, fix: FixTarget, missingStatus: CheckStatus): ReadinessCheck {
+function expiryCheck(key: string, label: string, date: string | null, hasDoc: boolean, today: Date, fix: FixTarget, missingStatus: CheckStatus, fixLabel = "Fix"): ReadinessCheck {
   if (!date) {
     return { key, label, status: missingStatus, value: hasDoc ? "Date Missing" : "Not Verified",
-      reason: hasDoc ? "Document on file but no expiration date recorded." : "No document or expiration date on file.", fix, fixLabel: "Add Date" };
+      reason: hasDoc ? "Document on file but no expiration date recorded." : "No document or expiration date on file.", fix, fixLabel };
   }
   const days = daysUntil(date, today);
-  if (days < 0) return { key, label, status: "not_ready", value: "Expired", reason: `Expired ${mdY(date)} (${-days} days ago).`, fix, fixLabel: "Update" };
-  if (days <= SOON_DAYS) return { key, label, status: "attention", value: "Expiring Soon", reason: `Expires ${mdY(date)} (in ${days} days).`, fix, fixLabel: "Update" };
+  if (days < 0) return { key, label, status: "not_ready", value: "Expired", reason: `Expired ${mdY(date)} (${-days} days ago).`, fix, fixLabel };
+  if (days <= SOON_DAYS) return { key, label, status: "attention", value: "Expiring Soon", reason: `Expires ${mdY(date)} (in ${days} days).`, fix, fixLabel };
   return { key, label, status: "ready", value: "Current", reason: `Expires ${mdY(date)}.${hasDoc ? "" : " No document uploaded."}` };
 }
 
@@ -129,26 +129,26 @@ export function vehicleReadinessChecks(v: V, f: ReadinessFacts, docKinds: string
   const idItems = rentalReadyItems(v);
   const idMissing = idItems.filter((i) => i.key !== "weekly_rate" && !i.done);
   checks.push(idMissing.length
-    ? { key: "identity", label: "Identity and VIN", status: "not_ready", value: "Incomplete", reason: `Missing: ${idMissing.map((i) => i.label).join(", ")}.`, fix: { kind: "edit", section: "identity" }, fixLabel: "Complete" }
+    ? { key: "identity", label: "Identity and VIN", status: "not_ready", value: "Incomplete", reason: `Missing: ${idMissing.map((i) => i.label).join(", ")}.`, fix: { kind: "edit", section: "identity" }, fixLabel: "Open Identity" }
     : { key: "identity", label: "Identity and VIN", status: "ready", value: "Complete", reason: `VIN ending ${String(v.vin).slice(-4)}.` });
   checks.push(hasValidRate(v.weekly_rate)
     ? { key: "weekly_rate", label: "Weekly Rate", status: "ready", value: `$${Number(v.weekly_rate).toLocaleString()}`, reason: "Weekly rate set." }
-    : { key: "weekly_rate", label: "Weekly Rate", status: "not_ready", value: "Not Set", reason: "A weekly rate above $0 is required to rent.", fix: { kind: "edit", section: "identity" }, fixLabel: "Set Rate" });
-  checks.push(expiryCheck("registration", "Registration", v.registration_expires_on ?? null, slots.has("registration"), today, { kind: "edit", section: "dmv" }, "not_ready"));
-  checks.push(expiryCheck("insurance", "Insurance", v.insurance_expires_on ?? null, slots.has("insurance_card"), today, { kind: "edit", section: "insurance" }, "not_ready"));
+    : { key: "weekly_rate", label: "Weekly Rate", status: "not_ready", value: "Not Set", reason: "A weekly rate above $0 is required to rent.", fix: { kind: "edit", section: "identity" }, fixLabel: "Open Pricing" });
+  checks.push(expiryCheck("registration", "Registration", v.registration_expires_on ?? null, slots.has("registration"), today, { kind: "edit", section: "dmv" }, "not_ready", "Open Registration"));
+  checks.push(expiryCheck("insurance", "Insurance", v.insurance_expires_on ?? null, slots.has("insurance_card"), today, { kind: "edit", section: "insurance" }, "not_ready", "Open Insurance"));
   if (!v.license_plate) {
-    checks.push({ key: "plate", label: "License Plate", status: "attention", value: "Not Recorded", reason: "No plate number on file.", fix: { kind: "edit", section: "dmv" }, fixLabel: "Add Plate" });
+    checks.push({ key: "plate", label: "License Plate", status: "attention", value: "Not Recorded", reason: "No plate number on file.", fix: { kind: "edit", section: "dmv" }, fixLabel: "Open Plate" });
   } else {
-    const c = expiryCheck("plate", "License Plate", v.plate_expires_on ?? null, true, today, { kind: "edit", section: "dmv" }, "attention");
+    const c = expiryCheck("plate", "License Plate", v.plate_expires_on ?? null, true, today, { kind: "edit", section: "dmv" }, "attention", "Open Plate");
     if (!v.plate_expires_on) { c.value = "Date Missing"; c.reason = `Plate ${v.license_plate}; no expiration date recorded.`; }
     checks.push(c);
   }
   if (!f.lastPreDeliveryPassedAt) {
-    checks.push({ key: "inspection", label: "Pre-Delivery Inspection", status: "not_ready", value: "None Passed", reason: "No passed pre-delivery inspection on file. One is required for each rental.", fix: { kind: "tab", tab: "service" }, fixLabel: "Open Service" });
+    checks.push({ key: "inspection", label: "Pre-Delivery Inspection", status: "not_ready", value: "None Passed", reason: "No passed pre-delivery inspection on file. One is required for each rental.", fix: { kind: "admin", tab: "inspections" }, fixLabel: "Open Inspections" });
   } else {
     const age = -daysUntil(f.lastPreDeliveryPassedAt, today);
     checks.push(age > INSPECTION_STALE_DAYS
-      ? { key: "inspection", label: "Pre-Delivery Inspection", status: "attention", value: "Over 30 Days", reason: `Last passed ${mdY(f.lastPreDeliveryPassedAt)} (${age} days ago).`, fix: { kind: "tab", tab: "service" }, fixLabel: "Open Service" }
+      ? { key: "inspection", label: "Pre-Delivery Inspection", status: "attention", value: "Over 30 Days", reason: `Last passed ${mdY(f.lastPreDeliveryPassedAt)} (${age} days ago).`, fix: { kind: "admin", tab: "inspections" }, fixLabel: "Open Inspections" }
       : { key: "inspection", label: "Pre-Delivery Inspection", status: "ready", value: "Passed", reason: `Passed ${mdY(f.lastPreDeliveryPassedAt)}.` });
   }
   const odo = v.current_odometer != null ? Number(v.current_odometer) : null;
@@ -167,7 +167,7 @@ export function vehicleReadinessChecks(v: V, f: ReadinessFacts, docKinds: string
   checks.push(critical
     ? { key: "safety", label: "Safety Issues", status: "not_ready", value: `${critical} Critical`, reason: `${totalOpen} open issue(s) or incident(s), ${critical} safety-critical or not drivable.` }
     : totalOpen
-      ? { key: "safety", label: "Safety Issues", status: "attention", value: `${totalOpen} Open`, reason: `${totalOpen} open minor issue(s) or incident(s).` }
+      ? { key: "safety", label: "Safety Issues", status: "attention", value: `${totalOpen} Open`, fix: { kind: "tab", tab: "service" }, fixLabel: "Open Service", reason: `${totalOpen} open minor issue(s) or incident(s).` }
       : { key: "safety", label: "Safety Issues", status: "ready", value: "None Open", reason: "No open issues or incidents." });
   return checks;
 }
@@ -176,7 +176,7 @@ export function vehicleReadinessChecks(v: V, f: ReadinessFacts, docKinds: string
 export function listingPhotoCheck(publishedPhotos: number, totalPhotos: number): ReadinessCheck {
   return publishedPhotos > 0
     ? { key: "listing_photo", label: "Listing Photos", status: "ready", value: `${publishedPhotos} Published`, reason: "Shown on the public listing." }
-    : { key: "listing_photo", label: "Listing Photos", status: "info", value: "None Published", reason: totalPhotos ? `${totalPhotos} photo(s) uploaded, none published.` : "No photos uploaded.", fix: { kind: "tab", tab: "photos" }, fixLabel: totalPhotos ? "Publish" : "Add Photo" };
+    : { key: "listing_photo", label: "Listing Photos", status: "info", value: "None Published", reason: totalPhotos ? `${totalPhotos} photo(s) uploaded, none published.` : "No photos uploaded.", fix: { kind: "tab", tab: "photos" }, fixLabel: "Open Photos" };
 }
 
 export function overallReadiness(checks: ReadinessCheck[]): OverallReadiness {

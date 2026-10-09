@@ -1,7 +1,7 @@
 import { useUnsavedGuard } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { VehicleSuggestions } from "@/components/admin/VehicleSuggestions";
 import { toast } from "sonner";
@@ -420,7 +420,6 @@ function Overview({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
         <ReadinessChecklist p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
-        <ReadinessCard p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
         <SectionCard
           title="Vehicle Details"
           icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
@@ -1273,84 +1272,6 @@ function FinanceDrawer({
 }
 
 /**
- * Readiness — three separate answers in compact rows. Rental Ready (blocking
- * minimum), Listing Ready (public listing) and Fleet Profile (never blocks).
- * The full profile checklist sits behind "View Setup".
- */
-function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
-  const v = p.vehicle;
-  const save = useServerFn(updateVehicleSection);
-  const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
-  const ready = rentalReadyItems(v);
-  const missing = ready.filter((i) => !i.done);
-  const listing = listingReadyItems(v, p.counts.publishedPhotos ?? 0);
-  const listingMissing = listing.filter((i) => !i.done);
-  const listingReady = listingMissing.length === 0;
-  const profile = profileItems(v, p.profileContext ?? { docKinds: [], maintenanceCount: 0 });
-  const pct = percent(profile);
-  const inService = !["onboarding", "archived", "sold", "retired"].includes(String(v.status ?? ""));
-
-  async function makeAvailable() {
-    setBusy(true);
-    try {
-      const r = await save({ data: { id: v.id, section: "identity", values: { status: "available" } } as any });
-      if (!r.ok) toast.error(r.error ?? "Could not make this vehicle available");
-      else { toast.success("Vehicle is now Available"); window.dispatchEvent(new Event("vehicle-profile-refresh")); }
-    } finally { setBusy(false); }
-  }
-
-  const titleList = (items: { label: string }[]) => items.map((i) => i.label).join(", ");
-  const Btn = ({ onClick, children, primary }: { onClick: () => void; children: React.ReactNode; primary?: boolean }) => (
-    <button disabled={busy} onClick={onClick}
-      className={`shrink-0 h-8 px-3 rounded-lg text-[12px] font-medium disabled:opacity-50 ${primary ? "bg-[#D03020] text-white" : "border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]"}`}>{children}</button>
-  );
-  const Line = ({ label, value, ok, note, action }: { label: string; value: string; ok: boolean | null; note: string; action?: React.ReactNode }) => (
-    <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-3">
-          <span className="text-[14px] font-medium text-[#111114] w-28 shrink-0">{label}</span>
-          <span className={`text-[13px] font-semibold ${ok === null ? "text-[#111114]" : ok ? "text-[#1E7B3C]" : "text-[#B45309]"}`}>{value}</span>
-        </div>
-        <div className="mt-0.5 text-[12px] text-[#77777F] sm:pl-[124px]">{note}</div>
-      </div>
-      {action}
-    </div>
-  );
-
-  return (
-    <SectionCard title="Readiness" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
-      <div className="divide-y divide-[#F0F0F2]">
-        <Line label="Rental Ready" ok={!missing.length} value={missing.length ? "Not Ready" : "Ready"}
-          note={missing.length ? `Missing: ${titleList(missing)}` : inService ? "Ready and in service." : "Ready — you choose when it enters service."}
-          action={missing.length > 0 && p.canEdit
-            ? <Btn onClick={() => onEdit("identity")}>{missing.length === 1 && missing[0].key === "weekly_rate" ? "Set Rate" : "Complete Details"}</Btn>
-            : !missing.length && v.status === "onboarding" && p.canEdit ? <Btn primary onClick={makeAvailable}>Make Available</Btn> : undefined} />
-        <Line label="Listing Ready" ok={listingReady} value={listingReady ? "Ready" : "Not Ready"}
-          note={listingReady ? "Can be shown to renters." : `Missing: ${titleList(listingMissing)} · never blocks renting`}
-          action={!listing[1]?.done ? <Btn onClick={() => onOpenTab("photos" as Tab)}>{p.counts.photos ? "Publish Photo" : "Add Photo"}</Btn> : undefined} />
-        <Line label="Fleet Profile" ok={null} value={`${pct}%`} note="Recommended information can be added anytime."
-          action={<Btn onClick={() => setOpen((o) => !o)}>{open ? "Hide Setup" : "View Setup"}</Btn>} />
-      </div>
-      {open && (
-        <div className="mt-4 pt-4 border-t border-[#F0F0F2]">
-          <div className="h-1.5 rounded-full bg-[#EDEDF0] overflow-hidden mb-3"><div className="h-full bg-[#1E7B3C]" style={{ width: `${pct}%` }} /></div>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
-            {profile.map((i) => (
-              <li key={i.key} className="flex items-center gap-2 text-[13px]">
-                <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${i.done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
-                <span className={i.done ? "text-[#111114]" : "text-[#55555E]"}>{i.label}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-3 text-[11px] text-[#77777F]">Recommended only — never blocks renting.</div>
-        </div>
-      )}
-    </SectionCard>
-  );
-}
-
-/**
  * Vehicle Readiness (Phase A, display only). Readiness and Availability are
  * independent: a car can be Ready and On Rent. Nothing here changes status.
  * Checks come from vehicle-readiness.ts; a future server function can supply
@@ -1365,13 +1286,40 @@ const CHECK_STYLE: Record<ReadinessCheck["status"], { dot: string; text: string;
 function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
   const v = p.vehicle;
   const facts = p.readinessFacts;
+  const navigate = useNavigate();
+  const save = useServerFn(updateVehicleSection);
+  const [busy, setBusy] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   if (!facts) return null;
   const checks = vehicleReadinessChecks(v, facts, p.profileContext?.docKinds ?? [], p.counts.publishedPhotos ?? 0);
   const overall = overallReadiness(checks);
   const avail = vehicleAvailability(String(v.status ?? ""), facts.hasActiveRental);
   const photo = listingPhotoCheck(p.counts.publishedPhotos ?? 0, p.counts.photos ?? 0);
   const st = CHECK_STYLE[overall];
-  const go = (f?: FixTarget) => { if (!f) return; if (f.kind === "edit") onEdit(f.section as VehicleSection); else onOpenTab(f.tab as Tab); };
+  // Enforced minimum = the existing server rule (vehicle_rental_ready_missing).
+  const minMissing = rentalReadyItems(v).filter((i) => !i.done);
+  const meetsMinimum = minMissing.length === 0;
+  const listing = listingReadyItems(v, p.counts.publishedPhotos ?? 0);
+  const listingReady = listing.every((i) => i.done);
+  const profile = profileItems(v, p.profileContext ?? { docKinds: [], maintenanceCount: 0 });
+  const pct = percent(profile);
+  const canMakeAvailable = meetsMinimum && v.status === "onboarding" && p.canEdit;
+
+  async function makeAvailable() {
+    setBusy(true);
+    try {
+      const r = await save({ data: { id: v.id, section: "identity", values: { status: "available" } } as any });
+      if (!r.ok) toast.error(r.error ?? "Could not make this vehicle available");
+      else { toast.success("Vehicle is now Available"); window.dispatchEvent(new Event("vehicle-profile-refresh")); }
+    } finally { setBusy(false); }
+  }
+  const go = (f?: FixTarget) => {
+    if (!f) return;
+    if (f.kind === "edit") onEdit(f.section as VehicleSection);
+    else if (f.kind === "admin") void navigate({ to: "/admin", search: { tab: f.tab } as never });
+    else onOpenTab(f.tab as Tab);
+  };
+  const canFix = (f: FixTarget) => p.canEdit || f.kind !== "edit";
   const Row = ({ c }: { c: ReadinessCheck }) => {
     const s = CHECK_STYLE[c.status];
     return (
@@ -1384,27 +1332,78 @@ function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: 
           </div>
           <div className="text-[12px] text-[#77777F]">{c.reason}</div>
         </div>
-        {c.fix && c.status !== "ready" && (p.canEdit || c.fix.kind === "tab") && (
+        {c.fix && c.status !== "ready" && canFix(c.fix) && (
           <button onClick={() => go(c.fix)} className="shrink-0 h-7 px-2.5 rounded-lg text-[12px] font-medium border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]">{c.fixLabel ?? "Fix"}</button>
         )}
       </li>
     );
   };
+  const Head = ({ children }: { children: React.ReactNode }) => <div className="text-[11px] font-semibold text-[#9A9AA3] mb-1">{children}</div>;
   return (
     <SectionCard title="Vehicle Readiness" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <span data-testid="readiness-overall" className={`inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-semibold ${st.text}`}>
           <span className={`h-2 w-2 rounded-full ${st.dot}`} /> {st.label}
         </span>
         <span data-testid="readiness-availability" className="inline-flex items-center rounded-full bg-[#F4F4F6] px-2.5 py-1 text-[12px] font-medium text-[#111114]">{avail}</span>
         <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
       </div>
-      <ul className="divide-y divide-[#F0F0F2]">{checks.map((c) => <Row key={c.key} c={c} />)}</ul>
-      <div className="mt-3 pt-3 border-t border-[#EDEDF0]">
-        <div className="text-[11px] font-medium text-[#9A9AA3] mb-1">Listing Only — Does Not Affect Rental Eligibility</div>
-        <ul><Row c={photo} /></ul>
+
+      {/* Enforced today by the server */}
+      <div data-testid="enforced-minimum" className="rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3 mb-4">
+        <Head>Required Now — Enforced</Head>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="text-[13px] font-medium text-[#111114]">Minimum to Make Available</span>
+              <span className={`text-[12px] font-semibold ${meetsMinimum ? "text-[#1E7B3C]" : "text-[#B42318]"}`}>{meetsMinimum ? "Met" : "Not Met"}</span>
+            </div>
+            <div className="text-[12px] text-[#77777F]">
+              {meetsMinimum
+                ? overall === "ready"
+                  ? "Year, make, model, VIN and weekly rate are set."
+                  : "Year, make, model, VIN and weekly rate are set. The system allows Make Available, but the checklist below still flags items to resolve before renting."
+                : `Missing: ${minMissing.map((i) => i.label).join(", ")}. The system blocks Make Available until these are set.`}
+            </div>
+          </div>
+          {canMakeAvailable && (
+            <button disabled={busy} onClick={makeAvailable} className="shrink-0 h-8 px-3 rounded-lg text-[12px] font-medium bg-[#D03020] text-white disabled:opacity-50">Make Available</button>
+          )}
+          {!meetsMinimum && p.canEdit && (
+            <button onClick={() => onEdit("identity")} className="shrink-0 h-7 px-2.5 rounded-lg text-[12px] font-medium border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]">{minMissing.length === 1 && minMissing[0].key === "weekly_rate" ? "Open Pricing" : "Open Identity"}</button>
+          )}
+        </div>
       </div>
-      <div className="mt-2 text-[11px] text-[#9A9AA3]">Display only. Rental start rules are unchanged.</div>
+
+      <Head>Readiness Checklist — Advisory</Head>
+      <ul className="divide-y divide-[#F0F0F2]">{checks.map((c) => <Row key={c.key} c={c} />)}</ul>
+      <div className="text-[11px] text-[#9A9AA3] mt-1">Advisory today. Rental start still requires a passed pre-delivery inspection or a recorded override.</div>
+
+      <div className="mt-4 pt-3 border-t border-[#EDEDF0]">
+        <Head>Listing Only — Does Not Affect Rental Eligibility</Head>
+        <ul><Row c={photo} /></ul>
+        <div className="text-[12px] text-[#77777F]">Listing Ready: <span className={listingReady ? "text-[#1E7B3C] font-semibold" : "text-[#B45309] font-semibold"}>{listingReady ? "Ready" : "Not Ready"}</span></div>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-[#EDEDF0]">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <Head>Fleet Profile — Recommended</Head>
+            <div className="text-[12px] text-[#77777F]"><span className="font-semibold text-[#111114]">{pct}%</span> complete · never blocks renting</div>
+          </div>
+          <button onClick={() => setSetupOpen((o) => !o)} className="shrink-0 h-7 px-2.5 rounded-lg text-[12px] font-medium border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]">{setupOpen ? "Hide Setup" : "View Setup"}</button>
+        </div>
+        {setupOpen && (
+          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {profile.map((i) => (
+              <li key={i.key} className="flex items-center gap-2 text-[13px]">
+                <span className={`grid place-items-center h-4 w-4 rounded-full text-[10px] ${i.done ? "bg-[#E7F6EC] text-[#1E7B3C]" : "border border-[#C4C4CB] text-transparent"}`}>✓</span>
+                <span className={i.done ? "text-[#111114]" : "text-[#55555E]"}>{i.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </SectionCard>
   );
 }
