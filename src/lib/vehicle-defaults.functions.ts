@@ -112,7 +112,7 @@ export const applyVehicleTemplate = createServerFn({ method: "POST" })
     const rows = fieldsToApply(plan, data.fields);
     if (!rows.length) return { ok: false as const, error: "Nothing to change." };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    let q: any = supabaseAdmin.from("vehicles").update(Object.fromEntries(rows.map((r) => [r.field, r.proposed]))).eq("id", v.id);
+    let q: any = supabaseAdmin.from("vehicles").update(Object.fromEntries(rows.map((r) => [r.field, r.proposed])) as any).eq("id", v.id);
     // Conditional write: only if each touched field still holds the value the user saw.
     for (const r of rows) q = r.current == null ? q.is(r.field, null) : q.eq(r.field, r.current);
     const { data: upd, error } = await q.select("id");
