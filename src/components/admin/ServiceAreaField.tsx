@@ -13,10 +13,10 @@ export function ServiceAreaField({ value, config, onChange, onConfig, missing }:
   value: string; config?: string; onChange: (v: string) => void; onConfig?: (c: string) => void; missing?: boolean;
 }) {
   const [c, setC] = useState<ServiceAreaConfig>(() => areaConfigFrom(config, value));
-  const opened = useRef(true);
+  const initial = useRef(JSON.stringify(c));
   useEffect(() => {
     // Opening a saved draft must not mark it changed; only real edits report.
-    if (opened.current) { opened.current = false; return; }
+    if (JSON.stringify(c) === initial.current) return;
     onChange(composeAreaConfig(c));
     onConfig?.(JSON.stringify(c));
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -57,8 +57,9 @@ export function MileageField({ value, fee, onChange, onFee, missing }: {
 }) {
   const [m, setM] = useState<Mileage | { mode: "custom"; text: string }>(() => parseMileage(value));
   useEffect(() => {
-    onChange(m.mode === "custom" ? m.text : composeMileage(m));
-    if (m.mode === "unlimited") onFee("");
+    const next = m.mode === "custom" ? m.text : composeMileage(m);
+    if (next !== value) onChange(next);
+    if (m.mode === "unlimited" && fee) onFee("");
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [JSON.stringify(m)]);
   return (
