@@ -77,7 +77,9 @@ async function loadAll(admin: any) {
       body, unknownFields: unknownFieldsIn(body),
     });
   }
-  return { versions: versions.sort((a, b) => b.version - a.version), versioningActive, inUseLabel: active.meta.label };
+  let enforcementSwitch = false;
+  try { const { data: e } = await admin.from("app_settings").select("value").eq("key", "esign_template_enforcement").maybeSingle(); enforcementSwitch = (e?.value as any)?.enabled === true; } catch {}
+  return { versions: versions.sort((a, b) => b.version - a.version), versioningActive, enforcementOn, enforcementSwitch, inUseLabel: active.meta.label };
 }
 
 export const listTemplateVersions = createServerFn({ method: "POST" })
@@ -183,7 +185,7 @@ export const retireTemplateVersion = createServerFn({ method: "POST" })
 /** Stage 5: Owner explicitly turns on approved-template enforcement. Refused unless an approved version exists. */
 export const setTemplateEnforcement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ enabled: z.boolean(), reason: z.string().min(3).max(500) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ enabled: z.boolean(), reason: z.string().trim().max(500), confirm: z.enum(["ENABLE", "DISABLE"]) }).refine((v) => v.confirm === (v.enabled ? "ENABLE" : "DISABLE")).refine((v) => v.enabled || v.reason.length >= 3, "A reason is required to turn enforcement off.").parse(d))
   .handler(async ({ data, context }) => {
     const actor = await owner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -194,6 +196,6 @@ export const setTemplateEnforcement = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin.from("app_settings").upsert({ key: "esign_template_enforcement", value: { enabled: data.enabled } } as any, { onConflict: "key" });
     if (error) return { ok: false as const, error: "Could not save." };
     const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, { action: data.enabled ? "template.enforcement_on" : "template.enforcement_off", summary: data.reason, entityType: "agreement_template", entityId: null as any, metadata: {} });
+    await logAudit(actor, { action: data.enabled ? "template.enforcement_on" : "template.enforcement_off", summary: `${data.enabled ? "Approved-template enforcement turned ON" : "Approved-template enforcement turned OFF"}${data.reason ? ": " + data.reason : ""}`, entityType: "agreement_template", entityId: null as any, metadata: {} });
     return { ok: true as const };
   });
