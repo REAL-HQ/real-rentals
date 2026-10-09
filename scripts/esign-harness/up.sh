@@ -24,7 +24,7 @@ done
 psql "$U" -q -v ON_ERROR_STOP=1 -1 -f scripts/esign-template-versioning.proposed.sql >/dev/null 2>&1
 psql "$U" -qc "grant usage on schema public to anon, authenticated, service_role; notify pgrst, 'reload schema'"
 echo "replay: $(ls supabase/migrations drizzle/migrations | grep -c sql) files, $(wc -l < $D/replay.log) skipped (see $D/replay.log)"
-pkill -f "postgrest $D" 2>/dev/null || true; pkill -f esign-harness/proxy.ts 2>/dev/null || true
+pkill -f "postgrest $D" 2>/dev/null || true; pkill -f "bun scripts/esign-harness/[p]roxy.ts" 2>/dev/null || true
 cat > $D/pgrst.conf <<C
 db-uri = "postgresql://authenticator@127.0.0.1:55432/esign?sslmode=disable"
 db-schemas = "public"
