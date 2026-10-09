@@ -38,7 +38,7 @@ export const TERM_FIELDS: TermField[] = [
   { key: "fee_towing", label: "Towing, Impound & Recovery", group: "Fee Schedule" },
   { key: "fee_additional_driver", label: "Additional Approved Driver", group: "Fee Schedule" },
 
-  { key: "service_area", label: "Service Area / Mileage Limit", group: "Restrictions" },
+  { key: "service_area", label: "Service Area", group: "Restrictions" },
   { key: "home_state", label: "Permitted State", group: "Restrictions" },
   { key: "min_age_economy", label: "Minimum Age — Economy", group: "Restrictions" },
   { key: "min_age_premium", label: "Minimum Age — Luxury / Premium", group: "Restrictions" },
