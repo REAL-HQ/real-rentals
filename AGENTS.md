@@ -17,3 +17,5 @@
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
 - Back-office sticky: chrome locked once in admin.tsx; pages opt filter rows in via `admin-sticky-bar` (styles.css) — no per-page sticky code.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
+
+- Vehicle Readiness checklist: rules live in vehicleReadinessChecks (src/lib/vehicle-readiness.ts) returning ReadinessCheck[]; the UI only renders that shape, so a future server readiness function can replace the calculation without UI changes.
