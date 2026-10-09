@@ -315,7 +315,7 @@ export function VehiclesPanel({
       </div>
 
       {view === "list" && rows.length > 0 && (
-        <div className="hidden md:block rounded-xl border border-border bg-white overflow-hidden">
+        <div className="hidden md:block mt-4 rounded-xl border border-border bg-white overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
