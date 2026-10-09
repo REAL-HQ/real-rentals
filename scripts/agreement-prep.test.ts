@@ -59,9 +59,10 @@ ok(body.includes("| Approved Additional Driver(s) | Sam Q Helper") && body.inclu
 ok(body.includes("Assigned When Sent"), "preview never consumes an agreement number");
 const pv = await renderPreviewPdf({ title: "T", body, fingerprint: "a".repeat(64), templateLabel: "x", companySignerName: "C", companySignerTitle: null, generatedAt: "2026-10-09T00:00:00Z" });
 const sg = await renderCompletedPdf({ id: "x", title: "T", body, bodySha256: "b", signerName: "Jane Q Testdriver", signerEmail: null, signedAt: "2026-10-12T00:00:00Z", createdAt: null, sentAt: null, viewedAt: null, ip: null, userAgent: null, authMethod: "email_link", companySignerName: "C", companySignerTitle: null });
-(await import("fs")).writeFileSync("/tmp/prep-pv.pdf", pv);
-const pages = (b: Uint8Array) => (Buffer.from(b).toString("latin1").match(/\/Type \/Page\b(?!s)/g) ?? []).length;
-ok(pages(pv) === 6 && pages(sg) === 7, `preview 6 pages, signed 6 + certificate (${pages(pv)}/${pages(sg)})`);
+const { PDFDocument } = await import("pdf-lib");
+const pages = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
+const [np, ns] = [await pages(pv), await pages(sg)];
+ok(np === 6 && ns === 7, `preview 6 pages, signed 6 + certificate (${np}/${ns})`);
 
 console.log("SERVER WIRING");
 const fn = readFileSync("src/lib/agreements.functions.ts", "utf8");
