@@ -14,7 +14,7 @@ export function randomToken(): string {
 export const hashToken = (t: string) => sha256Hex(t);
 
 const DOC_COLS =
-  "id,application_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,archive_attempts,document_id";
+  "id,application_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,metadata,archive_attempts,document_id";
 
 /** Atomic claim + signature commit. Exactly one concurrent caller wins. */
 export async function completeSigning(
@@ -26,6 +26,8 @@ export async function completeSigning(
     ip: string | null;
     userAgent: string | null;
     authMethod: "email_link" | "portal";
+    /** Validated by the caller against the stored body (adoptionProblems). */
+    adoption?: import("@/lib/signature-adoption").Adoption | null;
   },
 ): Promise<{ result: ClaimResult; archived?: boolean }> {
   const { data: claim, error } = await admin.rpc("esign_claim", {
@@ -37,9 +39,16 @@ export async function completeSigning(
   if (result !== "won") return { result };
 
   const signedAt = new Date().toISOString();
+  let metadata: any = undefined;
+  if (args.adoption) {
+    const { data: cur } = await admin.from("agreements").select("metadata").eq("id", args.id).maybeSingle();
+    const evidence = JSON.stringify(args.adoption);
+    metadata = { ...((cur?.metadata as any) ?? {}), signature: { adoption: args.adoption, sha256: await sha256Hex(evidence), adopted_at: signedAt } };
+  }
   const { data: ag, error: upErr } = await admin
     .from("agreements")
     .update({
+      ...(metadata ? { metadata } : {}),
       status: "signed",
       signed_at: signedAt,
       completed_at: signedAt,
@@ -71,6 +80,12 @@ export async function completeSigning(
     summary: `eSign document signed (${args.authMethod})`,
     entityType: "esign_document",
     entityId: args.id,
+    ...(args.adoption ? { metadata: {
+      signature: args.adoption.signature.method === "typed" ? `typed:${args.adoption.signature.style}` : "drawn",
+      initials: args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
+      acknowledgments: `${args.adoption.acks.filter(Boolean).length}/${args.adoption.acks.length}`,
+      evidence_sha256: metadata.signature.sha256,
+    } } : {}),
   });
 
   const archived = await archiveDocument(admin, ag, null);
@@ -102,6 +117,8 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
       authMethod: ag.auth_method ?? "email_link",
       companySignerName: ag.company_signer_name || "REAL RENTALS",
       companySignerTitle: ag.company_signer_title ?? null,
+      adoption: (ag.metadata as any)?.signature?.adoption ?? null,
+      adoptionSha256: (ag.metadata as any)?.signature?.sha256 ?? null,
     });
     const fileSha = await sha256Hex(pdf);
     const folder = ag.application_id ?? `standalone`;

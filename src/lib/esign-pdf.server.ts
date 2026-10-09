@@ -433,7 +433,8 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
     ensure(rows.length * 40 + 30);
     for (const pair of rows) {
       y -= 24;
-      pair.forEach(([val, label, isSig], i) => {
+      pair.forEach(([v0, label, isSig], i) => {
+        let val = v0;
         const x = i ? SM + colA + gap : SM, w = i ? colB : colA;
         if (isSig && label === "Renter Signature" && adoption) {
           const pg = page, yy = y;
