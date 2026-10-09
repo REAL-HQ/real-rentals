@@ -50,10 +50,14 @@ const SECTIONS: {
     { key: "default_term_months", label: "Default Contract Term (Months)", type: "number" },
   ]},
   { key: "system_preferences", title: "System Preferences", fields: [
-    { key: "company_name", label: "Company Name", type: "text" },
+    { key: "company_name", label: "Legal Business Name", type: "text",
+      hint: "Exact legal name printed on rental agreements." },
+    { key: "mailing_address", label: "Mailing Address", type: "text",
+      hint: "Full street address, city, state and ZIP printed on rental agreements. Required before an agreement template can be approved." },
     { key: "business_phone", label: "Business Phone", type: "text",
       hint: "Public REAL RENTALS number shown on the website, portal, agreements, emails and SMS HELP replies. Not a telecom provider ID." },
-    { key: "support_email", label: "Support Email", type: "text" },
+    { key: "support_email", label: "Support Email", type: "text",
+      hint: "Contact email printed on rental agreements." },
   ]},
 ];
 
