@@ -312,7 +312,12 @@ export function VehicleProfile({
                   title="Paperwork"
                   icon={<FileText className="w-4 h-4" strokeWidth={1.75} />}
                 >
-                  <VehicleDocuments vehicleId={vehicleId} bare />
+                  <VehicleDocuments
+                    vehicleId={vehicleId}
+                    bare
+                    canEdit={!!p.canEdit}
+                    vehicleLabel={[v.unit_number, [v.year, v.make, v.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "This Vehicle"}
+                  />
                 </SectionCard>
               )}
               {tab === "insurance" && <Insurance p={p} onEdit={() => setEditing("insurance")} />}

@@ -26,3 +26,4 @@
 
 - Vehicle Readiness checklist: rules live in vehicleReadinessChecks (src/lib/vehicle-readiness.ts) returning ReadinessCheck[]; the UI only renders that shape, so a future server readiness function can replace the calculation without UI changes.
 - Agreement preparation: per-rental choices (authorized drivers, reservation fee, deposit) are validated structured input (src/lib/agreement-prep.ts) passed to previewAgreement/sendAgreement and folded into the fingerprinted merge data — never contract text, so Send still re-renders server-side and refuses on mismatch.
+- Vehicle Profile uploads (source_channel vehicle_profile) go through Fleet Inbox with Safe Autofill skipped; fields change only via explicit Accept in VehicleSuggestions — one reader, one apply path.
