@@ -432,7 +432,7 @@ describe("6. Signature experience (v1.6: adopted signature, initials, per-acknow
     return data.id as string;
   }
   const typed = (text: string, style: "script1" | "script2" | "script3" = "script2") => ({ method: "typed" as const, text, style });
-  const drawn = { method: "drawn" as const, aspect: 3, strokes: [[[0.05, 0.6], [0.2, 0.3], [0.35, 0.7], [0.5, 0.35], [0.7, 0.65], [0.95, 0.4]]] as [number, number][][] };
+  const drawn = { method: "drawn" as const, aspect: 3, strokes: [[[0.05, 0.6], [0.12, 0.4], [0.2, 0.3], [0.28, 0.5], [0.35, 0.7], [0.42, 0.5], [0.5, 0.35], [0.6, 0.5], [0.7, 0.65], [0.82, 0.5], [0.95, 0.4]], [[0.3, 0.8], [0.6, 0.82]]] as [number, number][][] };
   beforeAll(async () => {
     const { V16_BODY } = await import("../src/lib/agreement-builder");
     const { renderTemplate } = await import("../src/lib/agreement-merge");
@@ -474,7 +474,7 @@ describe("6. Signature experience (v1.6: adopted signature, initials, per-acknow
   it("drawn signature + drawn initials through the driver portal; staff cannot sign on the driver's behalf", async () => {
     const id = await issueV16(randomToken());
     const adoption = { signature: drawn, initials: { ...drawn, aspect: 1.5 }, acks: Array(ackCount()).fill(true) };
-    await expect(A.signMyAgreement.run({ agreementId: id, signerName: "Synthetic Driver", agree: true, adoption }, ctx("manager"))).rejects.toThrow();
+    await expect(A.signMyAgreement.run({ agreementId: id, signerName: "Synthetic Driver", agree: true, adoption }, ctx("manager"))).rejects.toThrow(/^(?!.*too short)/);
     const r = await A.signMyAgreement.run({ agreementId: id, signerName: "Synthetic Driver", agree: true, adoption }, ctx("driver"));
     expect(r.ok).toBe(true);
     const [row] = await q("agreements", { id });
