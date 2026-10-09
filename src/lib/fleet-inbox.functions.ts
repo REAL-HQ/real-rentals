@@ -106,6 +106,11 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const { data: dup } = await sb.from("documents").select("id,file_name").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
     if (dup) {
       await sb.storage.from(BUCKET).remove([data.path]);
+      // A date typed for THIS upload still belongs on the file already on
+      // record, blank only — the direct path does the same.
+      if (data.expiresAt) {
+        await sb.from("documents").update({ expires_at: data.expiresAt }).eq("id", dup.id).is("expires_at", null);
+      }
       const { data: item } = await sb.from("fleet_import_items").insert({
         batch_id: data.batchId, file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength,
         content_sha256: sha, status: "duplicate", duplicate_of_document_id: dup.id, document_id: dup.id,

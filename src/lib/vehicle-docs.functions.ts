@@ -162,7 +162,8 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       .maybeSingle();
     if (dup) {
       await supabaseAdmin.storage.from("vehicle-docs").remove([data.path]);
-      if (dup.vehicle_id !== data.vehicleId) {
+      const alreadyThisVehicle = dup.vehicle_id === data.vehicleId;
+      if (!alreadyThisVehicle) {
         await supabaseAdmin
           .from("document_vehicle_links")
           .upsert({ document_id: dup.id, vehicle_id: data.vehicleId, created_by: actor.userId },
@@ -171,12 +172,15 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       if (data.expiresAt) {
         await supabaseAdmin.from("documents").update({ expires_at: data.expiresAt }).eq("id", dup.id).is("expires_at", null);
       }
+      const label = labelFor(String(dup.kind ?? data.kind));
       await logAudit(actor, {
-        action: "vehicle_doc.linked_existing",
-        summary: `Linked an existing ${labelFor(String(dup.kind ?? data.kind))} to a vehicle (identical file already on file)`,
+        action: alreadyThisVehicle ? "vehicle_doc.duplicate_skipped" : "vehicle_doc.linked_existing",
+        summary: alreadyThisVehicle
+          ? `Re-uploaded an identical ${label}; the file already on this vehicle was kept`
+          : `Linked an existing ${label} to a vehicle (identical file already on file)`,
         entityType: "vehicle",
         entityId: data.vehicleId,
-        metadata: { kind: dup.kind ?? data.kind, document_id: dup.id },
+        metadata: { kind: dup.kind ?? data.kind, document_id: dup.id, already_this_vehicle: alreadyThisVehicle },
       });
       return { ok: true, id: dup.id as string, duplicate: true };
     }

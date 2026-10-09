@@ -290,6 +290,8 @@ console.log("\nTHE SAME FILE IS STORED ONCE AND RELATED, NOT STORED TWICE");
   ok(S.rows.length === 1, "NO SECOND ROW WAS WRITTEN");
   ok(S.removed.includes(`${VEHICLE}/reg-b.pdf`), "  and the redundant object was removed from the bucket");
   ok(S.rows[0].is_current === true, "  the document on file is still current, not superseded by itself");
+  ok(S.entries.some((e) => e.action === "vehicle_doc.duplicate_skipped"),
+     "  and the audit says the file was kept, not that a link was made");
 }
 {
   reset(); as("owner");
