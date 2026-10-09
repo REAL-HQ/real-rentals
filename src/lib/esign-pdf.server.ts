@@ -2,6 +2,47 @@
 // Same inputs -> same bytes (fixed metadata dates, standard fonts).
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
 import { isStructured, parseLayout, initialsOf, type Block } from "@/lib/agreement-layout";
+import type { Adoption, Mark } from "@/lib/signature-adoption";
+
+// Draw an adopted mark (cursive text or drawn strokes) inside a box whose
+// bottom-left is (x, y). Shared by the signature line and Initial cells.
+async function markDrawer(pdf: PDFDocument) {
+  const cache: Record<string, PDFFont> = {};
+  let fk = false;
+  const font = async (style: string) => {
+    if (cache[style]) return cache[style];
+    if (!fk) { const fontkit = (await import("@pdf-lib/fontkit")).default; pdf.registerFontkit(fontkit as any); fk = true; }
+    const { SIGNATURE_FONT_B64 } = await import("@/lib/signature-fonts.server");
+    const b64 = (SIGNATURE_FONT_B64 as Record<string, string>)[style] ?? SIGNATURE_FONT_B64.script1;
+    const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    cache[style] = await pdf.embedFont(bytes, { subset: true });
+    return cache[style];
+  };
+  const ink = rgb(0.05, 0.1, 0.35);
+  return async (page: PDFPage, m: Mark, x: number, y: number, w: number, h: number) => {
+    if (m.method === "typed") {
+      const f = await font(m.style);
+      const t = clean(m.text);
+      let size = h * 0.95;
+      while (size > 6 && f.widthOfTextAtSize(t, size) > w) size -= 0.5;
+      page.drawText(t, { x, y: y + h * 0.18, size, font: f, color: ink });
+      return;
+    }
+    // Drawn: fit the strokes' box (aspect = width/height of the pad) into w x h.
+    const bw = Math.min(w, h * m.aspect), bh = bw / m.aspect;
+    const ox = x, oy = y + (h - bh) / 2;
+    for (const s of m.strokes) {
+      if (s.length === 1) { page.drawCircle({ x: ox + s[0][0] * bw, y: oy + (1 - s[0][1]) * bh, size: 0.7, color: ink }); continue; }
+      for (let i = 1; i < s.length; i++)
+        page.drawLine({ start: { x: ox + s[i - 1][0] * bw, y: oy + (1 - s[i - 1][1]) * bh }, end: { x: ox + s[i][0] * bw, y: oy + (1 - s[i][1]) * bh }, thickness: Math.max(0.8, bh / 30), color: ink, lineCap: 1 as any });
+    }
+  };
+}
+
+export function describeMark(m: Mark): string {
+  return m.method === "typed" ? `Typed, cursive ${m.style.replace("script", "style ")}` : `Drawn (${m.strokes.length} stroke${m.strokes.length === 1 ? "" : "s"})`;
+}
 
 export type CompletedDocInput = {
   id: string;
@@ -19,6 +60,9 @@ export type CompletedDocInput = {
   authMethod: string;
   companySignerName: string;
   companySignerTitle: string | null;
+  /** Adopted signature/initials; absent for agreements signed before this existed. */
+  adoption?: Adoption | null;
+  adoptionSha256?: string | null;
 };
 
 const W = 612, H = 792, M = 60;
@@ -98,7 +142,7 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
     await layoutStructured(pdf, {
       title: d.title, body: d.body, footerText: `Document ${d.id}`,
       companySignerName: d.companySignerName, companySignerTitle: d.companySignerTitle,
-      signed: { signerName: d.signerName, signedAt: d.signedAt, sentAt: d.sentAt, initials: initialsOf(d.signerName) },
+      signed: { signerName: d.signerName, signedAt: d.signedAt, sentAt: d.sentAt, initials: initialsOf(d.signerName), adoption: d.adoption ?? null },
     });
   } else {
   write(d.title, 16, bold);
@@ -111,6 +155,11 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   write("SIGNATURES", 11, bold);
   y -= 4;
   write(`Renter: /s/ ${d.signerName}`, 12, bold);
+  if (d.adoption) {
+    ensure(40);
+    await (await markDrawer(pdf))(page, d.adoption.signature, M, y - 34, 240, 30);
+    y -= 38;
+  }
   write(`Signed electronically ${fmt(d.signedAt)}`, 9.5, font, muted);
   y -= 6;
   write(`Company: /s/ ${d.companySignerName}`, 12, bold);
@@ -135,7 +184,12 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
     ["IP address", d.ip ?? "-"],
     ["Browser", d.userAgent ?? "-"],
     ["Authentication", d.authMethod === "portal" ? "Signed-in renter portal session" : "Single-use emailed signing link"],
-    ["Signature method", "Typed legal name with explicit consent checkbox"],
+    ["Signature method", d.adoption ? `${describeMark(d.adoption.signature)}; legal name typed; explicit consent checkbox` : "Typed legal name with explicit consent checkbox"],
+    ...(d.adoption ? ([
+      ["Initials", describeMark(d.adoption.initials)],
+      ["Acknowledgments", `${d.adoption.acks.filter(Boolean).length} of ${d.adoption.acks.length} initialed individually by the renter`],
+      ["Signature evidence SHA-256", d.adoptionSha256 ?? "-"],
+    ] as [string, string][]) : []),
     ["Company signer", `${d.companySignerName}${d.companySignerTitle ? `, ${d.companySignerTitle}` : ""}`],
     ["Agreement text SHA-256", d.bodySha256],
   ];
@@ -261,6 +315,7 @@ export type SignedValues = {
   signedAt: string;
   sentAt: string | null;
   initials: string;
+  adoption?: Adoption | null;
 };
 
 type LayoutOpts = {
@@ -350,9 +405,16 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
       L.forEach((l, j) => page.drawText(l, { x: SM + pad, y: top - pad - size - j * lh, size, font: lf, color: ink }));
       R.forEach((l, j) => page.drawText(l, { x: SM + c1 + pad, y: top - pad - size - j * lh, size, font, color: ink }));
       if (r.initial && o.signed) {
-        const it = clean(`/s/ ${o.signed.initials}`);
-        page.drawText(it, { x: SM + pad + 2, y: top - h / 2 - 4, size: 10, font: bold, color: ink });
+        const idx = ackIdx;
+        if (adoption) {
+          const pg = page, cx = SM + pad, cy = top - h + 3, cw = c1 - pad * 2, ch = h - 6;
+          if (adoption.acks[idx]) pending.push(() => drawMark(pg, adoption.initials, cx, cy, cw, Math.min(ch, 22)));
+        } else {
+          const it = clean(`/s/ ${o.signed.initials}`);
+          page.drawText(it, { x: SM + pad + 2, y: top - h / 2 - 4, size: 10, font: bold, color: ink });
+        }
       }
+      if (r.initial) ackIdx++;
       y = top - h;
     });
     y -= 4;
@@ -371,8 +433,14 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
     ensure(rows.length * 40 + 30);
     for (const pair of rows) {
       y -= 24;
-      pair.forEach(([val, label, isSig], i) => {
+      pair.forEach(([v0, label, isSig], i) => {
+        let val = v0;
         const x = i ? SM + colA + gap : SM, w = i ? colB : colA;
+        if (isSig && label === "Renter Signature" && adoption) {
+          const pg = page, yy = y;
+          pending.push(() => drawMark(pg, adoption.signature, x + 2, yy + 1, Math.min(w - 4, 260), 24));
+          val = "";
+        }
         if (val) page.drawText(clean(val).slice(0, 90), { x: x + 2, y: y + 4, size: isSig ? 11 : 9, font: isSig ? bold : font, color: ink });
         page.drawLine({ start: { x, y }, end: { x: x + w, y }, thickness: 0.7, color: ink });
         page.drawText(clean(label), { x: x + 2, y: y - 9, size: 7, font, color: muted });
@@ -382,7 +450,9 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
     y -= 4;
     text(
       s
-        ? "Renter signed electronically by typed legal name with explicit consent; initials above are the renter's electronic initials. Company countersignature pre-applied when the agreement was sent."
+        ? s.adoption
+          ? `Renter adopted this signature (${describeMark(s.adoption.signature)}) and initials, initialed each acknowledgment individually, typed their legal name and gave explicit consent. Company countersignature pre-applied when the agreement was sent.`
+          : "Renter signed electronically by typed legal name with explicit consent; initials above are the renter's electronic initials. Company countersignature pre-applied when the agreement was sent."
         : "PREVIEW - renter signature, initials and date are applied when the renter signs electronically. Company countersignature is applied when the agreement is sent.",
       SM, CW, 7.5, ital, muted,
     );
@@ -391,6 +461,10 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
 
   const blocks = parseLayout(o.body);
   let sigDone = false;
+  const drawMark = await markDrawer(pdf);
+  const adoption = o.signed?.adoption ?? null;
+  let ackIdx = 0;
+  const pending: (() => Promise<void>)[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     switch (b.k) {
@@ -421,6 +495,7 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
     }
   }
   if (!sigDone) drawSig("");
+  for (const f of pending) await f();
   void o.title;
   return pages;
 }

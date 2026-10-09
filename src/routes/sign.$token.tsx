@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getAgreementByToken, signAgreement, type SigningView } from "@/lib/agreements.functions";
 import { Logo } from "@/components/site/Logo";
-import { layoutToText, isStructured } from "@/lib/agreement-layout";
+import { layoutToText } from "@/lib/agreement-layout";
+import { SigningPanel } from "@/components/esign/SigningPanel";
+import type { Adoption } from "@/lib/signature-adoption";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/sign/$token")({
@@ -29,7 +31,6 @@ function SignPage() {
   const [loading, setLoading] = useState(true);
   const [agreement, setAgreement] = useState<SigningView>(null);
   const [name, setName] = useState("");
-  const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   // Set only from the server's answer after signing; never from the URL.
@@ -53,11 +54,11 @@ function SignPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function onSign() {
+  async function onSign(v: { signerName: string; adoption: Adoption }) {
     setError(null);
     setBusy(true);
     try {
-      const res = await submitSign({ data: { token, signerName: name.trim(), agree: true } });
+      const res = await submitSign({ data: { token, signerName: v.signerName, agree: true, adoption: v.adoption } });
       setPortalAccess(res?.portalAccess === true);
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -130,47 +131,21 @@ function SignPage() {
         ) : (
           <>
             <h1 className="text-2xl font-semibold text-[#111114]">{agreement.title}</h1>
-            <p className="mt-1 text-sm text-[#55555E]">Please read the agreement carefully, then sign at the bottom.</p>
+            <p className="mt-1 text-sm text-[#55555E]">Please read the agreement carefully, then adopt your signature and initials below.</p>
 
             <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
               <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
             </div>
 
-            <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6">
-              <h2 className="text-[15px] font-semibold text-[#111114]">Electronic Signature</h2>
-              <label className="block mt-4 text-[12px] font-medium text-[#55555E]">Type your full legal name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Full legal name"
-                className="mt-1.5 w-full rounded-lg border border-[#DEDEE3] px-3 py-2.5 text-[15px] text-[#111114] focus:outline-none focus:border-[#D03020]"
+            <div className="mt-5">
+              <SigningPanel
+                body={agreement.body}
+                defaultName={name}
+                companySigner={agreement.company_signer_name}
+                busy={busy}
+                error={error}
+                onSubmit={onSign}
               />
-              <label className="mt-4 flex items-start gap-2.5 text-[13px] text-[#28282E] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agree}
-                  onChange={(e) => setAgree(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-[#D03020]"
-                />
-                <span>
-                  I have read and agree to this rental agreement. I understand that typing my name constitutes my legal
-                  electronic signature, equivalent to a handwritten signature.
-                  {isStructured(agreement.body)
-                    ? " The initials of my typed name are my electronic initials on each Renter Acknowledgment."
-                    : null}
-                </span>
-              </label>
-              <p className="mt-3 text-[11px] text-[#8A8A93]">
-                Countersigned by {agreement.company_signer_name}. Your name, date, IP address, and browser are recorded for the audit trail.
-              </p>
-              {error ? <p className="mt-3 text-[13px] text-[#D03020]">{error}</p> : null}
-              <button
-                disabled={busy || !agree || name.trim().length < 2}
-                onClick={onSign}
-                className="mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-6 py-3 disabled:opacity-40"
-              >
-                {busy ? "Signing…" : "Sign Agreement"}
-              </button>
             </div>
           </>
         )}

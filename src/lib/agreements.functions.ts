@@ -11,6 +11,7 @@ import {
 import { fmtDate } from "@/lib/date-format";
 import { readTerms, resolveTerms, stripTerms, writeTerms } from "@/lib/agreement-builder";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
+import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -971,6 +972,7 @@ export const signAgreement = createServerFn({ method: "POST" })
         token: z.string().min(20).max(200),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
+        adoption: AdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -980,10 +982,12 @@ export const signAgreement = createServerFn({ method: "POST" })
     const hash = await hashToken(data.token);
     const { data: ag } = await supabaseAdmin
       .from("agreements")
-      .select("id,application_id")
+      .select("id,application_id,body")
       .eq("token_hash", hash)
       .maybeSingle();
     if (!ag) throw new Error("This signing link is no longer valid");
+    const problems = adoptionProblems(ag.body as string, data.adoption, data.signerName);
+    if (problems.length) throw new Error(problems[0]);
     const meta = requestMeta(getRequest());
     const { result } = await completeSigning(supabaseAdmin, {
       id: ag.id as string,
@@ -992,6 +996,7 @@ export const signAgreement = createServerFn({ method: "POST" })
       ip: meta.ip,
       userAgent: meta.userAgent,
       authMethod: "email_link",
+      adoption: data.adoption ?? null,
     });
     const portalAccess = await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null);
     if (result === "already_signed") return { ok: true, alreadySigned: true, portalAccess };
@@ -1038,6 +1043,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
         agreementId: z.string().uuid(),
         signerName: z.string().trim().min(2).max(120),
         agree: z.literal(true),
+        adoption: AdoptionSchema.optional(),
       })
       .parse(d),
   )
@@ -1047,10 +1053,12 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     // to someone else simply isn't found. The emailed link is left intact.
     const { data: own } = await context.supabase
       .from("agreements")
-      .select("id,status,application_id")
+      .select("id,status,application_id,body")
       .eq("id", data.agreementId)
       .maybeSingle();
     if (!own) throw new Error("Agreement not found");
+    const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
+    if (problems.length) throw new Error(problems[0]);
     const { data: mine } = await context.supabase
       .from("applications")
       .select("id")
@@ -1068,6 +1076,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       ip: meta.ip,
       userAgent: meta.userAgent,
       authMethod: "portal",
+      adoption: data.adoption ?? null,
     });
     if (result === "already_signed") return { ok: true, alreadySigned: true };
     if (result !== "won") claimError(result);

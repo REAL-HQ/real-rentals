@@ -73,6 +73,7 @@ import * as A from "../src/lib/agreements.functions";
 import * as T from "../src/lib/agreement-templates.functions";
 import { completeSigning, voidDocument, hashToken, randomToken, retryArchive, deliverSigningLink } from "../src/lib/esign.server";
 import { sha256Hex } from "../src/lib/esign-pdf.server";
+import { ackRows as ackRowsOf } from "../src/lib/signature-adoption";
 
 type Role = "owner" | "manager" | "coordinator" | "driver" | "anon";
 const ROLE_DB: Record<string, string> = { owner: "admin", manager: "team", coordinator: "coordinator", driver: "driver" };
@@ -414,5 +415,81 @@ describe("5. Template enforcement", () => {
     expect(off).toEqual({ ok: true });
     const l2 = await T.listTemplateVersions.run({}, ctx("owner"));
     expect(l2.versions.find((v: any) => v.version === 1)?.status).toBe("draft");
+  });
+});
+
+describe("6. Signature experience (v1.6: adopted signature, initials, per-acknowledgment)", () => {
+  const ackCount = () => ackRowsOf(v16Body).length;
+  let v16Body = "";
+  async function issueV16(token: string) {
+    const { data, error } = await admin.from("agreements").insert({
+      source: "rental", company_signer_name: "Test Signer", company_signer_title: "Test Title",
+      application_id: appId, vehicle_id: vehicleId, body: v16Body, merge_data: {}, status: "sent",
+      token_hash: await hashToken(token), token_expires_at: new Date(Date.now() + 86400e3).toISOString(),
+      sent_at: new Date().toISOString(), signer_email: "driver@harness.invalid",
+    } as any).select("id").single();
+    if (error) throw error;
+    return data.id as string;
+  }
+  const typed = (text: string, style: "script1" | "script2" | "script3" = "script2") => ({ method: "typed" as const, text, style });
+  const drawn = { method: "drawn" as const, aspect: 3, strokes: [[[0.05, 0.6], [0.12, 0.4], [0.2, 0.3], [0.28, 0.5], [0.35, 0.7], [0.42, 0.5], [0.5, 0.35], [0.6, 0.5], [0.7, 0.65], [0.82, 0.5], [0.95, 0.4]], [[0.3, 0.8], [0.6, 0.82]]] as [number, number][][] };
+  beforeAll(async () => {
+    const { V16_BODY } = await import("../src/lib/agreement-builder");
+    const { renderTemplate } = await import("../src/lib/agreement-merge");
+    v16Body = renderTemplate(V16_BODY, { driver_name: "Synthetic Driver", agreement_number: "RRA-000001", additional_drivers: "None Authorized" });
+  });
+  it("v1.6 body exposes 13 individually initialed acknowledgments", () => { expect(ackCount()).toBe(13); });
+  it("missing adoption, missing initials, or a typed signature that is not the legal name are refused", async () => {
+    const t = randomToken(); const id = await issueV16(t);
+    const all = Array(ackCount()).fill(true);
+    await expect(A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true })).rejects.toThrow(/Adopt a signature/);
+    const some = [...all]; some[4] = false; some[11] = false;
+    await expect(A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption: { signature: typed("Synthetic Driver"), initials: typed("SD"), acks: some } })).rejects.toThrow(/acknowledgments 5, 12/);
+    await expect(A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption: { signature: typed("Someone Else"), initials: typed("SD"), acks: all } })).rejects.toThrow(/must match/);
+    await expect(A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption: { signature: typed("Synthetic Driver"), initials: typed("SD"), acks: all.slice(1) } })).rejects.toThrow(/changed/);
+    const [row] = await q("agreements", { id });
+    expect(row.status).not.toBe("signed");
+    expect(row.metadata?.signature).toBeUndefined();
+  });
+  for (const style of ["script1", "script2", "script3"] as const) {
+    it(`typed cursive ${style}: concurrent submits → one winner; evidence stored, audited, embedded in archived PDF`, async () => {
+      const t = randomToken(); const id = await issueV16(t);
+      const adoption = { signature: typed("Synthetic Driver", style), initials: typed("SD", style), acks: Array(ackCount()).fill(true) };
+      const rs = await Promise.allSettled(Array.from({ length: 4 }, () => A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption })));
+      expect(rs.filter((x) => x.status === "fulfilled" && !(x.value as any).alreadySigned)).toHaveLength(1);
+      const [row] = await q("agreements", { id });
+      expect(row.status).toBe("signed");
+      expect(row.archive_status).toBe("archived");
+      expect(row.metadata.signature.adoption).toEqual(adoption);
+      expect(row.metadata.signature.sha256).toBe(await sha256Hex(JSON.stringify(adoption)));
+      const [audit] = await q("audit_log", { entity_id: id, action: "document.signed" });
+      expect(audit.metadata).toMatchObject({ signature: `typed:${style}`, acknowledgments: "13/13" });
+      const pdf = await A.getAgreementPdf.run({ agreementId: id }, ctx("driver"));
+      const bytes = Buffer.from(pdf.base64, "base64");
+      expect(await sha256Hex(new Uint8Array(bytes))).toBe(row.sha256);
+      const fam = { script1: "GreatVibes", script2: "Allura", script3: "DancingScript" }[style];
+      expect(bytes.toString("latin1")).toContain(fam);
+    });
+  }
+  it("drawn signature + drawn initials through the driver portal; staff cannot sign on the driver's behalf", async () => {
+    const id = await issueV16(randomToken());
+    const adoption = { signature: drawn, initials: { ...drawn, aspect: 1.5 }, acks: Array(ackCount()).fill(true) };
+    await expect(A.signMyAgreement.run({ agreementId: id, signerName: "Synthetic Driver", agree: true, adoption }, ctx("manager"))).rejects.toThrow(/^(?!.*too short)/);
+    const r = await A.signMyAgreement.run({ agreementId: id, signerName: "Synthetic Driver", agree: true, adoption }, ctx("driver"));
+    expect(r.ok).toBe(true);
+    const [row] = await q("agreements", { id });
+    expect(row.status).toBe("signed");
+    expect(row.auth_method).toBe("portal");
+    expect(row.metadata.signature.adoption.signature.method).toBe("drawn");
+  });
+  it("signed adoption cannot be replaced via a reused link; signed body stays immutable", async () => {
+    const t = randomToken(); const id = await issueV16(t);
+    const ok = { signature: typed("Synthetic Driver"), initials: typed("SD"), acks: Array(ackCount()).fill(true) };
+    await A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption: ok });
+    await expect(A.signAgreement.run({ token: t, signerName: "Synthetic Driver", agree: true, adoption: { ...ok, signature: drawn } })).rejects.toThrow(/no longer valid/);
+    const [row] = await q("agreements", { id });
+    expect(row.metadata.signature.adoption.signature.method).toBe("typed");
+    const { error } = await admin.from("agreements").update({ body: "x" } as any).eq("id", id);
+    expect(error).toBeTruthy();
   });
 });

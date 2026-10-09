@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -457,33 +458,15 @@ function AgreementsView() {
                   {layoutToText(a.body)}
                 </pre>
                 {a.status !== "signed" ? (
-                  <div className="mt-4 space-y-3">
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Type your full legal name"
-                      className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white"
-                    />
-                    <label className="flex items-start gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={agree}
-                        onChange={(e) => setAgree(e.target.checked)}
-                        className="mt-0.5"
-                      />
-                      <span>
-                        I agree to this rental agreement and accept that typing my name is my legal
-                        electronic signature.
-                      </span>
-                    </label>
-                    <button
-                      disabled={busy || !agree || name.trim().length < 2}
-                      onClick={async () => {
+                  <div className="mt-4">
+                    <SigningPanel
+                      body={a.body}
+                      defaultName={name}
+                      busy={busy}
+                      onSubmit={async (v) => {
                         setBusy(true);
                         try {
-                          await sign({
-                            data: { agreementId: a.id, signerName: name.trim(), agree: true },
-                          });
+                          await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
                           toast.success("Agreement signed");
                           setOpenId(null);
                           await refetch();
@@ -493,10 +476,7 @@ function AgreementsView() {
                           setBusy(false);
                         }
                       }}
-                      className="rounded-lg bg-real-red text-white text-sm font-semibold px-5 py-2.5 disabled:opacity-40"
-                    >
-                      {busy ? "Signing…" : "Sign Agreement"}
-                    </button>
+                    />
                   </div>
                 ) : null}
               </div>
