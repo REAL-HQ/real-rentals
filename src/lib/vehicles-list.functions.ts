@@ -24,7 +24,6 @@ export const listVehicles = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data }) => data)
   .handler(async ({ data, context }): Promise<VehicleListResult> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
