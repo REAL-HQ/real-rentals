@@ -51,3 +51,19 @@ export function resolveVehicleDefaults(explicit: Explicit, def: VehicleDefault |
 export function fillableFields(touched: Partial<Record<DefaultField, boolean>>, current: Partial<Record<DefaultField, string>>): DefaultField[] {
   return DEFAULT_FIELDS.filter((f) => !touched[f] || !(current[f] ?? "").trim());
 }
+
+// ---- Apply Template (existing vehicles) ----
+export type ApplyRow = { field: DefaultField; current: number | null; proposed: number | null; change: "fill" | "replace" | "same" | "no_template_value" };
+/** Side-by-side plan. "fill" = vehicle blank; "replace" = overwrites an existing rate (needs explicit opt-in). */
+export function planApplyTemplate(vehicle: Partial<Record<DefaultField, number | null>>, def: VehicleDefault | null): ApplyRow[] {
+  return DEFAULT_FIELDS.map((field) => {
+    const current = vehicle[field] == null ? null : Number(vehicle[field]);
+    const proposed = def?.[field] == null ? null : Number(def![field]);
+    const change = proposed == null ? "no_template_value" : current === proposed ? "same" : current == null ? "fill" : "replace";
+    return { field, current, proposed, change };
+  });
+}
+/** Fields actually written: only those the staff member ticked, and only if they would change. */
+export function fieldsToApply(plan: ApplyRow[], chosen: DefaultField[]): ApplyRow[] {
+  return plan.filter((r) => chosen.includes(r.field) && (r.change === "fill" || r.change === "replace"));
+}
