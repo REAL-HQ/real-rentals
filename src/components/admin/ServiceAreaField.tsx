@@ -13,10 +13,14 @@ export function ServiceAreaField({ value, config, onChange, onConfig, missing }:
   value: string; config?: string; onChange: (v: string) => void; onConfig?: (c: string) => void; missing?: boolean;
 }) {
   const [c, setC] = useState<ServiceAreaConfig>(() => areaConfigFrom(config, value));
-  const initial = useRef(JSON.stringify(c));
+  // Last state reported to the builder: opening a draft reports nothing (so it
+  // is not marked changed); every later change — including switching back to
+  // the original mode — is reported.
+  const reported = useRef(JSON.stringify(c));
   useEffect(() => {
-    // Opening a saved draft must not mark it changed; only real edits report.
-    if (JSON.stringify(c) === initial.current) return;
+    const now = JSON.stringify(c);
+    if (now === reported.current) return;
+    reported.current = now;
     onChange(composeAreaConfig(c));
     onConfig?.(JSON.stringify(c));
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
