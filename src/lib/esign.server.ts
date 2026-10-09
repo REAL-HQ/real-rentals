@@ -181,16 +181,20 @@ export async function retryArchive(admin: any, id: string, actor: Actor | null):
   if (cur.archive_status === "archived") return true;
   const now = new Date();
   const staleBefore = new Date(now.getTime() - ARCHIVE_LOCK_MS).toISOString();
-  const { data: claimed } = await admin
-    .from("agreements")
-    // failed -> pending claims immediately; a pending row is only re-claimed
-    // once its in-flight attempt is stale.
-    .update({ archive_status: "pending", archive_last_attempt_at: now.toISOString() })
-    .eq("id", id)
-    .eq("status", "signed")
-    .or(`archive_status.eq.failed,and(archive_status.eq.pending,or(archive_last_attempt_at.is.null,archive_last_attempt_at.lt.${staleBefore}))`)
-    .select(DOC_COLS + ",archive_status")
-    .maybeSingle();
+  // failed -> pending claims immediately; a pending row is only re-claimed
+  // once its in-flight attempt is stale. Each claim is one conditional UPDATE
+  // using plain filters only: PostgREST re-applies or()/and() filters to the
+  // returned row (after the update), which made the old single-query claim
+  // always return nothing — so every retry silently failed.
+  const claim = (f: (b: any) => any) =>
+    f(admin.from("agreements").update({ archive_status: "pending", archive_last_attempt_at: now.toISOString() }).eq("id", id).eq("status", "signed"))
+      .select(DOC_COLS + ",archive_status")
+      .maybeSingle()
+      .then((r: any) => r.data);
+  const claimed =
+    (await claim((b) => b.eq("archive_status", "failed"))) ??
+    (await claim((b) => b.eq("archive_status", "pending").is("archive_last_attempt_at", null))) ??
+    (await claim((b) => b.eq("archive_status", "pending").lt("archive_last_attempt_at", staleBefore)));
   if (!claimed) {
     const { data: again } = await admin.from("agreements").select("archive_status").eq("id", id).maybeSingle();
     return again?.archive_status === "archived";
