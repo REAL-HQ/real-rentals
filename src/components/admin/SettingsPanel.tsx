@@ -7,6 +7,7 @@ import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X, Info } from "lucid
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveSettingsSection, changedFields } from "@/lib/settings-save";
 import { useUnsavedGuard } from "@/lib/unsaved-changes";
+import { useBlocker } from "@tanstack/react-router";
 
 type SettingsMap = Record<string, any>;
 
@@ -135,6 +136,8 @@ function SectionForm({ sec, saved, framed, onSaved }: {
   const changes = changedFields(saved, draft);
   const dirty = Object.keys(changes).length > 0;
   useUnsavedGuard(`settings:${sec.key}`, dirty);
+  // In-app navigation (menu, tabs, links) asks before leaving unsaved edits.
+  useBlocker({ shouldBlockFn: () => dirty && !window.confirm("You have unsaved changes. Leave without saving?"), enableBeforeUnload: false });
   const set = (k: string, v: any) => { setDraft((d) => ({ ...d, [k]: v })); if (state !== "saving") setState("idle"); };
 
   async function save() {
