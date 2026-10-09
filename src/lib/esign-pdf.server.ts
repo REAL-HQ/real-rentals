@@ -1,6 +1,7 @@
 // Deterministic server-side PDF for completed eSign documents.
 // Same inputs -> same bytes (fixed metadata dates, standard fonts).
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
+import { isStructured, parseLayout, initialsOf, type Block } from "@/lib/agreement-layout";
 
 export type CompletedDocInput = {
   id: string;
@@ -90,6 +91,16 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
     }
   };
 
+  if (isStructured(d.body)) {
+    // Designed agreement: signatures and initials sit where the reviewed
+    // document placed them; no second signature block is appended.
+    pdf.removePage(0);
+    await layoutStructured(pdf, {
+      title: d.title, body: d.body, footerText: `Document ${d.id}`,
+      companySignerName: d.companySignerName, companySignerTitle: d.companySignerTitle,
+      signed: { signerName: d.signerName, signedAt: d.signedAt, sentAt: d.sentAt, initials: initialsOf(d.signerName) },
+    });
+  } else {
   write(d.title, 16, bold);
   y -= 8;
   write(d.body);
@@ -106,6 +117,7 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   if (d.companySignerTitle) write(d.companySignerTitle, 10.5);
   if (d.companySignerName.trim().toUpperCase() !== "REAL RENTALS") write("REAL RENTALS", 10.5);
   write("Pre-applied company countersignature", 9.5, font, muted);
+  }
 
   // Certificate of completion
   page = pdf.addPage([W, H]); footer(page); y = H - M;
@@ -195,6 +207,19 @@ export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> 
     page.drawText(clean(label), { x: M, y, size: 9, font, color: muted });
     y -= 6;
   };
+
+  if (isStructured(d.body)) {
+    pdf.removePage(0); pages.length = 0;
+    const laid = await layoutStructured(pdf, {
+      title: d.title, body: d.body,
+      footerText: `PREVIEW - NOT SENT - ${d.templateLabel} - Fingerprint ${d.fingerprint.slice(0, 16)}`,
+      companySignerName: d.companySignerName, companySignerTitle: d.companySignerTitle, signed: null,
+    });
+    for (const p of laid) {
+      p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: degrees(35) });
+    }
+    return pdf.save({ useObjectStreams: false });
+  }
 
   // Identical to the completed document from here to the signature block.
   write(d.title, 16, bold);
