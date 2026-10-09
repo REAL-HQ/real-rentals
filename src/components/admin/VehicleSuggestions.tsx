@@ -46,7 +46,12 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
   const safeKeys = useMemo(() => sugs.filter((s) => s.safe).map(key), [sugs]);
   const count = sugs.length;
   if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length && !(data.needsVerification ?? []).length)) {
-    return inline && data ? <p className="text-[12px] text-[#55555E]">No new details to add — this vehicle already has every value the document shows.</p> : null;
+    if (!inline || !data) return null;
+    // Accepting the last field empties this list. Reporting "nothing to add"
+    // in place of "Saved 5 Details" told staff their save had done nothing.
+    return msg
+      ? <p className="text-[12px] text-[#111114]">{msg} Nothing further to review from this document.</p>
+      : <p className="text-[12px] text-[#55555E]">No new details to add — this vehicle already has every value the document shows.</p>;
   }
 
   async function submit(keys: string[]) {

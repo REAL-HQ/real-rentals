@@ -25,7 +25,7 @@
  * Run: npm run dev, then npm run test:doc-upload
  */
 import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
-import { toCrossJSON } from "seroval";
+import { toCrossJSON, fromCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
 const REF = "yuyzdsnrbfhkmfzpvhwx";
@@ -70,7 +70,8 @@ function freshState() {
     batches: new Map(),   // id -> { id, items: [] }
     registered: 0,
     attached: [],
-    applied: [],
+    attachFails: false,
+    applied: [],      // "<proposalId>:<field>" — the real apply is per field
     nextId: 1,
   };
 }
@@ -111,7 +112,7 @@ function proposalsFor(batch) {
     .map((it) => ({
       id: `prop-${it.id}`, batch_id: batch.id, item_id: it.id, page: null, kind: "match",
       vin: SYNTHETIC.vin, match_vehicle_id: VEHICLE_ID, match_basis: "vin_exact",
-      status: state.applied.includes(`prop-${it.id}`) ? "applied" : "pending",
+      status: "pending",
       fields: PROPOSAL_FIELDS, changes: [], issues: [],
     }));
 }
@@ -122,7 +123,6 @@ function suggestionsFor() {
     b.items.filter((it) => itemView(it).status === "ready").map((it) => ({ b, it })));
   const out = [];
   for (const { b, it } of ready) {
-    if (state.applied.includes(`prop-${it.id}`)) continue;
     const src = {
       proposalId: `prop-${it.id}`, batchId: b.id, documentId: it.documentId,
       fileName: it.fileName, docClass: "registration", page: null,
@@ -135,6 +135,9 @@ function suggestionsFor() {
       ["registration_expires_on", "Registration expiry", SYNTHETIC.registration_expires_on, true],
     ];
     for (const [field, label, proposed, safe] of rows) {
+      // applyImportDecisions with partial: true leaves the proposal pending
+      // with whatever was NOT accepted, so only accepted fields disappear.
+      if (state.applied.includes(`prop-${it.id}:${field}`)) continue;
       out.push({ ...src, field, label, current: null, proposed, confidence: "high",
         safe, risk: "normal", kind: "fill", evidence: { raw: proposed, note: null } });
     }
@@ -178,6 +181,7 @@ function serverFn(name, input) {
       return { itemId: it.id, duplicate: false, existingFileName: null };
     }
     case /attachInboxItem/.test(name):
+      if (state.attachFails) return { ok: false, error: "File or vehicle not found." };
       state.attached.push(`${input?.itemId}:${input?.vehicleId}`);
       return { ok: true };
     case /getImportBatch/.test(name): {
@@ -194,7 +198,7 @@ function serverFn(name, input) {
       return suggestionsFor();
     case /applyImportDecisions/.test(name): {
       const results = (input?.decisions ?? []).map((d) => {
-        state.applied.push(d.proposalId);
+        for (const f of d.acceptFields ?? []) state.applied.push(`${d.proposalId}:${f}`);
         return { proposalId: d.proposalId, ok: true, vehicleId: VEHICLE_ID,
           message: `${(d.acceptFields ?? []).length} change(s) applied.` };
       });
@@ -245,13 +249,16 @@ async function openDialog(viewport) {
     const id = new URL(route.request().url()).pathname.split("/").pop() ?? "";
     let name = "";
     try { name = Buffer.from(id.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(); } catch { /* not ours */ }
+    // Server-fn payloads are seroval cross-JSON, not plain JSON.
     let input = null;
     try {
       const post = route.request().postData();
-      if (post) input = JSON.parse(post)?.data ?? JSON.parse(post);
+      // The body is { t: <seroval cross-JSON node>, f, m }.
+      if (post) input = fromCrossJSON(JSON.parse(post).t, { refs: new Map() })?.data ?? null;
     } catch { /* no body */ }
     try {
       const result = serverFn(name, input);
+      if (process.env.TRACE) console.log(`    [fn] ${name.slice(-60)} in=${JSON.stringify(input)?.slice(0,80)} out=${JSON.stringify(result)?.slice(0,60)}`);
       return route.fulfill({
         status: 200, contentType: "application/json", headers: { "x-tss-serialized": "true" },
         body: JSON.stringify(toCrossJSON({ result, context: {} }, { refs: new Map() })),
@@ -355,6 +362,23 @@ console.log("\nTHE SAME, ON A PHONE  (375x812)");
   ok(!/Reading…/.test(after), "  and nothing is stuck on Reading…");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   ok(!overflow, "  with no horizontal page scroll");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nA FILE THAT CANNOT BE LINKED MUST NOT LOOK LIKE A SUCCESS");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  state.attachFails = true;
+  await uploadSynthetic(page);
+  await page.waitForTimeout(4000);
+  const after = await screen(page);
+  ok(state.registered === 1, "the file was still stored and recorded");
+  ok(state.attached.length === 0, "  but the vehicle link failed");
+  ok(!/·\s*Uploaded/.test(after), "the queue does NOT report it as uploaded");
+  ok(/could not link it to this vehicle|File or vehicle not found/.test(after),
+     "  it says the file is saved but unlinked, and where to fix it");
   ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
   await ctx.close();
 }

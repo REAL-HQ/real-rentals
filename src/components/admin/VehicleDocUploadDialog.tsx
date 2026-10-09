@@ -5,7 +5,7 @@
 // in a batch tagged "vehicle_profile", so Safe Autofill never runs on them.
 // Nothing changes on a vehicle until staff tick fields and press Accept —
 // that goes through the same applyImportDecisions path as everywhere else.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Loader2, AlertTriangle, FileText, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +20,12 @@ import { fmtDate } from "@/lib/date-format";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const BUSY = new Set(["uploaded", "analyzing", "matching"]);
+/** Only what the poll loop reads. The batch carries far more than this. */
+type InboxItemStatus = { status?: string | null };
+type BatchSnapshot = { items?: InboxItemStatus[] };
+const POLL_MS = 3000;
+/** Stop watching after this long and say so, rather than spinning forever. */
+const POLL_CEILING_MS = 5 * 60_000;
 const EXPIRY_FIELDS = ["registration_expires_on", "insurance_expires_on", "inspection_expires_on", "expires_on"];
 
 type DocType = (typeof VEHICLE_DOC_TYPES)[number];
@@ -52,6 +58,16 @@ export function VehicleDocUploadDialog({
   const [batch, setBatch] = useState<any>(null);
   const [linked, setLinked] = useState<Set<string>>(new Set());
   const [reviewKey, setReviewKey] = useState(0);
+  const [stalled, setStalled] = useState(false);
+  // The id the poll loop reads. State alone is not enough: the loop is started
+  // from inside an upload callback whose closure was captured on an earlier
+  // render, where batchId was still null.
+  const idRef = useRef<string | null>(null);
+  // How many files have actually been registered. Polling must keep going
+  // while the batch has fewer items than that, otherwise the first tick —
+  // which lands before the file exists — stops the loop permanently.
+  const expectedRef = useRef(0);
+  const pollRef = useRef<{ stop: boolean; timer: ReturnType<typeof setTimeout> | undefined } | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -62,11 +78,71 @@ export function VehicleDocUploadDialog({
   function ensureBatch() {
     if (!batchRef.current) {
       batchRef.current = create({ data: { label: `${vehicleLabel} · ${type?.label ?? "Document"}`, source: "vehicle_profile" } })
-        .then((r) => { setBatchId(r.id); return r.id; })
+        .then((r) => { idRef.current = r.id; setBatchId(r.id); return r.id; })
         .catch((e) => { batchRef.current = null; throw e; });
     }
     return batchRef.current;
   }
+
+  /**
+   * Watch this upload until every registered file has finished being read.
+   *
+   * Each call cancels any loop already running and starts a fresh one, so a
+   * second file added to the same upload resets the deadline rather than
+   * racing the first file's loop. Reading the id from a ref is deliberate:
+   * callers run inside closures captured before `batchId` state existed.
+   */
+  const startPoll = useCallback(() => {
+    if (pollRef.current) {
+      pollRef.current.stop = true;
+      clearTimeout(pollRef.current.timer);
+    }
+    const ctl: { stop: boolean; timer: ReturnType<typeof setTimeout> | undefined } = { stop: false, timer: undefined };
+    pollRef.current = ctl;
+    const deadline = Date.now() + POLL_CEILING_MS;
+    const tick = async () => {
+      const id = idRef.current;
+      if (ctl.stop || !id) return;
+      let b: BatchSnapshot;
+      try {
+        b = (await getBatch({ data: { batchId: id } })) as BatchSnapshot;
+      } catch {
+        if (!ctl.stop) ctl.timer = setTimeout(tick, 5000);
+        return;
+      }
+      if (ctl.stop) return;
+      setBatch(b);
+      const seen = b.items ?? [];
+      // Not settled while a registered file has yet to appear in the batch,
+      // or while any file is still being read.
+      const waiting =
+        seen.length < expectedRef.current || seen.some((i) => BUSY.has(String(i.status ?? "")));
+      if (waiting) {
+        if (Date.now() > deadline) {
+          setStalled(true);
+          return;
+        }
+        ctl.timer = setTimeout(tick, POLL_MS);
+        return;
+      }
+      setStalled(false);
+      setReviewKey((k) => k + 1);
+      onChanged();
+    };
+    void tick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getBatch]);
+
+  // Stop watching when the dialog closes.
+  useEffect(
+    () => () => {
+      if (pollRef.current) {
+        pollRef.current.stop = true;
+        clearTimeout(pollRef.current.timer);
+      }
+    },
+    [],
+  );
 
   async function uploadRead(file: File, onProgress: (n: number) => void) {
     if (file.size > MAX_BYTES) throw new Error("Files must be under 20 MB.");
@@ -78,37 +154,25 @@ export function VehicleDocUploadDialog({
     if (error) throw new Error("Upload failed — check your connection and retry.");
     onProgress(60);
     const r = await register({ data: { batchId: id, path, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size } });
-    if (r.itemId) await attach({ data: { itemId: r.itemId, vehicleId } });
+    // The file is now stored and recorded. Start watching before anything that
+    // can fail, so a reading in progress is always visible.
+    expectedRef.current += 1;
+    startPoll();
     if (r.duplicate) toast.message(`${file.name} was already on file — linked to this vehicle, not stored again.`);
+    if (r.itemId) {
+      const a = await attach({ data: { itemId: r.itemId, vehicleId } });
+      // Saved but unlinked is a real failure: say so instead of a green tick.
+      if (!a.ok) throw new Error(a.error || "Saved to the document vault, but could not link it to this vehicle. Attach it from Fleet Inbox.");
+    }
     onProgress(100);
     onChanged();
   }
 
-  // Poll this upload until reading finishes.
-  useEffect(() => {
-    if (!batchId) return;
-    let stop = false;
-    let timer: any;
-    const tick = async () => {
-      try {
-        const b = await getBatch({ data: { batchId } });
-        if (stop) return;
-        setBatch(b);
-        const busy = (b.items ?? []).some((i: any) => BUSY.has(i.status));
-        if (busy) timer = setTimeout(tick, 3000);
-        else { setReviewKey((k) => k + 1); onChanged(); }
-      } catch { if (!stop) timer = setTimeout(tick, 5000); }
-    };
-    void tick();
-    return () => { stop = true; clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId, getBatch]);
-
-  // Re-poll whenever a new file is added to the same upload.
-  async function refreshBatch() {
-    if (!batchId) return;
-    setBatch(await getBatch({ data: { batchId } }));
-    setReviewKey((k) => k + 1);
+  // Re-watch whenever the upload queue drains, including when a file was added
+  // to an upload whose earlier files had already settled.
+  function refreshBatch() {
+    if (!idRef.current) return;
+    startPoll();
   }
 
   const items: any[] = batch?.items ?? [];
@@ -165,12 +229,19 @@ export function VehicleDocUploadDialog({
             if (read) await uploadRead(file, onProgress);
             else { onProgress(30); await onSaveDirect(kind, file, type?.expires ? expires || null : null); onProgress(100); }
           }}
-          onAllDone={() => { if (read) void refreshBatch(); }}
+          onAllDone={() => { if (read) refreshBatch(); }}
         />
+
+        {stalled && (
+          <p className="flex items-start gap-1.5 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] p-3 text-[12px] text-[#8A4B00]">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>Reading is taking longer than usual. The file is saved and linked to this vehicle — nothing is lost. Review what was read in Fleet Inbox.</span>
+          </p>
+        )}
 
         {read && items.length > 0 && (
           <div className="space-y-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77777F]">Uploaded Files</div>
+            <div className="text-[11px] font-semibold tracking-wider text-[#77777F]">Uploaded Files</div>
             {items.map((i) => {
               const slot = slotForKind(i.doc_class);
               const mismatch = !BUSY.has(i.status) && i.doc_class && i.doc_class !== "unknown" && slot !== kind;
