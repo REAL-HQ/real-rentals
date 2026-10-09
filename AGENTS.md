@@ -18,3 +18,4 @@
 - Vehicle titles: title_number/title_status live only in Owner-only public.vehicle_titles (vehicles columns deprecated; a trigger diverts writes); staff see vehicles.title_on_file — because staff-readable vehicles rows leaked title identifiers.
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
 - Back-office sticky: chrome locked once in admin.tsx; pages opt filter rows in via `admin-sticky-bar` (styles.css) — no per-page sticky code.
+- eSign templates: approved-template enforcement is on only when the Owner's audited esign_template_enforcement switch is on AND an approved version exists; company details come from Settings → Company via company-identity.server.ts — so the migration alone never blocks sending.
