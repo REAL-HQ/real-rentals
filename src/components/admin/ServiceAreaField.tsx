@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { areaConfigFrom, composeAreaConfig, type ServiceAreaConfig, composeMileage, parseMileage, PERIOD_LABEL, type Mileage, type MileagePeriod } from "@/lib/service-area";
 
 const input = "h-8 w-full rounded-md border bg-background px-2 text-[12px]";
@@ -13,9 +13,12 @@ export function ServiceAreaField({ value, config, onChange, onConfig, missing }:
   value: string; config?: string; onChange: (v: string) => void; onConfig?: (c: string) => void; missing?: boolean;
 }) {
   const [c, setC] = useState<ServiceAreaConfig>(() => areaConfigFrom(config, value));
+  const opened = useRef(true);
   useEffect(() => {
+    // Opening a saved draft must not mark it changed; only real edits report.
+    if (opened.current) { opened.current = false; return; }
     onChange(composeAreaConfig(c));
-    onConfig?.(c.mode === "unset" && !value ? "" : JSON.stringify(c));
+    onConfig?.(JSON.stringify(c));
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [JSON.stringify(c)]);
   const radiusIncomplete = c.mode === "radius" && (!(c.radius.miles > 0) || !c.radius.center.trim());
