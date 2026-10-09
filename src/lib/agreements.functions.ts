@@ -301,6 +301,8 @@ export type TemplateMeta = {
   approvedAt: string | null;
   /** True once the versioning migration exists (approval_status column present). */
   versioningActive: boolean;
+  /** True once the Phase A columns exist (Owner can save/approve/retire). */
+  schemaReady: boolean;
 };
 
 /**
@@ -335,18 +337,18 @@ export async function activeTemplate(admin: any): Promise<{ body: string; meta: 
       body: DEFAULT_AGREEMENT_BODY,
       meta: {
         id: null, name: "Rental Agreement", version: 1, approvalStatus: "draft",
-        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive,
+        label: "Draft v1 — Legal Review Required", effectiveDate: null, approvedAt: null, versioningActive, schemaReady: hasVersioning,
       },
     };
   }
-  const status = versioningActive ? String(pick.approval_status) : "draft";
+  const status = hasVersioning ? String(pick.approval_status ?? "draft") : "draft";
   return {
     body: String(pick.body),
     meta: {
       id: pick.id, name: pick.name ?? "Rental Agreement", version: Number(pick.version ?? 1),
       approvalStatus: status,
       label: status === "approved" ? `Approved v${pick.version}` : `Draft v${pick.version} — Legal Review Required`,
-      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive,
+      effectiveDate: pick.effective_date ?? null, approvedAt: pick.approved_at ?? null, versioningActive, schemaReady: hasVersioning,
     },
   };
 }
