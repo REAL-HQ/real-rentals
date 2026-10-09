@@ -43,6 +43,7 @@ import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
 import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
+import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
@@ -302,7 +303,7 @@ export function VehicleProfile({
             />
           ) : (
             <>
-              {tab === "overview" && <Overview p={p} onEdit={setEditing} onOpenTab={setTab} />}
+              {tab === "overview" && <Overview p={p} onEdit={setEditing} onOpenTab={setTab} onRefresh={refresh} />}
               {tab === "service" && <VehicleService vehicleId={vehicleId} />}
               {tab === "timeline" && <VehicleTimeline vehicleId={vehicleId} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
@@ -396,12 +397,15 @@ function Overview({
   p,
   onEdit,
   onOpenTab,
+  onRefresh,
 }: {
   p: Profile;
   onEdit: (s: VehicleSection | "finance") => void;
   onOpenTab: (t: Tab) => void;
+  onRefresh?: () => void;
 }) {
   const v = p.vehicle;
+  const [applyOpen, setApplyOpen] = useState(false);
   // Core identity rows always show ("—" when empty); optional rows only when filled.
   const optional: [string, React.ReactNode][] = ([
     ["Trim", v.trim],
@@ -499,6 +503,12 @@ function Overview({
           <Row label="Weekly" value={money(v.weekly_rate) ?? "Not Set"} />
           <Row label="Monthly" value={money(v.monthly_rate) ?? "Not Set"} />
           <Row label="Deposit" value={v.deposit == null ? "Not Set" : Number(v.deposit) === 0 ? "$0" : money(v.deposit)} />
+          {p.canEdit && (
+            <>
+              <button onClick={() => setApplyOpen(true)} className="mt-2 h-7 px-2.5 rounded-lg text-[12px] font-medium border border-border bg-background hover:bg-muted">Apply Template</button>
+              <ApplyTemplateDialog vehicleId={v.id} open={applyOpen} onOpenChange={setApplyOpen} onApplied={() => onRefresh?.()} />
+            </>
+          )}
         </SectionCard>
 
         <SectionCard title="Right Now" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
