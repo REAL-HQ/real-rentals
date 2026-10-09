@@ -122,7 +122,8 @@ export function AgreementBuilder({
           {companyRows.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
-              <dd className={`min-w-0 break-words ${v ? "" : "text-destructive"}`}>{v || "Not Set"}</dd>
+              {(() => { const unset = !v || issues.some((i) => i.startsWith(k === "Business Address" ? "Mailing Address" : k)); return (
+                <dd className={`min-w-0 break-words ${unset ? "text-destructive" : ""}`}>{unset ? (v ? `Not Set (fallback "${v}" would print)` : "Not Set") : v}</dd>); })()}
             </div>
           ))}
         </dl>
@@ -187,8 +188,8 @@ export function AgreementBuilder({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background" role="dialog" aria-label="Agreement Builder">
-      <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b bg-card px-3 py-2 sm:flex sm:flex-wrap">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-background" role="dialog" aria-label="Agreement Builder">
+      <header className="flex shrink-0 flex-col gap-2 border-b bg-card px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex min-w-0 items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) onClose(); }}><ArrowLeft className="h-4 w-4" /> Back</Button>
           <span className="truncate text-[14px] font-semibold">{base.name}</span>
@@ -197,7 +198,7 @@ export function AgreementBuilder({
             {dirty ? "Unsaved" : base.status === "approved" ? "Approved" : base.status === "retired" ? "Retired" : "Draft"}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
           <Button size="sm" variant="outline" onClick={() => setCompare((c) => !c)}>{compare ? "Hide Compare" : "Compare"}</Button>
           <Button size="sm" variant="outline" disabled={busy || !dirty || unknown.length > 0} onClick={save}>{busy ? "Saving…" : "Save Draft"}</Button>
           <Button size="sm" disabled={!canApprove} title={canApprove ? undefined : "Save this as a Draft first, then approve it"} onClick={onApprove}>Approve Version</Button>
