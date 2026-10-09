@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewTemplateBody, saveTemplateDraft, unknownFieldsIn, type TemplateVersion } from "@/lib/agreement-templates.functions";
 import {
-  TERM_FIELDS, ALL_TERM_FIELDS, TERM_GROUPS, V16_SOURCE, V16_TERM_DEFAULTS, readTerms, stripTerms, writeTerms, missingTerms, unknownTermsIn, termsIn,
+  TERM_FIELDS, ALL_TERM_FIELDS, TERM_GROUPS, V16_SOURCE, V16_TERM_DEFAULTS, readTerms, stripTerms, writeTerms, missingTerms, unknownTermsIn, termsIn, UNPRINTED_TERMS,
 } from "@/lib/agreement-builder";
 
 /** Library templates: fixed legal wording; only contract values are edited and saved as a Draft. */
@@ -73,7 +73,7 @@ export function AgreementBuilder({
 
   const body = useMemo(() => writeTerms(source, terms), [source, terms]);
   // The excess-mileage fee is saved with the draft but not printed, so it is compared separately.
-  const dirty = body !== base.body || (!!library && hasMileage && (terms.excess_mileage_fee ?? "") !== (library.terms.excess_mileage_fee ?? ""));
+  const dirty = body !== base.body || (!!library && hasMileage && UNPRINTED_TERMS.some((k) => (terms[k] ?? "") !== (library.terms[k] ?? "")));
   const missing = useMemo(() => missingTerms(terms, source).filter((k) => !library || k !== "reservation_line"), [terms, source, library]);
   const unknown = useMemo(() => [...unknownFieldsIn(source).map((f) => `{{${f}}}`), ...unknownTermsIn(source).map((f) => `[[${f}]]`)], [source]);
   const canApprove = !library && !dirty && base.status === "draft" && !!base.id;
@@ -172,7 +172,7 @@ export function AgreementBuilder({
                 {f.key === "mileage_allowance" ? (
                   <MileageField value={terms.mileage_allowance ?? ""} fee={terms.excess_mileage_fee ?? ""} onChange={(v) => set("mileage_allowance", v)} onFee={(v) => set("excess_mileage_fee", v)} missing={missing.includes(f.key)} />
                 ) : f.key === "service_area" ? (
-                  <ServiceAreaField value={terms[f.key] ?? ""} onChange={(v) => set(f.key, v)} missing={missing.includes(f.key)} />
+                  <ServiceAreaField value={terms[f.key] ?? ""} config={terms.service_area_config} onChange={(v) => set(f.key, v)} onConfig={(c) => set("service_area_config", c)} missing={missing.includes(f.key)} />
                 ) : f.multiline ? (
                   <Textarea id={`term-${f.key}`} rows={3} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
                     className={`text-[12px] ${missing.includes(f.key) ? "border-destructive" : ""}`} />
