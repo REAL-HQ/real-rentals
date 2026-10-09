@@ -9,6 +9,7 @@ import {
   type MergeData,
 } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
+import { readTerms, resolveTerms } from "@/lib/agreement-builder";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -402,9 +403,10 @@ function templateFieldBlockers(tplBody: string, data: MergeData, blockers: Agree
   const terms = readTerms(tplBody) ?? {};
   if (used.has("min_term_end")) {
     const weeks = Number(String(terms.min_term_weeks ?? "").replace(/[^0-9]/g, ""));
-    const start = app.contract_start_date as string | null;
-    if (weeks > 0 && data.start_date && start) {
-      const [y, m, d] = String(start).slice(0, 10).split("-").map(Number);
+    const sm = String(data.start_date ?? "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    void app;
+    if (weeks > 0 && sm) {
+      const [m, d, y] = [Number(sm[1]), Number(sm[2]), Number(sm[3])];
       const dt = new Date(Date.UTC(y, m - 1, d + weeks * 7));
       data.min_term_end = fmtDate(dt.toISOString().slice(0, 10));
     }
