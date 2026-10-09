@@ -282,7 +282,23 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             }
           />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <>
+            {/* A car with photos and none of them on the website is the state
+                this screen was worst at explaining: every tile said "Not on
+                site" and nothing said what to do about it, or that Listing
+                Ready depends on it. */}
+            {publishedCount === 0 && (
+              <p className="mb-3 flex items-start gap-1.5 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] p-3 text-[12px] text-[#8A4B00]">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  No photos are on the website yet, so this vehicle cannot be Listing Ready.
+                  {canEdit
+                    ? " Use the eye button on a photo to show it on the website; the first one you show becomes the lead image."
+                    : " A Manager can put one on the website."}
+                </span>
+              </p>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {items.map((m) => (
               <PhotoTile
                 key={m.id}
@@ -304,7 +320,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onEnhance={(mode) => enhance(m, mode as EnhanceMode)}
               />
             ))}
-          </div>
+            </div>
+          </>
         )}
       </SectionCard>
 
