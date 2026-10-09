@@ -73,6 +73,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
   { id: "esign", label: "Agreements & eSign", group: "RENTALS", minTier: "owner" },
+  { id: "agreement_templates", label: "Agreement Templates", group: "RENTALS", minTier: "owner" },
   { id: "payments", label: "Payment Settings", group: "PAYMENTS", minTier: "owner" },
   { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
   { id: "notifications", label: "Notifications & Email", group: "COMMUNICATIONS", minTier: "owner" },

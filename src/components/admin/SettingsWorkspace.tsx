@@ -117,6 +117,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <WebsitesPanel />
         ) : current.id === "activity" ? (
           <ActivityPanel />
+        ) : current.id === "agreement_templates" ? (
+          <AgreementTemplatesPanel />
         ) : current.id === "team" ? (
           <TeamPanel />
         ) : (
