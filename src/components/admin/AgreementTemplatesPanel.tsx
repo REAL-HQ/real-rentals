@@ -11,7 +11,9 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import {
   listTemplateVersions, saveTemplateDraft, previewTemplateVersion, approveTemplateVersion, retireTemplateVersion, setTemplateEnforcement,
   unknownFieldsIn, type TemplateVersion,
+  previewTemplateBody,
 } from "@/lib/agreement-templates.functions";
+import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf, type LibraryTemplate } from "@/lib/agreement-library";
 
 type Data = Awaited<ReturnType<typeof listTemplateVersions>>;
 
@@ -137,6 +139,7 @@ export function AgreementTemplatesPanel() {
           onApprove={() => { setBuilding(false); setTyped(""); setEff(""); setCmp(d.versions.find((x) => x.status === "approved")?.version ?? d.versions.find((x) => x.version !== v.version)?.version ?? null); setMode("approve"); }}
         />
       )}
+      <TemplateLibrary />
       <div className="rounded-xl border bg-card p-4 text-[13px] space-y-1">
         <p><span className="text-muted-foreground">Used For Sending:</span> <span className="font-medium">{d.inUseLabel}</span></p>
         <p className="text-muted-foreground">Saving an edit creates a new Draft. Drafts never change what drivers receive. Owner approval is a business sign-off, not a legal review.</p>
@@ -282,6 +285,81 @@ export function AgreementTemplatesPanel() {
               <Button variant="destructive" disabled={busy || reason.trim().length < 3} onClick={retire}>Retire</Button>
             </DialogFooter>
           </>)}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/** Agreement Template Library: independent families, each a draft until the Owner approves a saved version. */
+function TemplateLibrary() {
+  const previewFn = useServerFn(previewTemplateBody);
+  const [open, setOpen] = useState<null | { t: LibraryTemplate; mode: "preview" | "compare" | "acks" }>(null);
+  const [pdf, setPdf] = useState<string | null>(null);
+  const [fps, setFps] = useState<Record<string, string>>({});
+  useEffect(() => {
+    (async () => {
+      const out: Record<string, string> = {};
+      for (const t of LIBRARY) {
+        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t.body));
+        out[t.key] = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+      setFps(out);
+    })();
+  }, []);
+  async function preview(t: LibraryTemplate) {
+    setOpen({ t, mode: "preview" }); setPdf(null);
+    try {
+      const r = await previewFn({ data: { body: t.body, label: `${t.name} v${t.displayVersion} — ${DRAFT_STATUS_LABEL}` } });
+      setPdf(r.pdfBase64);
+    } catch (e: any) { toast.error(e?.message ?? "Could not build the preview"); }
+  }
+  const otherOf = (t: LibraryTemplate) => LIBRARY.find((x) => x.key !== t.key)!;
+  return (
+    <div className="space-y-3" data-testid="template-library">
+      <div>
+        <h3 className="text-[15px] font-semibold">Agreement Template Library</h3>
+        <p className="text-[12px] text-muted-foreground">Each agreement keeps its own wording, version history and fingerprint. Imported agreements start as drafts and can be previewed but not sent until the Owner approves them after legal review.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {LIBRARY.map((t) => (
+          <div key={t.key} className="space-y-2 rounded-xl border bg-card p-4 text-[13px]">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0"><p className="font-semibold">{t.name}</p><p className="text-muted-foreground">Version {t.displayVersion}</p></div>
+              <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium">{DRAFT_STATUS_LABEL}</span>
+            </div>
+            <dl className="grid grid-cols-[40%_1fr] gap-y-0.5 text-[12px]">
+              <dt className="text-muted-foreground">Insurance</dt><dd>{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"}</dd>
+              <dt className="text-muted-foreground">Initials</dt><dd>{acknowledgmentsOf(t.body).length} Acknowledgments</dd>
+              <dt className="text-muted-foreground">Source</dt><dd className="break-all">{t.sourceFile}</dd>
+              <dt className="text-muted-foreground">Fingerprint</dt><dd className="font-mono text-[11px]" title={fps[t.key]}>{fps[t.key] ? `${fps[t.key].slice(0, 16)}…` : "…"}</dd>
+            </dl>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => preview(t)}>Preview</Button>
+              <Button size="sm" variant="outline" onClick={() => setOpen({ t, mode: "compare" })}>Compare</Button>
+              <Button size="sm" variant="outline" onClick={() => setOpen({ t, mode: "acks" })}>Initials</Button>
+              <Button size="sm" disabled title="Approval needs the template database update (pending migration after Codex 0022).">Approve</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <Dialog open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
+        <DialogContent className="max-w-4xl">
+          {open && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{open.mode === "preview" ? "Preview" : open.mode === "compare" ? "Compare Templates" : "Acknowledgments To Initial"} — {open.t.name} v{open.t.displayVersion}</DialogTitle>
+                <DialogDescription>{open.mode === "compare" ? `Differences from ${otherOf(open.t).name} v${otherOf(open.t).displayVersion}.` : "Sample fields. Nothing is saved or sent."}</DialogDescription>
+              </DialogHeader>
+              {open.mode === "preview" && (pdf ? <div className="max-h-[70vh] overflow-auto"><AgreementPdfViewer base64={pdf} /></div> : <p className="text-sm text-muted-foreground">Building…</p>)}
+              {open.mode === "compare" && <Diff from={otherOf(open.t).source} to={open.t.source} />}
+              {open.mode === "acks" && (
+                <ol className="max-h-[60vh] list-decimal space-y-1.5 overflow-auto pl-5 text-[13px]">
+                  {acknowledgmentsOf(open.t.body).map((a, i) => <li key={i}>{a}</li>)}
+                </ol>
+              )}
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
