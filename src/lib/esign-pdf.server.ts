@@ -1,6 +1,7 @@
 // Deterministic server-side PDF for completed eSign documents.
 // Same inputs -> same bytes (fixed metadata dates, standard fonts).
 import { PDFDocument, StandardFonts, rgb, degrees, type PDFFont, type PDFPage } from "pdf-lib";
+import { isStructured, parseLayout, initialsOf, type Block } from "@/lib/agreement-layout";
 
 export type CompletedDocInput = {
   id: string;
@@ -90,6 +91,16 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
     }
   };
 
+  if (isStructured(d.body)) {
+    // Designed agreement: signatures and initials sit where the reviewed
+    // document placed them; no second signature block is appended.
+    pdf.removePage(0);
+    await layoutStructured(pdf, {
+      title: d.title, body: d.body, footerText: `Document ${d.id}`,
+      companySignerName: d.companySignerName, companySignerTitle: d.companySignerTitle,
+      signed: { signerName: d.signerName, signedAt: d.signedAt, sentAt: d.sentAt, initials: initialsOf(d.signerName) },
+    });
+  } else {
   write(d.title, 16, bold);
   y -= 8;
   write(d.body);
@@ -106,6 +117,7 @@ export async function renderCompletedPdf(d: CompletedDocInput): Promise<Uint8Arr
   if (d.companySignerTitle) write(d.companySignerTitle, 10.5);
   if (d.companySignerName.trim().toUpperCase() !== "REAL RENTALS") write("REAL RENTALS", 10.5);
   write("Pre-applied company countersignature", 9.5, font, muted);
+  }
 
   // Certificate of completion
   page = pdf.addPage([W, H]); footer(page); y = H - M;
@@ -196,6 +208,19 @@ export async function renderPreviewPdf(d: PreviewDocInput): Promise<Uint8Array> 
     y -= 6;
   };
 
+  if (isStructured(d.body)) {
+    pdf.removePage(0); pages.length = 0;
+    const laid = await layoutStructured(pdf, {
+      title: d.title, body: d.body,
+      footerText: `PREVIEW - NOT SENT - ${d.templateLabel} - Fingerprint ${d.fingerprint.slice(0, 16)}`,
+      companySignerName: d.companySignerName, companySignerTitle: d.companySignerTitle, signed: null,
+    });
+    for (const p of laid) {
+      p.drawText("PREVIEW - NOT SENT", { x: 120, y: 360, size: 46, font: bold, color: wm, opacity: 0.12, rotate: degrees(35) });
+    }
+    return pdf.save({ useObjectStreams: false });
+  }
+
   // Identical to the completed document from here to the signature block.
   write(d.title, 16, bold);
   y -= 8;
@@ -224,4 +249,178 @@ export async function sha256Hex(bytes: Uint8Array | string): Promise<string> {
   const buf = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
   const d = await crypto.subtle.digest("SHA-256", buf as BufferSource);
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ---------------------------------------------------------------- designed layout
+// One layout routine for preview AND the signed copy, so the signed PDF has
+// exactly the structure reviewed before sending. Only the signature/initial
+// values differ (blank in preview, filled once signed).
+
+export type SignedValues = {
+  signerName: string;
+  signedAt: string;
+  sentAt: string | null;
+  initials: string;
+};
+
+type LayoutOpts = {
+  title: string;
+  body: string;
+  footerText: string;
+  companySignerName: string;
+  companySignerTitle: string | null;
+  signed: SignedValues | null;
+};
+
+const SM = 48; // designed-layout margin
+
+export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise<PDFPage[]> {
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const ital = await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const ink = rgb(0.07, 0.07, 0.08), muted = rgb(0.42, 0.42, 0.46), red = rgb(0.80, 0.11, 0.11);
+  const grid = rgb(0.25, 0.25, 0.27), shade = rgb(0.93, 0.93, 0.94), dark = rgb(0.22, 0.22, 0.24), white = rgb(1, 1, 1);
+  const CW = W - 2 * SM;
+  const BS = 9; // body size
+  const pages: PDFPage[] = [];
+  const newPage = () => {
+    const p = pdf.addPage([W, H]);
+    pages.push(p);
+    p.drawText(clean(o.footerText), { x: SM, y: 26, size: 7.5, font, color: muted });
+    return p;
+  };
+  let page = newPage();
+  let y = H - SM;
+  const fresh = () => y >= H - SM - 0.5;
+  const ensure = (h: number) => { if (y - h < SM) { page = newPage(); y = H - SM; } };
+  const text = (t: string, x: number, max: number, size: number, f: PDFFont, color = ink, lh = 1.4) => {
+    for (const l of wrap(t, f, size, max)) {
+      ensure(size * lh);
+      page.drawText(l, { x, y: y - size, size, font: f, color });
+      y -= size * lh;
+    }
+  };
+  // Paragraph with an optional bold lead-in, wrapped as one flow.
+  const rich = (lead: string | undefined, t: string, x: number, max: number, size: number, f: PDFFont) => {
+    const words: { w: string; f: PDFFont }[] = [
+      ...(lead ? clean(lead).split(/ +/).map((w) => ({ w, f: bold })) : []),
+      ...clean(t).split(/ +/).filter(Boolean).map((w) => ({ w, f })),
+    ];
+    const space = font.widthOfTextAtSize(" ", size);
+    let line: typeof words = [], width = 0;
+    const flush = () => {
+      ensure(size * 1.4);
+      let cx = x;
+      for (const it of line) { page.drawText(it.w, { x: cx, y: y - size, size, font: it.f, color: ink }); cx += it.f.widthOfTextAtSize(it.w, size) + space; }
+      y -= size * 1.4; line = []; width = 0;
+    };
+    for (const it of words) {
+      const ww = it.f.widthOfTextAtSize(it.w, size);
+      if (line.length && width + space + ww > max) flush();
+      width += (line.length ? space : 0) + ww; line.push(it);
+    }
+    if (line.length) flush();
+  };
+  const cellLines = (t: string, f: PDFFont, size: number, w: number) => (t ? wrap(t, f, size, w) : [""]);
+
+  const drawTable = (b: Extract<Block, { k: "table" }>) => {
+    const c1 = Math.round(CW * b.frac), c2 = CW - c1, pad = 3.5, size = 8.5, lh = size * 1.32;
+    const ack = b.rows.some((r) => r.initial);
+    const header = () => {
+      if (!b.header) return;
+      const h = lh + pad * 2;
+      ensure(h + lh * 2);
+      page.drawRectangle({ x: SM, y: y - h, width: CW, height: h, color: dark, borderColor: grid, borderWidth: 0.6 });
+      page.drawText(clean(b.header[0]), { x: SM + pad, y: y - pad - size, size, font: bold, color: white });
+      page.drawText(clean(b.header[1]), { x: SM + c1 + pad, y: y - pad - size, size, font: b.header[1] && ack ? ital : bold, color: white });
+      y -= h;
+    };
+    header();
+    b.rows.forEach((r, i) => {
+      const lf = b.header ? font : bold;
+      const L = cellLines(r.cells[0], lf, size, c1 - pad * 2);
+      const R = cellLines(r.cells[1], font, size, c2 - pad * 2);
+      const minH = ack ? 26 : lh + pad * 2;
+      const h = Math.max(minH, Math.max(L.length, R.length) * lh + pad * 2);
+      if (y - h < SM) { page = newPage(); y = H - SM; header(); }
+      const top = y;
+      const fill = !b.header ? shade : ack ? white : i % 2 ? rgb(0.975, 0.975, 0.98) : white;
+      page.drawRectangle({ x: SM, y: top - h, width: c1, height: h, color: b.header ? fill : shade, borderColor: grid, borderWidth: 0.6 });
+      page.drawRectangle({ x: SM + c1, y: top - h, width: c2, height: h, color: fill, borderColor: grid, borderWidth: 0.6 });
+      L.forEach((l, j) => page.drawText(l, { x: SM + pad, y: top - pad - size - j * lh, size, font: lf, color: ink }));
+      R.forEach((l, j) => page.drawText(l, { x: SM + c1 + pad, y: top - pad - size - j * lh, size, font, color: ink }));
+      if (r.initial && o.signed) {
+        const it = clean(`/s/ ${o.signed.initials}`);
+        page.drawText(it, { x: SM + pad + 2, y: top - h / 2 - 4, size: 10, font: bold, color: ink });
+      }
+      y = top - h;
+    });
+    y -= 4;
+  };
+
+  const drawSig = (agreementNumber: string) => {
+    const s = o.signed;
+    const fmtT = (ts: string | null) => (ts ? new Date(ts).toUTCString().replace("GMT", "UTC") : "");
+    const colA = Math.round(CW * 0.6), gap = 18, colB = CW - colA - gap;
+    const rows: [[string, string, boolean], [string, string, boolean]][] = [
+      [[s ? `/s/ ${s.signerName}` : "", "Renter Signature", true], [s ? fmtT(s.signedAt) : "", "Date & Time", false]],
+      [[s ? s.signerName : "", "Renter Printed Name", false], [agreementNumber, "Agreement Number", false]],
+      [[s ? `/s/ ${o.companySignerName}` : "", "REAL RENTALS Representative Signature", true], [s ? fmtT(s.sentAt) : "", "Date & Time", false]],
+      [[o.companySignerName, "Representative Printed Name", false], [o.companySignerTitle ?? "", "Title", false]],
+    ];
+    ensure(rows.length * 40 + 30);
+    for (const pair of rows) {
+      y -= 24;
+      pair.forEach(([val, label, isSig], i) => {
+        const x = i ? SM + colA + gap : SM, w = i ? colB : colA;
+        if (val) page.drawText(clean(val).slice(0, 90), { x: x + 2, y: y + 4, size: isSig ? 11 : 9, font: isSig ? bold : font, color: ink });
+        page.drawLine({ start: { x, y }, end: { x: x + w, y }, thickness: 0.7, color: ink });
+        page.drawText(clean(label), { x: x + 2, y: y - 9, size: 7, font, color: muted });
+      });
+      y -= 14;
+    }
+    y -= 4;
+    text(
+      s
+        ? "Renter signed electronically by typed legal name with explicit consent; initials above are the renter's electronic initials. Company countersignature pre-applied when the agreement was sent."
+        : "PREVIEW - renter signature, initials and date are applied when the renter signs electronically. Company countersignature is applied when the agreement is sent.",
+      SM, CW, 7.5, ital, muted,
+    );
+    y -= 6;
+  };
+
+  const blocks = parseLayout(o.body);
+  let sigDone = false;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    switch (b.k) {
+      case "gap": y -= 4; break;
+      case "page": if (!fresh()) { page = newPage(); y = H - SM; } break;
+      case "title": text(b.t, SM, CW, 20, bold); break;
+      case "subtitle": text(b.t, SM, CW, 10, font, muted); y -= 4; break;
+      case "h2": {
+        if (!fresh()) y -= 8;
+        ensure(60);
+        page.drawRectangle({ x: SM, y: y - 13, width: 2.6, height: 14, color: red });
+        page.drawText(clean(b.t), { x: SM + 9, y: y - 11, size: 11.5, font: bold, color: ink });
+        y -= 20;
+        break;
+      }
+      case "h3": y -= 4; ensure(40); text(b.t, SM, CW, 9.5, bold); y -= 2; break;
+      case "note": text(b.t, SM, CW, 8.5, ital, muted); y -= 2; break;
+      case "quote": text(b.t, SM + 20, CW - 40, BS, ital); break;
+      case "bullet": {
+        ensure(BS * 1.4);
+        page.drawCircle({ x: SM + 9, y: y - BS * 0.62, size: 1.3, color: ink });
+        text(b.t, SM + 16, CW - 16, BS, font);
+        break;
+      }
+      case "p": rich(b.lead, b.t, SM, CW, BS, font); y -= 2; break;
+      case "table": drawTable(b); break;
+      case "sig": drawSig(b.agreementNumber); sigDone = true; break;
+    }
+  }
+  if (!sigDone) drawSig("");
+  void o.title;
+  return pages;
 }

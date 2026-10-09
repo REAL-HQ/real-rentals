@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getAgreementByToken, signAgreement, type SigningView } from "@/lib/agreements.functions";
 import { Logo } from "@/components/site/Logo";
+import { layoutToText, isStructured } from "@/lib/agreement-layout";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/sign/$token")({
@@ -132,7 +133,7 @@ function SignPage() {
             <p className="mt-1 text-sm text-[#55555E]">Please read the agreement carefully, then sign at the bottom.</p>
 
             <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6 max-h-[60vh] overflow-y-auto">
-              <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{agreement.body}</pre>
+              <pre className="whitespace-pre-wrap font-sans text-[13.5px] leading-6 text-[#28282E]">{layoutToText(agreement.body)}</pre>
             </div>
 
             <div className="mt-5 rounded-xl border border-[#EDEDF0] bg-white p-6">
@@ -154,6 +155,9 @@ function SignPage() {
                 <span>
                   I have read and agree to this rental agreement. I understand that typing my name constitutes my legal
                   electronic signature, equivalent to a handwritten signature.
+                  {isStructured(agreement.body)
+                    ? " The initials of my typed name are my electronic initials on each Renter Acknowledgment."
+                    : null}
                 </span>
               </label>
               <p className="mt-3 text-[11px] text-[#8A8A93]">

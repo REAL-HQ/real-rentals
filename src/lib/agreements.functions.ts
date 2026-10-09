@@ -9,6 +9,7 @@ import {
   type MergeData,
 } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
+import { readTerms, resolveTerms } from "@/lib/agreement-builder";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -117,7 +118,7 @@ async function buildMergeData(
   const { data: app, error } = await admin
     .from("applications")
     .select(
-      "id,full_name,email,phone,address,city,state,zip,license_number,license_state,license_expiration,vehicle_id,weekly_rent,deposit_amount,contract_start_date,contract_end_date,market_id",
+      "id,full_name,email,phone,address,city,state,zip,license_number,license_state,license_expiration,vehicle_id,weekly_rent,deposit_amount,contract_start_date,contract_end_date,market_id,dob,card_brand,card_last4,insurance_carrier,insurance_policy_number",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -218,7 +219,7 @@ async function buildMergeData(
   if (app.vehicle_id) {
     const { data: v } = await admin
       .from("vehicles")
-      .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit")
+      .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit,license_plate,plate_state")
       .eq("id", app.vehicle_id)
       .maybeSingle();
     vehicle = v ?? null;
@@ -279,8 +280,22 @@ async function buildMergeData(
     vehicle_vin: vehicle?.vin ? String(vehicle.vin).toUpperCase() : "",
     weekly_rate: money(weekly),
     deposit_amount: deposit != null && Number(deposit) === 0 ? "$0" : money(deposit),
-    start_date: startDate ?? "",
-    return_date: endDate ?? "",
+    start_date: startDate ? fmtDate(startDate) : "",
+    return_date: endDate ? fmtDate(endDate) : "",
+    // v1.6 fields — real records only; empty values block a template that uses them.
+    agreement_number:
+      vehicle?.unit_number && startDate ? `RR-${String(vehicle.unit_number)}-${String(startDate).replace(/-/g, "")}` : "",
+    driver_dob: app.dob ? fmtDate(app.dob) : "",
+    license_plate: vehicle?.license_plate
+      ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
+      : "",
+    card_on_file: app.card_last4 ? `${app.card_brand ? String(app.card_brand).toUpperCase() : "Card"} ending ${app.card_last4}` : "",
+    // Not stored anywhere yet: entered by staff in Driver Agreement Preparation.
+    additional_drivers: "",
+    // "If Any" rows: say plainly that nothing is on file rather than leave a blank.
+    insurance_carrier: String(app.insurance_carrier ?? "").trim() || "None on file",
+    insurance_policy: String(app.insurance_policy_number ?? "").trim() || "None on file",
+    min_term_end: "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
     today: fmtDate(new Date()),
   };
@@ -378,13 +393,54 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
 }
 
 /**
+ * Designed (v1.6) templates print more fields than the legacy wording. Every
+ * {{field}} the template actually uses must have a real value before sending;
+ * pickup/return fields are literal "To Be Completed" text in the template, so
+ * they never block and are never shown as already completed.
+ */
+function templateFieldBlockers(tplBody: string, data: MergeData, blockers: AgreementBlocker[], vehicle: any, app: any) {
+  const used = new Set([...resolveTerms(tplBody).matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((m) => m[1].toLowerCase()));
+  const terms = readTerms(tplBody) ?? {};
+  if (used.has("min_term_end")) {
+    const weeks = Number(String(terms.min_term_weeks ?? "").replace(/[^0-9]/g, ""));
+    const sm = String(data.start_date ?? "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    void app;
+    if (weeks > 0 && sm) {
+      const [m, d, y] = [Number(sm[1]), Number(sm[2]), Number(sm[3])];
+      const dt = new Date(Date.UTC(y, m - 1, d + weeks * 7));
+      data.min_term_end = fmtDate(dt.toISOString().slice(0, 10));
+    }
+  }
+  const pay = { tab: "payments" as const };
+  const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };
+  const need: Record<string, Omit<AgreementBlocker, "field">> = {
+    agreement_number: { label: "Agreement number (vehicle unit number and start date)", why: "The agreement number is built from the vehicle's unit number and the contract start date.", fix: vfix },
+    driver_dob: { label: "Driver date of birth", why: "The v1.6 agreement prints the renter's date of birth.", fix: pay },
+    license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
+    card_on_file: { label: "Payment card on file", why: "The agreement authorizes charges to the card on file; save the driver's card first.", fix: pay },
+    min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
+    additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
+  };
+  for (const [k, b] of Object.entries(need)) {
+    if (used.has(k) && !String(data[k] ?? "").trim() && !blockers.some((x) => x.field === k)) blockers.push({ field: k, ...b });
+  }
+  // A deposit on file must not sit under wording that says there is none.
+  const dep = Number(String(data.deposit_amount ?? "").replace(/[^0-9.]/g, ""));
+  if (dep > 0 && /no security deposit/i.test(String(terms.deposit_clause ?? "") + String(terms.deposit_ack ?? "")))
+    blockers.push({ field: "deposit_amount", label: "Deposit wording matching the deposit on file", why: `This driver has a ${data.deposit_amount} deposit, but the template's deposit clause says there is no security deposit. The Owner must approve deposit wording first.`, fix: pay });
+}
+
+/**
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
 async function prepareAgreement(admin: any, applicationId: string) {
   const built = await buildMergeData(admin, applicationId);
   const tpl = await activeTemplate(admin);
+  templateFieldBlockers(tpl.body, built.data, built.blockers, built.vehicle, built.app);
   const body = renderTemplate(tpl.body, built.data);
+  if (/\[ \] Required: \$_+/.test(body))
+    built.blockers.push({ field: "reservation_fee", label: "Reservation Fee marked Required or Not Required", why: "The agreement's Reservation Fee row still shows both unchecked boxes. Staff entry for this rental arrives with Driver Agreement Preparation." });
   const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
   const { getCompanyIdentity } = await import("@/lib/company-identity.server");
   const ci = await getCompanyIdentity(admin);
