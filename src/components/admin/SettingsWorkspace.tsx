@@ -10,6 +10,7 @@ import { SafeAutofillPanel } from "@/components/admin/SafeAutofillPanel";
 import { PhotoEnhancePanel } from "@/components/admin/PhotoEnhancePanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
+import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
@@ -24,6 +25,7 @@ const DESCRIPTIONS: Record<string, string> = {
   rental_terms: "Minimum term, return notice and the terms text.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
+  agreement_templates: "Owner-only. Rental agreement wording, versions and approval. Drafts never change what drivers receive.",
   esign: "Who countersigns agreements. Captured when a document is sent — changing it never alters documents already sent or signed.",
   payments: "Late fees, grace period and default payment method.",
   partners: "Default revenue share and contract term for vehicle partners.",
@@ -47,7 +49,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = ["automations", "team", "website", "activity"].includes(current.id);
+  const wide = ["automations", "team", "website", "activity", "agreement_templates"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
