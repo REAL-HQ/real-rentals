@@ -25,7 +25,14 @@ Bun.serve({
       const [, bucket, path] = m; const key = `${bucket}/${decodeURIComponent(path)}`;
       if (req.method === "POST" || req.method === "PUT") {
         let bytes: Uint8Array; let type = req.headers.get("content-type") ?? "application/octet-stream";
-        if (type.startsWith("multipart/form-data")) { const fd = await req.formData(); const f = [...fd.values()].find((x: any) => typeof x !== "string") as any; bytes = new Uint8Array(await f.arrayBuffer()); type = f.type; }
+        if (type.startsWith("multipart/form-data")) {
+          // Parse by hand: the file part has an empty field name, which Bun's FormData drops.
+          const raw = Buffer.from(await req.arrayBuffer()); const boundary = "--" + type.split("boundary=")[1];
+          const parts = raw.toString("latin1").split(boundary).filter((p) => p.includes("filename"));
+          const part = parts[0] ?? ""; const i = part.indexOf("\r\n\r\n");
+          const head = part.slice(0, i); type = (head.match(/content-type:\s*([^\r\n]+)/i)?.[1] ?? "application/octet-stream").trim();
+          bytes = new Uint8Array(Buffer.from(part.slice(i + 4, part.length - 2), "latin1"));
+        }
         else bytes = new Uint8Array(await req.arrayBuffer());
         store.set(key, { bytes, type });
         return Response.json({ Key: key, Id: crypto.randomUUID() });
