@@ -15,7 +15,13 @@ type Sug = {
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText }: {
-  vehicleId: string; canEdit: boolean; onApplied: () => void;
+  vehicleId: string; canEdit: boolean;
+  /**
+   * How many vehicle fields were actually written. 0 means the server refused,
+   * or every chosen field already had a value — neither is a change, and a
+   * caller must not act as though the vehicle moved.
+   */
+  onApplied: (fieldsWritten: number) => void;
   /** Only show details read from this upload (Vehicle Profile upload dialog). */
   batchId?: string;
   /** Render the review list directly (inside another dialog) instead of a button + popup. */
@@ -86,7 +92,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
       }
       setMsg(errors.length ? errors.join(" ") : applied ? `Saved ${applied} Detail${applied === 1 ? "" : "s"}.` : "Nothing Saved — Those Fields Already Have Values.");
       setPicked(new Set());
-      await refresh(); onApplied();
+      await refresh(); onApplied(errors.length ? 0 : applied);
     } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
   }
 

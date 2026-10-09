@@ -73,6 +73,9 @@ function freshState() {
     attachFails: false,
     duplicateNext: false,
     coversOtherVehicle: false,
+    failExtraction: false,
+    applyFails: false,
+    profileReads: 0,
     directSaves: [],
     registered_with: [],
     applied: [],      // "<proposalId>:<field>" — the real apply is per field
@@ -89,13 +92,21 @@ const vehicleRow = (id, unit, vin) => ({
 /** The item as getImportBatch would return it, given how long ago it landed. */
 function itemView(it) {
   const age = Date.now() - it.at;
-  const status = it.duplicate ? "duplicate" : age < 300 ? "uploaded" : age < EXTRACT_MS ? "analyzing" : "ready";
+  const status = it.duplicate
+    ? "duplicate"
+    : age < 300
+      ? "uploaded"
+      : age < EXTRACT_MS
+        ? "analyzing"
+        : state.failExtraction
+          ? "failed"
+          : "ready";
   return {
     id: it.id, document_id: it.documentId, duplicate_of_document_id: null,
     file_name: it.fileName, mime_type: "image/jpeg", size_bytes: 2048,
     status, doc_class: status === "ready" ? "registration" : null,
     class_confidence: status === "ready" ? "high" : null, classified_manually: false,
-    warnings: [], error: null, attempts: 1,
+    warnings: [], error: status === "failed" ? "The page was too blurred to read." : null, attempts: 1,
     extraction: status === "ready" ? { shared: {}, vehicleCount: 1 } : null,
     created_at: new Date(it.at).toISOString(), job: null,
   };
@@ -111,13 +122,14 @@ const PROPOSAL_FIELDS = {
 };
 
 /** The five details the synthetic registration offers, and which are "safe". */
+const UNSAFE = new Set(["license_plate", "plate_state", "current_odometer", "vin"]);
 const FIELD_ROWS = [
-  ["license_plate", "Plate", SYNTHETIC.license_plate, false],
-  ["plate_state", "Plate state", SYNTHETIC.plate_state, true],
-  ["registration_number", "Registration number", SYNTHETIC.registration_number, true],
-  ["registration_state", "Registration state", SYNTHETIC.registration_state, true],
-  ["registration_expires_on", "Registration expiry", SYNTHETIC.registration_expires_on, true],
-];
+  ["license_plate", "Plate", SYNTHETIC.license_plate],
+  ["plate_state", "Plate state", SYNTHETIC.plate_state],
+  ["registration_number", "Registration number", SYNTHETIC.registration_number],
+  ["registration_state", "Registration state", SYNTHETIC.registration_state],
+  ["registration_expires_on", "Registration expiry", SYNTHETIC.registration_expires_on],
+].map(([field, label, proposed]) => [field, label, proposed, !UNSAFE.has(field)]);
 
 function proposalsFor(batch) {
   const rows = batch.items
@@ -169,12 +181,19 @@ function suggestionsFor() {
 
 const READINESS = { lastPreDeliveryPassedAt: null, schedules: [], openIssues: [], openIncidents: [], hasActiveRental: false };
 
+/** Has this field been written to the vehicle yet? */
+const appliedField = (f) => state.applied.some((a) => a.endsWith(`:${f}`));
+
 const profilePayload = () => ({
   vehicle: {
     id: VEHICLE_ID, unit_number: "RR-SYN", year: 2013, make: "Ford", model: "Fusion",
     trim: null, color: "Blue", body_type: null, vin: SYNTHETIC.vin, status: "onboarding",
-    license_plate: null, plate_state: null, registration_number: null, registration_state: null,
-    registration_expires_on: null, insurance_carrier: null, insurance_policy_number: null,
+    license_plate: appliedField("license_plate") ? SYNTHETIC.license_plate : null,
+    plate_state: appliedField("plate_state") ? SYNTHETIC.plate_state : null,
+    registration_number: appliedField("registration_number") ? SYNTHETIC.registration_number : null,
+    registration_state: appliedField("registration_state") ? SYNTHETIC.registration_state : null,
+    registration_expires_on: appliedField("registration_expires_on") ? SYNTHETIC.registration_expires_on : null,
+    insurance_carrier: null, insurance_policy_number: null,
     insurance_effective_on: null, insurance_expires_on: null, current_odometer: null,
     weekly_rate: 350, monthly_rate: 1400, deposit: 300, seats: 5, doors: 4,
     title_number: null, title_status: null, archived_at: null, notes: null,
@@ -233,6 +252,14 @@ function serverFn(name, input) {
     case /getVehicleSuggestions/.test(name):
       return suggestionsFor();
     case /applyImportDecisions/.test(name): {
+      if (state.applyFails) {
+        return {
+          results: (input?.decisions ?? []).map((d) => ({
+            proposalId: d.proposalId, ok: false,
+            message: "VIN conflict: 3FA6P0HRXDR153036 on file vs 1SYNTH00000000001 in document.",
+          })),
+        };
+      }
       const results = (input?.decisions ?? []).map((d) => {
         for (const f of d.acceptFields ?? []) state.applied.push(`${d.proposalId}:${f}`);
         return { proposalId: d.proposalId, ok: true, vehicleId: VEHICLE_ID,
@@ -250,12 +277,32 @@ function serverFn(name, input) {
       state.directSaves.push({ kind: input?.kind, expiresAt: input?.expiresAt ?? null, path: input?.path });
       return { ok: true, id: `vdoc-${state.directSaves.length}` };
     case /getVehicleProfile/.test(name):
+      state.profileReads++;
       return profilePayload();
     case /getVehicleDocAccess/.test(name):
       return { financeSlots: true };
     case /listVehicleDocs/.test(name):
+      // Slot documents the vehicle owns: only the direct-save path makes these.
+      return state.directSaves.map((d, i) => ({
+        id: `vdoc-${i + 1}`, vehicle_id: VEHICLE_ID, kind: d.kind, kind_label: d.kind,
+        label: d.kind, file_name: "synthetic-registration.jpg", storage_path: "",
+        expires_at: d.expiresAt, days_until_expiry: null, notes: null,
+        created_at: new Date().toISOString(), url: null,
+      }));
     case /listVehicleLinkedDocs/.test(name):
-      return [];
+      // Fleet Inbox originals linked to this vehicle — what the reader path makes.
+      return [...state.batches.values()].flatMap((b) =>
+        b.items
+          .filter((it) => state.attached.includes(`${it.id}:${VEHICLE_ID}`))
+          .map((it) => ({
+            id: it.documentId,
+            kind: itemView(it).status === "ready" ? "registration" : "unknown",
+            label: it.fileName, file_name: it.fileName,
+            created_at: new Date(it.at).toISOString(), is_current: true,
+            review_status: "uploaded", source: "fleet_inbox",
+            expires_at: null, page: null, relatedVehicles: 1,
+          })),
+      );
     case /getVehicleFinance/.test(name):
       return null;
     case /listVehicles/.test(name):
@@ -537,6 +584,140 @@ console.log("\nA DOCUMENT COVERING TWO CARS LINKS ONLY WHEN SOMEBODY SAYS SO");
   ok(state.attached.some((a) => a.endsWith(OTHER_ID)), "  pressing Link attaches the same file to it");
   ok(state.registered === 1, "  the original was never stored a second time");
   ok(/Linked/.test(await screen(page)), "  and the button reports it is done");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+/** Upload one synthetic file and wait for reading to finish. */
+async function uploadAndWaitForReview(page) {
+  await openDocumentsTab(page);
+  await uploadSynthetic(page);
+  await page.waitForTimeout(EXTRACT_MS + 7000);
+}
+const pageText = (page) => page.evaluate(() => document.body.innerText);
+
+console.log("\nACCEPTING DETAILS REACHES THE VEHICLE, NOT JUST THE DIALOG");
+{
+  // The defect this pins down: the apply wrote the right fields and the dialog
+  // said "Saved 5 Details.", but nothing re-read the vehicle. Staff closed the
+  // dialog and the Overview tab and the Readiness checklist still said "Not
+  // Set" for the plate they had just saved — the same "did it save?" confusion
+  // the whole repair exists to remove.
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await uploadAndWaitForReview(page);
+
+  // Captured BEFORE the click: the refresh fires as soon as the apply returns,
+  // so sampling afterwards cannot see it.
+  const readsBefore = state.profileReads;
+  await dialog(page).getByRole("button", { name: /Approve Safe Fields/ }).click();
+  await page.waitForTimeout(3000);
+  ok(state.applied.length > 0, "the fields were applied server-side");
+  ok(/Saved \d+ Detail/.test(await screen(page)), "  and the dialog confirms the save");
+  ok(state.profileReads > readsBefore,
+     `the vehicle profile was re-read after the save (reads ${readsBefore} -> ${state.profileReads})`);
+
+  await dialog(page).getByRole("button", { name: /^Done$/ }).click();
+  await page.waitForTimeout(2000);
+
+  // The registration details it DID apply must now be on the record. (Plate,
+  // plate state, VIN and mileage are excluded from Approve Safe Fields by
+  // design and need individual confirmation.)
+  await page.locator("nav button").filter({ hasText: "DMV" }).first().click();
+  await page.waitForTimeout(1500);
+  const dmv = await pageText(page);
+  ok(new RegExp(SYNTHETIC.registration_number).test(dmv),
+     "THE ACCEPTED REGISTRATION NUMBER IS ON THE VEHICLE WITHOUT A MANUAL REFRESH");
+  ok(/2029/.test(dmv), "  and so is the accepted registration expiry");
+
+  // And Vehicle Readiness, which reads the same vehicle record, has moved with
+  // it: the Registration row was "Not Verified" with no date on file.
+  await page.locator("nav button").filter({ hasText: "Overview" }).first().click();
+  await page.waitForTimeout(1500);
+  const overview = await pageText(page);
+  // Just this row: the next one is Insurance, which is legitimately "Not
+  // Verified" here and would otherwise bleed into the window.
+  const regRow = (overview.split(/Registration/)[1] ?? "").split(/Insurance/)[0] ?? "";
+  ok(/Expires 06-30-2029/.test(regRow),
+     `VEHICLE READINESS SHOWS THE NEW REGISTRATION EXPIRY (${regRow.replace(/\s+/g, " ").trim().slice(0, 60)})`);
+  ok(!/Not Verified/.test(regRow), "  and no longer reports it as Not Verified");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nUPLOADING AND POLLING MUST NOT RE-READ THE WHOLE PROFILE");
+{
+  // The profile is a far heavier read than the batch. Re-fetching it on every
+  // three-second tick would be waste, so only a real write may trigger it.
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  const settled = state.profileReads;
+  await uploadSynthetic(page);
+  await page.waitForTimeout(EXTRACT_MS + 7000);
+  ok(state.profileReads === settled,
+     `uploading and several poll ticks re-read the profile 0 times (was ${settled}, now ${state.profileReads})`);
+  ok(/Details Found In Documents/.test(await screen(page)), "  while the review still arrived");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nTHE WORKFLOW SURVIVES A FULL PAGE RELOAD");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await uploadAndWaitForReview(page);
+  ok(/Details Found In Documents/.test(await screen(page)), "the review is on screen before the reload");
+
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(3000);
+  ok(await dialog(page).count() === 0, "after a reload the dialog is closed, as it should be");
+
+  await openDocumentsTab(page);
+  ok(/On file/.test(await pageText(page)), "the document is still on file");
+
+  await page.getByRole("button", { name: /^Upload$|^Replace$/ }).first().click();
+  await page.waitForTimeout(2500);
+  const again = await screen(page);
+  ok(/Details Found In Documents/.test(again), "AND THE PENDING DETAILS ARE STILL REVIEWABLE");
+  ok(/Accept Selected/.test(again), "  with the Accept button offered");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nAN APPLY THE SERVER REFUSES IS NOT A SUCCESS");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await uploadAndWaitForReview(page);
+  state.applyFails = true;
+  const readsBefore = state.profileReads;
+  await dialog(page).getByRole("button", { name: /Approve Safe Fields/ }).click();
+  await page.waitForTimeout(3000);
+  const after = await screen(page);
+  ok(/VIN conflict/.test(after), "the server's refusal is shown verbatim");
+  ok(!/Saved \d+ Detail/.test(after), "NO SAVE IS CLAIMED");
+  ok(!/Vehicle Profile Updated/.test(pastMarker(after, "Uploaded Files")),
+     "  the file does not claim the profile was updated");
+  ok(!/Save Changes/.test(await dialog(page).locator('[aria-current="step"]').innerText()),
+     "  and the step bar does not advance to Save Changes");
+  ok(state.profileReads === readsBefore,
+     `  nothing re-read the vehicle over a refusal (reads stayed at ${readsBefore})`);
+  ok(/Accept Selected|Approve Safe Fields/.test(after), "  the details are still offered for another try");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nA READING THAT FAILS KEEPS THE FILE AND SAYS SO");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  state.failExtraction = true;
+  await uploadAndWaitForReview(page);
+  const after = await screen(page);
+  const filed = pastMarker(after, "Uploaded Files");
+  ok(/Could Not Read/.test(filed), "the file is marked as unreadable");
+  ok(/Document Saved/.test(filed), "  but never below Document Saved — the original IS kept");
+  ok(/too blurred/.test(filed), "  with the reason the reader gave");
+  ok(/saved and linked/.test(filed), "  and says in words that the file is safe");
+  ok(/Nothing could be read/.test(after), "the review explains there is nothing to review");
+  ok(!/already has every value/.test(after), "  and does NOT claim the vehicle already has the values");
+  ok(!/Vehicle Profile Updated/.test(filed), "  nothing claims the profile changed");
   ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
   await ctx.close();
 }

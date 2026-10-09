@@ -64,6 +64,7 @@ export function VehicleDocUploadDialog({
   onClose,
   onSaveDirect,
   onChanged,
+  onVehicleChanged,
 }: {
   vehicleId: string;
   vehicleLabel: string;
@@ -74,6 +75,12 @@ export function VehicleDocUploadDialog({
   /** Existing direct save path (no reading), keeps the manual expiry date. */
   onSaveDirect: (kind: string, file: File, expiresAt: string | null) => Promise<void>;
   onChanged: () => void;
+  /**
+   * Fired only once accepting details has actually written vehicle fields, so
+   * the profile and its Readiness checklist reload. Saving a document changes
+   * no vehicle field and must not trigger it.
+   */
+  onVehicleChanged?: () => void;
 }) {
   const create = useServerFn(createImportBatch);
   const register = useServerFn(registerInboxFile);
@@ -673,9 +680,14 @@ export function VehicleDocUploadDialog({
                 vehicleId={vehicleId}
                 batchId={batchId}
                 canEdit={canEdit}
-                onApplied={() => {
-                  setApplied((n) => n + 1);
+                onApplied={(fieldsWritten) => {
                   onChanged();
+                  // Only a real write advances the step and reloads the vehicle.
+                  // A refusal used to tick the dialog over to "Save Changes".
+                  if (fieldsWritten > 0) {
+                    setApplied((n) => n + 1);
+                    onVehicleChanged?.();
+                  }
                   // Refresh the stored state without remounting the list, so the
                   // confirmation message survives.
                   if (idRef.current) startPoll({ remount: false });
@@ -692,9 +704,12 @@ export function VehicleDocUploadDialog({
           <VehicleSuggestions
             vehicleId={vehicleId}
             canEdit={canEdit}
-            onApplied={() => {
-              setApplied((n) => n + 1);
+            onApplied={(fieldsWritten) => {
               onChanged();
+              if (fieldsWritten > 0) {
+                setApplied((n) => n + 1);
+                onVehicleChanged?.();
+              }
             }}
             emptyText={null}
             inline

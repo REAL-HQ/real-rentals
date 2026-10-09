@@ -27,7 +27,26 @@ import { fmtDate } from "@/lib/date-format";
 // Uploading a document of a kind that already exists supersedes the old one
 // rather than deleting it, so last year's registration is still on file.
 
-export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This Vehicle", canEdit = true }: { vehicleId: string; bare?: boolean; vehicleLabel?: string; canEdit?: boolean }) {
+export function VehicleDocuments({
+  vehicleId,
+  bare = false,
+  vehicleLabel = "This Vehicle",
+  canEdit = true,
+  onVehicleChanged,
+}: {
+  vehicleId: string;
+  bare?: boolean;
+  vehicleLabel?: string;
+  canEdit?: boolean;
+  /**
+   * Called only when accepting extracted details has actually written vehicle
+   * fields, so the profile and its Readiness checklist can reload. Deliberately
+   * NOT called while polling, uploading, or on ordinary document-list changes:
+   * the profile is a separate, heavier read and re-fetching it every three
+   * seconds would be waste.
+   */
+  onVehicleChanged?: () => void;
+}) {
   const [uploadType, setUploadType] = useState<string | null>(null);
   const load = useServerFn(listVehicleDocs);
   const register = useServerFn(registerVehicleDoc);
@@ -191,6 +210,7 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
           onClose={() => { setUploadType(null); void refresh(); }}
           onSaveDirect={upload}
           onChanged={() => void refresh()}
+          onVehicleChanged={onVehicleChanged}
         />
       )}
 
