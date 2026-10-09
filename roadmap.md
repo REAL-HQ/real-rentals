@@ -23,3 +23,5 @@
 
 - [ ] Vehicle Readiness Phase B/C/D — awaiting approval (Phase A display-only done)
 - [ ] Future UX: Open Inspections prefiltered to the selected vehicle (not started)
+
+- [ ] Vehicle Delete data protection (needs approval, not List 1): deleting a vehicle cascades expenses/maintenance/tolls/incidents/odometer/finance/titles and unlinks payments/documents; only rentals block. Decide archive-only or blockers.
