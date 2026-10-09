@@ -71,6 +71,9 @@ function freshState() {
     registered: 0,
     attached: [],
     attachFails: false,
+    duplicateNext: false,
+    directSaves: [],
+    registered_with: [],
     applied: [],      // "<proposalId>:<field>" — the real apply is per field
     nextId: 1,
   };
@@ -85,7 +88,7 @@ const vehicleRow = (id, unit, vin) => ({
 /** The item as getImportBatch would return it, given how long ago it landed. */
 function itemView(it) {
   const age = Date.now() - it.at;
-  const status = age < 300 ? "uploaded" : age < EXTRACT_MS ? "analyzing" : "ready";
+  const status = it.duplicate ? "duplicate" : age < 300 ? "uploaded" : age < EXTRACT_MS ? "analyzing" : "ready";
   return {
     id: it.id, document_id: it.documentId, duplicate_of_document_id: null,
     file_name: it.fileName, mime_type: "image/jpeg", size_bytes: 2048,
@@ -106,13 +109,25 @@ const PROPOSAL_FIELDS = {
   registration_expires_on: { value: SYNTHETIC.registration_expires_on, raw: "06/30/2029", confidence: "high" },
 };
 
+/** The five details the synthetic registration offers, and which are "safe". */
+const FIELD_ROWS = [
+  ["license_plate", "Plate", SYNTHETIC.license_plate, false],
+  ["plate_state", "Plate state", SYNTHETIC.plate_state, true],
+  ["registration_number", "Registration number", SYNTHETIC.registration_number, true],
+  ["registration_state", "Registration state", SYNTHETIC.registration_state, true],
+  ["registration_expires_on", "Registration expiry", SYNTHETIC.registration_expires_on, true],
+];
+
 function proposalsFor(batch) {
   return batch.items
-    .filter((it) => itemView(it).status === "ready")
+    .filter((it) => itemView(it).status === "ready" && !it.duplicate)
     .map((it) => ({
       id: `prop-${it.id}`, batch_id: batch.id, item_id: it.id, page: null, kind: "match",
       vin: SYNTHETIC.vin, match_vehicle_id: VEHICLE_ID, match_basis: "vin_exact",
-      status: "pending",
+      // Mirrors the real apply: a partial accept keeps the proposal pending but
+      // still stamps applied_vehicle_id.
+      status: FIELD_ROWS.every(([f]) => state.applied.includes(`prop-${it.id}:${f}`)) ? "applied" : "pending",
+      applied_vehicle_id: state.applied.some((a) => a.startsWith(`prop-${it.id}:`)) ? VEHICLE_ID : null,
       fields: PROPOSAL_FIELDS, changes: [], issues: [],
     }));
 }
@@ -120,21 +135,14 @@ function proposalsFor(batch) {
 /** getVehicleSuggestions, derived from the same fake state — ready items only. */
 function suggestionsFor() {
   const ready = [...state.batches.values()].flatMap((b) =>
-    b.items.filter((it) => itemView(it).status === "ready").map((it) => ({ b, it })));
+    b.items.filter((it) => itemView(it).status === "ready" && !it.duplicate).map((it) => ({ b, it })));
   const out = [];
   for (const { b, it } of ready) {
     const src = {
       proposalId: `prop-${it.id}`, batchId: b.id, documentId: it.documentId,
       fileName: it.fileName, docClass: "registration", page: null,
     };
-    const rows = [
-      ["license_plate", "Plate", SYNTHETIC.license_plate, false],
-      ["plate_state", "Plate state", SYNTHETIC.plate_state, true],
-      ["registration_number", "Registration number", SYNTHETIC.registration_number, true],
-      ["registration_state", "Registration state", SYNTHETIC.registration_state, true],
-      ["registration_expires_on", "Registration expiry", SYNTHETIC.registration_expires_on, true],
-    ];
-    for (const [field, label, proposed, safe] of rows) {
+    for (const [field, label, proposed, safe] of FIELD_ROWS) {
       // applyImportDecisions with partial: true leaves the proposal pending
       // with whatever was NOT accepted, so only accepted fields disappear.
       if (state.applied.includes(`prop-${it.id}:${field}`)) continue;
@@ -174,6 +182,14 @@ function serverFn(name, input) {
       return { id };
     }
     case /registerInboxFile/.test(name): {
+      state.registered_with.push({ intendedClass: input?.intendedClass ?? null, expiresAt: input?.expiresAt ?? null });
+      if (state.duplicateNext) {
+        const b0 = state.batches.get(input?.batchId);
+        const n0 = ++state.registered;
+        const it0 = { id: `item-${n0}`, documentId: "doc-existing", fileName: input?.fileName ?? "f.jpg", at: Date.now(), duplicate: true };
+        if (b0) b0.items.push(it0);
+        return { itemId: it0.id, duplicate: true, existingFileName: "already-on-file.jpg" };
+      }
       const b = state.batches.get(input?.batchId);
       const n = ++state.registered;
       const it = { id: `item-${n}`, documentId: `doc-${n}`, fileName: input?.fileName ?? "file.jpg", at: Date.now() };
@@ -204,6 +220,15 @@ function serverFn(name, input) {
       });
       return { results };
     }
+    case /getFleetDocumentFile/.test(name):
+      // A 1x1 PNG. The preview only has to render something real.
+      return {
+        base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+        mimeType: "image/png", fileName: "synthetic-registration.jpg",
+      };
+    case /registerVehicleDoc/.test(name):
+      state.directSaves.push({ kind: input?.kind, expiresAt: input?.expiresAt ?? null, path: input?.path });
+      return { ok: true, id: `vdoc-${state.directSaves.length}` };
     case /getVehicleProfile/.test(name):
       return profilePayload();
     case /getVehicleDocAccess/.test(name):
@@ -334,6 +359,24 @@ console.log("THE REVIEW STEP APPEARS ONCE READING FINISHES  (desktop)");
   ok(/Not Set/.test(after), "  showing the existing vehicle value beside the proposed one");
   ok(!/\bCancel\b/.test(after), "  and nothing offers Cancel over an already-saved file");
 
+  // The three steps, and which one the dialog says it is on. A completed step
+  // renders a tick rather than its number, so this asserts on the names and on
+  // aria-current, not on "1." being present.
+  const steps = await dialog(page).locator('ol[aria-label="Upload Steps"]').innerText();
+  ok(/Upload/.test(steps) && /Review/.test(steps) && /Save Changes/.test(steps),
+     `the three steps are named on screen (${steps.replace(/\s+/g, " ")})`);
+  const current = await dialog(page).locator('[aria-current="step"]').innerText();
+  ok(/Review/.test(current), `  and the dialog is on Review before anything is applied (on "${current}")`);
+  ok(/Ready For Review/.test(filed), "the file reads Ready For Review once details are waiting");
+  ok(/Closing this window will not remove it/.test(after),
+     "it says plainly that the file is already committed");
+  ok(/Save Document Only/.test(after), "Save Document Only is offered");
+  ok(/The Document/.test(after), "the original is shown beside the values");
+  const shot = await dialog(page).locator("img[alt='Uploaded document'], iframe[title='Uploaded document']").count();
+  ok(shot > 0, "  and it really renders the document, not just a heading");
+  ok(state.registered_with[0]?.intendedClass === "registration",
+     `the staff-chosen type is sent as the fallback class (got ${state.registered_with[0]?.intendedClass})`);
+
   // And accepting must actually apply, with an honest result message.
   const box = dialog(page).locator('input[type="checkbox"]').last();
   if (await box.count()) {
@@ -341,7 +384,14 @@ console.log("THE REVIEW STEP APPEARS ONCE READING FINISHES  (desktop)");
     await dialog(page).getByRole("button", { name: /Accept Selected/ }).click().catch(() => {});
     await page.waitForTimeout(2500);
     ok(state.applied.length > 0, "Accept Selected reaches applyImportDecisions");
-    ok(/Saved \d+ Detail/.test(await screen(page)), "  and reports what was saved");
+    const saved = await screen(page);
+    ok(/Saved \d+ Detail/.test(saved), "  and reports what was saved");
+    ok(/Save Changes/.test(await dialog(page).locator('[aria-current="step"]').innerText()),
+       "  the dialog advances to step 3");
+    ok(/Vehicle Profile Updated/.test(pastMarker(saved, "Uploaded Files")),
+       "  and the file reads Vehicle Profile Updated");
+    ok(!/Save Document Only/.test(saved),
+       "  Save Document Only is withdrawn once the profile has been changed");
   } else {
     ok(false, "Accept Selected reaches applyImportDecisions");
     ok(false, "  and reports what was saved");
@@ -379,6 +429,69 @@ console.log("\nA FILE THAT CANNOT BE LINKED MUST NOT LOOK LIKE A SUCCESS");
   ok(!/·\s*Uploaded/.test(after), "the queue does NOT report it as uploaded");
   ok(/could not link it to this vehicle|File or vehicle not found/.test(after),
      "  it says the file is saved but unlinked, and where to fix it");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nSAVING THE FILE WITHOUT READING IT STILL COMMITS IT");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  await page.getByRole("button", { name: /^Upload$/ }).first().click();
+  await page.waitForTimeout(600);
+  // Turn the reader off, set an expiry, then add the file.
+  await dialog(page).locator('input[type="checkbox"]').first().uncheck();
+  await dialog(page).locator('input[type="date"]').first().fill("2029-06-30");
+  await dialog(page).locator('input[type="file"]').first()
+    .setInputFiles({ name: "synthetic-registration.jpg", mimeType: "image/jpeg", buffer: JPEG });
+  await page.waitForTimeout(3000);
+  const after = await screen(page);
+  ok(state.directSaves.length === 1, "the file went through the direct save path");
+  ok(state.directSaves[0]?.expiresAt === "2029-06-30",
+     `  carrying the expiry that was typed (got ${state.directSaves[0]?.expiresAt})`);
+  ok(/Closing this window will not remove it/.test(after), "the dialog says the file is already saved");
+  ok(!/\bCancel\b/.test(after), "THE FOOTER NO LONGER SAYS CANCEL OVER A SAVED FILE");
+  ok(/\bDone\b/.test(after), "  it says Done");
+  ok(state.registered === 0, "nothing was sent to the reader");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nA DUPLICATE SAYS WHAT ACTUALLY HAPPENED");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  state.duplicateNext = true;
+  await uploadSynthetic(page);
+  await page.waitForTimeout(5000);
+  const after = await screen(page);
+  ok(/already on file/.test(after) && /not stored again/.test(after),
+     "it says the file was linked rather than stored twice");
+  ok(!/already has every value the document shows/.test(after),
+     "  and does NOT claim the vehicle already has every value");
+  ok(/Fleet Inbox/.test(after), "  and says where the first reading's details are");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nTHE REVIEW SURVIVES CLOSING AND REOPENING THE DIALOG");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  await uploadSynthetic(page);
+  await page.waitForTimeout(EXTRACT_MS + 7000);
+  ok(/Details Found In Documents/.test(await screen(page)), "the review is there before closing");
+
+  await dialog(page).getByRole("button", { name: /^Done$/ }).click();
+  await page.waitForTimeout(1500);
+  ok(await dialog(page).count() === 0, "the dialog closed");
+
+  await page.getByRole("button", { name: /^Upload$/ }).first().click();
+  await page.waitForTimeout(2500);
+  const again = await screen(page);
+  ok(/Details Found In Documents/.test(again), "AND THE PENDING DETAILS ARE STILL REVIEWABLE ON REOPEN");
+  ok(/Accept Selected/.test(again), "  with the Accept button still offered");
+  ok(/\bCancel\b/.test(again), "  a fresh dialog with nothing uploaded in it may say Cancel");
   ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
   await ctx.close();
 }

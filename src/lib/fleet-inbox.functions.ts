@@ -70,10 +70,30 @@ export const registerInboxFile = createServerFn({ method: "POST" })
       fileName: z.string().trim().min(1).max(200),
       mimeType: z.string().trim().max(120).nullish(),
       sizeBytes: z.number().int().nonnegative().nullish(),
+      /**
+       * What the uploader SAID this is (a Vehicle Profile slot). Only a
+       * fallback: a confident classification from the reader still wins, and
+       * the dialog warns when the two disagree. Without it a document the
+       * reader cannot classify leaves its slot reading "Not on file" even
+       * though the file is stored and linked.
+       */
+      intendedClass: z.enum(DOC_CLASSES as [string, ...string[]]).nullish(),
+      /** An expiry the uploader typed, so lapse warnings work for read uploads. */
+      expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
+    // A declared class is a write of Owner-only paperwork when it names title
+    // or finance, so it is gated exactly like registerVehicleDoc. A reader that
+    // DETECTS one still files it correctly — ingestion is not the boundary,
+    // reading it back is — but nobody below Owner gets to assert it.
+    if (data.intendedClass) {
+      const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+      if (isOwnerOnlyDocKind(data.intendedClass) && actor.tier !== "owner") {
+        throw new Error("Only the Owner can file title, purchase, loan or lien paperwork.");
+      }
+    }
     const sb = await admin();
     const { data: file, error: dlErr } = await sb.storage.from(BUCKET).download(data.path);
     if (dlErr || !file) throw new Error("Upload not found.");
@@ -93,9 +113,12 @@ export const registerInboxFile = createServerFn({ method: "POST" })
       return { itemId: item?.id as string, duplicate: true, existingFileName: dup.file_name as string | null };
     }
 
+    const declared = data.intendedClass ?? null;
     const { data: doc, error: docErr } = await sb.from("documents").insert({
-      kind: "unknown", category: "unknown", label: data.fileName, storage_bucket: BUCKET, storage_path: data.path,
+      kind: declared ?? "unknown", category: declared ?? "unknown", label: data.fileName,
+      storage_bucket: BUCKET, storage_path: data.path,
       file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength, content_sha256: sha,
+      expires_at: data.expiresAt || null,
       is_current: true, visibility: ["admin"], uploaded_by: actor.userId, uploaded_by_role: actor.role,
       source: "fleet_inbox", review_status: "uploaded",
     }).select("id").single();
@@ -113,6 +136,8 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const { data: item } = await sb.from("fleet_import_items").insert({
       batch_id: data.batchId, document_id: doc.id, file_name: data.fileName, mime_type: mime,
       size_bytes: bytes.byteLength, content_sha256: sha, status: "uploaded",
+      // Low confidence on purpose: this is a person's expectation, not a reading.
+      ...(declared ? { doc_class: declared, class_confidence: "low" } : {}),
     }).select("id").single();
     await sb.from("fleet_import_batches").update({ status: "processing" }).eq("id", data.batchId);
     // Background analysis starts now, whether or not anyone keeps the import open.

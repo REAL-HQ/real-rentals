@@ -14,12 +14,18 @@ type Sug = {
 
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false }: {
+export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText }: {
   vehicleId: string; canEdit: boolean; onApplied: () => void;
   /** Only show details read from this upload (Vehicle Profile upload dialog). */
   batchId?: string;
   /** Render the review list directly (inside another dialog) instead of a button + popup. */
   inline?: boolean;
+  /**
+   * What to say, in inline mode, when there is nothing to review. The caller
+   * knows WHY it is empty — duplicate, failed read, another car's document —
+   * and this component does not; passing null keeps it silent.
+   */
+  emptyText?: string | null;
 }) {
   const load = useServerFn(getVehicleSuggestions);
   const apply = useServerFn(applyImportDecisions);
@@ -49,9 +55,13 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
     if (!inline || !data) return null;
     // Accepting the last field empties this list. Reporting "nothing to add"
     // in place of "Saved 5 Details" told staff their save had done nothing.
-    return msg
-      ? <p className="text-[12px] text-[#111114]">{msg} Nothing further to review from this document.</p>
-      : <p className="text-[12px] text-[#55555E]">No new details to add — this vehicle already has every value the document shows.</p>;
+    if (msg) return <p className="text-[12px] text-[#111114]">{msg} Nothing further to review from this document.</p>;
+    if (emptyText === null) return null;
+    return (
+      <p className="text-[12px] text-[#55555E]">
+        {emptyText ?? "No new details to add — this vehicle already has every value the document shows."}
+      </p>
+    );
   }
 
   async function submit(keys: string[]) {

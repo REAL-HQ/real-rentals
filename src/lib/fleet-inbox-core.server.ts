@@ -184,8 +184,15 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
   let parsed: any;
   try { parsed = parseModelJson(read.text); } catch { return fail("The document could not be read. Retry, or classify it manually."); }
 
-  const docClass = DOC_CLASSES.includes(parsed?.documentClass) ? parsed.documentClass : "unknown";
-  const classConf = ["high", "medium", "low"].includes(parsed?.classConfidence) ? parsed.classConfidence : "low";
+  // A reading that CAN classify always wins. When it cannot, fall back to the
+  // class the uploader declared (Vehicle Profile uploads set it) rather than
+  // filing the document as "unknown" and leaving its slot empty.
+  const detected = DOC_CLASSES.includes(parsed?.documentClass) ? (parsed.documentClass as string) : null;
+  const declared = claimed.doc_class && claimed.doc_class !== "unknown" ? String(claimed.doc_class) : null;
+  const docClass = detected ?? declared ?? "unknown";
+  const classConf = detected
+    ? (["high", "medium", "low"].includes(parsed?.classConfidence) ? parsed.classConfidence : "low")
+    : "low";
   const extraction = {
     shared: cleanFields(parsed?.shared),
     vehicles: (Array.isArray(parsed?.vehicles) ? parsed.vehicles : []).slice(0, 100).map((v: any) => ({
