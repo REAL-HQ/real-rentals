@@ -72,19 +72,21 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
     } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
   }
 
-  const body = (
+  return (
     <>
- className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-[#FAFAFB] px-2.5 py-1 text-[11px] font-medium text-[#111114] hover:bg-white">
+      {!inline && (
+      <button onClick={() => setOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-[#FAFAFB] px-2.5 py-1 text-[11px] font-medium text-[#111114] hover:bg-white">
         <Sparkles className="w-3 h-3 text-[#D03020]" />
         {count > 0 ? `${count} Detail${count === 1 ? "" : "s"} Found` : "Document Matches To Review"}
         <span className="text-[#D03020]">Review</span>
       </button>
+      )}
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setOpen(false)}>
-          <div role="dialog" aria-label="Details Found In Documents" className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className={inline ? "" : "fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"} onClick={() => !inline && setOpen(false)}>
+          <div role={inline ? "region" : "dialog"} aria-label="Details Found In Documents" className={inline ? "" : "w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5"} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-[16px] font-semibold text-[#111114]">Details Found In Documents</h3>
-              <button aria-label="Close" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>
+              {!inline && <button aria-label="Close" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>}
             </div>
             <p className="text-[12px] text-[#55555E] mb-4">Only blank fields are filled. Existing values are never overwritten. VIN, plate and mileage need individual approval.</p>
 
