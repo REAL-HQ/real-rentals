@@ -72,7 +72,8 @@ export function AgreementBuilder({
   const previewHost = useRef<HTMLDivElement>(null);
 
   const body = useMemo(() => writeTerms(source, terms), [source, terms]);
-  const dirty = body !== base.body;
+  // The excess-mileage fee is saved with the draft but not printed, so it is compared separately.
+  const dirty = body !== base.body || (!!library && hasMileage && (terms.excess_mileage_fee ?? "") !== (library.terms.excess_mileage_fee ?? ""));
   const missing = useMemo(() => missingTerms(terms, source).filter((k) => !library || k !== "reservation_line"), [terms, source, library]);
   const unknown = useMemo(() => [...unknownFieldsIn(source).map((f) => `{{${f}}}`), ...unknownTermsIn(source).map((f) => `[[${f}]]`)], [source]);
   const canApprove = !library && !dirty && base.status === "draft" && !!base.id;
