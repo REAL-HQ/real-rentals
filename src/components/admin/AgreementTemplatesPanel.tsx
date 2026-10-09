@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
+import { AgreementBuilder } from "@/components/admin/AgreementBuilder";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import {
   listTemplateVersions, saveTemplateDraft, previewTemplateVersion, approveTemplateVersion, retireTemplateVersion, setTemplateEnforcement,
@@ -32,7 +33,7 @@ function diffLines(a: string, b: string) {
   return out;
 }
 
-function Diff({ from, to }: { from: string; to: string }) {
+export function Diff({ from, to }: { from: string; to: string }) {
   const rows = useMemo(() => diffLines(from, to), [from, to]);
   const changes = rows.filter((r) => r.t !== " ").length;
   return (
@@ -72,6 +73,7 @@ export function AgreementTemplatesPanel() {
   const [typed, setTyped] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [building, setBuilding] = useState(false);
 
   const load = useCallback(() => {
     listFn().then((r) => { setD(r); setSel((s) => s ?? r.versions[0]?.version ?? null); }).catch(() => setErr("Only the Owner can manage agreement templates."));
@@ -125,6 +127,16 @@ export function AgreementTemplatesPanel() {
 
   return (
     <div className="space-y-4">
+      {building && (
+        <AgreementBuilder
+          base={v}
+          company={(d as any).company ?? {}}
+          issues={d.issues}
+          onClose={() => setBuilding(false)}
+          onSaved={(n) => { setBuilding(false); setSel(n); load(); }}
+          onApprove={() => { setBuilding(false); setTyped(""); setEff(""); setCmp(d.versions.find((x) => x.status === "approved")?.version ?? d.versions.find((x) => x.version !== v.version)?.version ?? null); setMode("approve"); }}
+        />
+      )}
       <div className="rounded-xl border bg-card p-4 text-[13px] space-y-1">
         <p><span className="text-muted-foreground">Used For Sending:</span> <span className="font-medium">{d.inUseLabel}</span></p>
         <p className="text-muted-foreground">Saving an edit creates a new Draft. Drafts never change what drivers receive. Owner approval is a business sign-off, not a legal review.</p>
@@ -192,7 +204,7 @@ export function AgreementTemplatesPanel() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={openPreview}>Preview</Button>
-            <Button size="sm" variant="outline" onClick={() => { setDraft(v.body); setMode("edit"); }}>Edit Draft</Button>
+            <Button size="sm" variant="outline" onClick={() => setBuilding(true)}>Edit Template</Button>
             <Button size="sm" variant="outline" disabled={d.versions.length < 2} onClick={() => { setCmp(d.versions.find((x) => x.version !== v.version)?.version ?? null); setMode("compare"); }}>Compare</Button>
             <Button size="sm" disabled={dbNote || v.status !== "draft" || !v.id} title={dbNote ? "Needs Database Update" : undefined} onClick={() => { setTyped(""); setEff(""); setCmp(d.versions.find((x) => x.status === "approved")?.version ?? d.versions.find((x) => x.version !== v.version)?.version ?? null); setMode("approve"); }}>Approve</Button>
             <Button size="sm" variant="outline" disabled={dbNote || v.status === "retired" || !v.id} title={dbNote ? "Needs Database Update" : undefined} onClick={() => { setReason(""); setMode("retire"); }}>Retire</Button>
