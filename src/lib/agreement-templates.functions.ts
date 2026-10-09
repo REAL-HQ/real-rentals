@@ -304,8 +304,11 @@ export const saveLibraryDraft = createServerFn({ method: "POST" })
     const { termsIn, writeTerms, UNPRINTED_TERMS } = await import("@/lib/agreement-builder");
     const used = new Set(termsIn(lib.source));
     if (used.has("mileage_allowance")) for (const k of UNPRINTED_TERMS) used.add(k);
-    const extra = Object.keys(data.terms).filter((k) => !used.has(k));
-    if (extra.length) return { ok: false as const, error: `These values are not used by this agreement: ${extra.join(", ")}` };
+    // Values this agreement does not print (e.g. the 3.5% toll fee from v1.6) are ignored, never saved.
+    const { ALL_TERM_FIELDS } = await import("@/lib/agreement-builder");
+    const known = new Set(ALL_TERM_FIELDS.map((f) => f.key));
+    const unknown = Object.keys(data.terms).filter((k) => !known.has(k));
+    if (unknown.length) return { ok: false as const, error: `Unknown contract values: ${unknown.join(", ")}` };
     const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
     // Unlimited miles never carries an excess-mileage fee.
     if ("excess_mileage_fee" in terms) {
