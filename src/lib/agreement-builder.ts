@@ -90,7 +90,11 @@ export const V16_TERM_DEFAULTS: Record<string, string> = {
 export const EXTRA_TERM_FIELDS: TermField[] = [
   { key: "fee_citation_admin", label: "Ticket / Citation Administrative Fee", group: "Pricing & Deposit" },
   { key: "insurance_notice_hours", label: "Insurance Change Notice (Hours)", group: "Rental Terms" },
+  { key: "mileage_allowance", label: "Mileage Allowance", group: "Restrictions" },
+  { key: "excess_mileage_fee", label: "Excess-Mileage Fee (Not Printed — Needs Approved Clause)", group: "Restrictions" },
 ];
+/** Saved with a library draft but never printed: no approved clause exists yet. */
+export const UNPRINTED_TERMS = ["excess_mileage_fee"];
 export const ALL_TERM_FIELDS: TermField[] = [...TERM_FIELDS, ...EXTRA_TERM_FIELDS];
 
 const MARKER = /\n?%%BUILDER_TERMS (\{.*\})%%\s*$/s;

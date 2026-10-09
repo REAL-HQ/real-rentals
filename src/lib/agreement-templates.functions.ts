@@ -301,11 +301,17 @@ export const saveLibraryDraft = createServerFn({ method: "POST" })
     const { libraryTemplate } = await import("@/lib/agreement-library");
     const lib = libraryTemplate(data.key);
     if (!lib) return { ok: false as const, error: "Unknown agreement template." };
-    const { termsIn, writeTerms } = await import("@/lib/agreement-builder");
+    const { termsIn, writeTerms, UNPRINTED_TERMS } = await import("@/lib/agreement-builder");
     const used = new Set(termsIn(lib.source));
+    if (used.has("mileage_allowance")) for (const k of UNPRINTED_TERMS) used.add(k);
     const extra = Object.keys(data.terms).filter((k) => !used.has(k));
     if (extra.length) return { ok: false as const, error: `These values are not used by this agreement: ${extra.join(", ")}` };
     const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
+    // Unlimited miles never carries an excess-mileage fee.
+    if ("excess_mileage_fee" in terms) {
+      const { excessFeeFor } = await import("@/lib/service-area");
+      terms.excess_mileage_fee = excessFeeFor(terms.mileage_allowance ?? "", terms.excess_mileage_fee);
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const versions = await loadLibraryDraft(supabaseAdmin, lib.key);
     const prev = versions.at(-1)?.terms ?? lib.terms;
