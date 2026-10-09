@@ -104,6 +104,9 @@ export const saveTemplateDraft = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { versions } = await loadAll(supabaseAdmin);
     if (versions.some((v) => v.body === data.body)) return { ok: false as const, error: "No changes — this wording already exists as a version." };
+    const { unknownTermsIn } = await import("@/lib/agreement-builder");
+    const badTerms = unknownTermsIn(data.body);
+    if (badTerms.length || unknownFieldsIn(data.body).length) return { ok: false as const, error: "The draft contains unknown fields." };
     const next = Math.max(1, ...versions.map((v) => v.version)) + 1;
     // is_active stays false: a draft never changes what Send uses.
     const { data: row, error } = await supabaseAdmin.from("agreement_templates")
@@ -116,6 +119,31 @@ export const saveTemplateDraft = createServerFn({ method: "POST" })
   });
 
 const SAMPLE = Object.fromEntries(MERGE_FIELDS.map((f) => [f.key, `[${f.label}]`]));
+
+/**
+ * Agreement Builder live preview: renders an unsaved body through the same
+ * renderTemplate + renderPreviewPdf pipeline as Preview. Owner-only, writes
+ * nothing, never sends.
+ */
+export const previewTemplateBody = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ body: z.string().min(1).max(80000), label: z.string().max(80) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await owner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { getCompanySigner } = await import("@/lib/esign.server");
+    const { renderPreviewPdf, sha256Hex } = await import("@/lib/esign-pdf.server");
+    const signer = await getCompanySigner(supabaseAdmin);
+    const fingerprint = await sha256Hex(data.body);
+    const bytes = await renderPreviewPdf({
+      title: "Vehicle Rental Agreement", body: renderTemplate(data.body, { ...SAMPLE, ...COMPANY_DEFAULTS, ...(await companyChecks(supabaseAdmin)).company } as any),
+      fingerprint, templateLabel: `${data.label} — Sample Fields`,
+      companySignerName: signer.name, companySignerTitle: signer.title, generatedAt: new Date().toISOString(),
+    });
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { ok: true as const, pdfBase64: btoa(bin), fingerprint };
+  });
 
 export const previewTemplateVersion = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

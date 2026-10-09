@@ -1,5 +1,6 @@
 // Client-safe merge-field helpers shared by the admin preview and the
 // server-side agreement renderer.
+import { resolveTerms } from "@/lib/agreement-builder";
 
 export const MERGE_FIELDS = [
   { key: "driver_name", label: "Driver full name" },
@@ -22,12 +23,24 @@ export const MERGE_FIELDS = [
   { key: "company_phone", label: "Company phone" },
   { key: "company_email", label: "Company email" },
   { key: "today", label: "Today's date" },
+  // v1.6 fields not yet supplied by the send step: they print as blank lines
+  // to complete at pickup, never as invented values.
+  { key: "agreement_number", label: "Agreement number" },
+  { key: "driver_dob", label: "Date of birth" },
+  { key: "license_plate", label: "License plate / state" },
+  { key: "mileage_out", label: "Mileage out" },
+  { key: "fuel_out", label: "Fuel out" },
+  { key: "min_term_end", label: "Minimum term end date" },
+  { key: "card_on_file", label: "Payment card on file" },
+  { key: "additional_drivers", label: "Approved additional drivers" },
+  { key: "insurance_carrier", label: "Renter insurance carrier" },
+  { key: "insurance_policy", label: "Policy # / carrier phone" },
 ] as const;
 
 export type MergeData = Record<string, string>;
 
 export function renderTemplate(body: string, data: MergeData): string {
-  return body.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key: string) => {
+  return resolveTerms(body).replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key: string) => {
     const v = data[key.toLowerCase()];
     return v && v.trim() ? v : "__________";
   });

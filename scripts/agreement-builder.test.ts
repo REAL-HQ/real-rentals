@@ -1,0 +1,16 @@
+import { V16_BODY, V16_SOURCE, writeTerms, readTerms, resolveTerms, missingTerms, unknownTermsIn, V16_TERM_DEFAULTS } from "../src/lib/agreement-builder";
+import { renderTemplate, MERGE_FIELDS } from "../src/lib/agreement-merge";
+import { renderPreviewPdf } from "../src/lib/esign-pdf.server";
+import { writeFileSync } from "fs";
+const ok=(c:any,m:string)=>{console.log(c?"ok":"FAIL",m); if(!c) process.exitCode=1};
+ok(unknownTermsIn(V16_SOURCE).length===0,"all terms known");
+ok(missingTerms(V16_TERM_DEFAULTS,V16_SOURCE).length===0,"v1.6 defaults complete");
+const known=new Set(MERGE_FIELDS.map(f=>f.key)); ok([...V16_SOURCE.matchAll(/\{\{(\w+)\}\}/g)].every(m=>known.has(m[1])),"all merge fields known");
+ok(JSON.stringify(readTerms(V16_BODY))===JSON.stringify(readTerms(writeTerms(V16_BODY,readTerms(V16_BODY)!))),"terms roundtrip");
+const r=resolveTerms(V16_BODY); ok(!/\[\[|%%BUILDER/.test(r),"terms resolved & marker stripped");
+ok(r.includes("$50 per day past due")&&r.includes("[100]-mile radius of Tampa, FL; Florida only"),"v1.6 values printed");
+ok(resolveTerms("plain {{x}}")==="plain {{x}}","legacy body unchanged");
+const changed=writeTerms(V16_SOURCE,{...V16_TERM_DEFAULTS,fee_late_payment:"$60 per day"}); ok(changed!==V16_BODY&&resolveTerms(changed).includes("$60 per day"),"value change alters body/fingerprint");
+const body=renderTemplate(V16_BODY,{company_name:"Real Rentals LLC"});
+const pdf=await renderPreviewPdf({title:"Vehicle Rental Agreement",body,fingerprint:"abc".repeat(22),templateLabel:"Test",companySignerName:"Dolmar Cross",companySignerTitle:"Authorized Representative",generatedAt:new Date().toISOString()});
+console.log("pdf bytes",pdf.length);
