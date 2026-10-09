@@ -160,7 +160,7 @@ This Vehicle Rental Agreement ("Agreement") is between {{company_name}} d/b/a RE
 **Renewal.** After the minimum term, your rental continues [[renewal_period]] when the weekly rate is paid. Either of us may end it with [[notice_hours]] hours' notice, and you return the vehicle at the agreed place and time. All terms here continue to apply for any renewal or extension.
 **Early Return.** [[early_return_rule]]
 
-## 2. Reservation Fee, Payment & Card On File
+## 2. Reservation Fee, Payment & Card on File
 **Reservation Fee.** If a Reservation Fee is marked as required in the Rental & Vehicle Information above, it is due when your pickup or delivery is scheduled and is applied in full to your first week's rate. It is non-refundable if you do not show for your scheduled pickup or delivery, or cancel less than [[reservation_cancel_hours]] hours before it. It is fully refunded if you cancel [[reservation_cancel_hours]] hours or more before your scheduled pickup or delivery, or if we cancel or cannot provide a vehicle. The Reservation Fee is not a security deposit. If it is marked as not required, this paragraph does not apply to your rental.
 **Weekly Payment.** The weekly rate is due in advance. You keep a valid payment card on file, and you authorize us to charge it for the weekly rate and any other amount you owe under this Agreement, including anything in the Fee Schedule, plus a reasonable processing fee. [[deposit_clause]] If a charge is declined, you authorize us to run it again, and you remain responsible for the balance.
 **No Refunds.** A weekly rate, once charged, is not refunded. After the minimum term, no future weeks will be charged once you return the vehicle in acceptable condition and give the notice in Section 1.
@@ -175,7 +175,7 @@ Regardless of fault, and whether or not any insurance pays, you are responsible 
 ## 4. Tolls, Tickets & Citations
 You're responsible for all tolls, tickets, camera citations, and violations during your rental. We'll charge them to your card on file plus a [[processing_fee]] processing fee, and you authorize us to share the information toll and enforcement authorities require to identify you as the driver.
 
-## 5. Use of The Vehicle & Prohibited Uses
+## 5. Use of the Vehicle & Prohibited Uses
 Only you, or a driver we approve in writing and list above, may drive the vehicle. You may use it only for approved rideshare/delivery work under your own platform accounts and for personal driving. You may not:
 - Let anyone else drive the vehicle, or let another driver use it to work on any rideshare or delivery account.
 - Sublease, re-rent, or lend the vehicle to anyone.
