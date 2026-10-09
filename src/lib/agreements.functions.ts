@@ -9,7 +9,8 @@ import {
   type MergeData,
 } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
-import { readTerms, resolveTerms } from "@/lib/agreement-builder";
+import { readTerms, resolveTerms, stripTerms, writeTerms } from "@/lib/agreement-builder";
+import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -81,6 +82,9 @@ async function hashToken(token: string): Promise<string> {
 
 /** What renderTemplate substitutes for a merge field it has no value for. */
 const BLANK = "__________";
+const AGREEMENT_NUMBER_PLACEHOLDER = "Assigned When Sent";
+const NUMBERING_PENDING =
+  "Agreement numbers (RRA-000001) are assigned when the agreement record is created, which needs the pending agreement-number database change. This v1.6 agreement can be prepared and reviewed but not sent until that change is approved and applied.";
 
 /** Merge fields an issuable agreement must carry (mirrors buildMergeData's blockers). */
 const AGREEMENT_REQUIRED_KEYS = [
@@ -283,8 +287,10 @@ async function buildMergeData(
     start_date: startDate ? fmtDate(startDate) : "",
     return_date: endDate ? fmtDate(endDate) : "",
     // v1.6 fields — real records only; empty values block a template that uses them.
-    agreement_number:
-      vehicle?.unit_number && startDate ? `RR-${String(vehicle.unit_number)}-${String(startDate).replace(/-/g, "")}` : "",
+    // RRA-000001 numbers are assigned only when the agreement record is created
+    // (pending migration); previews print this placeholder so regenerating a
+    // preview never consumes a number.
+    agreement_number: AGREEMENT_NUMBER_PLACEHOLDER,
     driver_dob: app.dob ? fmtDate(app.dob) : "",
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
@@ -414,10 +420,9 @@ function templateFieldBlockers(tplBody: string, data: MergeData, blockers: Agree
   const pay = { tab: "payments" as const };
   const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };
   const need: Record<string, Omit<AgreementBlocker, "field">> = {
-    agreement_number: { label: "Agreement number (vehicle unit number and start date)", why: "The agreement number is built from the vehicle's unit number and the contract start date.", fix: vfix },
     driver_dob: { label: "Driver date of birth", why: "The v1.6 agreement prints the renter's date of birth.", fix: pay },
     license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
-    card_on_file: { label: "Payment card on file", why: "The agreement authorizes charges to the card on file; save the driver's card first.", fix: pay },
+    card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
@@ -434,18 +439,30 @@ function templateFieldBlockers(tplBody: string, data: MergeData, blockers: Agree
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
-async function prepareAgreement(admin: any, applicationId: string) {
+async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep) {
   const built = await buildMergeData(admin, applicationId);
   const tpl = await activeTemplate(admin);
-  templateFieldBlockers(tpl.body, built.data, built.blockers, built.vehicle, built.app);
-  const body = renderTemplate(tpl.body, built.data);
+  let tplBody = tpl.body;
+  if (prep) {
+    const terms = readTerms(tpl.body);
+    const sm = String(built.data.start_date ?? "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    const r = applyPrep(prep, { startIso: sm ? `${sm[3]}-${sm[1]}-${sm[2]}` : null, depositClause: String(terms?.deposit_clause ?? "") });
+    Object.assign(built.data, r.merge);
+    // The staff deposit choice replaces the record-based deposit checks.
+    for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
+    built.blockers.push(...r.blockers);
+    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: r.reservationLine });
+  }
+  templateFieldBlockers(tplBody, built.data, built.blockers, built.vehicle, built.app);
+  const numberingPending = /\{\{\s*agreement_number\s*\}\}/i.test(resolveTerms(tplBody));
+  const body = renderTemplate(tplBody, built.data);
   if (/\[ \] Required: \$_+/.test(body))
     built.blockers.push({ field: "reservation_fee", label: "Reservation Fee marked Required or Not Required", why: "The agreement's Reservation Fee row still shows both unchecked boxes. Staff entry for this rental arrives with Driver Agreement Preparation." });
   const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
   const { getCompanyIdentity } = await import("@/lib/company-identity.server");
   const ci = await getCompanyIdentity(admin);
   const companyFallback = Object.entries(ci.fromSettings).filter(([, v]) => !v).map(([k]) => ({ field: k, value: String((built.data as any)[k] ?? "") }));
-  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback };
+  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback, numberingPending };
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -500,17 +517,17 @@ export const listAgreements = createServerFn({ method: "GET" })
 
 export const previewAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const prep = await prepareAgreement(supabaseAdmin, data.applicationId);
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep);
     const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
-    const refusal = templateSendRefusal(tpl.meta);
+    const refusal = templateSendRefusal(tpl.meta) ?? (prep.numberingPending ? NUMBERING_PENDING : null);
     let pdfBase64: string | null = null;
     // The document is withheld while anything blocks the send: blanks are
     // exactly what must not reach a signature.
@@ -541,6 +558,7 @@ export const previewAgreement = createServerFn({ method: "POST" })
       companyMissing: prep.companyMissing,
       companyFallback: prep.companyFallback,
       merge,
+      terms: readTerms(tpl.body),
       missing,
       blockers,
       vehicleId: (app.vehicle_id as string | null) ?? null,
@@ -563,11 +581,11 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean } = {},
+  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser.
-  const prep = await prepareAgreement(admin, applicationId);
+  const prep = await prepareAgreement(admin, applicationId, opts.prep);
   const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -579,6 +597,7 @@ export async function issueAgreement(
     );
   const refusal = templateSendRefusal(tpl.meta);
   if (refusal) throw new Error(refusal);
+  if (prep.numberingPending) throw new Error(NUMBERING_PENDING);
   // Staff sends must match exactly what was previewed.
   if (opts.fingerprint !== undefined && opts.fingerprint !== prep.fingerprint)
     throw new Error(
@@ -680,6 +699,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
         // the Owner's template.
         fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
         companyAck: z.boolean().optional(),
+        prep: PrepSchema.optional(),
       })
       .parse(d),
   )
@@ -690,6 +710,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
       fingerprint: data.fingerprint,
       createdBy: context.userId,
       companyAck: data.companyAck,
+      prep: data.prep,
     });
     if (data.companyAck) {
       const { logAudit } = await import("@/lib/audit.server");
