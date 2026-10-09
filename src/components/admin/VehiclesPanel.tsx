@@ -390,6 +390,14 @@ export function VehiclesPanel({
         />
       )}
       {viewing && <VehicleProfile vehicleId={viewing} onClose={() => setViewing(null)} onChanged={load} />}
+      {lifecycle && (
+        <VehicleLifecycleDialog
+          vehicle={{ id: lifecycle.v.id, unit_number: lifecycle.v.unit_number, label: vehicleName(lifecycle.v) }}
+          mode={lifecycle.mode}
+          onClose={() => setLifecycle(null)}
+          onDone={() => { setLifecycle(null); load(); }}
+        />
+      )}
     </div>
   );
 }
