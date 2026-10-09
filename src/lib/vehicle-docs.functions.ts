@@ -124,7 +124,7 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data, context }): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true; id: string; duplicate?: boolean } | { ok: false; error: string }> => {
     const actor = await requireStaff(context.userId);
     // Title, acquisition, lien and loan paperwork is Owner only. Storage says
     // the same (private.vehicle_doc_object_owner_only covers 'title'), but this
@@ -140,6 +140,46 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       return { ok: false, error: "That file reference is not valid for this vehicle." };
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Content identity, the same way Fleet Inbox computes it. Without it this
+    // path stored a byte-identical file again under a new row, and the two
+    // paths disagreed about what "already on file" means.
+    const { data: file } = await supabaseAdmin.storage.from("vehicle-docs").download(data.path);
+    if (!file) return { ok: false, error: "That upload could not be read back." };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
+    const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    // An original is stored once and related to each vehicle it is evidence
+    // for — the rule the vault already follows for Fleet Inbox files. So an
+    // identical file is linked, not stored again, and the just-uploaded object
+    // is removed rather than left orphaned in the bucket.
+    const { data: dup } = await supabaseAdmin
+      .from("documents")
+      .select("id,vehicle_id,kind")
+      .eq("content_sha256", sha)
+      .is("driver_id", null)
+      .maybeSingle();
+    if (dup) {
+      await supabaseAdmin.storage.from("vehicle-docs").remove([data.path]);
+      if (dup.vehicle_id !== data.vehicleId) {
+        await supabaseAdmin
+          .from("document_vehicle_links")
+          .upsert({ document_id: dup.id, vehicle_id: data.vehicleId, created_by: actor.userId },
+                  { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+      }
+      if (data.expiresAt) {
+        await supabaseAdmin.from("documents").update({ expires_at: data.expiresAt }).eq("id", dup.id).is("expires_at", null);
+      }
+      await logAudit(actor, {
+        action: "vehicle_doc.linked_existing",
+        summary: `Linked an existing ${labelFor(String(dup.kind ?? data.kind))} to a vehicle (identical file already on file)`,
+        entityType: "vehicle",
+        entityId: data.vehicleId,
+        metadata: { kind: dup.kind ?? data.kind, document_id: dup.id },
+      });
+      return { ok: true, id: dup.id as string, duplicate: true };
+    }
 
     // Replacing a document of the same kind supersedes the old one rather than
     // deleting it — an expired registration is still the evidence of what was
@@ -163,6 +203,7 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
         file_name: data.fileName ?? null,
         mime_type: data.mimeType ?? null,
         size_bytes: data.sizeBytes ?? null,
+        content_sha256: sha,
         expires_at: data.expiresAt || null,
         is_current: true,
         // Vehicle paperwork is internal; drivers have no reason to see the
@@ -175,7 +216,21 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       .select("id")
       .single();
 
-    if (error || !row) return { ok: false, error: error?.message ?? "Could not save the document." };
+    if (error || !row) {
+      // Lost the unique content index to an identical concurrent upload. Same
+      // outcome as above: link the one that won, drop the duplicate object.
+      const { data: raced } = await supabaseAdmin
+        .from("documents").select("id").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
+      if (raced) {
+        await supabaseAdmin.storage.from("vehicle-docs").remove([data.path]);
+        await supabaseAdmin
+          .from("document_vehicle_links")
+          .upsert({ document_id: raced.id, vehicle_id: data.vehicleId, created_by: actor.userId },
+                  { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+        return { ok: true, id: raced.id as string, duplicate: true };
+      }
+      return { ok: false, error: error?.message ?? "Could not save the document." };
+    }
 
     if (prior?.length) {
       await supabaseAdmin

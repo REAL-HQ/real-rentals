@@ -38,6 +38,34 @@ const COLOR_CODES: Record<string, string> = {
   BGE: "Beige", BEI: "Beige", YEL: "Yellow", ORG: "Orange", PUR: "Purple", CHA: "Charcoal",
 };
 
+/**
+ * Colour words we will store as a colour.
+ *
+ * COLOR_CODES above turns the abbreviations a title or registration actually
+ * prints ("BLU", "SIL") into words. A code that is NOT in that table falls
+ * through to plain re-casing, which turns "DKB" into "Dkb" and "LTG" into
+ * "Ltg" — invented text that reads like a colour and is not one. Anything
+ * short and unrecognised is therefore refused rather than guessed at; the
+ * caller offers it for a person to confirm by hand.
+ */
+export const COLOR_WORDS = new Set([
+  "Black", "White", "Silver", "Gray", "Grey", "Red", "Blue", "Green", "Brown", "Beige", "Gold",
+  "Yellow", "Orange", "Purple", "Maroon", "Tan", "Burgundy", "Charcoal", "Navy", "Teal", "Bronze",
+  "Champagne", "Cream", "Ivory", "Pearl", "Copper", "Turquoise", "Lime", "Plum", "Magenta", "Pink",
+]);
+
+/**
+ * Whether a colour value is safe to store. Multi-word free text ("Dark Blue",
+ * "Pearl White") is a person's or a document's own wording and is kept; a
+ * single unrecognised token of four characters or fewer is a code.
+ */
+export function isStorableColor(value: string): boolean {
+  const s = value.trim();
+  if (!s) return false;
+  if (COLOR_WORDS.has(s)) return true;
+  return /\s/.test(s) || s.length > 4;
+}
+
 export function normalizeDisplayField<T>(field: string, value: T): T {
   if (typeof value !== "string" || !NORMALIZED_FIELDS.has(field)) return value;
   if (field === "color" && COLOR_CODES[value.trim().toUpperCase()]) return COLOR_CODES[value.trim().toUpperCase()] as unknown as T;

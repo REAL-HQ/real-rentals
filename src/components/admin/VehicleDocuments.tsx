@@ -104,7 +104,9 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
         },
       });
       if (!res.ok) throw new Error(res.error);
-      toast.success("Document saved");
+      toast.success(res.duplicate
+        ? "That exact file was already on file — linked to this vehicle, not stored again."
+        : "Document saved");
       void refresh();
     } catch (e: any) {
       console.error("[vehicle-docs] upload failed", e);

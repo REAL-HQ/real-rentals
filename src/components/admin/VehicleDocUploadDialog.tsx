@@ -125,7 +125,7 @@ export function VehicleDocUploadDialog({
       if (ctl.stop || !id) return;
       let b: BatchSnapshot;
       try {
-        b = (await getBatch({ data: { batchId: id } })) as BatchSnapshot;
+        b = (await getBatch({ data: { batchId: id, vehicleScope: "referenced" } })) as BatchSnapshot;
       } catch {
         if (!ctl.stop) ctl.timer = setTimeout(tick, 5000);
         return;

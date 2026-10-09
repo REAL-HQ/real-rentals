@@ -25,9 +25,12 @@ import { mkdirSync, rmSync } from "node:fs";
 const OUT = ".vdocstates-build";
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-execFileSync("npx", ["esbuild", "src/lib/vehicle-doc-upload.ts", "--bundle", "--platform=node",
-  "--format=esm", "--alias:@=./src", `--outfile=${OUT}/m.mjs`, "--log-level=warning"], { stdio: "inherit" });
+const bundle = (src, out) => execFileSync("npx", ["esbuild", src, "--bundle", "--platform=node",
+  "--format=esm", "--alias:@=./src", `--outfile=${OUT}/${out}`, "--log-level=warning"], { stdio: "inherit" });
+bundle("src/lib/vehicle-doc-upload.ts", "m.mjs");
+bundle("src/lib/display-normalize.ts", "dn.mjs");
 const m = await import(`../${OUT}/m.mjs`);
+const dn = await import(`../${OUT}/dn.mjs`);
 
 let fail = 0;
 const ok = (c, l) => { if (!c) fail++; console.log(`  ${c ? "PASS" : "BLOCKER"}  ${l}`); };
@@ -153,6 +156,26 @@ console.log("\nAN ACCEPTED EXPIRY ONLY STAMPS A DOCUMENT THAT IS ITS AUTHORITY")
      "  and so is a loosely formatted one");
   ok(m.documentExpiryFrom("registration", { insurance_expires_on: "2028-01-01" }) === null,
      "a registration never takes an insurance date");
+}
+
+console.log("\nA COLOUR CODE NOBODY RECOGNISES IS NOT A COLOUR");
+{
+  // The abbreviations a title actually prints already map to words.
+  ok(dn.normalizeDisplayField("color", "BLU") === "Blue", "BLU is Blue");
+  ok(dn.normalizeDisplayField("color", "SIL") === "Silver", "SIL is Silver");
+  // The ones that do not map used to be re-cased into invented colour text.
+  ok(dn.normalizeDisplayField("color", "DKB") === "Dkb", "DKB re-cases to the nonsense 'Dkb'…");
+  ok(dn.isStorableColor("Dkb") === false, "…which is refused as a colour");
+  ok(dn.isStorableColor("Ltg") === false, "and so is 'Ltg'");
+  ok(dn.isStorableColor("Gy") === false, "and a two-letter code");
+  // Real words and real free text must still go through.
+  for (const c of ["Blue", "Silver", "Gray", "Red", "Tan", "Navy", "Teal", "Charcoal", "Burgundy"]) {
+    ok(dn.isStorableColor(c) === true, `${c} is storable`);
+  }
+  ok(dn.isStorableColor("Dark Blue") === true, "multi-word free text is a person's own wording, kept");
+  ok(dn.isStorableColor("Pearl White") === true, "  and so is Pearl White");
+  ok(dn.isStorableColor("Metallic") === true, "an unrecognised LONG word is kept rather than second-guessed");
+  ok(dn.isStorableColor("") === false, "empty is not a colour");
 }
 
 rmSync(OUT, { recursive: true, force: true });

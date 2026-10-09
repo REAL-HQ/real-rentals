@@ -43,7 +43,10 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
         setData({ ...r, suggestions: only(r.suggestions), conflicts: only(r.conflicts), possibleMatches: only(r.possibleMatches), needsVerification: only(r.needsVerification) });
       } else setData(r);
     } catch { setData(null); }
-  }, [load, vehicleId]);
+    // batchId belongs here: without it this callback kept the first batch it
+    // was rendered with and filtered a later upload's details away. Masked
+    // today by the caller re-keying the component, which is not a guarantee.
+  }, [load, vehicleId, batchId]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { if (inline) setOpen(true); }, [inline]);
 

@@ -61,7 +61,7 @@ export const requireOwner = async (userId) => {
 `);
 writeFileSync(`${OUT}/stub/client.server.js`, `
 const S = (globalThis.__vdocs ??= {});
-S.rows ??= []; S.links ??= []; S.vehicles ??= []; S.removed ??= []; S.nextId ??= 1;
+S.rows ??= []; S.links ??= []; S.vehicles ??= []; S.removed ??= []; S.files ??= {}; S.nextId ??= 1;
 // Enough of PostgREST for this module: every filter is recorded and they are
 // all applied together, so a chain of any length in any order still honours
 // each condition. The fake that treated .is() and .in() as no-ops silently
@@ -95,6 +95,15 @@ function from(table) {
       bag().push(row);
       return Promise.resolve({ data: row, error: null });
     } }) }),
+    // document_vehicle_links is written with ignoreDuplicates, so a repeat is
+    // a no-op rather than a second row.
+    upsert: (v, opts) => {
+      const b = bag();
+      const keys = String(opts?.onConflict ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+      const same = (r) => keys.length > 0 && keys.every((k) => r[k] === v[k]);
+      if (!b.some(same)) b.push({ id: "row-" + S.nextId++, ...v });
+      return Promise.resolve({ data: null, error: null });
+    },
     update: (patch) => {
       const w = { then: (res, rej) => {
         for (const r of bag()) if (matches(q, r)) Object.assign(r, patch);
@@ -119,7 +128,16 @@ function from(table) {
 }
 export const supabaseAdmin = {
   from,
-  storage: { from: () => ({ remove: (paths) => (S.removed.push(...paths), Promise.resolve({ data: null, error: null })) }) },
+  storage: { from: () => ({
+    remove: (paths) => (S.removed.push(...paths), Promise.resolve({ data: null, error: null })),
+    // The bytes the browser claims to have uploaded. Keyed by path so a test
+    // can hand two paths the SAME content and exercise the dedupe.
+    download: (path) => {
+      const body = S.files?.[path];
+      if (body === undefined) return Promise.resolve({ data: null, error: { message: "not found" } });
+      return Promise.resolve({ data: { arrayBuffer: async () => new TextEncoder().encode(body).buffer }, error: null });
+    },
+  }) },
 };
 `);
 writeFileSync(`${OUT}/stub/audit.js`, `
@@ -151,6 +169,7 @@ S.tier ??= "owner";
 S.rows ??= [];
 S.links ??= [];
 S.vehicles ??= [];
+S.files ??= {};
 S.removed ??= [];
 S.entries ??= [];
 S.nextId ??= 1;
@@ -159,13 +178,19 @@ const as = (tier) => { S.tier = tier; };
 const reset = () => {
   S.rows.length = 0; S.links.length = 0; S.vehicles.length = 0;
   S.removed.length = 0; S.entries.length = 0; S.nextId = 1;
+  for (const k of Object.keys(S.files)) delete S.files[k];
 };
 
-const register = (kind, over = {}) => mod.registerVehicleDoc({
-  data: { vehicleId: VEHICLE, kind, path: `${VEHICLE}/${kind}-1.pdf`, fileName: `${kind}.pdf`,
-          mimeType: "application/pdf", sizeBytes: 10, expiresAt: null, notes: null, ...over },
-  context: { userId: "staff-1" },
-});
+/** Registers a file, seeding bytes at its path first (the handler hashes them). */
+const register = (kind, over = {}, body = null) => {
+  const path = over.path ?? `${VEHICLE}/${kind}-1.pdf`;
+  S.files[path] = body ?? `bytes-of-${path}`;
+  return mod.registerVehicleDoc({
+    data: { vehicleId: VEHICLE, kind, path, fileName: `${kind}.pdf`,
+            mimeType: "application/pdf", sizeBytes: 10, expiresAt: null, notes: null, ...over },
+    context: { userId: "staff-1" },
+  });
+};
 const del = (id) => mod.deleteVehicleDoc({ data: { id }, context: { userId: "staff-1" } });
 
 // ================================================================ create
@@ -248,6 +273,60 @@ console.log("\nA FILE MUST BELONG TO THE VEHICLE IT IS BEING ATTACHED TO");
   ok((await register("registration", { path: `${VEHICLE}/../${other}/x.pdf` })).ok === false,
      "  and so is a traversal");
   ok(S.rows.length === 0, "  neither wrote a row");
+}
+
+// ================================================================ duplicates
+console.log("\nTHE SAME FILE IS STORED ONCE AND RELATED, NOT STORED TWICE");
+{
+  reset(); as("owner");
+  const first = await register("registration", { path: `${VEHICLE}/reg-a.pdf` }, "IDENTICAL");
+  ok(first.ok === true && !first.duplicate, "the first upload is stored");
+  ok(S.rows.length === 1 && S.rows[0].content_sha256, "  with a content hash, like Fleet Inbox");
+
+  const again = await register("registration", { path: `${VEHICLE}/reg-b.pdf` }, "IDENTICAL");
+  ok(again.ok === true, "re-uploading the identical file still succeeds");
+  ok(again.duplicate === true, "  and says it was a duplicate");
+  ok(again.id === first.id, "  pointing at the file already on file");
+  ok(S.rows.length === 1, "NO SECOND ROW WAS WRITTEN");
+  ok(S.removed.includes(`${VEHICLE}/reg-b.pdf`), "  and the redundant object was removed from the bucket");
+  ok(S.rows[0].is_current === true, "  the document on file is still current, not superseded by itself");
+}
+{
+  reset(); as("owner");
+  const a = await register("registration", { path: `${VEHICLE}/x.pdf` }, "DIFFERENT-A");
+  const b = await register("registration", { path: `${VEHICLE}/y.pdf` }, "DIFFERENT-B");
+  ok(a.ok && b.ok && !b.duplicate, "a genuinely different file is stored");
+  ok(S.rows.length === 2, "  as its own row");
+  ok(S.rows.find((r) => r.id === a.id).is_current === false, "  superseding the previous registration");
+  ok(S.rows.find((r) => r.id === b.id).is_current === true, "  which the new one replaces");
+}
+{
+  reset(); as("owner");
+  const other = "061cb5e9-27e7-48a4-b71b-5172f31af1dd";
+  S.files[`${other}/ins.pdf`] = "SHARED-INSURANCE";
+  await mod.registerVehicleDoc({
+    data: { vehicleId: other, kind: "insurance_card", path: `${other}/ins.pdf`, fileName: "ins.pdf",
+            mimeType: "application/pdf", sizeBytes: 10, expiresAt: null, notes: null },
+    context: { userId: "staff-1" },
+  });
+  const mine = await register("insurance_card", { path: `${VEHICLE}/ins.pdf` }, "SHARED-INSURANCE");
+  ok(mine.duplicate === true, "one insurance card uploaded to a second car is recognised");
+  ok(S.rows.length === 1, "  stored once");
+  ok(S.links.some((l) => l.vehicle_id === VEHICLE), "  AND LINKED to the second car, so its slot still reads On file");
+  ok(S.entries.some((e) => e.action === "vehicle_doc.linked_existing"), "  and the link is audited");
+}
+{
+  reset(); as("owner");
+  const r = await register("registration", { path: `${VEHICLE}/gone.pdf`, expiresAt: "2029-06-30" });
+  ok(r.ok === true && S.rows[0].expires_at === "2029-06-30", "a typed expiry is stored on the document");
+  delete S.files[`${VEHICLE}/missing.pdf`];
+  const miss = await mod.registerVehicleDoc({
+    data: { vehicleId: VEHICLE, kind: "registration", path: `${VEHICLE}/missing.pdf`, fileName: "m.pdf",
+            mimeType: "application/pdf", sizeBytes: 10, expiresAt: null, notes: null },
+    context: { userId: "staff-1" },
+  });
+  ok(miss.ok === false && /could not be read back/.test(miss.error),
+     "a path with nothing behind it is refused instead of recording a phantom document");
 }
 
 // ================================================================ expiry

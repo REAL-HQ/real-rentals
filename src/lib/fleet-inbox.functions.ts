@@ -3,7 +3,7 @@
 // once in the private vehicle-docs bucket and recorded in the existing
 // `documents` vault; document_vehicle_links relates one document to many cars.
 import { isFinanceKind } from "@/lib/vehicle-doc-presence";
-import { normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
+import { isStorableColor, normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -231,7 +231,17 @@ function stripServiceCosts(p: any) {
 }
 export const getImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ batchId: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) => z.object({
+    batchId: z.string().uuid(),
+    /**
+     * "referenced" returns only the vehicles this batch's proposals name,
+     * instead of the whole unarchived fleet. The Vehicle Profile dialog polls
+     * this every three seconds and needs nothing but the names of the other
+     * cars a document matched; Fleet Inbox still wants the full list for its
+     * manual attach picker, so the default is unchanged.
+     */
+    vehicleScope: z.enum(["all", "referenced"]).optional(),
+  }).parse(d))
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
@@ -245,7 +255,13 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const finance = canOwnership
       ? (await sb.from("fleet_import_finance_facts").select("proposal_id,field,value,confidence,page").in("item_id", (items ?? []).map((i: any) => i.id))).data ?? []
       : [];
-    const { data: vehicles } = await sb.from("vehicles").select("id,year,make,model,vin,unit_number,license_plate,current_odometer").is("archived_at", null).order("created_at");
+    const referenced = [...new Set((proposals ?? []).map((p: any) => p.match_vehicle_id).filter(Boolean))] as string[];
+    const vehicleQuery = sb.from("vehicles").select("id,year,make,model,vin,unit_number,license_plate,current_odometer").is("archived_at", null);
+    const { data: vehicles } = data.vehicleScope === "referenced"
+      ? referenced.length
+        ? await vehicleQuery.in("id", referenced).order("created_at")
+        : { data: [] as any[] }
+      : await vehicleQuery.order("created_at");
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
@@ -315,6 +331,10 @@ function coerce(field: string, v: string): unknown {
   if (field === "year" || field === "current_odometer") { const n = parseInt(v.replace(/[^0-9]/g, ""), 10); return Number.isFinite(n) ? n : null; }
   if (DATE_FIELDS.has(field)) return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
   if (field === "body_type") { const b = v.toLowerCase(); return ["sedan","suv","xl","truck","van","minivan","coupe","hatchback","wagon","convertible","other"].includes(b) ? b : null; }
+  // A colour code the table does not know ("DKB", "LTG") would be re-cased into
+  // "Dkb" and stored as if it were a colour. Refuse it; the caller shows it for
+  // verification instead of inventing a colour nobody wrote down.
+  if (field === "color" && !isStorableColor(String(normalizeDisplayField("color", v)))) return null;
   return v;
 }
 
@@ -735,6 +755,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
         // Never offer a value the save path can't store (e.g. body type "4D"): show it for verification only.
         if (coerce(c.field, c.proposed) == null) {
           if (c.field === "body_type" && c.kind === "fill") needsVerification.push({ ...source, field: c.field, label: c.label, current: c.current, proposed: String(f.raw ?? c.proposed), note: "Body style requires verification — the document shows a door count only.", evidence: { raw: f.raw ?? null, note: f.note ?? null } });
+          else if (c.field === "color" && c.kind === "fill") needsVerification.push({ ...source, field: c.field, label: c.label, current: c.current, proposed: String(f.raw ?? c.proposed), note: "Colour code not recognised — set the colour by hand if this is right.", evidence: { raw: f.raw ?? null, note: f.note ?? null } });
           continue;
         }
         const row = {
