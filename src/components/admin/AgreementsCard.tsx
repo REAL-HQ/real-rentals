@@ -34,6 +34,8 @@ type PreviewRes = {
   fingerprint: string | null;
   template: { label: string; version: number; approvalStatus: string; effectiveDate: string | null; versioningActive: boolean };
   canSend: boolean;
+  companyMissing?: string[];
+  companyFallback?: { field: string; value: string }[];
   sendRefusal: string | null;
   missing: string[];
   blockers: Blocker[];
@@ -44,6 +46,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
+  const [companyAck, setCompanyAck] = useState(false);
   const doResend = useServerFn(resendAgreement);
   const doVoid = useServerFn(voidAgreement);
   const doRetry = useServerFn(retryAgreementArchive);
@@ -98,7 +101,8 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
     if (!preview?.fingerprint || !preview.canSend) return;
     setBusy(true);
     try {
-      const res = await doSend({ data: { applicationId, fingerprint: preview.fingerprint } });
+      const res = await doSend({ data: { applicationId, fingerprint: preview.fingerprint, companyAck: companyAck || undefined } });
+      setCompanyAck(false);
       reportDelivery(res.delivery, "Agreement sent for signature");
       if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
       setPreview(null);
@@ -206,6 +210,15 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
           </div>
         ) : null}
 
+        {preview && (preview.companyMissing?.length ?? 0) > 0 ? (
+          <div className="rounded-lg border border-[#F2D7A6] bg-[#FFF8EC] px-4 py-3 text-[12px] text-[#6B4A12] space-y-1.5" data-testid="company-warning">
+            <p className="font-semibold">Company Details Incomplete</p>
+            <p>Missing in Settings → Company: {preview.companyMissing!.join(", ")}.</p>
+            {preview.companyFallback?.length ? <p>Fallback values in this agreement: {preview.companyFallback.map((f) => `${f.field.replace("company_", "")} "${f.value}"`).join(", ")}.</p> : null}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={companyAck} onChange={(e) => setCompanyAck(e.target.checked)} /> I understand and want to send with these values (not a legal approval).</label>
+          </div>
+        ) : null}
+
         {preview ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#EDEDF0] bg-white px-4 py-3">
             <p className="text-[11.5px] text-[#55555E] min-w-0">
@@ -213,7 +226,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
             </p>
             <button
               onClick={send}
-              disabled={busy || !preview.canSend}
+              disabled={busy || !preview.canSend || ((preview.companyMissing?.length ?? 0) > 0 && !companyAck)}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#111114] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-40"
             >
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send Agreement
