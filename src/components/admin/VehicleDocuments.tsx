@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { FileText, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
-import { FileUploader } from "@/components/FileUploader";
+import { FileText, Trash2, ExternalLink, AlertTriangle, Upload } from "lucide-react";
+import { VehicleDocUploadDialog } from "@/components/admin/VehicleDocUploadDialog";
 import { getFleetDocumentFile, listVehicleLinkedDocs } from "@/lib/fleet-inbox.functions";
 import { docClassLabel, docGroupOf, DOC_GROUPS } from "@/lib/fleet-inbox";
 import { vehicleDocPresence, isFinanceKind, type DocSlot } from "@/lib/vehicle-doc-presence";
@@ -27,7 +27,8 @@ import { fmtDate } from "@/lib/date-format";
 // Uploading a document of a kind that already exists supersedes the old one
 // rather than deleting it, so last year's registration is still on file.
 
-export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: string; bare?: boolean }) {
+export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This Vehicle", canEdit = true }: { vehicleId: string; bare?: boolean; vehicleLabel?: string; canEdit?: boolean }) {
+  const [uploadType, setUploadType] = useState<string | null>(null);
   const load = useServerFn(listVehicleDocs);
   const register = useServerFn(registerVehicleDoc);
   const remove = useServerFn(deleteVehicleDoc);
@@ -161,13 +162,26 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
                 doc={doc}
                 evidence={evidence}
                 onOpenEvidence={evidence ? () => openDoc(evidence.id) : undefined}
-                onUpload={(file, expires) => upload(t.value, file, expires)}
+                onUploadClick={() => setUploadType(t.value)}
                 onOpen={doc ? () => openDoc(doc.id) : undefined}
                 onDelete={doc ? () => onDelete(doc) : undefined}
               />
             );
           })}
         </div>
+      )}
+
+      {uploadType && (
+        <VehicleDocUploadDialog
+          vehicleId={vehicleId}
+          vehicleLabel={vehicleLabel}
+          initialType={uploadType}
+          financeSlots={financeSlots}
+          canEdit={canEdit}
+          onClose={() => { setUploadType(null); void refresh(); }}
+          onSaveDirect={upload}
+          onChanged={() => void refresh()}
+        />
       )}
 
       {linked.filter((l) => l.source === "fleet_inbox" || l.relatedVehicles > 1).length > 0 && (
@@ -207,7 +221,7 @@ export function VehicleDocuments({ vehicleId, bare = false }: { vehicleId: strin
 function DocRow({
   type,
   doc,
-  onUpload,
+  onUploadClick,
   onDelete,
   onOpen,
   evidence,
@@ -218,11 +232,9 @@ function DocRow({
   onOpenEvidence?: () => void;
   type: (typeof VEHICLE_DOC_TYPES)[number];
   doc?: VehicleDoc;
-  onUpload: (file: File, expiresAt: string | null) => Promise<void>;
+  onUploadClick: () => void;
   onDelete?: () => void;
 }) {
-  const [expires, setExpires] = useState("");
-
   // Anything inside 30 days is worth flagging; already lapsed is worth
   // shouting about, because the car may be on the road right now.
   const days = doc?.days_until_expiry ?? null;
@@ -269,15 +281,6 @@ function DocRow({
 
       {lapsed && <AlertTriangle className="w-4 h-4 text-[#D03020] shrink-0" />}
 
-      {type.expires && !doc && (
-        <input
-          type="date"
-          value={expires}
-          onChange={(e) => setExpires(e.target.value)}
-          title="Expiry Date"
-          className="rounded-md border border-border px-2 py-1 text-xs"
-        />
-      )}
 
       {!doc && onOpenEvidence && (
         <button type="button" onClick={onOpenEvidence} className="inline-flex items-center gap-1 text-xs text-[#D03020] underline">
@@ -291,13 +294,9 @@ function DocRow({
         </button>
       )}
 
-      <FileUploader
-        variant="inline"
-        label={doc ? "Replace" : "Upload"}
-        accept="image/*,application/pdf"
-        context={type.label}
-        upload={(file) => onUpload(file, type.expires ? expires || null : null)}
-      />
+      <button type="button" onClick={onUploadClick} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#F4F4F6]">
+        <Upload className="w-3.5 h-3.5" /> {doc ? "Replace" : "Upload"}
+      </button>
 
       {onDelete && (
         <button

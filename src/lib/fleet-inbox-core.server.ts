@@ -224,7 +224,9 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
   if (docGroupOf(docClass) === "Finance") await sb.from("documents").update({ evidence_class: "financial" }).eq("id", claimed.document_id as string);
   await buildItemProposals(sb, data.itemId);
   // Safe Autofill (Owner setting, default Off): blank non-sensitive specs only; never throws.
-  await (await import("@/lib/safe-autofill.server")).runSafeAutofillForItem(sb, data.itemId);
+  // Never for Vehicle Profile uploads: those always go through explicit staff review.
+  const { data: srcBatch } = await sb.from("fleet_import_batches").select("source_channel").eq("id", claimed.batch_id).maybeSingle();
+  if (srcBatch?.source_channel !== "vehicle_profile") await (await import("@/lib/safe-autofill.server")).runSafeAutofillForItem(sb, data.itemId);
   const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
   await sb.from("fleet_import_items").update({ status: needs ? "needs_attention" : "ready" }).eq("id", data.itemId);
   await refreshBatchStatus(claimed.batch_id);

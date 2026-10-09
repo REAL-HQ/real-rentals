@@ -14,7 +14,13 @@ type Sug = {
 
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleId: string; canEdit: boolean; onApplied: () => void }) {
+export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false }: {
+  vehicleId: string; canEdit: boolean; onApplied: () => void;
+  /** Only show details read from this upload (Vehicle Profile upload dialog). */
+  batchId?: string;
+  /** Render the review list directly (inside another dialog) instead of a button + popup. */
+  inline?: boolean;
+}) {
   const load = useServerFn(getVehicleSuggestions);
   const apply = useServerFn(applyImportDecisions);
   const [data, setData] = useState<{ suggestions: Sug[]; conflicts: Sug[]; possibleMatches: any[]; needsVerification?: any[] } | null>(null);
@@ -24,15 +30,24 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
   const [msg, setMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    try { setData(await load({ data: { vehicleId } }) as any); } catch { setData(null); }
+    try {
+      const r: any = await load({ data: { vehicleId } });
+      if (batchId) {
+        const only = (xs: any[]) => (xs ?? []).filter((x) => x.batchId === batchId);
+        setData({ ...r, suggestions: only(r.suggestions), conflicts: only(r.conflicts), possibleMatches: only(r.possibleMatches), needsVerification: only(r.needsVerification) });
+      } else setData(r);
+    } catch { setData(null); }
   }, [load, vehicleId]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (inline) setOpen(true); }, [inline]);
 
   const key = (s: Sug) => `${s.proposalId}:${s.field}`;
   const sugs = data?.suggestions ?? [];
   const safeKeys = useMemo(() => sugs.filter((s) => s.safe).map(key), [sugs]);
   const count = sugs.length;
-  if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length && !(data.needsVerification ?? []).length)) return null;
+  if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length && !(data.needsVerification ?? []).length)) {
+    return inline && data ? <p className="text-[12px] text-[#55555E]">No new details to add — this vehicle already has every value the document shows.</p> : null;
+  }
 
   async function submit(keys: string[]) {
     if (!keys.length) return;
@@ -59,17 +74,19 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied }: { vehicleI
 
   return (
     <>
+      {!inline && (
       <button onClick={() => setOpen(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-[#FAFAFB] px-2.5 py-1 text-[11px] font-medium text-[#111114] hover:bg-white">
         <Sparkles className="w-3 h-3 text-[#D03020]" />
         {count > 0 ? `${count} Detail${count === 1 ? "" : "s"} Found` : "Document Matches To Review"}
         <span className="text-[#D03020]">Review</span>
       </button>
+      )}
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setOpen(false)}>
-          <div role="dialog" aria-label="Details Found In Documents" className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className={inline ? "" : "fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"} onClick={() => !inline && setOpen(false)}>
+          <div role={inline ? "region" : "dialog"} aria-label="Details Found In Documents" className={inline ? "" : "w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5"} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-[16px] font-semibold text-[#111114]">Details Found In Documents</h3>
-              <button aria-label="Close" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>
+              {!inline && <button aria-label="Close" onClick={() => setOpen(false)}><X className="w-4 h-4" /></button>}
             </div>
             <p className="text-[12px] text-[#55555E] mb-4">Only blank fields are filled. Existing values are never overwritten. VIN, plate and mileage need individual approval.</p>
 
