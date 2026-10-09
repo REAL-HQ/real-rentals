@@ -29,6 +29,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ThankYouRouteImport } from './routes/thank-you'
+import { Route as ZzSignPreviewRouteImport } from './routes/zz-sign-preview'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
@@ -145,6 +146,11 @@ const ThankYouRoute = ThankYouRouteImport.update({
   path: '/thank-you',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ZzSignPreviewRoute = ZzSignPreviewRouteImport.update({
+  id: '/zz-sign-preview',
+  path: '/zz-sign-preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   id: '/card/$applicationId',
   path: '/card/$applicationId',
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/zz-sign-preview': typeof ZzSignPreviewRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/zz-sign-preview': typeof ZzSignPreviewRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
@@ -323,6 +331,7 @@ export interface FileRoutesById {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/zz-sign-preview': typeof ZzSignPreviewRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
@@ -362,6 +371,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/zz-sign-preview'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
@@ -399,6 +409,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/zz-sign-preview'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
@@ -436,6 +447,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/zz-sign-preview'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
@@ -474,6 +486,7 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  ZzSignPreviewRoute: typeof ZzSignPreviewRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
   SignTokenRoute: typeof SignTokenRoute
@@ -633,6 +646,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThankYouRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/zz-sign-preview': {
+      id: '/zz-sign-preview'
+      path: '/zz-sign-preview'
+      fullPath: '/zz-sign-preview'
+      preLoaderRoute: typeof ZzSignPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/card/$applicationId': {
       id: '/card/$applicationId'
       path: '/card/$applicationId'
@@ -762,6 +782,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  ZzSignPreviewRoute: ZzSignPreviewRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
   SignTokenRoute: SignTokenRoute,
