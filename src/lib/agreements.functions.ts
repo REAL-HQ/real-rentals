@@ -316,9 +316,19 @@ export async function activeTemplate(admin: any): Promise<{ body: string; meta: 
     .order("version", { ascending: false })
     .limit(20);
   const list = (rows ?? []) as any[];
-  const versioningActive = list.some((r) => "approval_status" in r);
+  const hasVersioning = list.some((r) => "approval_status" in r);
+  const approved = hasVersioning ? list.find((r) => r.approval_status === "approved") ?? null : null;
+  // Staged rollout: approval enforcement is ON only when the Owner explicitly
+  // switched it on (app_settings.esign_template_enforcement.enabled) AND an
+  // approved version exists. The migration alone never changes what is sent.
+  let switchOn = false;
+  try {
+    const { data: s } = await admin.from("app_settings").select("value").eq("key", "esign_template_enforcement").maybeSingle();
+    switchOn = (s?.value as any)?.enabled === true;
+  } catch { switchOn = false; }
+  const versioningActive = hasVersioning && switchOn && !!approved;
   const pick = versioningActive
-    ? list.find((r) => r.approval_status === "approved") ?? list.find((r) => r.approval_status === "draft") ?? null
+    ? approved
     : list.find((r) => r.is_active) ?? null;
   if (!pick) {
     return {
