@@ -33,3 +33,5 @@
 - [x] Phase 3 Owner-only Delete Permanently (server check-then-delete)
 - [ ] Future: move permanent delete into one locked DB function to close check-then-delete race
 - [ ] Live preview click-through of Archive/Restore/Delete dialogs per role
+- [ ] Travel Authorization (future, unapproved): per-rental written travel exception, Owner/Manager approval, destination/area, start/expiry, reason/conditions, renter notice + eSign ack, attached document, permanent history; its own expiration logic (NOT the Manual Payments scheduler). Needs migration after queued ones.
+- [ ] Owner/legal review: proposed clause "Unlimited mileage does not override geographic restrictions; travel beyond 100-mile Tampa radius or outside Florida requires prior written authorization." Not in templates.
