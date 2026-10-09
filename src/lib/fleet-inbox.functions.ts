@@ -15,6 +15,7 @@ import {
   DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
   isFinanceField, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
+import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
 import { fmtDate } from "@/lib/date-format";
 
 const BUCKET = "vehicle-docs";
@@ -418,6 +419,21 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
 
         await sb.from("document_vehicle_links").upsert({ document_id: item.document_id, vehicle_id: vehicleId, page: p.page, created_by: actor.userId }, { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
 
+        // An accepted expiry is also the DOCUMENT's expiry, when its class makes
+        // it the authority for that field. Without this, a registration read by
+        // the reader produced a confirmed date that warned nobody: expires_at
+        // was only ever filled by hand on the direct upload path, and that is
+        // the column the lapse badges and listExpiring read. Blank only — a
+        // date somebody already recorded is never overwritten here.
+        const docExpiry = documentExpiryFrom(
+          docClass,
+          Object.fromEntries(written.map((c) => [c.field, c.proposed])),
+        );
+        if (docExpiry) {
+          await sb.from("documents").update({ expires_at: docExpiry })
+            .eq("id", item.document_id).is("expires_at", null);
+        }
+
         let serviceNote = "";
         const isService = docGroupOf(docClass) === "Maintenance";
         const { recordServiceEvent, addOdometerReading } = await import("@/lib/maintenance.server");
@@ -483,7 +499,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           action: dec.action === "create" ? "fleet_inbox.vehicle_created" : "fleet_inbox.vehicle_updated",
           summary: dec.action === "create" ? `Created vehicle from Fleet Inbox (VIN …${(fresh.vin ?? "").slice(-6)})` : `Applied ${written.length} Fleet Inbox change(s)`,
           entityType: "vehicle", entityId: vehicleId,
-          metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field) },
+          metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field), document_expires_at: docExpiry ?? null },
         });
         const writtenSet = new Set(written.map((c) => c.field));
         const remaining = dec.partial && dec.action === "match" ? fresh.changes.filter((c) => !writtenSet.has(c.field)) : [];

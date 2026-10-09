@@ -61,31 +61,43 @@ export const requireOwner = async (userId) => {
 `);
 writeFileSync(`${OUT}/stub/client.server.js`, `
 const S = (globalThis.__vdocs ??= {});
-S.rows ??= []; S.removed ??= []; S.nextId ??= 1;
-const matches = (q, r) => q.eqs.every(([c, v]) => r[c] === v) && q.nots.every((c) => r[c] != null);
-function from() {
-  const q = { eqs: [], nots: [] };
+S.rows ??= []; S.links ??= []; S.vehicles ??= []; S.removed ??= []; S.nextId ??= 1;
+// Enough of PostgREST for this module: every filter is recorded and they are
+// all applied together, so a chain of any length in any order still honours
+// each condition. The fake that treated .is() and .in() as no-ops silently
+// matched rows the real query would have excluded.
+const matches = (q, r) =>
+  q.eq.every(([c, v]) => r[c] === v) &&
+  q.neq.every(([c, v]) => r[c] !== v) &&
+  q.isNull.every((c) => r[c] == null) &&
+  q.notNull.every((c) => r[c] != null) &&
+  q.inList.every(([c, vals]) => vals.includes(r[c])) &&
+  q.lte.every(([c, v]) => r[c] != null && r[c] <= v);
+function from(table) {
+  const q = { eq: [], neq: [], isNull: [], notNull: [], inList: [], lte: [] };
+  const bag = () => (table === "document_vehicle_links" ? S.links : table === "vehicles" ? S.vehicles : S.rows);
   const filters = (self) => ({
-    eq: (c, v) => (q.eqs.push([c, v]), self),
-    neq: () => self,
-    is: () => self,
-    not: (c) => (q.nots.push(c), self),
-    lte: () => self,
-    in: (c, vals) => (q.eqs.push([c, vals[0]]), self),
+    eq: (c, v) => (q.eq.push([c, v]), self),
+    neq: (c, v) => (q.neq.push([c, v]), self),
+    is: (c, v) => (v === null || v === undefined ? q.isNull.push(c) : q.eq.push([c, v]), self),
+    not: (c, op, v) => (op === "is" && (v === null || v === "null") ? q.notNull.push(c) : null, self),
+    in: (c, vals) => (q.inList.push([c, vals]), self),
+    lte: (c, v) => (q.lte.push([c, v]), self),
     order: () => self,
+    limit: () => self,
   });
   const reader = {
     select: () => reader,
-    maybeSingle: () => Promise.resolve({ data: S.rows.find((r) => matches(q, r)) ?? null, error: null }),
-    single: () => Promise.resolve({ data: S.rows.find((r) => matches(q, r)) ?? null, error: null }),
+    maybeSingle: () => Promise.resolve({ data: bag().find((r) => matches(q, r)) ?? null, error: null }),
+    single: () => Promise.resolve({ data: bag().find((r) => matches(q, r)) ?? null, error: null }),
     insert: (v) => ({ select: () => ({ single: () => {
       const row = { id: "doc-" + S.nextId++, ...v };
-      S.rows.push(row);
+      bag().push(row);
       return Promise.resolve({ data: row, error: null });
     } }) }),
     update: (patch) => {
       const w = { then: (res, rej) => {
-        for (const r of S.rows) if (matches(q, r)) Object.assign(r, patch);
+        for (const r of bag()) if (matches(q, r)) Object.assign(r, patch);
         return Promise.resolve({ data: null, error: null }).then(res, rej);
       } };
       Object.assign(w, filters(w));
@@ -93,13 +105,14 @@ function from() {
     },
     delete: () => {
       const w = { then: (res, rej) => {
-        for (let i = S.rows.length - 1; i >= 0; i--) if (matches(q, S.rows[i])) S.rows.splice(i, 1);
+        const b = bag();
+        for (let i = b.length - 1; i >= 0; i--) if (matches(q, b[i])) b.splice(i, 1);
         return Promise.resolve({ data: null, error: null }).then(res, rej);
       } };
       Object.assign(w, filters(w));
       return w;
     },
-    then: (res, rej) => Promise.resolve({ data: S.rows.filter((r) => matches(q, r)), error: null }).then(res, rej),
+    then: (res, rej) => Promise.resolve({ data: bag().filter((r) => matches(q, r)), error: null }).then(res, rej),
   };
   Object.assign(reader, filters(reader));
   return reader;
@@ -136,12 +149,17 @@ const mod = await import(`../${OUT}/vehicle-docs.mjs`);
 const S = (globalThis.__vdocs ??= {});
 S.tier ??= "owner";
 S.rows ??= [];
+S.links ??= [];
+S.vehicles ??= [];
 S.removed ??= [];
 S.entries ??= [];
 S.nextId ??= 1;
 
 const as = (tier) => { S.tier = tier; };
-const reset = () => { S.rows.length = 0; S.removed.length = 0; S.entries.length = 0; S.nextId = 1; };
+const reset = () => {
+  S.rows.length = 0; S.links.length = 0; S.vehicles.length = 0;
+  S.removed.length = 0; S.entries.length = 0; S.nextId = 1;
+};
 
 const register = (kind, over = {}) => mod.registerVehicleDoc({
   data: { vehicleId: VEHICLE, kind, path: `${VEHICLE}/${kind}-1.pdf`, fileName: `${kind}.pdf`,
@@ -230,6 +248,60 @@ console.log("\nA FILE MUST BELONG TO THE VEHICLE IT IS BEING ATTACHED TO");
   ok((await register("registration", { path: `${VEHICLE}/../${other}/x.pdf` })).ok === false,
      "  and so is a traversal");
   ok(S.rows.length === 0, "  neither wrote a row");
+}
+
+// ================================================================ expiry
+console.log("\nA LAPSING DOCUMENT WARNS WHETHER IT IS OWNED OR LINKED");
+{
+  reset(); as("owner");
+  const soon = new Date(Date.now() + 10 * 86400_000).toISOString().slice(0, 10);
+  const other = "061cb5e9-27e7-48a4-b71b-5172f31af1cc";
+  S.vehicles.push(
+    { id: VEHICLE, year: 2013, make: "Ford", model: "Fusion", license_plate: "SYN100",
+      plate_expires_on: null, registration_expires_on: null, insurance_expires_on: null },
+    { id: other, year: 2015, make: "Toyota", model: "Camry", license_plate: "SYN200",
+      plate_expires_on: null, registration_expires_on: null, insurance_expires_on: null },
+  );
+  // A slot upload owned by the car, and a Fleet Inbox original that is LINKED
+  // to two cars and owns neither — which is every document the reader stores.
+  S.rows.push(
+    { id: "d-own", vehicle_id: VEHICLE, kind: "registration", expires_at: soon, is_current: true },
+    { id: "d-link", vehicle_id: null, kind: "insurance_card", expires_at: soon, is_current: true },
+  );
+  S.links.push(
+    { document_id: "d-link", vehicle_id: VEHICLE },
+    { document_id: "d-link", vehicle_id: other },
+  );
+
+  const out = await mod.listExpiring({ data: {}, context: { userId: "staff-1" } });
+  const forThis = out.filter((r) => r.vehicle_id === VEHICLE);
+  ok(forThis.some((r) => /Registration card \(document\)/.test(r.what)),
+     "the vehicle's own registration is reported");
+  ok(forThis.some((r) => /Insurance card \(document\)/.test(r.what)),
+     "THE LINKED FLEET INBOX ORIGINAL IS REPORTED TOO");
+  ok(out.filter((r) => r.vehicle_id === other).some((r) => /Insurance card/.test(r.what)),
+     "  and once for every other vehicle the same file covers");
+  ok(out.every((r) => r.days >= 0 && r.days <= 45), "  all within the default horizon");
+}
+{
+  reset(); as("owner");
+  const far = new Date(Date.now() + 200 * 86400_000).toISOString().slice(0, 10);
+  S.vehicles.push({ id: VEHICLE, year: 2013, make: "Ford", model: "Fusion", license_plate: null,
+                    plate_expires_on: null, registration_expires_on: null, insurance_expires_on: null });
+  S.rows.push({ id: "d-far", vehicle_id: null, kind: "registration", expires_at: far, is_current: true });
+  S.links.push({ document_id: "d-far", vehicle_id: VEHICLE });
+  const out = await mod.listExpiring({ data: {}, context: { userId: "staff-1" } });
+  ok(out.length === 0, "a linked document expiring well beyond the horizon is not reported");
+}
+{
+  reset(); as("owner");
+  const soon = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+  S.vehicles.push({ id: VEHICLE, year: 2013, make: "Ford", model: "Fusion", license_plate: null,
+                    plate_expires_on: null, registration_expires_on: null, insurance_expires_on: null });
+  S.rows.push({ id: "d-old", vehicle_id: null, kind: "registration", expires_at: soon, is_current: false });
+  S.links.push({ document_id: "d-old", vehicle_id: VEHICLE });
+  const out = await mod.listExpiring({ data: {}, context: { userId: "staff-1" } });
+  ok(out.length === 0, "a superseded linked document does not warn about last year's expiry");
 }
 
 rmSync(OUT, { recursive: true, force: true });

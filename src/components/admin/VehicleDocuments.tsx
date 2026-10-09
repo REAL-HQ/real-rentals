@@ -226,6 +226,13 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
   );
 }
 
+/** Whole days from today to an ISO date, negative once it has passed. */
+function daysUntil(date: string): number {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return Math.round((new Date(`${date.slice(0, 10)}T00:00:00`).getTime() - t.getTime()) / 86400_000);
+}
+
 function DocRow({
   type,
   doc,
@@ -245,7 +252,12 @@ function DocRow({
 }) {
   // Anything inside 30 days is worth flagging; already lapsed is worth
   // shouting about, because the car may be on the road right now.
-  const days = doc?.days_until_expiry ?? null;
+  //
+  // Evidence linked from Fleet Inbox counts the same. It used to render with no
+  // date at all, so a registration that came through the reader showed "On
+  // file" and nothing else — expired or not.
+  const expiresAt = doc?.expires_at ?? evidence?.expires_at ?? null;
+  const days = doc?.days_until_expiry ?? (expiresAt ? daysUntil(expiresAt) : null);
   const lapsed = days != null && days < 0;
   const soon = days != null && days >= 0 && days <= 30;
 
@@ -281,6 +293,19 @@ function DocRow({
           <p className="text-xs text-muted-foreground truncate">
             <span className="font-medium text-[#1E7B3C]">On file</span> · from Fleet Inbox · {evidence.file_name ?? "linked document"}
             {(evidence.relatedVehicles ?? 1) > 1 ? ` · shared with ${(evidence.relatedVehicles ?? 1) - 1} other vehicle${(evidence.relatedVehicles ?? 1) > 2 ? "s" : ""}` : ""}
+            {expiresAt && (
+              <>
+                {" · "}
+                {lapsed ? (
+                  <span className="text-[#D03020] font-medium">expired {fmtDate(expiresAt)}</span>
+                ) : (
+                  <span className={soon ? "text-[#B45309] font-medium" : ""}>
+                    expires {fmtDate(expiresAt)}
+                    {soon ? ` (${days}d)` : ""}
+                  </span>
+                )}
+              </>
+            )}
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">Not on file</p>

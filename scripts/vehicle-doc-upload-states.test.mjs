@@ -130,6 +130,31 @@ console.log("\nPRECEDENCE: A FAILURE OUTRANKS A GUESS ABOUT WHY IT IS EMPTY");
   ok(!/Nothing could be read/.test(mixed.message), "  but only when EVERY file failed");
 }
 
+console.log("\nAN ACCEPTED EXPIRY ONLY STAMPS A DOCUMENT THAT IS ITS AUTHORITY");
+{
+  const reg = { registration_expires_on: "2029-06-30", insurance_expires_on: "2028-01-01" };
+  ok(m.documentExpiryFrom("registration", reg) === "2029-06-30",
+     "a registration card takes the registration expiry");
+  ok(m.documentExpiryFrom("insurance_card", reg) === "2028-01-01",
+     "an insurance card takes the insurance expiry, not the registration one");
+  ok(m.documentExpiryFrom("insurance_policy", reg) === "2028-01-01", "so does a policy");
+  ok(m.documentExpiryFrom("insurance_renewal", reg) === "2028-01-01", "and a renewal");
+  ok(m.documentExpiryFrom("title", reg) === null, "a title has no expiry to take");
+  ok(m.documentExpiryFrom("service_receipt", reg) === null, "nor does a service receipt");
+  ok(m.documentExpiryFrom("unknown", reg) === null, "nor an unclassified file");
+  ok(m.documentExpiryFrom(null, reg) === null, "nor a missing class");
+}
+{
+  ok(m.documentExpiryFrom("registration", {}) === null, "nothing accepted → nothing stamped");
+  ok(m.documentExpiryFrom("registration", { registration_expires_on: null }) === null, "a null is not a date");
+  ok(m.documentExpiryFrom("registration", { registration_expires_on: "06/30/2029" }) === null,
+     "a date the column cannot store is refused rather than coerced");
+  ok(m.documentExpiryFrom("registration", { registration_expires_on: "2029-6-3" }) === null,
+     "  and so is a loosely formatted one");
+  ok(m.documentExpiryFrom("registration", { insurance_expires_on: "2028-01-01" }) === null,
+     "a registration never takes an insurance date");
+}
+
 rmSync(OUT, { recursive: true, force: true });
 console.log(fail ? `\n${fail} BLOCKER(S)` : "\nall clear");
 process.exit(fail ? 1 : 0);

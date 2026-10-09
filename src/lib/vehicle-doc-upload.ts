@@ -189,3 +189,34 @@ export function reviewState(args: {
     message: "No new details to add — this vehicle already has every value the document shows.",
   };
 }
+
+/**
+ * Which accepted expiry date, if any, is also this DOCUMENT's expiry.
+ *
+ * A registration card expires; so does an insurance card. The vehicle columns
+ * have always captured those dates, but documents.expires_at — the column the
+ * lapse warnings and listExpiring read — was only ever filled by hand on the
+ * direct upload path. A file that went through the reader therefore produced a
+ * confirmed expiry date that warned nobody.
+ *
+ * The date is only taken from a field the document's own class makes it the
+ * authority for, so an insurance policy date never ends up stamped on a
+ * registration card, and only from a field a person has just accepted.
+ */
+const DOC_EXPIRY_FIELD: Record<string, string> = {
+  registration: "registration_expires_on",
+  insurance_card: "insurance_expires_on",
+  insurance_policy: "insurance_expires_on",
+  insurance_renewal: "insurance_expires_on",
+};
+
+export function documentExpiryFrom(
+  docClass: string | null | undefined,
+  accepted: Record<string, string | null | undefined>,
+): string | null {
+  const field = DOC_EXPIRY_FIELD[String(docClass ?? "")];
+  if (!field) return null;
+  const value = accepted[field];
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return value;
+}

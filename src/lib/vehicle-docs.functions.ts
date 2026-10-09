@@ -294,9 +294,10 @@ export const listExpiring = createServerFn({ method: "POST" })
       push(v, "Insurance", v.insurance_expires_on);
     }
 
+    // Documents owned directly by a vehicle.
     const { data: docs } = await supabaseAdmin
       .from("documents")
-      .select("vehicle_id,kind,expires_at")
+      .select("id,vehicle_id,kind,expires_at")
       .not("vehicle_id", "is", null)
       .not("expires_at", "is", null)
       .eq("is_current", true)
@@ -305,6 +306,31 @@ export const listExpiring = createServerFn({ method: "POST" })
     const vById = new Map((vehicles ?? []).map((v: any) => [v.id, v]));
     for (const d of (docs ?? []) as any[]) {
       push(vById.get(d.vehicle_id), `${labelFor(d.kind)} (document)`, d.expires_at);
+    }
+
+    // And documents RELATED to a vehicle through document_vehicle_links.
+    // Fleet Inbox originals never carry a vehicle_id — one file can be evidence
+    // for several cars — so the query above could not see them, and a
+    // registration that came through the reader expired silently.
+    const { data: linkedDocs } = await supabaseAdmin
+      .from("documents")
+      .select("id,kind,expires_at")
+      .is("vehicle_id", null)
+      .not("expires_at", "is", null)
+      .eq("is_current", true)
+      .lte("expires_at", horizonStr);
+    const linkedIds = (linkedDocs ?? []).map((d: any) => d.id);
+    if (linkedIds.length) {
+      const { data: links } = await supabaseAdmin
+        .from("document_vehicle_links")
+        .select("document_id,vehicle_id")
+        .in("document_id", linkedIds);
+      const docById = new Map((linkedDocs ?? []).map((d: any) => [d.id, d]));
+      // One shared insurance PDF warns once per vehicle it covers.
+      for (const l of (links ?? []) as any[]) {
+        const d = docById.get(l.document_id);
+        if (d) push(vById.get(l.vehicle_id), `${labelFor(d.kind)} (document)`, d.expires_at);
+      }
     }
 
     // Soonest — and most overdue — first.
