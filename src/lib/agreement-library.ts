@@ -45,6 +45,8 @@ s = sub(s, "| Physical damage or loss | Repair or replacement cost + insurance d
 s = sub(s, "|i If a Reservation Fee is marked as required, it is applied", "|i If a Reservation Fee is entered in this Agreement, it is applied");
 s = sub(s, "including any deductible and Loss of Use, even if insurance doesn't pay.", "including repair costs and Loss of Use, even if insurance doesn't pay.");
 s = sub(s, "|i I'm responsible for all tolls, tickets, and citations during my rental.", "|i I'm responsible for all tolls, tickets, and citations during my rental. Tolls are charged at cost; each ticket or citation also carries a [[fee_citation_admin]] administrative fee.");
+// Service Area and Mileage Allowance are separate values in the one blank row v1.10 provides.
+s = sub(s, "| Service Area / Mileage Limit | [[service_area]]", "| Service Area / Mileage Limit | [[service_area]]; [[mileage_allowance]]");
 export const V110_SOURCE = s;
 
 export const V110_TERM_DEFAULTS: Record<string, string> = {
@@ -52,6 +54,7 @@ export const V110_TERM_DEFAULTS: Record<string, string> = {
   // v1.10 leaves the Reservation Fee and Service Area rows blank to be filled.
   reservation_line: "",
   service_area: "",
+  mileage_allowance: "",
   fee_late_return: "Daily rate (weekly rate ÷ 7) for each day late, + $50 if you don't notify us in advance",
   fee_unauthorized_driver: "$500 per occurrence; rental may be ended immediately",
   fee_smoking: "$250 + actual repair cost for any burns or damage",

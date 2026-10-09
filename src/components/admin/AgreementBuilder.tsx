@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ArrowLeft, ChevronDown, Maximize2, Minus, Plus } from "lucide-react";
-import { ServiceAreaField } from "@/components/admin/ServiceAreaField";
+import { ServiceAreaField, MileageField } from "@/components/admin/ServiceAreaField";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
@@ -61,6 +61,7 @@ export function AgreementBuilder({
   const usedTerms = useMemo(() => new Set(termsIn(source)), [source]);
   // Reservation Fee is rental-specific (Prepare Agreement), never a template value.
   const fieldList = library ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key) && f.key !== "reservation_line") : TERM_FIELDS;
+  const hasMileage = usedTerms.has("mileage_allowance");
   const openValues = fieldList.filter((f) => isOpen(terms[f.key])).map((f) => f.key);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [pdf, setPdf] = useState<string | null>(null);
@@ -71,7 +72,8 @@ export function AgreementBuilder({
   const previewHost = useRef<HTMLDivElement>(null);
 
   const body = useMemo(() => writeTerms(source, terms), [source, terms]);
-  const dirty = body !== base.body;
+  // The excess-mileage fee is saved with the draft but not printed, so it is compared separately.
+  const dirty = body !== base.body || (!!library && hasMileage && (terms.excess_mileage_fee ?? "") !== (library.terms.excess_mileage_fee ?? ""));
   const missing = useMemo(() => missingTerms(terms, source).filter((k) => !library || k !== "reservation_line"), [terms, source, library]);
   const unknown = useMemo(() => [...unknownFieldsIn(source).map((f) => `{{${f}}}`), ...unknownTermsIn(source).map((f) => `[[${f}]]`)], [source]);
   const canApprove = !library && !dirty && base.status === "draft" && !!base.id;
@@ -167,7 +169,9 @@ export function AgreementBuilder({
             {fields.map((f) => (
               <label key={f.key} className="block text-[12px]">
                 <span className="mb-1 block font-medium">{f.label}{isOpen(terms[f.key]) && <span className="ml-1.5 rounded bg-warning/15 px-1.5 text-[10.5px] font-normal">Open Value</span>}</span>
-                {f.key === "service_area" ? (
+                {f.key === "mileage_allowance" ? (
+                  <MileageField value={terms.mileage_allowance ?? ""} fee={terms.excess_mileage_fee ?? ""} onChange={(v) => set("mileage_allowance", v)} onFee={(v) => set("excess_mileage_fee", v)} missing={missing.includes(f.key)} />
+                ) : f.key === "service_area" ? (
                   <ServiceAreaField value={terms[f.key] ?? ""} onChange={(v) => set(f.key, v)} missing={missing.includes(f.key)} />
                 ) : f.multiline ? (
                   <Textarea id={`term-${f.key}`} rows={3} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}

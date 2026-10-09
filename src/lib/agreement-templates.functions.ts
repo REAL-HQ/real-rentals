@@ -301,21 +301,31 @@ export const saveLibraryDraft = createServerFn({ method: "POST" })
     const { libraryTemplate } = await import("@/lib/agreement-library");
     const lib = libraryTemplate(data.key);
     if (!lib) return { ok: false as const, error: "Unknown agreement template." };
-    const { termsIn, writeTerms } = await import("@/lib/agreement-builder");
+    const { termsIn, writeTerms, UNPRINTED_TERMS } = await import("@/lib/agreement-builder");
     const used = new Set(termsIn(lib.source));
-    const extra = Object.keys(data.terms).filter((k) => !used.has(k));
-    if (extra.length) return { ok: false as const, error: `These values are not used by this agreement: ${extra.join(", ")}` };
-    const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
+    if (used.has("mileage_allowance")) for (const k of UNPRINTED_TERMS) used.add(k);
+    // Values this agreement does not print (e.g. the 3.5% toll fee from v1.6) are ignored, never saved.
+    const { ALL_TERM_FIELDS } = await import("@/lib/agreement-builder");
+    const known = new Set(ALL_TERM_FIELDS.map((f) => f.key));
+    const unknown = Object.keys(data.terms).filter((k) => !known.has(k));
+    if (unknown.length) return { ok: false as const, error: `Unknown contract values: ${unknown.join(", ")}` };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const versions = await loadLibraryDraft(supabaseAdmin, lib.key);
     const prev = versions.at(-1)?.terms ?? lib.terms;
+    // Values not sent keep the last saved draft value.
+    const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? prev[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
+    // Unlimited miles never carries an excess-mileage fee.
+    if ("excess_mileage_fee" in terms) {
+      const { excessFeeFor } = await import("@/lib/service-area");
+      terms.excess_mileage_fee = excessFeeFor(terms.mileage_allowance ?? "", terms.excess_mileage_fee);
+    }
     if ([...used].every((k) => (prev[k] ?? "") === terms[k])) return { ok: false as const, error: "No changes to save." };
     const { sha256Hex } = await import("@/lib/esign-pdf.server");
     const sha256 = await sha256Hex(writeTerms(lib.source, terms));
     const n = (versions.at(-1)?.n ?? 0) + 1;
     const next = [...versions, { n, terms, savedAt: new Date().toISOString(), savedBy: actor.email ?? actor.userId, sha256 }];
     const { error } = await supabaseAdmin.from("app_settings").upsert({ key: `agreement_library_draft:${lib.key}`, value: { versions: next } } as any, { onConflict: "key" });
-    if (error) return { ok: false as const, error: "Could not save the draft." };
+    if (error) { console.error("saveLibraryDraft", error.message); return { ok: false as const, error: "Could not save the draft." }; }
     const changed = [...used].filter((k) => (prev[k] ?? "") !== terms[k]);
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, { action: "template.library_draft_saved", summary: `Saved ${lib.name} v${lib.displayVersion} draft values #${n} (not approved): ${changed.join(", ")}`, entityType: "agreement_template", entityId: null as any, metadata: { key: lib.key, draft: n, sha256, changed } });

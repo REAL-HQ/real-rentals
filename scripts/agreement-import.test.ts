@@ -88,13 +88,25 @@ const blank = await PDFDocument.create(); blank.addPage(); blank.addPage();
 const sa = analyzeAgreement(await extractPdf(await blank.save(), pdfjs));
 ok(sa.needsManualReview && sa.warnings.some((w) => /scanned|manual review/i.test(w)), "image-only PDF flagged for manual review");
 
-console.log("SERVICE AREA");
-ok(composeServiceArea({ mode: "unset" }) === "", "unset stays blank (no default restriction)");
-ok(composeServiceArea({ mode: "radius", miles: 50, center: "Orlando, FL", region: "Florida" }) === "50-mile radius of Orlando, FL; Florida only", "radius");
-ok(composeServiceArea({ mode: "region", region: "Florida", weeklyMiles: 1500 }) === "Florida only; 1,500 miles per week", "geographic + weekly miles");
-ok(composeServiceArea({ mode: "unlimited", region: "" }) === "Unlimited mileage", "unlimited only when chosen");
+console.log("SERVICE AREA & MILEAGE (separate rules)");
+const { composeMileage, parseMileage, excessFeeFor } = await import("../src/lib/service-area");
+ok(composeServiceArea({ mode: "unset" }) === "", "service area unset stays blank (no default restriction)");
+ok(composeServiceArea({ mode: "radius", miles: 50, center: "Orlando, FL", region: "Florida" }) === "50-mile radius of Orlando, FL; Florida only", "geographic radius");
+ok(composeServiceArea({ mode: "region", region: "Florida, Georgia" }) === "Florida, Georgia only", "permitted states/regions");
+ok(composeServiceArea({ mode: "none" }) === "No geographic restriction", "no restriction only when chosen");
 ok(composeServiceArea({ mode: "radius", miles: 0, center: "X", region: "" }) === "", "incomplete radius stays blank");
 ok(parseServiceArea("50-mile radius of Orlando, FL; Florida only").mode === "radius" && parseServiceArea("[100]-mile radius of Tampa, FL; Florida only").mode === "custom", "existing wording read back, never rewritten");
+ok(composeMileage({ mode: "unset" }) === "" && composeMileage({ mode: "unlimited" }) === "Unlimited miles", "mileage: unset blank, unlimited explicit");
+for (const [p, w] of [["day", "day"], ["week", "week"], ["month", "month"], ["rental", "rental"]] as const)
+  ok(composeMileage({ mode: "limited", miles: 1500, period: p }) === `1,500 miles per ${w}`, `mileage limited per ${w}`);
+ok(parseMileage("1,500 miles per week").mode === "limited" && parseMileage("Unlimited miles").mode === "unlimited", "mileage read back");
+ok(excessFeeFor("Unlimited miles", "$0.25/mile") === "" && excessFeeFor("1,500 miles per week", "$0.25/mile") === "$0.25/mile", "unlimited never carries an excess fee");
+for (const t of LIBRARY) {
+  ok(t.source.includes("| Service Area / Mileage Limit | [[service_area]]; [[mileage_allowance]]") && readTerms(t.body)!.mileage_allowance === "", `${t.key}: service area and mileage are separate values, both blank`);
+  ok(!t.source.includes("excess_mileage_fee"), `${t.key}: excess-mileage fee not printed (no approved clause)`);
+  const out = renderTemplate(writeTerms(t.source, { ...t.terms, service_area: "Florida only", mileage_allowance: "1,500 miles per week" }), {} as any);
+  ok(out.includes("| Service Area / Mileage Limit | Florida only; 1,500 miles per week"), `${t.key}: preview shows both values`);
+}
 for (const t of LIBRARY) ok(readTerms(t.body)!.service_area === "", `${t.key}: Service Area not restored to old Tampa value`);
 const tplFn = readFileSync("src/lib/agreement-templates.functions.ts", "utf8");
 ok(/missingTerms\(readTerms\(v\.body\)/.test(tplFn), "approval refuses while any contract value (incl. Service Area) is blank");

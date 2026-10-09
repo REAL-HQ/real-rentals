@@ -3,7 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { getEmailDiagnostics, sendTestAlert, getEmailDeliveryStatus, type EmailDiagnostics, type EmailDeliveryStatus } from "@/lib/notifications.functions";
-import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { saveSettingsSection, changedFields } from "@/lib/settings-save";
+import { useUnsavedGuard } from "@/lib/unsaved-changes";
+import { useBlocker } from "@tanstack/react-router";
 
 type SettingsMap = Record<string, any>;
 
@@ -11,7 +15,7 @@ const SECTIONS: {
   key: string;
   title: string;
   hint?: string;
-  fields: { key: string; label: string; type: "text" | "number" | "textarea" | "boolean" | "emails"; hint?: string }[];
+  fields: { key: string; label: string; type: "text" | "number" | "textarea" | "boolean" | "emails"; hint?: string; usedIn?: string }[];
 }[] = [
   { key: "esign_company_signer", title: "Company eSign Signer",
     hint: "Countersigns every agreement as /s/ Name, Title, REAL RENTALS. Captured when a document is sent — changing it never alters documents already sent or signed. Owners only.",
@@ -51,13 +55,17 @@ const SECTIONS: {
   ]},
   { key: "system_preferences", title: "System Preferences", fields: [
     { key: "company_name", label: "Legal Business Name", type: "text",
-      hint: "Exact legal name printed on rental agreements." },
+      hint: "Your registered business name.",
+      usedIn: "Printed on rental agreements as the contracting company. Required before an agreement template can be approved." },
     { key: "mailing_address", label: "Mailing Address", type: "text",
-      hint: "Full street address, city, state and ZIP printed on rental agreements. Required before an agreement template can be approved." },
+      hint: "Street, city, state and ZIP.",
+      usedIn: "Printed on rental agreements as the company address. Required before an agreement template can be approved." },
     { key: "business_phone", label: "Business Phone", type: "text",
-      hint: "Public REAL RENTALS number shown on the website, portal, agreements, emails and SMS HELP replies. Not a telecom provider ID." },
+      hint: "Main customer phone number.",
+      usedIn: "Shown on the website and driver portal, printed on agreements, and used in customer emails and SMS HELP replies. Not a telecom provider ID." },
     { key: "support_email", label: "Support Email", type: "text",
-      hint: "Contact email printed on rental agreements." },
+      hint: "Main customer support address.",
+      usedIn: "Printed on rental agreements as the support contact. Required before an agreement template can be approved." },
   ]},
 ];
 
@@ -74,7 +82,7 @@ export const SECTION_KEY: Record<string, string> = {
 };
 
 export function SettingsPanel({ only }: { only?: string } = {}) {
-  const [settings, setSettings] = useState<SettingsMap>({});
+  const [settings, setSettings] = useState<SettingsMap | null>(null);
 
   useEffect(() => {
     supabase.from("app_settings").select("*").then(({ data }) => {
@@ -84,64 +92,14 @@ export function SettingsPanel({ only }: { only?: string } = {}) {
     });
   }, []);
 
-  async function save(key: string, value: any) {
-    const { error } = await supabase.from("app_settings").upsert({ key, value });
-    if (error) return toast.error(error.message);
-    setSettings(s => ({ ...s, [key]: value }));
-    toast.success("Saved");
-  }
-
-
+  if (!settings) return <p className="text-sm text-muted-foreground">Loading…</p>;
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="space-y-8 max-w-3xl">
-      {SECTIONS.filter((sec) => !only || sec.key === only).map(sec => {
-        const current = settings[sec.key] || {};
-        return (
-          <div key={sec.key} className={only ? "" : "rounded-xl bg-soft p-5"}>
-            {!only && <h3 className="font-semibold mb-1">{sec.title}</h3>}
-            {sec.hint && <p className="text-xs text-muted-foreground mb-3">{sec.hint}</p>}
-            {sec.key === "notifications" && <EmailDeliveryStatus />}
-            <div className="grid grid-cols-2 gap-3">
-              {sec.fields.map(f => (
-                <div key={f.key} className={f.type === "textarea" || f.type === "boolean" ? "col-span-2" : ""}>
-                  {f.type === "emails" ? (
-                    <EmailList
-                      label={f.label}
-                      value={current[f.key] ?? ""}
-                      onChange={(v) => save(sec.key, { ...current, [f.key]: v })}
-                    />
-                  ) : f.type === "boolean" ? (
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        // Absent means on, matching how the server reads it —
-                        // a setting nobody has touched keeps today's behaviour.
-                        checked={current[f.key] !== false}
-                        onChange={(e) => save(sec.key, { ...current, [f.key]: e.target.checked })}
-                      />
-                      {f.label}
-                    </label>
-                  ) : (
-                  <>
-                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{f.label}</label>
-                  {f.type === "textarea" ? (
-                    <textarea defaultValue={current[f.key] || ""} rows={3}
-                      onBlur={(e) => save(sec.key, { ...current, [f.key]: e.target.value })}
-                      className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
-                  ) : (
-                    <input type={f.type} defaultValue={current[f.key] ?? ""}
-                      onBlur={(e) => save(sec.key, { ...current, [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value })}
-                      className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
-                  )}
-                  {f.hint && <p className="mt-1 text-[11px] text-muted-foreground">{f.hint}</p>}
-                  </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+      {SECTIONS.filter((sec) => !only || sec.key === only).map((sec) => (
+        <SectionForm key={sec.key} sec={sec} framed={!only} saved={settings[sec.key] || {}}
+          onSaved={(v) => setSettings((m) => ({ ...(m ?? {}), [sec.key]: v }))} />
+      ))}
 
       {/* Staff access used to be managed here as well, by pasting a raw user
           UUID and writing to user_roles straight from the browser. That path
@@ -163,6 +121,86 @@ export function SettingsPanel({ only }: { only?: string } = {}) {
           pass, records an audit entry, and refuses to remove the last Owner.
         </p>
       </div>}
+    </div>
+    </TooltipProvider>
+  );
+}
+
+/** One settings section with an explicit Save Changes bar. */
+function SectionForm({ sec, saved, framed, onSaved }: {
+  sec: (typeof SECTIONS)[number]; saved: Record<string, any>; framed: boolean; onSaved: (v: Record<string, any>) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, any>>(() => ({ ...saved }));
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const changes = changedFields(saved, draft);
+  const dirty = Object.keys(changes).length > 0;
+  useUnsavedGuard(`settings:${sec.key}`, dirty);
+  // In-app navigation (menu, tabs, links) asks before leaving unsaved edits.
+  useBlocker({ shouldBlockFn: () => dirty && !window.confirm("You have unsaved changes. Leave without saving?"), enableBeforeUnload: false });
+  const set = (k: string, v: any) => { setDraft((d) => ({ ...d, [k]: v })); if (state !== "saving") setState("idle"); };
+
+  async function save() {
+    setState("saving"); setError(null);
+    const r = await saveSettingsSection(supabase, sec.key, changes);
+    if (!r.ok) { setState("error"); setError(r.error); return; }
+    onSaved(r.value); setDraft({ ...r.value }); setState("saved");
+  }
+
+  return (
+    <div className={framed ? "rounded-xl bg-soft p-5" : ""}>
+      {framed && <h3 className="font-semibold mb-1">{sec.title}</h3>}
+      {sec.hint && <p className="text-xs text-muted-foreground mb-3">{sec.hint}</p>}
+      {sec.key === "notifications" && <EmailDeliveryStatus />}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {sec.fields.map((f) => (
+          <div key={f.key} className={f.type === "textarea" || f.type === "boolean" ? "sm:col-span-2" : ""}>
+            {f.type === "emails" ? (
+              <EmailList label={f.label} value={draft[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
+            ) : f.type === "boolean" ? (
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                {/* Absent means on, matching how the server reads it. */}
+                <input type="checkbox" checked={draft[f.key] !== false} onChange={(e) => set(f.key, e.target.checked)} />
+                {f.label}
+              </label>
+            ) : (
+              <>
+                <label htmlFor={`set-${sec.key}-${f.key}`} className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {f.label}
+                  {f.usedIn && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" aria-label={`Where ${f.label} Is Used`} className="text-muted-foreground hover:text-foreground"><Info className="h-3.5 w-3.5" /></button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs bg-white text-foreground border normal-case tracking-normal text-xs">{f.usedIn}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </label>
+                {f.type === "textarea" ? (
+                  <textarea id={`set-${sec.key}-${f.key}`} value={draft[f.key] ?? ""} rows={3} onChange={(e) => set(f.key, e.target.value)}
+                    className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
+                ) : (
+                  <input id={`set-${sec.key}-${f.key}`} type={f.type} value={draft[f.key] ?? ""}
+                    onChange={(e) => set(f.key, f.type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
+                    className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
+                )}
+                {f.hint && <p className="mt-1 text-[11px] text-muted-foreground">{f.hint}</p>}
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3" data-testid={`save-bar-${sec.key}`}>
+        <button type="button" onClick={save} disabled={!dirty || state === "saving"}
+          className="inline-flex items-center gap-1.5 rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground disabled:opacity-50">
+          {state === "saving" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {state === "saving" ? "Saving…" : state === "error" ? "Retry Save" : "Save Changes"}
+        </button>
+        {dirty && state !== "saving" && state !== "error" && <span className="text-xs text-[#B45309]">Unsaved Changes</span>}
+        {!dirty && state === "saved" && <span className="inline-flex items-center gap-1 text-xs text-[#16A34A]"><CheckCircle2 className="h-3.5 w-3.5" /> Saved</span>}
+        {state === "error" && <span className="text-xs text-[#D03020]">{error}</span>}
+        {dirty && state !== "saving" && <button type="button" className="text-xs text-muted-foreground underline" onClick={() => { setDraft({ ...saved }); setState("idle"); setError(null); }}>Discard</button>}
+      </div>
     </div>
   );
 }

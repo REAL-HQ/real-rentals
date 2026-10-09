@@ -38,7 +38,7 @@ export const TERM_FIELDS: TermField[] = [
   { key: "fee_towing", label: "Towing, Impound & Recovery", group: "Fee Schedule" },
   { key: "fee_additional_driver", label: "Additional Approved Driver", group: "Fee Schedule" },
 
-  { key: "service_area", label: "Service Area / Mileage Limit", group: "Restrictions" },
+  { key: "service_area", label: "Service Area", group: "Restrictions" },
   { key: "home_state", label: "Permitted State", group: "Restrictions" },
   { key: "min_age_economy", label: "Minimum Age — Economy", group: "Restrictions" },
   { key: "min_age_premium", label: "Minimum Age — Luxury / Premium", group: "Restrictions" },
@@ -90,7 +90,11 @@ export const V16_TERM_DEFAULTS: Record<string, string> = {
 export const EXTRA_TERM_FIELDS: TermField[] = [
   { key: "fee_citation_admin", label: "Ticket / Citation Administrative Fee", group: "Pricing & Deposit" },
   { key: "insurance_notice_hours", label: "Insurance Change Notice (Hours)", group: "Rental Terms" },
+  { key: "mileage_allowance", label: "Mileage Allowance", group: "Restrictions" },
+  { key: "excess_mileage_fee", label: "Excess-Mileage Fee (Not Printed — Needs Approved Clause)", group: "Restrictions" },
 ];
+/** Saved with a library draft but never printed: no approved clause exists yet. */
+export const UNPRINTED_TERMS = ["excess_mileage_fee"];
 export const ALL_TERM_FIELDS: TermField[] = [...TERM_FIELDS, ...EXTRA_TERM_FIELDS];
 
 const MARKER = /\n?%%BUILDER_TERMS (\{.*\})%%\s*$/s;
