@@ -1075,6 +1075,15 @@ async function applySection(
     // route around it: a car on an active rental cannot leave, because the
     // rental would still be pointing at it.
     if (typeof patch.status === "string" && patch.status !== before.status) {
+      // Archive and Restore have their own audited actions (required reason,
+      // restore-to-Onboarding); the drawer is not a quieter route around them.
+      if (patch.status === "archived" || before.status === "archived") {
+        return {
+          ok: false,
+          error: patch.status === "archived" ? "Use Archive Vehicle to archive." : "Use Restore Vehicle to bring this vehicle back.",
+          field: "status",
+        };
+      }
       const leaving = INACTIVE_STATUSES.includes(patch.status);
       if (leaving) {
         const { count } = await supabaseAdmin
