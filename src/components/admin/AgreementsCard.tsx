@@ -16,6 +16,7 @@ import {
 } from "@/lib/agreements.functions";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { AgreementPdfViewer } from "./AgreementPdfViewer";
+import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -56,6 +57,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
+  const [prepOpen, setPrepOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Latest signing link per agreement, held only in memory for Copy.
   const [links, setLinks] = useState<Record<string, string>>({});
@@ -138,15 +140,28 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
       title="Rental Agreement"
       right={
         <button
-          onClick={openPreview}
+          onClick={() => setPrepOpen(true)}
           disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white text-[12px] font-semibold px-3 py-1.5 disabled:opacity-50"
         >
           {busy && !preview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSignature className="w-3.5 h-3.5" />}
-          Preview Agreement
+          Prepare Agreement
         </button>
       }
     >
+      {prepOpen && (
+        <PrepareAgreementDialog
+          applicationId={applicationId}
+          onOpenTab={onOpenTab}
+          onClose={() => setPrepOpen(false)}
+          onSent={async (res: any) => {
+            reportDelivery(res.delivery, "Agreement sent for signature");
+            if (res.url) setLinks((l) => ({ ...l, [res.id]: res.url }));
+            setPrepOpen(false);
+            await refresh();
+          }}
+        />
+      )}
       <div className="p-5 space-y-4">
         {preview ? (
           <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB]" data-testid="agreement-preview">
@@ -255,7 +270,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
           </div>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">
-            No agreement sent yet. Preview one to pre-fill it with this driver's details and assigned vehicle.
+            No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle.
           </p>
         ) : (
           <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-lg overflow-hidden">
