@@ -15,15 +15,21 @@ const card = readFileSync("src/components/admin/AgreementsCard.tsx", "utf8");
 
 console.log("THE STORED BODY CANNOT CONTAIN UNRESOLVED BLANKS");
 ok(/const BLANK = "_{6,}"/.test(src), "the placeholder is named");
-ok(/opts\.body && !opts\.body\.includes\(BLANK\) \? opts\.body : rendered/.test(src),
-   "an edited body carrying blanks is replaced by a fresh render");
+// Updated: the editable draft was intentionally removed — the browser can no
+// longer supply contract text, so the server always re-renders and refuses blanks.
+ok(!/opts\.body/.test(src), "no browser-supplied body is accepted at all");
+ok(/if \(body\.includes\(BLANK\)\) throw/.test(src), "a rendered body still carrying blanks is refused");
 ok(!/const body = opts\.body \?\?/.test(src), "  the unconditional override is gone, in any spelling");
 
 console.log("\nA BLOCKED AGREEMENT OFFERS NO SENDABLE DRAFT");
 ok(/body: blockers\.length \? null :/.test(src), "the preview withholds the body while blocked");
 ok(/blockers/.test(card), "the card reads blockers");
 ok(/This agreement cannot be sent yet/.test(card), "  and says so plainly");
-ok(/if \(!res\.body\) setPreview\(null\)/.test(card), "  with no editable draft to press Send on");
+// Updated: there is no editable draft; Send is disabled while blocked and the
+// server re-checks blockers + fingerprint.
+ok(!/<textarea/i.test(card), "  with no editable draft to press Send on");
+ok(/canSend: !blockers\.length && !refusal/.test(src), "  and the server marks a blocked agreement unsendable");
+ok(/disabled=\{busy \|\| !preview\.canSend/.test(card), "  and the Send button honours it");
 
 console.log("\nDATES COME FROM A LIVE RENTAL, OR THE AGREED FALLBACK");
 ok(/\.eq\("status", "active"\)/.test(src), "only an active rental is authoritative");
