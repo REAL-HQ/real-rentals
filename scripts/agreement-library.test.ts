@@ -33,5 +33,19 @@ ok(readTerms(ir.body)!.insurance_notice_hours === "[24]" && readTerms(ni.body)!.
 // Legacy v1.6 body is byte-identical (its fingerprint must not change).
 ok(!("fee_citation_admin" in readTerms(V16_BODY)!), "v1.6 body unchanged by new terms");
 
+// Library drafts: values only, never wording, never agreements.
+import("fs").then(() => {});
+const tplSrc = (await import("fs")).readFileSync("src/lib/agreement-templates.functions.ts", "utf8");
+const save = tplSrc.slice(tplSrc.indexOf("export const saveLibraryDraft"));
+ok(/await owner\(context\.userId\)/.test(save), "library draft save is Owner-only");
+ok(/writeTerms\(lib\.source, terms\)/.test(save) && !/from\("agreements"\)|from\("agreement_templates"\)/.test(save), "draft keeps fixed wording; never touches sent/signed agreements or approval rows");
+ok(/not used by this agreement/.test(save), "only values the agreement uses can be saved");
+const agr = (await import("fs")).readFileSync("src/lib/agreements.functions.ts", "utf8");
+ok(/libraryWithDraft/.test(agr) && /approvalStatus: "draft"/.test(agr), "Prepare Agreement uses saved draft values and stays unsendable (draft)");
+const edited = writeTerms(ni.source, { ...ni.terms, notice_hours: "48", service_area: "Florida only" });
+ok(acknowledgmentsOf(edited).length === 13 && stripTerms(edited) === stripTerms(ni.body), "editing values keeps wording and 13 initials");
+const editedIr = writeTerms(ir.source, { ...ir.terms, insurance_notice_hours: "24" });
+ok(acknowledgmentsOf(editedIr).length === 15 && stripTerms(editedIr) === stripTerms(ir.body), "editing values keeps wording and 15 initials");
+
 if (fails) { console.error(`${fails} failed`); process.exit(1); }
 console.log("All agreement-library checks passed");
