@@ -72,6 +72,7 @@ function freshState() {
     attached: [],
     attachFails: false,
     duplicateNext: false,
+    coversOtherVehicle: false,
     directSaves: [],
     registered_with: [],
     applied: [],      // "<proposalId>:<field>" — the real apply is per field
@@ -119,7 +120,7 @@ const FIELD_ROWS = [
 ];
 
 function proposalsFor(batch) {
-  return batch.items
+  const rows = batch.items
     .filter((it) => itemView(it).status === "ready" && !it.duplicate)
     .map((it) => ({
       id: `prop-${it.id}`, batch_id: batch.id, item_id: it.id, page: null, kind: "match",
@@ -130,6 +131,19 @@ function proposalsFor(batch) {
       applied_vehicle_id: state.applied.some((a) => a.startsWith(`prop-${it.id}:`)) ? VEHICLE_ID : null,
       fields: PROPOSAL_FIELDS, changes: [], issues: [],
     }));
+  if (!state.coversOtherVehicle) return rows;
+  // A document that names a second car by FULL VIN — one insurance PDF
+  // covering two vehicles. It must never link itself.
+  return [
+    ...rows,
+    ...batch.items
+      .filter((it) => itemView(it).status === "ready" && !it.duplicate)
+      .map((it) => ({
+        id: `prop-${it.id}-other`, batch_id: batch.id, item_id: it.id, page: 2, kind: "match",
+        vin: "1SYNTH00000000002", match_vehicle_id: OTHER_ID, match_basis: "vin_exact",
+        status: "pending", applied_vehicle_id: null, fields: PROPOSAL_FIELDS, changes: [], issues: [],
+      })),
+  ];
 }
 
 /** getVehicleSuggestions, derived from the same fake state — ready items only. */
@@ -206,7 +220,13 @@ function serverFn(name, input) {
       return {
         batch: { id: b.id, label: "Synthetic", status: "processing", created_at: new Date().toISOString(), source_channel: "vehicle_profile" },
         items: b.items.map(itemView), proposals: proposalsFor(b), transactions: [], finance: [],
-        vehicles: [vehicleRow(VEHICLE_ID, "RR-SYN", SYNTHETIC.vin), vehicleRow(OTHER_ID, "RR-SYN2", "1SYNTH00000000002")],
+        vehicles: (() => {
+          const all = [vehicleRow(VEHICLE_ID, "RR-SYN", SYNTHETIC.vin), vehicleRow(OTHER_ID, "RR-SYN2", "1SYNTH00000000002")];
+          if (input?.vehicleScope !== "referenced") return all;
+          // Mirrors the server: only the vehicles this batch's proposals name.
+          const ids = new Set(proposalsFor(b).map((p) => p.match_vehicle_id).filter(Boolean));
+          return all.filter((v) => ids.has(v.id));
+        })(),
         canFinance: true, email: null, queue: { pausedReason: null, pausedAt: null },
       };
     }
@@ -492,6 +512,31 @@ console.log("\nTHE REVIEW SURVIVES CLOSING AND REOPENING THE DIALOG");
   ok(/Details Found In Documents/.test(again), "AND THE PENDING DETAILS ARE STILL REVIEWABLE ON REOPEN");
   ok(/Accept Selected/.test(again), "  with the Accept button still offered");
   ok(/\bCancel\b/.test(again), "  a fresh dialog with nothing uploaded in it may say Cancel");
+  ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
+  await ctx.close();
+}
+
+console.log("\nA DOCUMENT COVERING TWO CARS LINKS ONLY WHEN SOMEBODY SAYS SO");
+{
+  const { ctx, page, errors } = await openDialog({ width: 1440, height: 1000 });
+  await openDocumentsTab(page);
+  state.coversOtherVehicle = true;
+  await uploadSynthetic(page);
+  await page.waitForTimeout(EXTRACT_MS + 7000);
+  const after = await screen(page);
+
+  ok(/also covers other vehicles/.test(after), "the dialog says the document covers another vehicle");
+  ok(/matched by full VIN/.test(after), "  and that the match was on the full VIN");
+  ok(/RR-SYN2/.test(after), "  naming the other car");
+  // One link from the upload itself, to THIS vehicle. Nothing else yet.
+  ok(state.attached.length === 1 && state.attached[0].endsWith(VEHICLE_ID),
+     `NOTHING WAS LINKED TO THE OTHER CAR WITHOUT A CLICK (${state.attached.join(", ")})`);
+
+  await dialog(page).getByRole("button", { name: /^Link$/ }).first().click();
+  await page.waitForTimeout(2000);
+  ok(state.attached.some((a) => a.endsWith(OTHER_ID)), "  pressing Link attaches the same file to it");
+  ok(state.registered === 1, "  the original was never stored a second time");
+  ok(/Linked/.test(await screen(page)), "  and the button reports it is done");
   ok(errors.length === 0, `no page errors (${errors.slice(0, 2).join(" | ") || "none"})`);
   await ctx.close();
 }

@@ -111,7 +111,9 @@ export function fileState(i: UploadItem): FileState {
     label: MILESTONE_LABEL.extraction_complete,
     failed: false,
     duplicate,
-    note: duplicate ? "This exact file was already on file — linked to this vehicle, not stored again." : "",
+    note: duplicate
+      ? "This exact file was already on file — linked to this vehicle, not stored again."
+      : "",
   };
 }
 
@@ -169,19 +171,22 @@ export function reviewState(args: {
   if (items.every((i) => String(i.status) === "failed")) {
     return {
       kind: "empty",
-      message: "Nothing could be read from this file, so there is nothing to review. The file itself is saved and linked to this vehicle.",
+      message:
+        "Nothing could be read from this file, so there is nothing to review. The file itself is saved and linked to this vehicle.",
     };
   }
   if (args.otherVehicles > 0) {
     return {
       kind: "empty",
-      message: "Every detail in this document belongs to another vehicle, matched by full VIN. Nothing here applies to this one — link it above if the document covers it too.",
+      message:
+        "Every detail in this document belongs to another vehicle, matched by full VIN. Nothing here applies to this one — link it above if the document covers it too.",
     };
   }
   if (items.some((i) => String(i.status) === "duplicate")) {
     return {
       kind: "empty",
-      message: "This exact file was already on file, so it was linked rather than stored again. Any details it holds were read the first time — review them in Fleet Inbox.",
+      message:
+        "This exact file was already on file, so it was linked rather than stored again. Any details it holds were read the first time — review them in Fleet Inbox.",
     };
   }
   return {
