@@ -112,7 +112,7 @@ import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocume
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
-import { ClipboardList, Clock as ClockIcon, ExternalLink, Trash2 } from "lucide-react";
+import { ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
