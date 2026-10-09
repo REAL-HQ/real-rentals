@@ -182,6 +182,11 @@ export const approveTemplateVersion = createServerFn({ method: "POST" })
     if (!v?.id || v.status !== "draft") return { ok: false as const, error: "Only a saved Draft can be approved." };
     if (v.fingerprint !== data.fingerprint) return { ok: false as const, error: "The wording changed since you reviewed it. Review again." };
     if (v.unknownFields.length) return { ok: false as const, error: `Unknown fields: ${v.unknownFields.join(", ")}` };
+    {
+      const { readTerms, missingTerms, stripTerms } = await import("@/lib/agreement-builder");
+      const miss = missingTerms(readTerms(v.body) ?? {}, stripTerms(v.body));
+      if (miss.length) return { ok: false as const, error: `Set every contract value first (missing: ${miss.join(", ")}). Service Area / Mileage Limit must be chosen explicitly.` };
+    }
     const { issues } = await companyChecks(supabaseAdmin);
     if (issues.length) return { ok: false as const, error: issues[0] };
     const { error } = await supabaseAdmin.from("agreement_templates")
@@ -226,4 +231,38 @@ export const setTemplateEnforcement = createServerFn({ method: "POST" })
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, { action: data.enabled ? "template.enforcement_on" : "template.enforcement_off", summary: `${data.enabled ? "Approved-template enforcement turned ON" : "Approved-template enforcement turned OFF"}${data.reason ? ": " + data.reason : ""}`, entityType: "agreement_template", entityId: null as any, metadata: {} });
     return { ok: true as const };
+  });
+
+/**
+ * Smart Agreement Upload — keep the original file privately (Owner only).
+ * The private rental-agreements bucket is staff-only; nothing here creates a
+ * template, approves anything or changes what Send uses.
+ */
+export const storeTemplateUpload = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    fileName: z.string().min(1).max(200),
+    base64: z.string().min(10).max(14_500_000), // ≈10 MB
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await owner(context.userId);
+    const bin = atob(data.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const isPdf = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+    const isDocx = bytes[0] === 0x50 && bytes[1] === 0x4b && /\.docx$/i.test(data.fileName);
+    if (!isPdf && !isDocx) return { ok: false as const, error: "Only PDF and Word (.docx) agreements can be uploaded." };
+    const { sha256Hex } = await import("@/lib/esign-pdf.server");
+    const digest = await sha256Hex(bytes as any);
+    const safe = data.fileName.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-120);
+    const path = `template-uploads/${digest.slice(0, 16)}/${safe}`;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.storage.from("rental-agreements").upload(path, bytes, {
+      contentType: isPdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    });
+    if (error) return { ok: false as const, error: "Could not store the original file." };
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, { action: "template.source_uploaded", summary: `Uploaded agreement source ${safe}`, entityType: "agreement_template", entityId: null as any, metadata: { path, sha256: digest, bytes: bytes.length } });
+    return { ok: true as const, path, sha256: digest };
   });

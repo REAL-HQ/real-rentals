@@ -13,6 +13,7 @@ import {
   unknownFieldsIn, type TemplateVersion,
   previewTemplateBody,
 } from "@/lib/agreement-templates.functions";
+import { TemplateUploadDialog } from "@/components/admin/TemplateUploadDialog";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf, type LibraryTemplate } from "@/lib/agreement-library";
 
 type Data = Awaited<ReturnType<typeof listTemplateVersions>>;
@@ -297,6 +298,7 @@ function TemplateLibrary() {
   const [open, setOpen] = useState<null | { t: LibraryTemplate; mode: "preview" | "compare" | "acks" }>(null);
   const [pdf, setPdf] = useState<string | null>(null);
   const [fps, setFps] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
   useEffect(() => {
     (async () => {
       const out: Record<string, string> = {};
@@ -317,9 +319,13 @@ function TemplateLibrary() {
   const otherOf = (t: LibraryTemplate) => LIBRARY.find((x) => x.key !== t.key)!;
   return (
     <div className="space-y-3" data-testid="template-library">
-      <div>
+      {uploading && <TemplateUploadDialog onClose={() => setUploading(false)} />}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+       <div>
         <h3 className="text-[15px] font-semibold">Agreement Template Library</h3>
         <p className="text-[12px] text-muted-foreground">Each agreement keeps its own wording, version history and fingerprint. Imported agreements start as drafts and can be previewed but not sent until the Owner approves them after legal review.</p>
+       </div>
+       <Button size="sm" onClick={() => setUploading(true)}>Upload Template</Button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {LIBRARY.map((t) => (

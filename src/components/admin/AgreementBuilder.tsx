@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ArrowLeft, ChevronDown, Maximize2, Minus, Plus } from "lucide-react";
+import { ServiceAreaField } from "@/components/admin/ServiceAreaField";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
@@ -141,7 +142,9 @@ export function AgreementBuilder({
             {fields.map((f) => (
               <label key={f.key} className="block text-[12px]">
                 <span className="mb-1 block font-medium">{f.label}</span>
-                {f.multiline ? (
+                {f.key === "service_area" ? (
+                  <ServiceAreaField value={terms[f.key] ?? ""} onChange={(v) => set(f.key, v)} missing={missing.includes(f.key)} />
+                ) : f.multiline ? (
                   <Textarea rows={3} value={terms[f.key] ?? ""} onChange={(e) => set(f.key, e.target.value)}
                     className={`text-[12px] ${missing.includes(f.key) ? "border-destructive" : ""}`} />
                 ) : (
