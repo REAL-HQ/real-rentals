@@ -359,7 +359,7 @@ function TemplateLibrary({ company, issues }: { company: Record<string, any>; is
             <dl className="grid grid-cols-[40%_1fr] gap-y-0.5 text-[12px]">
               <dt className="text-muted-foreground">Insurance</dt><dd>{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"}</dd>
               <dt className="text-muted-foreground">Initials</dt><dd>{acknowledgmentsOf(t.body).length} Acknowledgments</dd>
-              <dt className="text-muted-foreground">Values</dt><dd className={missingTerms(termsOf(t), t.source).length + openCount(t) ? "text-destructive" : ""}>{missingTerms(termsOf(t), t.source).length} Missing · {openCount(t)} Open{drafts[t.key]?.length ? ` · Draft #${drafts[t.key].at(-1)!.n} saved ${fmtDate(drafts[t.key].at(-1)!.savedAt)}` : ""}</dd>
+              <dt className="text-muted-foreground">Values</dt><dd className={missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length + openCount(t) ? "text-destructive" : ""}>{missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length} Missing · {openCount(t)} Open{drafts[t.key]?.length ? ` · Draft #${drafts[t.key].at(-1)!.n} saved ${fmtDate(drafts[t.key].at(-1)!.savedAt)}` : ""}</dd>
               <dt className="text-muted-foreground">Source</dt><dd className="break-all">{t.sourceFile}</dd>
               <dt className="text-muted-foreground">Fingerprint</dt><dd className="font-mono text-[11px]" title={fps[t.key]}>{fps[t.key] ? `${fps[t.key].slice(0, 16)}…` : "…"}</dd>
             </dl>

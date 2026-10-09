@@ -59,7 +59,8 @@ export function AgreementBuilder({
   const [source, setSource] = useState(() => (library ? library.source : baseTerms ? stripTerms(base.body) : V16_SOURCE));
   const [terms, setTerms] = useState<Record<string, string>>(() => (library ? { ...library.terms } : { ...V16_TERM_DEFAULTS, ...(baseTerms ?? {}) }));
   const usedTerms = useMemo(() => new Set(termsIn(source)), [source]);
-  const fieldList = library ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key)) : TERM_FIELDS;
+  // Reservation Fee is rental-specific (Prepare Agreement), never a template value.
+  const fieldList = library ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key) && f.key !== "reservation_line") : TERM_FIELDS;
   const openValues = fieldList.filter((f) => isOpen(terms[f.key])).map((f) => f.key);
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [pdf, setPdf] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function AgreementBuilder({
 
   const body = useMemo(() => writeTerms(source, terms), [source, terms]);
   const dirty = body !== base.body;
-  const missing = useMemo(() => missingTerms(terms, source), [terms, source]);
+  const missing = useMemo(() => missingTerms(terms, source).filter((k) => !library || k !== "reservation_line"), [terms, source, library]);
   const unknown = useMemo(() => [...unknownFieldsIn(source).map((f) => `{{${f}}}`), ...unknownTermsIn(source).map((f) => `[[${f}]]`)], [source]);
   const canApprove = !library && !dirty && base.status === "draft" && !!base.id;
 
@@ -129,7 +130,7 @@ export function AgreementBuilder({
       {openValues.length > 0 && (
         <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]" data-testid="open-values">
           <p className="font-semibold">Bracketed open values ({openValues.length}) — approval stays blocked until each is resolved or confirmed by legal review:</p>
-          {openValues.map((k) => <p key={k}>- {ALL_TERM_FIELDS.find((f) => f.key === k)?.label}: {terms[k]} <button className="ml-1 font-semibold underline" onClick={() => document.getElementById(`term-${k}`)?.focus()}>Edit</button></p>)}
+          {openValues.map((k) => <p key={k}>- {ALL_TERM_FIELDS.find((f) => f.key === k)?.label}: {terms[k]} <button className="ml-1 font-semibold underline" onClick={() => { const el = document.getElementById(`term-${k}`); el?.closest("details")?.setAttribute("open", ""); setTimeout(() => { el?.scrollIntoView({ block: "center" }); el?.focus(); }, 50); }}>Edit</button></p>)}
         </div>
       )}
       {(missing.length > 0 || unknown.length > 0 || issues.length > 0) && (
