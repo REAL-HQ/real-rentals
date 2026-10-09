@@ -4,5 +4,5 @@
 import { fileURLToPath } from "node:url";
 export default {
   resolve: { alias: { "@": fileURLToPath(new URL("../../src", import.meta.url)) } },
-  test: { include: ["scripts/esign-engine.test.ts"], testTimeout: 30000, hookTimeout: 60000, fileParallelism: false },
+  test: { include: ["scripts/esign-engine.test.ts", "scripts/settings-draft-persistence.test.ts"], testTimeout: 30000, hookTimeout: 60000, fileParallelism: false },
 };
