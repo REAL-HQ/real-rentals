@@ -112,7 +112,7 @@ import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocume
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
-import { ClipboardList, Clock as ClockIcon } from "lucide-react";
+import { ClipboardList, Clock as ClockIcon, ExternalLink, Trash2 } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
@@ -952,7 +952,7 @@ export function DriversPanel({
                           <MoreVertical className="w-4 h-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openDriver(a)}>Open</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openDriver(a)}><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
                           {a.phone && (
                             <DropdownMenuItem
                               onClick={() => (window.location.href = `tel:${a.phone}`)}
@@ -987,7 +987,7 @@ export function DriversPanel({
                             className="text-real-red focus:text-real-red"
                             onClick={() => remove(a.id)}
                           >
-                            Delete
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
