@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -453,7 +454,7 @@ function AgreementsView() {
             {openId === a.id ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
                 <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
-                  {a.body}
+                  {layoutToText(a.body)}
                 </pre>
                 {a.status !== "signed" ? (
                   <div className="mt-4 space-y-3">
