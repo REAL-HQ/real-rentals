@@ -386,7 +386,10 @@ async function prepareAgreement(admin: any, applicationId: string) {
   const tpl = await activeTemplate(admin);
   const body = renderTemplate(tpl.body, built.data);
   const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
-  return { ...built, tpl, body, fingerprint };
+  const { getCompanyIdentity } = await import("@/lib/company-identity.server");
+  const ci = await getCompanyIdentity(admin);
+  const companyFallback = Object.entries(ci.fromSettings).filter(([, v]) => !v).map(([k]) => ({ field: k, value: String((built.data as any)[k] ?? "") }));
+  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback };
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -479,6 +482,8 @@ export const previewAgreement = createServerFn({ method: "POST" })
       template: tpl.meta,
       canSend: !blockers.length && !refusal,
       sendRefusal: refusal,
+      companyMissing: prep.companyMissing,
+      companyFallback: prep.companyFallback,
       merge,
       missing,
       blockers,
@@ -502,7 +507,7 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null } = {},
+  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser.
@@ -524,6 +529,10 @@ export async function issueAgreement(
       "The agreement changed since it was previewed (driver, vehicle, dates, rate, deposit or template). Regenerate the preview and review it again before sending.",
     );
   if (body.includes(BLANK)) throw new Error("The agreement still contains blank fields. Regenerate the preview.");
+  // Staff sends with incomplete Settings → Company details need an explicit
+  // acknowledgment (not a legal approval). Auto-send keeps today's behaviour.
+  if (opts.fingerprint !== undefined && prep.companyMissing.length && opts.companyAck !== true)
+    throw new Error(`Company details are incomplete (${prep.companyMissing.join(", ")}). Confirm you want to send with the current fallback values.`);
 
   const token = randomToken();
   const tokenHash = await hashToken(token);
@@ -614,17 +623,23 @@ export const sendAgreement = createServerFn({ method: "POST" })
         // no free-text body any more: contract wording changes only through
         // the Owner's template.
         fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+        companyAck: z.boolean().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
-    void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    return issueAgreement(supabaseAdmin, data.applicationId, {
+    const res = await issueAgreement(supabaseAdmin, data.applicationId, {
       fingerprint: data.fingerprint,
       createdBy: context.userId,
+      companyAck: data.companyAck,
     });
+    if (data.companyAck) {
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor as any, { action: "agreement.company_fallback_ack", summary: "Sent with incomplete company details (staff acknowledgment — not a legal approval)", entityType: "agreement", entityId: res.id, metadata: {} });
+    }
+    return res;
   });
 
 /**

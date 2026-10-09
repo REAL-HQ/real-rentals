@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import {
-  listTemplateVersions, saveTemplateDraft, previewTemplateVersion, approveTemplateVersion, retireTemplateVersion,
+  listTemplateVersions, saveTemplateDraft, previewTemplateVersion, approveTemplateVersion, retireTemplateVersion, setTemplateEnforcement,
   unknownFieldsIn, type TemplateVersion,
 } from "@/lib/agreement-templates.functions";
 
@@ -57,6 +57,10 @@ export function AgreementTemplatesPanel() {
   const previewFn = useServerFn(previewTemplateVersion);
   const approveFn = useServerFn(approveTemplateVersion);
   const retireFn = useServerFn(retireTemplateVersion);
+  const enforceFn = useServerFn(setTemplateEnforcement);
+  const [enfMode, setEnfMode] = useState<null | "on" | "off">(null);
+  const [enfText, setEnfText] = useState("");
+  const [enfReason, setEnfReason] = useState("");
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<number | null>(null);
@@ -102,6 +106,14 @@ export function AgreementTemplatesPanel() {
       toast.success("Version Approved"); setMode(null); load();
     } finally { setBusy(false); }
   }
+  async function setEnforcement(enabled: boolean) {
+    setBusy(true);
+    try {
+      const r = await enforceFn({ data: { enabled, reason: enfReason, confirm: enabled ? "ENABLE" : "DISABLE" } });
+      if (!r.ok) return void toast.error(r.error);
+      toast.success(enabled ? "Enforcement On" : "Enforcement Off"); setEnfMode(null); setEnfText(""); setEnfReason(""); load();
+    } catch (e: any) { toast.error(e?.message || "Could not change enforcement"); } finally { setBusy(false); }
+  }
   async function retire() {
     setBusy(true);
     try {
@@ -117,6 +129,32 @@ export function AgreementTemplatesPanel() {
         <p><span className="text-muted-foreground">Used For Sending:</span> <span className="font-medium">{d.inUseLabel}</span></p>
         <p className="text-muted-foreground">Saving an edit creates a new Draft. Drafts never change what drivers receive. Owner approval is a business sign-off, not a legal review.</p>
         {dbNote && <p className="text-warning-foreground bg-warning/15 rounded-md px-2 py-1">Approve, Retire and Effective Date are available after the template database update is approved and applied. Until then, sending keeps using Draft v1 exactly as today.</p>}
+      </div>
+
+
+      <div className="rounded-xl border bg-card p-4 text-[13px] space-y-2" data-testid="enforcement-card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-medium">Approved-Template Enforcement: <span className={d.enforcementSwitch ? "text-success" : "text-muted-foreground"}>{d.enforcementSwitch ? "On" : "Off"}</span></p>
+          {!enfMode && (d.enforcementSwitch
+            ? <Button size="sm" variant="outline" disabled={busy} onClick={() => setEnfMode("off")}>Turn Off</Button>
+            : <Button size="sm" disabled={busy || !d.versioningActive || !d.versions.some((x) => x.status === "approved")} onClick={() => setEnfMode("on")}>Turn On</Button>)}
+        </div>
+        <p className="text-muted-foreground">{d.enforcementSwitch
+          ? "Only an Owner-approved template can be sent. Turning this off does not change existing agreements."
+          : !d.versioningActive ? "Off. Available after the template database update is applied. Sending works exactly as today."
+          : !d.versions.some((x) => x.status === "approved") ? "Off. Approve a template version first — turning this on without one would block all sending."
+          : "Off. Sending still uses the current template. Turn on to require the approved version."}</p>
+        {enfMode && (
+          <div className="space-y-2 rounded-md border p-3">
+            <p>{enfMode === "on" ? "Type ENABLE to require the approved template for every new agreement." : "Type DISABLE and give a reason. Sending returns to the current template."}</p>
+            {enfMode === "off" && <Textarea value={enfReason} onChange={(e) => setEnfReason(e.target.value)} placeholder="Reason" rows={2} />}
+            <input className="w-full rounded-md border px-2 py-1" value={enfText} onChange={(e) => setEnfText(e.target.value)} placeholder={enfMode === "on" ? "ENABLE" : "DISABLE"} aria-label="Confirmation" />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy || enfText !== (enfMode === "on" ? "ENABLE" : "DISABLE") || (enfMode === "off" && enfReason.trim().length < 3)} onClick={() => setEnforcement(enfMode === "on")}>Confirm</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setEnfMode(null); setEnfText(""); setEnfReason(""); }}>Cancel</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {d.issues.length > 0 && (
