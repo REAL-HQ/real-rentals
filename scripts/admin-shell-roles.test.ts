@@ -9,7 +9,7 @@ const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
 ok(owner.length === TABS.length, "Owner sees every destination");
 ok(visibleSettingsSections("manager").length > 0, "Manager: Settings sections (opened from profile menu)");
-ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","vehicle_defaults","maintenance","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
+ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","maintenance","vehicle_defaults","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
 ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Settings sections");
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
