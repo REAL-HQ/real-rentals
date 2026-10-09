@@ -46,7 +46,7 @@ import { VehicleDocuments } from "./VehicleDocuments";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
-import { rentalReadyItems, listingReadyItems, profileItems, percent } from "@/lib/vehicle-readiness";
+import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 // The vehicle as a record you read.
@@ -419,6 +419,7 @@ function Overview({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
+        <ReadinessChecklist p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
         <ReadinessCard p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
         <SectionCard
           title="Vehicle Details"
@@ -1345,6 +1346,65 @@ function ReadinessCard({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: Vehic
           <div className="mt-3 text-[11px] text-[#77777F]">Recommended only — never blocks renting.</div>
         </div>
       )}
+    </SectionCard>
+  );
+}
+
+/**
+ * Vehicle Readiness (Phase A, display only). Readiness and Availability are
+ * independent: a car can be Ready and On Rent. Nothing here changes status.
+ * Checks come from vehicle-readiness.ts; a future server function can supply
+ * the same ReadinessCheck[] without changing this component.
+ */
+const CHECK_STYLE: Record<ReadinessCheck["status"], { dot: string; text: string; label: string }> = {
+  ready: { dot: "bg-[#1E7B3C]", text: "text-[#1E7B3C]", label: "Ready" },
+  attention: { dot: "bg-[#D97706]", text: "text-[#B45309]", label: "Needs Attention" },
+  not_ready: { dot: "bg-[#D03020]", text: "text-[#B42318]", label: "Not Ready" },
+  info: { dot: "bg-[#9A9AA3]", text: "text-[#55555E]", label: "Info" },
+};
+function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
+  const v = p.vehicle;
+  const facts = p.readinessFacts;
+  if (!facts) return null;
+  const checks = vehicleReadinessChecks(v, facts, p.profileContext?.docKinds ?? [], p.counts.publishedPhotos ?? 0);
+  const overall = overallReadiness(checks);
+  const avail = vehicleAvailability(String(v.status ?? ""), facts.hasActiveRental);
+  const photo = listingPhotoCheck(p.counts.publishedPhotos ?? 0, p.counts.photos ?? 0);
+  const st = CHECK_STYLE[overall];
+  const go = (f?: FixTarget) => { if (!f) return; if (f.kind === "edit") onEdit(f.section as VehicleSection); else onOpenTab(f.tab as Tab); };
+  const Row = ({ c }: { c: ReadinessCheck }) => {
+    const s = CHECK_STYLE[c.status];
+    return (
+      <li data-check={c.key} data-status={c.status} className="flex items-start gap-3 py-2.5">
+        <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${s.dot}`} aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-[13px] font-medium text-[#111114]">{c.label}</span>
+            <span className={`text-[12px] font-semibold ${s.text}`}>{c.value}</span>
+          </div>
+          <div className="text-[12px] text-[#77777F]">{c.reason}</div>
+        </div>
+        {c.fix && c.status !== "ready" && (p.canEdit || c.fix.kind === "tab") && (
+          <button onClick={() => go(c.fix)} className="shrink-0 h-7 px-2.5 rounded-lg text-[12px] font-medium border border-[#E4E4E8] bg-white hover:bg-[#F4F4F6]">{c.fixLabel ?? "Fix"}</button>
+        )}
+      </li>
+    );
+  };
+  return (
+    <SectionCard title="Vehicle Readiness" icon={<ShieldCheck className="w-4 h-4" strokeWidth={1.75} />}>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span data-testid="readiness-overall" className={`inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-semibold ${st.text}`}>
+          <span className={`h-2 w-2 rounded-full ${st.dot}`} /> {st.label}
+        </span>
+        <span data-testid="readiness-availability" className="inline-flex items-center rounded-full bg-[#F4F4F6] px-2.5 py-1 text-[12px] font-medium text-[#111114]">{avail}</span>
+        <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
+      </div>
+      <ul className="divide-y divide-[#F0F0F2]">{checks.map((c) => <Row key={c.key} c={c} />)}</ul>
+      <div className="mt-3 pt-3 border-t border-[#EDEDF0]">
+        <div className="text-[11px] font-medium text-[#9A9AA3] mb-1">Listing Only — Does Not Affect Rental Eligibility</div>
+        <ul><Row c={photo} /></ul>
+      </div>
+      <div className="mt-2 text-[11px] text-[#9A9AA3]">Display only. Rental start rules are unchanged.</div>
     </SectionCard>
   );
 }
