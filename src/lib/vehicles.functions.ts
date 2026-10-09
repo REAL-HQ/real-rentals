@@ -387,24 +387,20 @@ export const createVehicle = createServerFn({ method: "POST" })
   );
 
 // ---------------------------------------------------------------- archive
+//
+// Archive hides a car from the active fleet and keeps every linked record.
+// Sold and Retired are separate operational statuses (set in the drawer);
+// Archive is only ever "archived", with a required written reason.
 
 export const archiveVehicle = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z
-      .object({
-        id: z.string().uuid(),
-        status: z.enum(["archived", "sold", "retired"]),
-        reason: z.string().trim().max(500).nullish(),
-      })
-      .parse(d),
+    z.object({ id: z.string().uuid(), reason: z.string().trim().min(3).max(500) }).parse(d),
   )
   .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // A car on an active rental cannot quietly leave the fleet — the rental
-    // would still be pointing at it.
     const { count } = await supabaseAdmin
       .from("rentals")
       .select("id", { count: "exact", head: true })
@@ -416,34 +412,161 @@ export const archiveVehicle = createServerFn({ method: "POST" })
 
     const { data: before } = await supabaseAdmin
       .from("vehicles")
-      .select("unit_number,year,make,model,status")
+      .select("unit_number,year,make,model,status,archived_at")
       .eq("id", data.id)
       .maybeSingle();
+    if (!before) return { ok: false, error: "Vehicle not found." };
+    if ((before as any).status === "archived") return { ok: false, error: "This vehicle is already archived." };
 
-    // Archive, never delete: rentals, documents, inspections, expenses and
-    // audit entries all reference this row and must stay readable.
-    const { error } = await supabaseAdmin
+    // Conditional on the status we just read, so two clicks archive once.
+    const { data: rows, error } = await supabaseAdmin
       .from("vehicles")
-      .update({
-        status: data.status,
-        archived_at: new Date().toISOString(),
-        archive_reason: data.reason ?? null,
-      } as any)
-      .eq("id", data.id);
+      .update({ status: "archived", archived_at: new Date().toISOString(), archive_reason: data.reason } as any)
+      .eq("id", data.id)
+      .eq("status", (before as any).status)
+      .select("id");
     if (error) return { ok: false, error: error.message };
+    if (!rows?.length) return { ok: false, error: "This vehicle changed while you were archiving it. Refresh and try again." };
 
     await logAudit(actor, {
       action: "vehicle.archived",
-      summary: `${before?.unit_number ?? `${before?.year} ${before?.make} ${before?.model}`} marked ${data.status}`,
+      summary: `${before.unit_number ?? `${before.year} ${before.make} ${before.model}`} archived`,
       entityType: "vehicle",
       entityId: data.id,
-      metadata: {
-        from_status: before?.status,
-        to_status: data.status,
-        reason: data.reason ?? null,
-      },
+      metadata: { from_status: (before as any).status, to_status: "archived", reason: data.reason },
+    });
+    return { ok: true };
+  });
+
+/** Restore always returns to Onboarding; a human makes it Available later. */
+export const restoreVehicle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(
+    async ({ data, context }): Promise<{ ok: boolean; error?: string; previousStatus?: string | null; missing?: string[] }> => {
+      const actor = await requireManager(context.userId);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+      const { data: before } = await supabaseAdmin
+        .from("vehicles")
+        .select("unit_number,year,make,model,status,archive_reason")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (!before) return { ok: false, error: "Vehicle not found." };
+      if ((before as any).status !== "archived") return { ok: false, error: "This vehicle is not archived." };
+
+      const { data: last } = await supabaseAdmin
+        .from("audit_log")
+        .select("metadata")
+        .eq("entity_type", "vehicle")
+        .eq("entity_id", data.id)
+        .eq("action", "vehicle.archived")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const previousStatus = ((last as any)?.metadata?.from_status as string | undefined) ?? null;
+
+      const { data: rows, error } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "onboarding", archived_at: null, archive_reason: null } as any)
+        .eq("id", data.id)
+        .eq("status", "archived")
+        .select("id");
+      if (error) return { ok: false, error: error.message };
+      if (!rows?.length) return { ok: false, error: "This vehicle was already restored." };
+
+      await logAudit(actor, {
+        action: "vehicle.restored",
+        summary: `${before.unit_number ?? `${before.year} ${before.make} ${before.model}`} restored to Onboarding`,
+        entityType: "vehicle",
+        entityId: data.id,
+        metadata: {
+          from_status: "archived",
+          to_status: "onboarding",
+          previous_status: previousStatus,
+          archive_reason: (before as any).archive_reason ?? null,
+        },
+      });
+
+      const { data: missing } = await supabaseAdmin.rpc("vehicle_rental_ready_missing", { _vehicle_id: data.id } as any);
+      return { ok: true, previousStatus, missing: (missing as string[] | null) ?? [] };
+    },
+  );
+
+async function countDependencies(sb: any, id: string) {
+  const { VEHICLE_DEPENDENCIES } = await import("@/lib/vehicle-lifecycle");
+  return Promise.all(
+    VEHICLE_DEPENDENCIES.map(async (d) => {
+      const { count, error } = await sb.from(d.table).select("*", { count: "exact", head: true }).eq(d.column, id);
+      // A failed count is treated as a blocker, never as zero.
+      return { label: d.label, count: error ? -1 : (count ?? 0) };
+    }),
+  );
+}
+
+/** Owner-only: what a permanent delete would remove, and what blocks it. */
+export const getVehicleDeleteCheck = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    await requireOwner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: v } = await supabaseAdmin
+      .from("vehicles")
+      .select("id,unit_number,year,make,model,vin,status")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!v) return { ok: false as const, error: "Vehicle not found." };
+    const counts = await countDependencies(supabaseAdmin, data.id);
+    return {
+      ok: true as const,
+      vehicle: { unit_number: v.unit_number, year: v.year, make: v.make, model: v.model, vinLast6: (v.vin ?? "").slice(-6), status: v.status },
+      blockers: counts.filter((c) => c.count !== 0),
+    };
+  });
+
+/** Owner-only permanent delete: archived, zero linked records, typed unit number. */
+export const deleteVehiclePermanently = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), confirm: z.string().max(40) }).parse(d))
+  .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    const actor = await requireOwner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { confirmMatches } = await import("@/lib/vehicle-lifecycle");
+
+    const { data: v } = await supabaseAdmin
+      .from("vehicles")
+      .select("id,unit_number,year,make,model,vin,status,archive_reason")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!v) return { ok: false, error: "Vehicle not found." };
+    if (v.status !== "archived") return { ok: false, error: "Archive the vehicle before deleting it permanently." };
+    if (!confirmMatches(v.unit_number, data.confirm)) return { ok: false, error: "The unit number you typed does not match." };
+
+    const blockers = (await countDependencies(supabaseAdmin, data.id)).filter((c) => c.count !== 0);
+    if (blockers.length) {
+      return { ok: false, error: `Blocked by linked records: ${blockers.map((b) => b.label).join(", ")}.` };
+    }
+
+    // Audit first, so the record exists even if the delete is then refused.
+    await logAudit(actor, {
+      action: "vehicle.deleted_permanently",
+      summary: `${v.unit_number} ${v.year} ${v.make} ${v.model} permanently deleted`,
+      entityType: "vehicle",
+      entityId: data.id,
+      metadata: { unit_number: v.unit_number, vin_last6: (v.vin ?? "").slice(-6), archive_reason: v.archive_reason },
     });
 
+    const { data: rows, error } = await supabaseAdmin
+      .from("vehicles")
+      .delete()
+      .eq("id", data.id)
+      .eq("status", "archived")
+      .select("id");
+    if (error) return { ok: false, error: error.message };
+    if (!rows?.length) return { ok: false, error: "The vehicle was not deleted." };
     return { ok: true };
   });
 
