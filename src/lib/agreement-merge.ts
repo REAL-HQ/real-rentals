@@ -1,6 +1,7 @@
 // Client-safe merge-field helpers shared by the admin preview and the
 // server-side agreement renderer.
 import { resolveTerms } from "@/lib/agreement-builder";
+import { isStructured, layoutSafeValue } from "@/lib/agreement-layout";
 
 export const MERGE_FIELDS = [
   { key: "driver_name", label: "Driver full name" },
@@ -23,13 +24,11 @@ export const MERGE_FIELDS = [
   { key: "company_phone", label: "Company phone" },
   { key: "company_email", label: "Company email" },
   { key: "today", label: "Today's date" },
-  // v1.6 fields not yet supplied by the send step: they print as blank lines
-  // to complete at pickup, never as invented values.
+  // v1.6 fields. Filled from real records by buildMergeData/prepareAgreement;
+  // a template that uses one blocks sending while it is empty.
   { key: "agreement_number", label: "Agreement number" },
   { key: "driver_dob", label: "Date of birth" },
   { key: "license_plate", label: "License plate / state" },
-  { key: "mileage_out", label: "Mileage out" },
-  { key: "fuel_out", label: "Fuel out" },
   { key: "min_term_end", label: "Minimum term end date" },
   { key: "card_on_file", label: "Payment card on file" },
   { key: "additional_drivers", label: "Approved additional drivers" },
@@ -40,9 +39,11 @@ export const MERGE_FIELDS = [
 export type MergeData = Record<string, string>;
 
 export function renderTemplate(body: string, data: MergeData): string {
-  return resolveTerms(body).replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key: string) => {
+  const resolved = resolveTerms(body);
+  const safe = isStructured(resolved) ? layoutSafeValue : (v: string) => v;
+  return resolved.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key: string) => {
     const v = data[key.toLowerCase()];
-    return v && v.trim() ? v : "__________";
+    return v && v.trim() ? safe(v) : "__________";
   });
 }
 
