@@ -142,6 +142,36 @@ describe("Agreement library Save Draft persistence (disposable DB)", () => {
   });
 });
 
+describe("Shared geographic settings persist per template (disposable DB)", () => {
+  it("both templates save and reload their own Service Area selection and mileage", async () => {
+    const { composeAreaConfig, areaConfigFrom } = await import("../src/lib/service-area");
+    const niCfg = { mode: "custom" as const, radius: { miles: 100, center: "Tampa, FL", region: "" }, region: "", custom: "Tampa Bay counties only" };
+    const irCfg = { mode: "radius" as const, radius: { miles: 100, center: "Tampa, FL", region: "Florida" }, region: "Florida", custom: "" };
+    const r1 = await T.saveLibraryDraft.run({ key: "no_insurance", terms: { service_area: composeAreaConfig(niCfg), service_area_config: JSON.stringify(niCfg), mileage_allowance: "1,500 miles per week", excess_mileage_fee: "$0.25 per mile" } }, ctx("owner"));
+    const r2 = await T.saveLibraryDraft.run({ key: "insurance_required", terms: { service_area: composeAreaConfig(irCfg), service_area_config: JSON.stringify(irCfg), mileage_allowance: "Unlimited miles" } }, ctx("owner"));
+    expect(r1.ok && r2.ok).toBe(true);
+    const fresh = await T.getLibraryDrafts.run(undefined, ctx("owner"));
+    const a = fresh.no_insurance.at(-1)!.terms, b = fresh.insurance_required.at(-1)!.terms;
+    expect(a.service_area).toBe("Tampa Bay counties only");
+    expect(b.service_area).toBe("100-mile radius of Tampa, FL; Florida only");
+    const ra = areaConfigFrom(a.service_area_config, a.service_area), rb = areaConfigFrom(b.service_area_config, b.service_area);
+    expect(ra.mode).toBe("custom"); expect(ra.radius.miles).toBe(100); // other mode's inputs kept
+    expect(rb.mode).toBe("radius"); expect(rb.radius).toEqual({ miles: 100, center: "Tampa, FL", region: "Florida" });
+    expect(a.mileage_allowance).toBe("1,500 miles per week"); expect(a.excess_mileage_fee).toBe("$0.25 per mile");
+    expect(b.mileage_allowance).toBe("Unlimited miles"); expect(b.excess_mileage_fee).toBe("");
+    // Earlier history is kept, and the PDF prints the same text from the same values.
+    expect(fresh.no_insurance.length).toBeGreaterThan(1);
+    for (const [key, t] of [["no_insurance", a], ["insurance_required", b]] as const) {
+      const lib = LIBRARY.find((x) => x.key === key)!;
+      const body = writeTerms(lib.source, t);
+      expect(body).not.toContain("service_area_config"); // selection is never printed
+      const { renderTemplate } = await import("../src/lib/agreement-merge");
+      expect(renderTemplate(body, {} as any)).toContain(`| Service Area / Mileage Limit | ${t.service_area}; ${t.mileage_allowance}`);
+      expect((await T.previewTemplateBody.run({ body, label: "geo" }, ctx("owner"))).ok).toBe(true);
+    }
+  });
+});
+
 describe("Settings explicit Save Changes (disposable DB)", () => {
   it("Owner save merges only changed fields, verifies by read-back, and survives a fresh read", async () => {
     // Uses an isolated settings row so the shared harness company data is untouched.

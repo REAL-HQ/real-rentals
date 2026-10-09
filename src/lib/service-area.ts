@@ -35,6 +35,38 @@ export function parseServiceArea(text: string): ServiceArea | { mode: "custom"; 
   return { mode: "custom", text: t };
 }
 
+/** Exact control state saved with a draft (not printed) so reopening shows the same mode and inputs. */
+export type ServiceAreaConfig = {
+  mode: "unset" | "radius" | "region" | "custom" | "none";
+  radius: { miles: number; center: string; region: string };
+  region: string;
+  custom: string;
+};
+export const EMPTY_AREA_CONFIG: ServiceAreaConfig = { mode: "unset", radius: { miles: 0, center: "", region: "" }, region: "", custom: "" };
+
+export function areaConfigFrom(saved: string | undefined, text: string): ServiceAreaConfig {
+  try {
+    const c = saved ? JSON.parse(saved) : null;
+    if (c && typeof c === "object" && ["unset", "radius", "region", "custom", "none"].includes(c.mode))
+      return { ...EMPTY_AREA_CONFIG, ...c, radius: { ...EMPTY_AREA_CONFIG.radius, ...(c.radius ?? {}) } };
+  } catch { /* fall back to reading the printed text */ }
+  const p = parseServiceArea(text);
+  const c = { ...EMPTY_AREA_CONFIG, radius: { ...EMPTY_AREA_CONFIG.radius } };
+  if (p.mode === "radius") return { ...c, mode: "radius", radius: { miles: p.miles, center: p.center, region: p.region } };
+  if (p.mode === "region") return { ...c, mode: "region", region: p.region };
+  if (p.mode === "custom") return { ...c, mode: "custom", custom: p.text };
+  return { ...c, mode: p.mode };
+}
+
+/** Printed text for the selected mode only; inputs of other modes are kept, never printed. */
+export function composeAreaConfig(c: ServiceAreaConfig): string {
+  if (c.mode === "radius") return composeServiceArea({ mode: "radius", ...c.radius });
+  if (c.mode === "region") return composeServiceArea({ mode: "region", region: c.region });
+  if (c.mode === "custom") return c.custom.trim();
+  if (c.mode === "none") return composeServiceArea({ mode: "none" });
+  return "";
+}
+
 export type MileagePeriod = "day" | "week" | "month" | "rental";
 export const PERIOD_LABEL: Record<MileagePeriod, string> = { day: "Per Day", week: "Per Week", month: "Per Month", rental: "Per Rental" };
 export type Mileage = { mode: "unset" } | { mode: "unlimited" } | { mode: "limited"; miles: number; period: MileagePeriod };

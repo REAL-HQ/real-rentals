@@ -1,37 +1,55 @@
-import { useEffect, useState } from "react";
-import { composeServiceArea, parseServiceArea, composeMileage, parseMileage, PERIOD_LABEL, type ServiceArea, type Mileage, type MileagePeriod } from "@/lib/service-area";
+import { useEffect, useRef, useState } from "react";
+import { areaConfigFrom, composeAreaConfig, type ServiceAreaConfig, composeMileage, parseMileage, PERIOD_LABEL, type Mileage, type MileagePeriod } from "@/lib/service-area";
 
 const input = "h-8 w-full rounded-md border bg-background px-2 text-[12px]";
 
-/** Service Area: where the renter may drive. Explicit choice only — never defaults to a restriction. */
-export function ServiceAreaField({ value, onChange, missing }: { value: string; onChange: (v: string) => void; missing?: boolean }) {
-  const [a, setA] = useState<ServiceArea | { mode: "custom"; text: string }>(() => parseServiceArea(value));
-  useEffect(() => { onChange(a.mode === "custom" ? a.text : composeServiceArea(a)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [JSON.stringify(a)]);
-  const pick = (m: string) => setA(
-    m === "radius" ? { mode: "radius", miles: 0, center: "", region: "" }
-      : m === "region" ? { mode: "region", region: "" }
-      : m === "none" ? { mode: "none" }
-      : m === "custom" ? { mode: "custom", text: value }
-      : { mode: "unset" });
+/**
+ * Service Area: where the renter may drive. The ONE shared control for every
+ * agreement template. Explicit choice only — never defaults to a restriction.
+ * Each mode keeps its own inputs, so switching modes never discards what was
+ * typed; only the selected mode prints.
+ */
+export function ServiceAreaField({ value, config, onChange, onConfig, missing }: {
+  value: string; config?: string; onChange: (v: string) => void; onConfig?: (c: string) => void; missing?: boolean;
+}) {
+  const [c, setC] = useState<ServiceAreaConfig>(() => areaConfigFrom(config, value));
+  // Last state reported to the builder: opening a draft reports nothing (so it
+  // is not marked changed); every later change — including switching back to
+  // the original mode — is reported.
+  const reported = useRef(JSON.stringify(c));
+  useEffect(() => {
+    const now = JSON.stringify(c);
+    if (now === reported.current) return;
+    reported.current = now;
+    onChange(composeAreaConfig(c));
+    onConfig?.(JSON.stringify(c));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [JSON.stringify(c)]);
+  const radiusIncomplete = c.mode === "radius" && (!(c.radius.miles > 0) || !c.radius.center.trim());
   return (
-    <div className={`space-y-1.5 rounded-md border p-2 text-[12px] ${missing ? "border-destructive" : ""}`}>
-      <select aria-label="Service Area Type" className={input} value={a.mode} onChange={(e) => pick(e.target.value)}>
+    <div className={`space-y-1.5 rounded-md border p-2 text-[12px] ${missing ? "border-destructive" : ""}`} data-testid="service-area-field">
+      <select aria-label="Service Area Type" className={input} value={c.mode} onChange={(e) => setC({ ...c, mode: e.target.value as ServiceAreaConfig["mode"] })}>
         <option value="unset">Not Set — Choose One</option>
         <option value="radius">Geographic Radius</option>
-        <option value="region">Permitted States Or Regions</option>
+        <option value="region">Permitted States / Regions</option>
         <option value="custom">Custom Geographic Restriction</option>
         <option value="none">No Geographic Restriction</option>
       </select>
-      {a.mode === "radius" && (
-        <div className="grid grid-cols-[80px_1fr] gap-1.5">
-          <input className={input} type="number" min={1} placeholder="Miles" aria-label="Radius Miles" value={a.miles || ""} onChange={(e) => setA({ ...a, miles: Number(e.target.value) })} />
-          <input className={input} placeholder="Center (e.g. Tampa, FL)" aria-label="Radius Center" value={a.center} onChange={(e) => setA({ ...a, center: e.target.value })} />
-          <input className={`${input} col-span-2`} placeholder="Limited to state/region (optional)" aria-label="Radius Region" value={a.region} onChange={(e) => setA({ ...a, region: e.target.value })} />
+      {c.mode === "radius" && (
+        <div className="grid grid-cols-[90px_1fr] gap-1.5">
+          <label className="block">Radius (Miles)<input className={input} type="number" min={1} aria-label="Radius Miles" value={c.radius.miles || ""} onChange={(e) => setC({ ...c, radius: { ...c.radius, miles: Number(e.target.value) } })} /></label>
+          <label className="block">Center Location<input className={input} placeholder="e.g. Tampa, FL" aria-label="Radius Center" value={c.radius.center} onChange={(e) => setC({ ...c, radius: { ...c.radius, center: e.target.value } })} /></label>
+          <label className="col-span-2 block">Permitted State / Region (Optional)<input className={input} placeholder="e.g. Florida" aria-label="Radius Region" value={c.radius.region} onChange={(e) => setC({ ...c, radius: { ...c.radius, region: e.target.value } })} /></label>
+          {radiusIncomplete && <p className="col-span-2 text-[11px] text-destructive">Enter both the radius and the center location.</p>}
         </div>
       )}
-      {a.mode === "region" && <input className={input} placeholder="e.g. Florida" aria-label="Permitted States Or Regions" value={a.region} onChange={(e) => setA({ ...a, region: e.target.value })} />}
-      {a.mode === "custom" && <input className={input} aria-label="Custom Service Area" value={a.text} onChange={(e) => setA({ mode: "custom", text: e.target.value })} />}
-      {a.mode === "none" && <p className="text-[11px] text-[#B45309]">Choose this only when no geographic limit has been approved.</p>}
+      {c.mode === "region" && (
+        <label className="block">Permitted States / Regions<input className={input} placeholder="e.g. Florida, Georgia" aria-label="Permitted States Or Regions" value={c.region} onChange={(e) => setC({ ...c, region: e.target.value })} /></label>
+      )}
+      {c.mode === "custom" && (
+        <label className="block">Custom Restriction Wording<input className={input} placeholder="e.g. Hillsborough, Pinellas and Pasco counties only" aria-label="Custom Service Area" value={c.custom} onChange={(e) => setC({ ...c, custom: e.target.value })} /></label>
+      )}
+      {c.mode === "none" && <p className="text-[11px] text-[#B45309]">Choose this only when no geographic limit has been approved.</p>}
       <p className="text-muted-foreground">Prints as: <span className="font-medium text-foreground">{value || "Not Set"}</span></p>
     </div>
   );
@@ -43,8 +61,9 @@ export function MileageField({ value, fee, onChange, onFee, missing }: {
 }) {
   const [m, setM] = useState<Mileage | { mode: "custom"; text: string }>(() => parseMileage(value));
   useEffect(() => {
-    onChange(m.mode === "custom" ? m.text : composeMileage(m));
-    if (m.mode === "unlimited") onFee("");
+    const next = m.mode === "custom" ? m.text : composeMileage(m);
+    if (next !== value) onChange(next);
+    if (m.mode === "unlimited" && fee) onFee("");
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [JSON.stringify(m)]);
   return (

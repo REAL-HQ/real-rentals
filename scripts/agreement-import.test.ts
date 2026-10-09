@@ -111,6 +111,27 @@ for (const t of LIBRARY) ok(readTerms(t.body)!.service_area === "", `${t.key}: S
 const tplFn = readFileSync("src/lib/agreement-templates.functions.ts", "utf8");
 ok(/missingTerms\(readTerms\(v\.body\)/.test(tplFn), "approval refuses while any contract value (incl. Service Area) is blank");
 
+console.log("SHARED SERVICE AREA CONTROL");
+{
+  const { areaConfigFrom, composeAreaConfig } = await import("../src/lib/service-area");
+  const c0 = areaConfigFrom(undefined, "100-mile radius of Tampa, FL");
+  ok(c0.mode === "radius" && c0.radius.miles === 100 && c0.radius.center === "Tampa, FL", "saved radius text reopens as Geographic Radius");
+  const c1 = areaConfigFrom(undefined, "Tampa, FL");
+  ok(c1.mode === "custom" && c1.custom === "Tampa, FL", "plain text reopens as Custom (never forced into a radius)");
+  const typed = { ...c0, region: "Florida, Georgia", custom: "Tampa Bay counties only" };
+  ok(composeAreaConfig({ ...typed, mode: "region" }) === "Florida, Georgia only" && composeAreaConfig({ ...typed, mode: "custom" }) === "Tampa Bay counties only", "switching modes prints only the selected mode");
+  ok(composeAreaConfig({ ...typed, mode: "radius" }) === "100-mile radius of Tampa, FL", "switching back restores the radius inputs (nothing discarded)");
+  const saved = JSON.stringify({ ...typed, mode: "custom" });
+  const back = areaConfigFrom(saved, "Tampa Bay counties only");
+  ok(back.mode === "custom" && back.radius.miles === 100 && back.region === "Florida, Georgia", "saved selection reopens exactly, with other modes' inputs kept");
+  ok(composeAreaConfig({ ...c0, mode: "custom", custom: "Pinellas only" }) === "Pinellas only", "custom restriction needs no radius");
+  ok(composeAreaConfig({ ...c0, mode: "radius", radius: { miles: 0, center: "Tampa, FL", region: "" } }) === "", "incomplete radius never prints a partial value");
+}
+const fieldSrc = readFileSync("src/components/admin/ServiceAreaField.tsx", "utf8");
+const builderSrc = readFileSync("src/components/admin/AgreementBuilder.tsx", "utf8");
+ok((builderSrc.match(/<ServiceAreaField /g) ?? []).length === 1 && (builderSrc.match(/<MileageField /g) ?? []).length === 1, "one shared Service Area and one Mileage control for every template");
+ok(["Geographic Radius", "Permitted States / Regions", "Custom Geographic Restriction", "No Geographic Restriction"].every((l) => fieldSrc.includes(`>${l}<`)), "the four required choices");
+
 console.log("RESERVATION FEE");
 const req = applyPrep({ ...EMPTY_PREP, reservation: { mode: "required", amount: 150 } }, { startIso: "2026-10-12", depositClause: "There is no security deposit." });
 ok(!/paid/i.test(req.reservationLine), "v1.6 line never says Paid");
