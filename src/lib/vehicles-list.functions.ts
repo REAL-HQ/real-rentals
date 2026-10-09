@@ -65,7 +65,7 @@ export const listVehicles = createServerFn({ method: "POST" })
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
     }
 
-    const statuses = new Set<string>();
+    const statuses = new Set<string>(["archived"]);
     const bodies = new Set<string>();
     for (const f of facets.data ?? []) {
       if ((f as any).status) statuses.add((f as any).status);
