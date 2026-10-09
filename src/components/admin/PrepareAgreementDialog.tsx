@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
 import { EMPTY_PREP, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
@@ -52,14 +53,19 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [tab, setTab] = useState<"details" | "preview">("details");
   const [companyAck, setCompanyAck] = useState(false);
   const [busy, setBusy] = useState(false);
-  const key = useMemo(() => JSON.stringify(prep), [prep]);
+  const [templateKey, setTemplateKey] = useState<string>("");
+  const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
+  function chooseTemplate(k: string) {
+    // Switching templates invalidates the previous preview and its fingerprint.
+    setRes(null); setReviewedKey(""); setCompanyAck(false); setTemplateKey(k);
+  }
 
   useEffect(() => {
     let stale = false;
     const t = setTimeout(async () => {
       setRendering(true);
       try {
-        const r = (await doPreview({ data: { applicationId, prep } })) as Res;
+        const r = (await doPreview({ data: { applicationId, prep, templateKey: (templateKey || undefined) as any } })) as Res;
         if (!stale) { setRes(r); setReviewedKey(key); }
       } catch (e: any) {
         if (!stale) toast.error(e?.message ?? "Could not build the agreement");
@@ -83,7 +89,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     if (!canSend || !res?.fingerprint) return;
     setBusy(true);
     try {
-      const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep } });
+      const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep, templateKey: (templateKey || undefined) as any } });
       onSent(r);
     } catch (e: any) { toast.error(e?.message ?? "Could not send the agreement"); } finally { setBusy(false); }
   }
@@ -108,6 +114,24 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         </div>
       )}
       {res?.sendRefusal && <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]">{res.sendRefusal}</p>}
+
+      <Section title="Agreement Template">
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
+          <input type="radio" className="mt-0.5" checked={templateKey === ""} onChange={() => chooseTemplate("")} />
+          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">The template Send uses today.</span></span>
+        </label>
+        {LIBRARY.map((t) => (
+          <label key={t.key} className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
+            <input type="radio" className="mt-0.5" checked={templateKey === t.key} onChange={() => chooseTemplate(t.key)} />
+            <span className="min-w-0">
+              <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">v{t.displayVersion}</span><br />
+              <span className="text-muted-foreground">{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
+              <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>
+            </span>
+          </label>
+        ))}
+        <p className="text-[11px] text-muted-foreground">Only Owner-approved templates can be sent. Choosing a template does not establish insurance coverage or rental eligibility.</p>
+      </Section>
 
       <Section title="Rental Details">
         <dl className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-3 gap-y-1">
@@ -166,7 +190,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       <Section title="Fees & Restrictions" open={false}>
         <dl className="grid grid-cols-[minmax(0,50%)_minmax(0,1fr)] gap-x-3 gap-y-1">
           {row("Late Payment", terms.fee_late_payment)}{row("Late Return", terms.fee_late_return)}{row("Smoking / Odor", terms.fee_smoking)}
-          {row("Toll Processing Fee", terms.processing_fee)}{row("Service Area", terms.service_area)}{row("Termination Notice", terms.notice_hours ? `${terms.notice_hours} hours` : "")}
+          {terms.fee_citation_admin ? row("Citation Admin Fee", terms.fee_citation_admin) : row("Toll Processing Fee", terms.processing_fee)}{row("Service Area", terms.service_area)}{row("Termination Notice", terms.notice_hours ? `${terms.notice_hours} hours` : "")}
         </dl>
         <p className="text-[11px] text-muted-foreground">Set by the Owner in the Agreement Builder.</p>
       </Section>

@@ -9,7 +9,8 @@ import {
   type MergeData,
 } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
-import { readTerms, resolveTerms, stripTerms, writeTerms } from "@/lib/agreement-builder";
+import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
+import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 
@@ -314,6 +315,8 @@ const AGREEMENT_TITLE = "Vehicle Rental Agreement";
 
 export type TemplateMeta = {
   id: string | null;
+  /** Library family key (e.g. "insurance_required"); absent for the legacy single template. */
+  key?: string;
   name: string;
   version: number;
   /** draft | approved | retired — "draft" for the in-code baseline. */
@@ -389,14 +392,43 @@ async function activeTemplateBody(admin: any): Promise<{ id: string | null; body
 async function agreementFingerprint(meta: TemplateMeta, body: string, merge: MergeData): Promise<string> {
   const { sha256Hex } = await import("@/lib/esign-pdf.server");
   const sorted = Object.fromEntries(Object.keys(merge).sort().map((k) => [k, merge[k]]));
-  return sha256Hex(JSON.stringify({ t: AGREEMENT_TITLE, tid: meta.id, tv: meta.version, ts: meta.approvalStatus, body, merge: sorted }));
+  // Library templates add their key, so switching templates always changes the
+  // fingerprint; existing (keyless) fingerprints are unchanged.
+  const base = { t: AGREEMENT_TITLE, tid: meta.id, tv: meta.version, ts: meta.approvalStatus, body, merge: sorted };
+  return sha256Hex(JSON.stringify(meta.key ? { ...base, tk: meta.key } : base));
 }
 
 /** Once versioning is active, only an Owner-approved template can be sent. */
 function templateSendRefusal(meta: TemplateMeta): string | null {
+  if (meta.key && meta.approvalStatus !== "approved")
+    return `${meta.label} is not approved, so it cannot be sent. The Owner approves it in the Agreement Template Library after legal review.`;
   if (meta.versioningActive && meta.approvalStatus !== "approved")
     return `The agreement template (${meta.label}) has not been approved by the Owner, so it cannot be sent.`;
   return null;
+}
+
+/** A built-in library template, always an unapproved draft until saved and approved. */
+function libraryAsActive(lib: LibraryTemplate): { body: string; meta: TemplateMeta } {
+  return {
+    body: lib.body,
+    meta: {
+      id: null, key: lib.key, name: lib.name, version: 1, approvalStatus: "draft",
+      label: `${lib.name} v${lib.displayVersion} — ${DRAFT_STATUS_LABEL}`,
+      effectiveDate: null, approvedAt: null, versioningActive: false, schemaReady: false,
+    },
+  };
+}
+
+/** Insurance Required templates: carrier/policy on file AND a staff verification. */
+function insuranceBlockers(data: MergeData, blockers: AgreementBlocker[]) {
+  const none = (v: unknown) => { const s = String(v ?? "").trim(); return !s || s === "None on file"; };
+  const pay = { tab: "payments" as const };
+  if (none(data.insurance_carrier)) blockers.push({ field: "insurance_carrier", label: "Renter's insurance carrier", why: "The Insurance Required agreement prints the renter's carrier.", fix: pay });
+  if (none(data.insurance_policy)) blockers.push({ field: "insurance_policy", label: "Insurance policy number", why: "The Insurance Required agreement prints the policy number.", fix: pay });
+  // An uploaded card is never treated as verified. Staff verification (who,
+  // when, coverage dates) needs the insurance-verification table, which is
+  // part of the pending template database update.
+  blockers.push({ field: "insurance_verification", label: "Insurance verified by staff", why: "Coverage must be verified by a staff member (carrier contacted, coverage dates confirmed). An uploaded card alone does not count. Recording verification arrives with the template database update." });
 }
 
 /**
@@ -440,9 +472,11 @@ function templateFieldBlockers(tplBody: string, data: MergeData, blockers: Agree
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
-async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep) {
+async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string) {
   const built = await buildMergeData(admin, applicationId);
-  const tpl = await activeTemplate(admin);
+  const lib = templateKey ? libraryTemplate(templateKey) : null;
+  if (templateKey && !lib) throw new Error("Unknown agreement template.");
+  const tpl = lib ? libraryAsActive(lib) : await activeTemplate(admin);
   let tplBody = tpl.body;
   if (prep) {
     const terms = readTerms(tpl.body);
@@ -452,9 +486,20 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // The staff deposit choice replaces the record-based deposit checks.
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
     built.blockers.push(...r.blockers);
-    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: r.reservationLine });
+    // v1.10+ prints the entered Reservation Fee amount (or "None"), not checkboxes.
+    const line = lib?.reservationStyle === "amount"
+      ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
+          ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "None")
+      : r.reservationLine;
+    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
   }
   templateFieldBlockers(tplBody, built.data, built.blockers, built.vehicle, built.app);
+  if (lib?.insuranceRequired) insuranceBlockers(built.data, built.blockers);
+  if (lib) {
+    for (const k of missingTerms(readTerms(tplBody) ?? {}, stripTerms(tplBody)))
+      built.blockers.push({ field: `term_${k}`, label: `Template value: ${ALL_TERM_FIELDS.find((f) => f.key === k)?.label ?? k}`, why: "This template leaves the value blank. The Owner sets it in the Agreement Template Library before the template can be approved." });
+  }
   const numberingPending = /\{\{\s*agreement_number\s*\}\}/i.test(resolveTerms(tplBody));
   const body = renderTemplate(tplBody, built.data);
   if (/\[ \] Required: \$_+/.test(body))
@@ -518,12 +563,12 @@ export const listAgreements = createServerFn({ method: "GET" })
 
 export const previewAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep);
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey);
     const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
@@ -582,11 +627,11 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep } = {},
+  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser.
-  const prep = await prepareAgreement(admin, applicationId, opts.prep);
+  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey);
   const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -701,6 +746,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
         fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
         companyAck: z.boolean().optional(),
         prep: PrepSchema.optional(),
+        templateKey: z.enum(LIBRARY_KEYS).optional(),
       })
       .parse(d),
   )
@@ -712,6 +758,7 @@ export const sendAgreement = createServerFn({ method: "POST" })
       createdBy: context.userId,
       companyAck: data.companyAck,
       prep: data.prep,
+      templateKey: data.templateKey,
     });
     if (data.companyAck) {
       const { logAudit } = await import("@/lib/audit.server");

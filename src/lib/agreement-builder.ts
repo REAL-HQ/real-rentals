@@ -84,6 +84,15 @@ export const V16_TERM_DEFAULTS: Record<string, string> = {
     "You agree an electronic signature is valid, and signed or electronically signed copies are effective as originals.",
 };
 
+/** Terms used only by later agreement families (v1.10 / v1.10.2). They are
+ * written into a body only when its source references them, so existing
+ * v1.6 bodies (and their fingerprints) are unchanged. */
+export const EXTRA_TERM_FIELDS: TermField[] = [
+  { key: "fee_citation_admin", label: "Ticket / Citation Administrative Fee", group: "Pricing & Deposit" },
+  { key: "insurance_notice_hours", label: "Insurance Change Notice (Hours)", group: "Rental Terms" },
+];
+export const ALL_TERM_FIELDS: TermField[] = [...TERM_FIELDS, ...EXTRA_TERM_FIELDS];
+
 const MARKER = /\n?%%BUILDER_TERMS (\{.*\})%%\s*$/s;
 
 export function readTerms(body: string): Record<string, string> | null {
@@ -98,7 +107,9 @@ export function stripTerms(body: string): string {
 
 export function writeTerms(source: string, terms: Record<string, string>): string {
   const clean: Record<string, string> = {};
+  const used = new Set(termsIn(source));
   for (const f of TERM_FIELDS) clean[f.key] = (terms[f.key] ?? "").replace(/%%/g, "%");
+  for (const f of EXTRA_TERM_FIELDS) if (used.has(f.key)) clean[f.key] = (terms[f.key] ?? "").replace(/%%/g, "%");
   return `${stripTerms(source).replace(/\s+$/, "")}\n%%BUILDER_TERMS ${JSON.stringify(clean)}%%`;
 }
 
@@ -117,7 +128,7 @@ export function termsIn(source: string): string[] {
 }
 
 export function unknownTermsIn(source: string): string[] {
-  const known = new Set(TERM_FIELDS.map((f) => f.key));
+  const known = new Set(ALL_TERM_FIELDS.map((f) => f.key));
   return termsIn(source).filter((k) => !known.has(k));
 }
 

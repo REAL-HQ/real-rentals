@@ -67,7 +67,7 @@ ok(np === 6 && ns === 7, `preview 6 pages, signed 6 + certificate (${np}/${ns})`
 console.log("SERVER WIRING");
 const fn = readFileSync("src/lib/agreements.functions.ts", "utf8");
 ok(/prep: PrepSchema\.optional\(\)/.test(fn) && (fn.match(/prep: PrepSchema\.optional\(\)/g) ?? []).length === 2, "preview and send both accept validated choices");
-ok(/prepareAgreement\(admin, applicationId, opts\.prep\)/.test(fn), "send re-renders from the same choices (fingerprint check)");
+ok(/prepareAgreement\(admin, applicationId, opts\.prep, opts\.templateKey\)/.test(fn), "send re-renders from the same choices (fingerprint check)");
 ok(/if \(prep\.numberingPending\) throw/.test(fn), "v1.6 send refused until agreement numbering exists");
 ok(!/RR-\$\{/.test(fn), "no improvised agreement number");
 ok(/requireTierFor\(context\.userId, "manager"\)/.test(fn), "Manager+ only");
