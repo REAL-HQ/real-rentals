@@ -1,13 +1,13 @@
-// Service Area / Mileage Limit: a structured choice that produces the exact
-// text printed in the agreement's "Service Area / Mileage Limit" row.
-// Client-safe. Nothing is ever defaulted: an empty choice stays blank and
+// Service Area (where the renter may drive) and Mileage Allowance (how far)
+// are separate contract rules, composed into the exact text printed in the
+// agreement. Client-safe. Nothing defaults: an empty choice stays blank and
 // blocks template approval until the Owner picks one explicitly.
 
 export type ServiceArea =
   | { mode: "unset" }
   | { mode: "radius"; miles: number; center: string; region: string }
-  | { mode: "region"; region: string; weeklyMiles: number | null }
-  | { mode: "unlimited"; region: string };
+  | { mode: "region"; region: string }
+  | { mode: "none" };
 
 export function composeServiceArea(a: ServiceArea): string {
   switch (a.mode) {
@@ -17,26 +17,44 @@ export function composeServiceArea(a: ServiceArea): string {
       const base = `${a.miles}-mile radius of ${a.center.trim()}`;
       return a.region.trim() ? `${base}; ${a.region.trim()} only` : base;
     }
-    case "region": {
-      if (!a.region.trim()) return "";
-      const miles = a.weeklyMiles && a.weeklyMiles > 0 ? `; ${a.weeklyMiles.toLocaleString("en-US")} miles per week` : "";
-      return `${a.region.trim()} only${miles}`;
-    }
-    case "unlimited":
-      return a.region.trim() ? `Unlimited mileage; ${a.region.trim()} only` : "Unlimited mileage";
+    case "region": return a.region.trim() ? `${a.region.trim()} only` : "";
+    case "none": return "No geographic restriction";
   }
 }
 
-/** Best-effort read of a saved value back into the structured form ("unset" when unrecognized). */
+/** Read a saved value back into the structured form; anything else stays custom wording, never rewritten. */
 export function parseServiceArea(text: string): ServiceArea | { mode: "custom"; text: string } {
   const t = (text ?? "").trim();
   if (!t) return { mode: "unset" };
   if (/[\[\]]/.test(t)) return { mode: "custom", text: t }; // bracketed open items stay as written
+  if (t === "No geographic restriction") return { mode: "none" };
   let m = t.match(/^(\d+)-mile radius of (.+?)(?:; (.+) only)?$/);
   if (m) return { mode: "radius", miles: Number(m[1]), center: m[2], region: m[3] ?? "" };
-  m = t.match(/^Unlimited mileage(?:; (.+) only)?$/);
-  if (m) return { mode: "unlimited", region: m[1] ?? "" };
-  m = t.match(/^(.+?) only(?:; ([\d,]+) miles per week)?$/);
-  if (m) return { mode: "region", region: m[1], weeklyMiles: m[2] ? Number(m[2].replace(/,/g, "")) : null };
+  m = t.match(/^([^;]+?) only$/);
+  if (m) return { mode: "region", region: m[1] };
   return { mode: "custom", text: t };
+}
+
+export type MileagePeriod = "day" | "week" | "month" | "rental";
+export const PERIOD_LABEL: Record<MileagePeriod, string> = { day: "Per Day", week: "Per Week", month: "Per Month", rental: "Per Rental" };
+export type Mileage = { mode: "unset" } | { mode: "unlimited" } | { mode: "limited"; miles: number; period: MileagePeriod };
+
+export function composeMileage(m: Mileage): string {
+  if (m.mode === "unlimited") return "Unlimited miles";
+  if (m.mode === "limited" && m.miles > 0) return `${m.miles.toLocaleString("en-US")} miles per ${m.period}`;
+  return "";
+}
+
+export function parseMileage(text: string): Mileage | { mode: "custom"; text: string } {
+  const t = (text ?? "").trim();
+  if (!t) return { mode: "unset" };
+  if (t === "Unlimited miles") return { mode: "unlimited" };
+  const m = t.match(/^([\d,]+) miles per (day|week|month|rental)$/);
+  if (m) return { mode: "limited", miles: Number(m[1].replace(/,/g, "")), period: m[2] as MileagePeriod };
+  return { mode: "custom", text: t };
+}
+
+/** Excess-mileage fee applies only to a limited allowance; unlimited clears it. */
+export function excessFeeFor(mileageText: string, fee: string): string {
+  return parseMileage(mileageText).mode === "limited" ? fee : "";
 }
