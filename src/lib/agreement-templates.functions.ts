@@ -268,3 +268,56 @@ export const storeTemplateUpload = createServerFn({ method: "POST" })
     await logAudit(actor, { action: "template.source_uploaded", summary: `Uploaded agreement source ${safe}`, entityType: "agreement_template", entityId: null as any, metadata: { path, sha256: digest, bytes: bytes.length } });
     return { ok: true as const, path, sha256: digest };
   });
+
+// ---------------------------------------------------------------- library drafts
+// Contract values for the built-in agreement families, saved as Draft
+// versions in app_settings (key agreement_library_draft:<family>). The legal
+// wording never changes; nothing here approves, activates or sends.
+
+export type LibraryDraftVersion = { n: number; terms: Record<string, string>; savedAt: string; savedBy: string | null; sha256: string };
+
+export async function loadLibraryDraft(admin: any, key: string): Promise<LibraryDraftVersion[]> {
+  const { data } = await admin.from("app_settings").select("value").eq("key", `agreement_library_draft:${key}`).maybeSingle();
+  const v = (data?.value as any)?.versions;
+  return Array.isArray(v) ? v : [];
+}
+
+export const getLibraryDrafts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await owner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { LIBRARY } = await import("@/lib/agreement-library");
+    const out: Record<string, LibraryDraftVersion[]> = {};
+    for (const t of LIBRARY) out[t.key] = await loadLibraryDraft(supabaseAdmin, t.key);
+    return out;
+  });
+
+export const saveLibraryDraft = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ key: z.string().max(40), terms: z.record(z.string(), z.string().max(2000)) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await owner(context.userId);
+    const { libraryTemplate } = await import("@/lib/agreement-library");
+    const lib = libraryTemplate(data.key);
+    if (!lib) return { ok: false as const, error: "Unknown agreement template." };
+    const { termsIn, writeTerms } = await import("@/lib/agreement-builder");
+    const used = new Set(termsIn(lib.source));
+    const extra = Object.keys(data.terms).filter((k) => !used.has(k));
+    if (extra.length) return { ok: false as const, error: `These values are not used by this agreement: ${extra.join(", ")}` };
+    const terms = Object.fromEntries([...used].map((k) => [k, (data.terms[k] ?? lib.terms[k] ?? "").replace(/%%/g, "%")]));
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const versions = await loadLibraryDraft(supabaseAdmin, lib.key);
+    const prev = versions.at(-1)?.terms ?? lib.terms;
+    if ([...used].every((k) => (prev[k] ?? "") === terms[k])) return { ok: false as const, error: "No changes to save." };
+    const { sha256Hex } = await import("@/lib/esign-pdf.server");
+    const sha256 = await sha256Hex(writeTerms(lib.source, terms));
+    const n = (versions.at(-1)?.n ?? 0) + 1;
+    const next = [...versions, { n, terms, savedAt: new Date().toISOString(), savedBy: actor.email ?? actor.userId, sha256 }];
+    const { error } = await supabaseAdmin.from("app_settings").upsert({ key: `agreement_library_draft:${lib.key}`, value: { versions: next } } as any, { onConflict: "key" });
+    if (error) return { ok: false as const, error: "Could not save the draft." };
+    const changed = [...used].filter((k) => (prev[k] ?? "") !== terms[k]);
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, { action: "template.library_draft_saved", summary: `Saved ${lib.name} v${lib.displayVersion} draft values #${n} (not approved): ${changed.join(", ")}`, entityType: "agreement_template", entityId: null as any, metadata: { key: lib.key, draft: n, sha256, changed } });
+    return { ok: true as const, version: n };
+  });

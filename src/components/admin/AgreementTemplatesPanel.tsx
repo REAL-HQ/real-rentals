@@ -11,10 +11,11 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import {
   listTemplateVersions, saveTemplateDraft, previewTemplateVersion, approveTemplateVersion, retireTemplateVersion, setTemplateEnforcement,
   unknownFieldsIn, type TemplateVersion,
-  previewTemplateBody,
+  previewTemplateBody, getLibraryDrafts, saveLibraryDraft,
 } from "@/lib/agreement-templates.functions";
 import { TemplateUploadDialog } from "@/components/admin/TemplateUploadDialog";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf, type LibraryTemplate } from "@/lib/agreement-library";
+import { writeTerms, missingTerms, termsIn } from "@/lib/agreement-builder";
 
 type Data = Awaited<ReturnType<typeof listTemplateVersions>>;
 
@@ -140,7 +141,7 @@ export function AgreementTemplatesPanel() {
           onApprove={() => { setBuilding(false); setTyped(""); setEff(""); setCmp(d.versions.find((x) => x.status === "approved")?.version ?? d.versions.find((x) => x.version !== v.version)?.version ?? null); setMode("approve"); }}
         />
       )}
-      <TemplateLibrary />
+      <TemplateLibrary company={(d as any).company ?? {}} issues={(d as any).issues ?? []} />
       <div className="rounded-xl border bg-card p-4 text-[13px] space-y-1">
         <p><span className="text-muted-foreground">Used For Sending:</span> <span className="font-medium">{d.inUseLabel}</span></p>
         <p className="text-muted-foreground">Saving an edit creates a new Draft. Drafts never change what drivers receive. Owner approval is a business sign-off, not a legal review.</p>
@@ -293,8 +294,17 @@ export function AgreementTemplatesPanel() {
 }
 
 /** Agreement Template Library: independent families, each a draft until the Owner approves a saved version. */
-function TemplateLibrary() {
+function TemplateLibrary({ company, issues }: { company: Record<string, any>; issues: string[] }) {
   const previewFn = useServerFn(previewTemplateBody);
+  const draftsFn = useServerFn(getLibraryDrafts);
+  const saveDraftFn = useServerFn(saveLibraryDraft);
+  const [drafts, setDrafts] = useState<Record<string, { n: number; terms: Record<string, string>; savedAt: string; savedBy: string | null }[]>>({});
+  const [editing, setEditing] = useState<LibraryTemplate | null>(null);
+  const loadDrafts = useCallback(() => { draftsFn().then(setDrafts).catch(() => {}); }, [draftsFn]);
+  useEffect(loadDrafts, [loadDrafts]);
+  const termsOf = (t: LibraryTemplate) => drafts[t.key]?.at(-1)?.terms ?? t.terms;
+  const bodyOf = (t: LibraryTemplate) => writeTerms(t.source, termsOf(t));
+  const openCount = (t: LibraryTemplate) => termsIn(t.source).filter((k) => /\[[^\]]*\]/.test(termsOf(t)[k] ?? "")).length;
   const [open, setOpen] = useState<null | { t: LibraryTemplate; mode: "preview" | "compare" | "acks" }>(null);
   const [pdf, setPdf] = useState<string | null>(null);
   const [fps, setFps] = useState<Record<string, string>>({});
@@ -303,16 +313,17 @@ function TemplateLibrary() {
     (async () => {
       const out: Record<string, string> = {};
       for (const t of LIBRARY) {
-        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t.body));
+        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bodyOf(t)));
         out[t.key] = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
       }
       setFps(out);
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts]);
   async function preview(t: LibraryTemplate) {
     setOpen({ t, mode: "preview" }); setPdf(null);
     try {
-      const r = await previewFn({ data: { body: t.body, label: `${t.name} v${t.displayVersion} — ${DRAFT_STATUS_LABEL}` } });
+      const r = await previewFn({ data: { body: bodyOf(t), label: `${t.name} v${t.displayVersion} — ${DRAFT_STATUS_LABEL}` } });
       setPdf(r.pdfBase64);
     } catch (e: any) { toast.error(e?.message ?? "Could not build the preview"); }
   }
@@ -320,6 +331,17 @@ function TemplateLibrary() {
   return (
     <div className="space-y-3" data-testid="template-library">
       {uploading && <TemplateUploadDialog onClose={() => setUploading(false)} />}
+      {editing && (
+        <AgreementBuilder
+          base={{ id: null, name: editing.name, version: drafts[editing.key]?.at(-1)?.n ?? 0, status: "draft", inUse: false, effectiveDate: null, fingerprint: "", createdAt: null, createdBy: null, approvedAt: null, approvedBy: null, body: bodyOf(editing), unknownFields: [] }}
+          company={company} issues={issues}
+          library={{ key: editing.key, name: editing.name, versionLabel: `v${editing.displayVersion} — ${DRAFT_STATUS_LABEL}`, source: editing.source, terms: termsOf(editing),
+            save: async (terms) => { const r = await saveDraftFn({ data: { key: editing.key, terms } }); if (r.ok) loadDrafts(); return r; } }}
+          onClose={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+          onApprove={() => {}}
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2">
        <div>
         <h3 className="text-[15px] font-semibold">Agreement Template Library</h3>
@@ -337,10 +359,12 @@ function TemplateLibrary() {
             <dl className="grid grid-cols-[40%_1fr] gap-y-0.5 text-[12px]">
               <dt className="text-muted-foreground">Insurance</dt><dd>{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"}</dd>
               <dt className="text-muted-foreground">Initials</dt><dd>{acknowledgmentsOf(t.body).length} Acknowledgments</dd>
+              <dt className="text-muted-foreground">Values</dt><dd className={missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length + openCount(t) ? "text-destructive" : ""}>{missingTerms(termsOf(t), t.source).filter((k) => k !== "reservation_line").length} Missing · {openCount(t)} Open{drafts[t.key]?.length ? ` · Draft #${drafts[t.key].at(-1)!.n} saved ${fmtDate(drafts[t.key].at(-1)!.savedAt)}` : ""}</dd>
               <dt className="text-muted-foreground">Source</dt><dd className="break-all">{t.sourceFile}</dd>
               <dt className="text-muted-foreground">Fingerprint</dt><dd className="font-mono text-[11px]" title={fps[t.key]}>{fps[t.key] ? `${fps[t.key].slice(0, 16)}…` : "…"}</dd>
             </dl>
             <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => setEditing(t)}>Edit Values</Button>
               <Button size="sm" variant="outline" onClick={() => preview(t)}>Preview</Button>
               <Button size="sm" variant="outline" onClick={() => setOpen({ t, mode: "compare" })}>Compare</Button>
               <Button size="sm" variant="outline" onClick={() => setOpen({ t, mode: "acks" })}>Initials</Button>
