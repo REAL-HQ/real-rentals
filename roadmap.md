@@ -22,3 +22,4 @@
 - [ ] Next Lovable task: waiting for user assignment.
 
 - [ ] Vehicle Readiness Phase B/C/D — awaiting approval (Phase A display-only done)
+- [ ] Future UX: Open Inspections prefiltered to the selected vehicle (not started)
