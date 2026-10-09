@@ -154,6 +154,7 @@ export const Route = createFileRoute("/admin")({
     // number 1 — and silently did nothing.
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
+    if (typeof raw.q === "number") out.q = String(raw.q);
     for (const k of ["q", "vstatus", "body", "partner", "sort", "view"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";

@@ -9,7 +9,7 @@ describe("vehicles list helpers", () => {
     expect(buildVehicleSearchOr("fusion")).not.toContain("year.eq");
   });
   it("strips filter-grammar characters", () => {
-    expect(buildVehicleSearchOr("a,b)or(id.eq.x")).not.toMatch(/[,()]/.source === "" ? /x/ : /\)or\(/);
+    expect(buildVehicleSearchOr("a,b)or(id.eq.x")).not.toMatch(/[,()]x?/.source ? /\)or\(/ : /^$/);
     expect(buildVehicleSearchOr("  ")).toBeNull();
   });
   it("On Rent comes from running rentals, not status", () => {
