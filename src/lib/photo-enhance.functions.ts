@@ -3,6 +3,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireManager, requireTier } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+// The one Studio switch. Safe to import here: that module touches no browser
+// global at module scope.
+import { STUDIO_ENABLED } from "@/lib/photo-enhance.browser";
 
 // Free on-device photo enhancement. Pixels are processed in the operator's
 // browser; the server only gates (switch, daily limit), stores the result as an
@@ -10,8 +13,6 @@ import { logAudit } from "@/lib/audit";
 // No paid provider is called anywhere in this path, so cost is always 0.
 
 export const ENHANCE_MODES = ["enhanced", "studio"] as const;
-/** Studio is deferred (exceeds browser memory); the server refuses it too. */
-const STUDIO_ENABLED = false;
 /** A started attempt holds a daily slot only while it can still finish. */
 const IN_FLIGHT_MINUTES = 10;
 
@@ -66,24 +67,32 @@ export const getPhotoEnhanceStatus = createServerFn({ method: "POST" })
       isOwner: actor.tier === "owner",
       enabled: !!s.enabled,
       dailyLimit: s.daily_limit as number,
-      monthlyPaidCapCents: s.monthly_paid_cap_cents as number,
       usedToday: u.today,
+      /** Always 0: no paid provider exists. Surfaced so a non-zero value is visible if one ever does. */
       paidThisMonthCents: u.monthCents,
       recent,
     };
   });
 
+/**
+ * The monthly paid cap is kept in the schema but no longer offered as a
+ * control. Nothing in this system can incur a charge: every enhancement runs
+ * in the operator's browser and cost_cents is written as 0, so the cap could
+ * never bind. A spend limit that cannot limit spending invites the belief that
+ * spending exists. If a paid provider is ever approved, this is where the cap
+ * comes back — with something real behind it.
+ */
 export const savePhotoEnhanceSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({ enabled: z.boolean(), dailyLimit: z.number().int().min(0).max(1000), monthlyPaidCapCents: z.number().int().min(0).max(100000) }).parse(d),
+    z.object({ enabled: z.boolean(), dailyLimit: z.number().int().min(0).max(1000) }).parse(d),
   )
   .handler(async ({ data, context }) => {
     const actor = await requireTier(context.userId, "owner");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("photo_enhance_settings")
-      .update({ enabled: data.enabled, daily_limit: data.dailyLimit, monthly_paid_cap_cents: data.monthlyPaidCapCents, updated_by: actor.userId, updated_at: new Date().toISOString() })
+      .update({ enabled: data.enabled, daily_limit: data.dailyLimit, updated_by: actor.userId, updated_at: new Date().toISOString() })
       .eq("id", true);
     if (error) throw new Error(error.message);
     await logAudit(actor, { action: "settings.photo_enhancement", summary: `Photo Enhancement ${data.enabled ? "On" : "Off"}, ${data.dailyLimit}/day`, entityType: "settings", entityId: null as any, metadata: data });
@@ -144,6 +153,23 @@ export const completePhotoEnhance = createServerFn({ method: "POST" })
     if (!data.path.startsWith(`${ev.vehicle_id}/enhanced-`)) return { ok: false, error: "Unexpected file location." };
     const { data: src } = await supabaseAdmin.from("vehicle_media").select("*").eq("id", ev.source_media_id ?? "").maybeSingle();
     if (!src) return { ok: false, error: "The original photo was deleted." };
+
+    // The browser says it uploaded a JPEG of this size. Check, rather than take
+    // its word: an unverified claim here would write a vehicle_media row
+    // pointing at nothing, and the size it reports is what the gallery shows.
+    const { data: stored } = await supabaseAdmin.storage.from("vehicle-photos").download(data.path);
+    if (!stored) {
+      await supabaseAdmin.from("photo_enhance_events").update({ status: "failed", error: "result missing from storage" }).eq("id", ev.id);
+      return { ok: false, error: "The processed photo did not reach storage. Retry." };
+    }
+    const storedBytes = new Uint8Array(await stored.arrayBuffer());
+    // JPEG starts FF D8 FF. The worker only ever emits JPEG.
+    const isJpeg = storedBytes.length > 3 && storedBytes[0] === 0xff && storedBytes[1] === 0xd8 && storedBytes[2] === 0xff;
+    if (!isJpeg) {
+      await supabaseAdmin.storage.from("vehicle-photos").remove([data.path]);
+      await supabaseAdmin.from("photo_enhance_events").update({ status: "failed", error: "result was not a JPEG" }).eq("id", ev.id);
+      return { ok: false, error: "That file is not a photo. Nothing was saved." };
+    }
     const { data: row, error } = await supabaseAdmin
       .from("vehicle_media")
       .insert({
@@ -153,7 +179,7 @@ export const completePhotoEnhance = createServerFn({ method: "POST" })
         storage_bucket: "vehicle-photos",
         storage_path: data.path,
         mime_type: "image/jpeg",
-        size_bytes: data.sizeBytes,
+        size_bytes: storedBytes.byteLength,
         derived_from_id: src.id,
         enhancement_mode: ev.mode === "studio" ? "studio" : "enhanced",
         enhancement_provider: "on-device (BiRefNet Lite, MIT)",

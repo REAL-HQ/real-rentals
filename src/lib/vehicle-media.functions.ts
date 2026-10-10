@@ -99,13 +99,17 @@ export const registerVehicleMedia = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!vehicle) return { ok: false, error: "That vehicle no longer exists." };
 
-    // First photo on a vehicle becomes the primary, so a car is never listed
+    // First photo on a vehicle becomes the lead image, so a car is never listed
     // with a gallery and no lead image.
+    //
+    // This counted PUBLISHED photos, and the insert three lines below sets
+    // published: false on purpose — so the count was always zero, every photo
+    // was stored as the lead image, and the one-lead-per-vehicle index then
+    // refused the second photo anyone tried to publish.
     const { count } = await supabaseAdmin
       .from("vehicle_media")
       .select("id", { count: "exact", head: true })
-      .eq("vehicle_id", data.vehicleId)
-      .eq("published", true);
+      .eq("vehicle_id", data.vehicleId);
     const first = (count ?? 0) === 0;
 
     const { data: maxRow } = await supabaseAdmin
@@ -196,10 +200,25 @@ export const updateVehicleMedia = createServerFn({ method: "POST" })
         .eq("vehicle_id", row.vehicle_id)
         .neq("id", data.id);
       if (clearErr) return { ok: false, error: clearErr.message };
+    } else if (data.published === true) {
+      // Exactly one published photo may be the lead image. Decide it here
+      // rather than trusting the stored flag: photos uploaded before the
+      // registration fix above are ALL flagged as lead, so publishing a second
+      // one would collide with the first and surface a raw constraint error.
+      // The first photo published becomes the lead; later ones join the gallery.
+      const { data: leader } = await supabaseAdmin
+        .from("vehicle_media")
+        .select("id")
+        .eq("vehicle_id", row.vehicle_id)
+        .eq("is_primary", true)
+        .eq("published", true)
+        .neq("id", data.id)
+        .maybeSingle();
+      patch.is_primary = !leader;
     }
 
-    // Unpublishing the primary would leave the vehicle with none, so the flag
-    // comes off with it and the next photo in order leads.
+    // Unpublishing the lead image would leave the vehicle with none, so the
+    // flag comes off with it and the next published photo in order leads.
     if (data.published === false && row.is_primary) patch.is_primary = false;
 
     if (!Object.keys(patch).length) return { ok: true };
@@ -209,6 +228,20 @@ export const updateVehicleMedia = createServerFn({ method: "POST" })
       .update(patch as any)
       .eq("id", data.id);
     if (error) return { ok: false, error: error.message };
+
+    // The lead image just left the site. Promote the next published photo, so
+    // a car with photos is never listed without a lead image.
+    if (data.published === false && row.is_primary) {
+      const { data: next } = await supabaseAdmin
+        .from("vehicle_media")
+        .select("id")
+        .eq("vehicle_id", row.vehicle_id)
+        .eq("published", true)
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (next) await supabaseAdmin.from("vehicle_media").update({ is_primary: true } as any).eq("id", next.id);
+    }
 
     // Publishing a retouched image onto the public listing is a decision worth
     // a record. Arranging the gallery is not.

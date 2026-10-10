@@ -30,7 +30,7 @@ import {
   failPhotoEnhance,
   reviewPhotoEnhance,
 } from "@/lib/photo-enhance.functions";
-import { localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
+import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
 
 // The gallery.
@@ -184,12 +184,14 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   }
 
   async function enhance(m: VehicleMedia, mode: EnhanceMode) {
-    const blocker = localProcessingBlocker(mode);
+    const blocker = await localProcessingBlocker(mode);
     if (blocker) return toast.error(blocker);
     setBusyId(m.id);
     setFailures((f) => { const n = { ...f }; delete n[m.id]; return n; });
     setProgress((p) => ({ ...p, [m.id]: "Starting" }));
     let eventId: string | null = null;
+    // The path we uploaded to, until the server has taken responsibility for it.
+    let orphan: string | null = null;
     try {
       const start = await startFn({ data: { mediaId: m.id, mode } });
       if (!start.ok) throw new Error(start.error);
@@ -202,13 +204,21 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       const path = `${vehicleId}/enhanced-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
       const up = await supabase.storage.from("vehicle-photos").upload(path, new Blob([res.jpeg], { type: "image/jpeg" }), { contentType: "image/jpeg" });
       if (up.error) throw new Error("Could not save the result.");
+      orphan = path;
       const done = await completeFn({ data: { eventId, path, sizeBytes: res.jpeg.byteLength, processingMs: res.ms, flags: res.flags } });
       if (!done.ok) throw new Error(done.error);
+      // Registered: the row owns the file now, and removing it is deleteVehicleMedia's job.
+      orphan = null;
       eventId = null;
       toast.success(res.flags.length ? "Done — flagged for a closer look. Review before approving." : "Done — review it before approving.");
       await refresh();
     } catch (e: any) {
       const msg = e?.message === "Forbidden" ? "Enhancement is Manager-only." : e?.message || "Enhancement failed.";
+      // An upload that never got registered belongs to nobody: no vehicle_media
+      // row points at it, nothing will ever show it, and it would sit in the
+      // private bucket for good. (The server already cleans up after its own
+      // failures; this is the half only the browser knows about.)
+      if (orphan) await supabase.storage.from("vehicle-photos").remove([orphan]).catch(() => {});
       if (eventId) await failFn({ data: { eventId, error: msg } }).catch(() => {});
       setFailures((f) => ({ ...f, [m.id]: { mode, error: msg } }));
       toast.error(msg);
@@ -282,7 +292,23 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             }
           />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <>
+            {/* A car with photos and none of them on the website is the state
+                this screen was worst at explaining: every tile said "Not on
+                site" and nothing said what to do about it, or that Listing
+                Ready depends on it. */}
+            {publishedCount === 0 && (
+              <p className="mb-3 flex items-start gap-1.5 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] p-3 text-[12px] text-[#8A4B00]">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  No photos are on the website yet, so this vehicle cannot be Listing Ready.
+                  {canEdit
+                    ? " Use the eye button on a photo to show it on the website; the first one you show becomes the lead image."
+                    : " A Manager can put one on the website."}
+                </span>
+              </p>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {items.map((m) => (
               <PhotoTile
                 key={m.id}
@@ -304,7 +330,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onEnhance={(mode) => enhance(m, mode as EnhanceMode)}
               />
             ))}
-          </div>
+            </div>
+          </>
         )}
       </SectionCard>
 
@@ -349,14 +376,10 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   );
 }
 
-// Studio (background replacement) is deferred: browser segmentation exceeds
-// device memory. The implementation stays in photo-enhance.worker.ts; flip
-// STUDIO_ENABLED here and in photo-enhance.functions.ts to bring it back.
-const STUDIO_ENABLED = false;
-const MODES = [
-  { value: "enhanced", label: "Enhanced" },
-  ...(STUDIO_ENABLED ? [{ value: "studio", label: "Studio" }] : []),
-];
+// Modes come from the one Studio switch in photo-enhance.browser.ts, which the
+// server reads too — so this menu and the server can never disagree about it.
+const MODE_LABEL: Record<string, string> = { enhanced: "Enhanced", studio: "Studio" };
+const MODES = ENHANCE_MODES.map((value) => ({ value, label: MODE_LABEL[value] ?? value }));
 
 function CompareModal({ m, source, busy, canReview, onClose, onReview }: {
   m: VehicleMedia; source: VehicleMedia | null; busy: boolean; canReview: boolean;
