@@ -1,4 +1,4 @@
-import { useUnsavedGuard } from "@/lib/unsaved-changes";
+import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -50,6 +50,7 @@ import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
 import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { usStateOptions } from "@/lib/us-states";
 
 // The vehicle as a record you read.
 //
@@ -357,12 +358,17 @@ export function VehicleProfile({
 
       {editing && editing !== "finance" && p && (
         <SectionDrawer
+          // Remounted per section: a drawer handed over from another one
+          // starts from the saved record, never from abandoned edits.
+          key={editing}
           section={editing}
           vehicleId={vehicleId}
           vehicle={p.vehicle}
           canTitle={p.canSeeFinance}
           onClose={() => setEditing(null)}
           onSaved={afterSave}
+          onRefresh={refresh}
+          onOpenSection={(s) => setEditing(s)}
         />
       )}
       {editing === "finance" && p && (
@@ -790,6 +796,8 @@ function SectionDrawer({
   canTitle = false,
   onClose,
   onSaved,
+  onRefresh,
+  onOpenSection,
 }: {
   section: VehicleSection;
   vehicleId: string;
@@ -797,6 +805,14 @@ function SectionDrawer({
   canTitle?: boolean;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
+  /**
+   * Re-read the record WITHOUT closing. Needed when part of a save went
+   * through and part was refused: the card behind must show what was written
+   * while the drawer stays open saying what was not.
+   */
+  onRefresh?: () => void | Promise<void>;
+  /** Hand over to another section's drawer — the paperwork is next door. */
+  onOpenSection?: (s: VehicleSection) => void;
 }) {
   const save = useServerFn(updateVehicleSection);
   const [f, setF] = useState<Record<string, any>>(() => ({ ...vehicle }));
@@ -804,8 +820,16 @@ function SectionDrawer({
   const [fieldError, setFieldError] = useState<{ field?: string; message: string } | null>(null);
 
   const [touched, setTouched] = useState(false);
+  // WHICH fields were edited, not just whether any were. The drawer posts the
+  // whole record, so this is what lets the server answer "saved the plate"
+  // instead of listing every column the car has.
+  const [edited, setEdited] = useState<string[]>([]);
   useUnsavedGuard("vehicle-section-drawer", touched);
-  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
+  const set = (k: string, v: any) => {
+    setTouched(true);
+    setEdited((s) => (s.includes(k) ? s : [...s, k]));
+    setF((s) => ({ ...s, [k]: v }));
+  };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);
@@ -818,13 +842,37 @@ function SectionDrawer({
     setSaving(true);
     setFieldError(null);
     try {
-      const res = await save({ data: { id: vehicleId, section, values: f } });
+      const res = await save({ data: { id: vehicleId, section, values: f, intended: edited } });
       if (!res.ok) {
         setFieldError({ field: res.field, message: res.error ?? "Could not save." });
         if (!res.field) toast.error(res.error ?? "Could not save.");
         return;
       }
-      toast.success("Saved");
+      const saved = res.saved ?? [];
+      const names = (xs: Array<{ label: string }>) => xs.map((x) => titleCase(x.label)).join(", ");
+      // A field the operator edited that the server would not write is not a
+      // detail to bury in a toast: it stays on screen, with the reason, and
+      // the drawer stays open. Anything that WAS written is already on the
+      // record, so the card behind is re-read either way.
+      const refused = [...(res.rejected ?? []), ...(res.ignored ?? [])];
+      if (refused.length) {
+        await onRefresh?.();
+        setEdited([]);
+        setTouched(false);
+        setFieldError({
+          message: `${saved.length ? `Saved ${names(saved)}. ` : ""}Not saved — ${refused
+            .map((r) => `${titleCase(r.label)}: ${r.reason}`)
+            .join(" ")}`,
+        });
+        return;
+      }
+      if (!saved.length) {
+        // Pressing Save with nothing changed used to report a save. It isn't one.
+        toast.info("No changes to save");
+        await onSaved();
+        return;
+      }
+      toast.success(`Saved ${names(saved)}`);
       await onSaved();
     } catch (e) {
       toast.error(
@@ -875,6 +923,21 @@ function SectionDrawer({
                 { value: "", label: "—" },
                 ...BODY_TYPES.map((b) => ({ value: b, label: b })),
               ]}
+            />
+            <Text
+              label="License Plate"
+              value={str("license_plate")}
+              onChange={(v) => set("license_plate", v)}
+              error={err("license_plate")}
+              mono
+              hint="As printed on the tag."
+            />
+            <Choice
+              label="Plate State"
+              value={str("plate_state")}
+              onChange={(v) => set("plate_state", v)}
+              options={usStateOptions()}
+              error={err("plate_state")}
             />
             <Choice
               label="Status"
@@ -930,6 +993,27 @@ function SectionDrawer({
             onChange={(v) => set("internal_notes", v)}
             hint="Never leaves the back office."
           />
+          {/* The plate is above because the Vehicle Details card shows it.
+              VIN, the registration number and the expiry dates are paperwork
+              and keep their own drawer — this is the door to it, so nobody
+              has to work out which tab holds the expiration date. */}
+          {onOpenSection && (
+            <button
+              type="button"
+              data-testid="identity-open-dmv"
+              onClick={() => {
+                if (!confirmLeaveIfUnsaved()) return;
+                onOpenSection("dmv");
+              }}
+              className="w-full flex items-center justify-between gap-2 rounded-lg border border-[#EDEDF0] bg-white px-3 py-2.5 text-[13px] text-[#55555E] hover:bg-[#F4F4F6] transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <ScrollText className="w-4 h-4 text-[#9A9AA3]" strokeWidth={1.75} />
+                VIN, Registration Expiration &amp; Title
+              </span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#9A9AA3]" strokeWidth={1.75} />
+            </button>
+          )}
         </>
       )}
 
@@ -1011,10 +1095,12 @@ function SectionDrawer({
             error={err("license_plate")}
             mono
           />
-          <Text
+          <Choice
             label="Plate State"
             value={str("plate_state")}
             onChange={(v) => set("plate_state", v)}
+            options={usStateOptions()}
+            error={err("plate_state")}
           />
           <DateInput
             label="Plate Expires"

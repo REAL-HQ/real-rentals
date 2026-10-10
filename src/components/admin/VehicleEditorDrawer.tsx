@@ -32,6 +32,7 @@ import { checkVin, normalizeVin } from "@/lib/vin";
 import { Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { MicroLabel } from "./ui";
 import { fmtDateTime } from "@/lib/date-format";
+import { usStateOptions } from "@/lib/us-states";
 
 // Edit a vehicle without walking every tab.
 //
@@ -250,6 +251,8 @@ export function VehicleEditorDrawer({
         Object.entries(dirty).filter(([, vals]) => vals && Object.keys(vals).length),
       ) as Record<string, Record<string, unknown>>;
 
+      let savedFields: Array<{ label: string }> = [];
+      let refused: Array<{ label: string; reason: string }> = [];
       if (Object.keys(sections).length) {
         const res = await save({ data: { id: profile.id, sections } });
         if (!res.ok) {
@@ -257,6 +260,8 @@ export function VehicleEditorDrawer({
           if (res.section) setActive(res.section as Section);
           return;
         }
+        savedFields = res.saved ?? [];
+        refused = [...(res.rejected ?? []), ...(res.ignored ?? [])];
       }
 
       if (finDirty && canFinance) {
@@ -279,8 +284,22 @@ export function VehicleEditorDrawer({
 
       setDirty({});
       setFinDirty(false);
+      // A field this editor sent that the server would not write stays on
+      // screen with its reason — a Manager's title number is dropped by
+      // design, and "Saved" was the wrong word for it.
+      if (refused.length) {
+        setErr({
+          message: `${savedFields.length ? `Saved ${savedFields.map((f) => f.label).join(", ")}. ` : ""}Not saved — ${refused
+            .map((r) => `${r.label}: ${r.reason}`)
+            .join(" ")}`,
+        });
+        await onSaved();
+        return;
+      }
       setJustSaved(true);
-      toast.success("Saved");
+      toast.success(
+        savedFields.length ? `Saved ${savedFields.map((f) => f.label).join(", ")}` : "Saved",
+      );
       await onSaved();
       setTimeout(() => setJustSaved(false), 2500);
     } catch (e) {
@@ -520,10 +539,12 @@ export function VehicleEditorDrawer({
           {/* ===== 2. Registration ========================================= */}
           <Group id="dmv" title="Registration" icon={ScrollText}>
             <Grid>
-              <Text
+              <Choice
                 label="Plate State"
                 value={str("plate_state")}
                 onChange={(x) => set("dmv", "plate_state", x)}
+                options={usStateOptions()}
+                error={fieldErr("plate_state")}
               />
               <DateInput
                 label="Plate Expires"

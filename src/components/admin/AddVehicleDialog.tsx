@@ -11,10 +11,12 @@ import {
   OWNERSHIP_TYPES, BODY_TYPES, VEHICLE_STATUSES,
 } from "@/lib/vehicles.functions";
 import { checkVin } from "@/lib/vin";
+import { usStateOptions } from "@/lib/us-states";
 import { TitleScanStep } from "./TitleScanStep";
 import { ImportVehiclesStep } from "./ImportVehiclesStep";
 import { QuickAddForm } from "./QuickAddVehicle";
-import { ModalShell, ModalHeader } from "./modal";
+import { ModalShell, ModalHeader, ModalButton } from "./modal";
+import { VehicleDocuments } from "./VehicleDocuments";
 
 // Adding a vehicle.
 //
@@ -26,7 +28,7 @@ import { ModalShell, ModalHeader } from "./modal";
 // Four ways in, all four built: type it, decode a VIN, photograph the title,
 // or bring a spreadsheet.
 
-type Mode = "quick" | "choose" | "manual" | "vin" | "scan" | "import";
+type Mode = "quick" | "choose" | "manual" | "vin" | "scan" | "import" | "docs";
 
 const DECODED_LABELS: Record<string, string> = {
   year: "Year", make: "Make", model: "Model", trim: "Trim",
@@ -46,23 +48,55 @@ export function AddVehicleDialog({
   const [mode, setMode] = useState<Mode>("quick");
   // Fields read off a scanned title, carried into the form for confirmation.
   const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
+  // The car that was just saved, so its paperwork can be added before the
+  // dialog closes. It EXISTS from this point on: the step below is an offer,
+  // and leaving it loses nothing.
+  const [created, setCreated] = useState<{ id: string; label: string } | null>(null);
 
   function back() {
     setMode("choose");
     setPrefill(null);
   }
 
+  /**
+   * A car is saved. Offer the paperwork step rather than closing on the spot.
+   *
+   * Registration, insurance and title are what every readiness check and
+   * expiry warning is about, and the moment the operator has the documents in
+   * front of them is while they are adding the car — not a week later, from a
+   * tab they have to find. Nothing here is required, and the vehicle is
+   * already in the fleet, so Skip is a complete answer.
+   */
+  function afterCreate(id: string, label: string) {
+    setCreated({ id, label });
+    setMode("docs");
+  }
+  const finish = () => {
+    if (created) onCreated(created.id);
+    else onClose();
+  };
+  const leave = mode === "docs" ? finish : onClose;
+
   const title = mode === "quick" ? "Quick Add Vehicle" : mode === "choose" ? "Add a vehicle"
     : mode === "vin" ? "Start from a VIN"
     : mode === "scan" ? "Scan the title"
     : mode === "import" ? "Import a spreadsheet"
+    : mode === "docs" ? "Add paperwork — optional"
     : prefill ? "Confirm the details"
     : "Vehicle details";
   return (
-    <ModalShell onClose={onClose} size={mode === "quick" || mode === "choose" ? "md" : "lg"} label={title}>
-      <ModalHeader title={title} onClose={onClose} onBack={mode !== "choose" && mode !== "quick" ? back : undefined} />
+    <ModalShell
+      onClose={leave}
+      size={mode === "quick" || mode === "choose" ? "md" : "lg"}
+      label={title}
+    >
+      <ModalHeader
+        title={title}
+        onClose={leave}
+        onBack={mode !== "choose" && mode !== "quick" && mode !== "docs" ? back : undefined}
+      />
         {mode === "quick" ? (
-          <QuickAddForm onCreated={onCreated} onMore={() => setMode("choose")} onClose={onClose} />
+          <QuickAddForm onCreated={afterCreate} onMore={() => setMode("choose")} onClose={onClose} />
         ) : (<div className="min-h-0 flex-1 overflow-y-auto">{mode === "choose" ? (
           <Chooser onPick={setMode} />
         ) : mode === "scan" ? (
@@ -74,15 +108,61 @@ export function AddVehicleDialog({
           />
         ) : mode === "import" ? (
           <ImportVehiclesStep onDone={onClose} />
+        ) : mode === "docs" && created ? (
+          <DocumentsStep vehicleId={created.id} label={created.label} onDone={finish} />
         ) : (
           <ManualForm
             startFromVin={mode === "vin"}
             prefill={prefill}
-            onCreated={onCreated}
+            onCreated={afterCreate}
             onClose={onClose}
           />
         )}</div>)}
     </ModalShell>
+  );
+}
+
+/**
+ * The optional paperwork step.
+ *
+ * It is the SAME panel as the vehicle's own Paperwork tab — one uploader, one
+ * set of document kinds, one extraction pipeline, one review. Nothing is
+ * duplicated here and nothing is auto-applied: details read from a document
+ * still have to be accepted field by field, exactly as they do on the profile.
+ */
+function DocumentsStep({
+  vehicleId,
+  label,
+  onDone,
+}: {
+  vehicleId: string;
+  label: string;
+  onDone: () => void;
+}) {
+  const [added, setAdded] = useState(false);
+  return (
+    <div className="p-6 space-y-4">
+      <div className="rounded-lg bg-[rgba(32,160,96,0.08)] px-3.5 py-2.5 flex items-start gap-2">
+        <Check className="w-3.5 h-3.5 text-[#1C8F57] shrink-0 mt-0.5" />
+        <p className="text-[12px] text-[#13613B] leading-relaxed">
+          <span className="font-medium">{label} is saved.</span> Adding the registration, insurance
+          card or title now is optional — these are what the expiry warnings and the readiness
+          checklist read. You can add them any time from the vehicle&apos;s Paperwork tab.
+        </p>
+      </div>
+      <VehicleDocuments
+        vehicleId={vehicleId}
+        bare
+        vehicleLabel={label}
+        onVehicleChanged={() => setAdded(true)}
+      />
+      <div className="flex justify-end gap-2 pt-2 border-t border-[#EDEDF0]">
+        <ModalButton onClick={onDone}>{added ? "Close" : "Skip For Now"}</ModalButton>
+        <ModalButton variant="primary" onClick={onDone}>
+          Done
+        </ModalButton>
+      </div>
+    </div>
   );
 }
 
@@ -172,7 +252,7 @@ function ManualForm({
   startFromVin: boolean;
   /** Read off a scanned document. Pre-filled for confirmation, never saved as-is. */
   prefill?: Record<string, string> | null;
-  onCreated: (id: string) => void;
+  onCreated: (id: string, label: string) => void;
   onClose: () => void;
 }) {
   const suggest = useServerFn(suggestUnitNumber);
@@ -288,7 +368,10 @@ function ManualForm({
         return toast.error(res.error);
       }
       toast.success(`${res.unit_number ? res.unit_number + " — " : ""}${f.year} ${f.make} ${f.model} added`);
-      onCreated(res.id);
+      onCreated(
+        res.id,
+        `${res.unit_number ? res.unit_number + " · " : ""}${f.year} ${f.make} ${f.model}`,
+      );
     } catch (e: any) {
       toast.error(e?.message === "Forbidden" ? "Only a Manager or Owner can add vehicles." : "Could not add the vehicle.");
     } finally {
@@ -399,7 +482,19 @@ function ManualForm({
           <Field label="Plate" bad={badField === "license_plate"}>
             <input value={f.license_plate} onChange={(e) => set("license_plate", e.target.value.toUpperCase())} className={inputCls(badField === "license_plate")} />
           </Field>
-          <Field label="Plate State"><input value={f.plate_state} onChange={(e) => set("plate_state", e.target.value.toUpperCase())} maxLength={2} className={inputCls()} /></Field>
+          <Field label="Plate State" bad={badField === "plate_state"}>
+            <select
+              value={f.plate_state}
+              onChange={(e) => set("plate_state", e.target.value)}
+              className={inputCls(badField === "plate_state")}
+            >
+              {usStateOptions().map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
       </section>
 

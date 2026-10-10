@@ -2,7 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listVehicles } from "@/lib/vehicles-list.functions";
-import { availabilityLabel, VEHICLE_LIST_PAGE_SIZE, type VehicleListRow } from "@/lib/vehicles-list";
+import {
+  availabilityLabel,
+  isReadinessFilter,
+  READINESS_BANDS,
+  READINESS_HINT,
+  READINESS_LABEL,
+  VEHICLE_LIST_PAGE_SIZE,
+  type ReadinessBand,
+  type VehicleListRow,
+} from "@/lib/vehicles-list";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
@@ -64,7 +73,16 @@ function PartnerAssignSelect({
   );
 }
 
-type ListState = { q?: string; status?: string; body?: string; partner?: string; sort?: string; page?: string; view?: string };
+type ListState = {
+  q?: string;
+  status?: string;
+  body?: string;
+  partner?: string;
+  sort?: string;
+  page?: string;
+  view?: string;
+  ready?: string;
+};
 const VIEW_KEY = "rr.vehicles.view";
 
 function vehicleName(v: VehicleListRow) {
@@ -94,6 +112,37 @@ function Availability({ v }: { v: VehicleListRow }) {
   return <span className={v.on_rent || v.status === "onboarding" ? "font-medium text-foreground" : ""}>{label}</span>;
 }
 
+/**
+ * Readiness, in the list.
+ *
+ * Three bands, the same ones the vehicle's own profile uses, and the tooltip
+ * names what is missing rather than making the operator open the record to
+ * find out. Colour alone never carries the meaning — the words are there.
+ */
+const READINESS_TONE: Record<ReadinessBand, string> = {
+  listing_ready: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
+  rental_ready: "bg-[rgba(240,192,64,0.14)] text-[#8A6410]",
+  not_ready: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+};
+const READINESS_DOT: Record<ReadinessBand, string> = {
+  listing_ready: "bg-[#1C8F57]",
+  rental_ready: "bg-[#C68A12]",
+  not_ready: "bg-[#D03020]",
+};
+
+function ReadinessPill({ v }: { v: VehicleListRow }) {
+  const gaps = v.readinessGaps ?? [];
+  return (
+    <span
+      data-readiness={v.readiness}
+      title={gaps.length ? `Missing: ${gaps.join(", ")}` : READINESS_HINT[v.readiness]}
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${READINESS_TONE[v.readiness]}`}
+    >
+      {READINESS_LABEL[v.readiness]}
+    </span>
+  );
+}
+
 function Rate({ v }: { v: VehicleListRow }) {
   return v.weekly_rate == null ? <span className="text-muted-foreground">Rate Not Set</span> : <span className="font-medium text-foreground">${v.weekly_rate}/wk</span>;
 }
@@ -113,6 +162,7 @@ export function VehiclesPanel({
   const statusFilter = listState.status ?? "all";
   const bodyFilter = listState.body ?? "all";
   const partnerFilter = listState.partner ?? "all";
+  const readyFilter = isReadinessFilter(listState.ready) ? listState.ready : "all";
   const sort = listState.sort ?? "unit";
   const page = Math.max(1, Number(listState.page) || 1);
   const [storedView, setStoredView] = useState<string | null>(null);
@@ -123,18 +173,19 @@ export function VehiclesPanel({
 
   const listSearch = useCallback(
     (over: Partial<ListState> = {}) => {
-      const next: ListState = { q, status: statusFilter, body: bodyFilter, partner: partnerFilter, sort, page: String(page), view: listState.view, ...over };
+      const next: ListState = { q, status: statusFilter, body: bodyFilter, partner: partnerFilter, sort, page: String(page), view: listState.view, ready: readyFilter, ...over };
       const out: Record<string, string> = { tab: "vehicles" };
       if (next.q) out.q = next.q;
       if (next.status && next.status !== "all") out.vstatus = next.status;
       if (next.body && next.body !== "all") out.body = next.body;
       if (next.partner && next.partner !== "all") out.partner = next.partner;
       if (next.sort && next.sort !== "unit") out.sort = next.sort;
+      if (next.ready && next.ready !== "all") out.ready = next.ready;
       if (next.page && next.page !== "1") out.page = next.page;
       if (next.view) out.view = next.view;
       return out;
     },
-    [q, statusFilter, bodyFilter, partnerFilter, sort, page, listState.view],
+    [q, statusFilter, bodyFilter, partnerFilter, sort, page, listState.view, readyFilter],
   );
   const setList = useCallback(
     (over: Partial<ListState>) => void navigate({ to: "/admin", search: listSearch({ page: "1", ...over }) as any, replace: true }),
@@ -168,7 +219,7 @@ export function VehiclesPanel({
 
   const effectiveQ = (externalSearch || q).trim();
   const fetchList = useServerFn(listVehicles);
-  const params = { q: effectiveQ, status: statusFilter, body: bodyFilter, partner: partnerFilter, sort, page, pageSize: VEHICLE_LIST_PAGE_SIZE };
+  const params = { q: effectiveQ, status: statusFilter, body: bodyFilter, partner: partnerFilter, sort, ready: readyFilter, page, pageSize: VEHICLE_LIST_PAGE_SIZE };
   const listQuery = useQuery({
     queryKey: ["admin-vehicles-list", params],
     queryFn: () => fetchList({ data: params }),
@@ -207,7 +258,7 @@ export function VehiclesPanel({
     void navigate({ to: "/admin", search: listSearch({ view: next }) as any, replace: true });
   }
 
-  const hasActiveFilters = q !== "" || statusFilter !== "all" || bodyFilter !== "all" || partnerFilter !== "all";
+  const hasActiveFilters = q !== "" || statusFilter !== "all" || bodyFilter !== "all" || partnerFilter !== "all" || readyFilter !== "all";
   const firstShown = total === 0 ? 0 : (page - 1) * VEHICLE_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * VEHICLE_LIST_PAGE_SIZE);
 
@@ -232,6 +283,7 @@ export function VehiclesPanel({
               <div className="mt-2.5 text-[13px] text-muted-foreground">
                 <Rate v={v} /><span className="mx-1.5">·</span><Availability v={v} />
               </div>
+              <div className="mt-2"><ReadinessPill v={v} /></div>
               <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
                 <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
@@ -304,8 +356,57 @@ export function VehiclesPanel({
               <SelectItem value="newest">Sort: Newest</SelectItem>
             </SelectContent>
           </Select>
+          {/* Fleet-wide readiness lives IN the one sticky filter row: the bar
+              publishes its own height and overlaps the 16px below it, so a
+              second row underneath is covered and unclickable. Counts cover
+              everything the current search and filters match, not the page,
+              and each chip is the filter for its own band. */}
+          {result && (
+            <span className="inline-flex items-center gap-2" data-testid="fleet-readiness">
+              <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
+              {READINESS_BANDS.map((band) => {
+                const n = result.readinessCounts?.[band] ?? 0;
+                const active = readyFilter === band;
+                return (
+                  <button
+                    key={band}
+                    onClick={() => setList({ ready: active ? "all" : band })}
+                    aria-pressed={active}
+                    data-band={band}
+                    data-count={n}
+                    title={READINESS_HINT[band]}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-white px-2.5 py-1 text-xs transition-colors ${
+                      active
+                        ? "border-[#D03020] font-medium text-[#111114]"
+                        : "border-[#EDEDF0] text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${READINESS_DOT[band]}`} />
+                    {READINESS_LABEL[band]}
+                    <span className="font-medium text-foreground">{n}</span>
+                  </button>
+                );
+              })}
+              {readyFilter !== "all" && (
+                <button
+                  onClick={() => setList({ ready: "all" })}
+                  className="whitespace-nowrap px-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Show all
+                </button>
+              )}
+              {result.readinessPartial && (
+                <span
+                  className="whitespace-nowrap text-xs text-[#8A6410]"
+                  title="Only the first 2,000 vehicles were graded."
+                >
+                  counted on the first 2,000 vehicles
+                </span>
+              )}
+            </span>
+          )}
           {hasActiveFilters && (
-            <button onClick={() => { setSearchInput(""); setList({ q: "", status: "all", body: "all", partner: "all" }); }} className="text-sm text-muted-foreground hover:text-foreground px-2">
+            <button onClick={() => { setSearchInput(""); setList({ q: "", status: "all", body: "all", partner: "all", ready: "all" }); }} className="text-sm text-muted-foreground hover:text-foreground px-2">
               Clear
             </button>
           )}
@@ -334,6 +435,7 @@ export function VehiclesPanel({
                 <th className="px-3 py-2 font-medium">Plate</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
                 <th className="px-3 py-2 font-medium">Availability</th>
+                <th className="px-3 py-2 font-medium">Readiness</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
                 <th className="px-3 py-2 font-medium">Partner</th>
                 <th className="px-3 py-2 font-medium sr-only">Open</th>
@@ -347,6 +449,7 @@ export function VehiclesPanel({
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
+                  <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
                   <td className="px-3 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
                   <td className="px-3 py-2 text-right">
@@ -377,7 +480,16 @@ export function VehiclesPanel({
         <EmptyState className="mt-6" icon={<Car className="w-6 h-6" strokeWidth={1.75} />} title="No Vehicles Yet" hint={'Click "Add Vehicle" to put your first car into the fleet.'} />
       )}
       {result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
-        <EmptyState className="mt-6" icon={<Car className="w-6 h-6" strokeWidth={1.75} />} title="No Matching Vehicles" hint="Try clearing a filter or searching for a different make or model." />
+        <EmptyState
+          className="mt-6"
+          icon={<Car className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Matching Vehicles"
+          hint={
+            readyFilter !== "all"
+              ? `No vehicle in this view is ${READINESS_LABEL[readyFilter]}. ${READINESS_HINT[readyFilter]}`
+              : "Try clearing a filter or searching for a different make or model."
+          }
+        />
       )}
 
       {adding && (

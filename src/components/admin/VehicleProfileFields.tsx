@@ -189,16 +189,22 @@ export function Choice({
   onChange,
   options,
   hint,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
   hint?: string;
+  error?: string;
 }) {
   return (
-    <Field label={label} hint={hint}>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+    <Field label={label} hint={hint} error={error}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputCls} ${error ? "border-[#D03020]" : ""}`}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

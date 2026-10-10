@@ -6,6 +6,7 @@ import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { notReadyMessage, hasValidRate } from "@/lib/vehicle-readiness";
 import { normalizeDisplayText } from "@/lib/display-normalize";
+import { isUsStateCode } from "@/lib/us-states";
 import { fmtDate as formatDate } from "@/lib/date-format";
 
 async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance: boolean) {
@@ -273,7 +274,16 @@ export const createVehicle = createServerFn({ method: "POST" })
         }
       }
 
+      if (data.plate_state && !isUsStateCode(data.plate_state)) {
+        return {
+          ok: false,
+          error: "Choose the state that issued the plate.",
+          field: "plate_state",
+        };
+      }
       if (data.license_plate) {
+        const problem = plateProblem(data.license_plate.trim().toUpperCase());
+        if (problem) return { ok: false, error: problem, field: "license_plate" };
         const { data: dupe } = await supabaseAdmin
           .from("vehicles")
           .select("id,unit_number,year,make,model")
@@ -880,6 +890,11 @@ export const VEHICLE_SECTIONS = {
     "trim",
     "color",
     "body_type",
+    // The Vehicle Details card shows the plate, so the drawer that card opens
+    // can edit it. Same column, same write path, same duplicate check as
+    // Registration & Title — one plate with two doors, not two plates.
+    "license_plate",
+    "plate_state",
     "seats",
     "doors",
     "mpg",
@@ -947,6 +962,20 @@ export const VEHICLE_SECTIONS = {
 } as const;
 
 export type VehicleSection = keyof typeof VEHICLE_SECTIONS;
+
+/**
+ * Does this look like a plate at all?
+ *
+ * Deliberately permissive — temporary tags, dealer tags and out-of-state
+ * formats all differ, and refusing a real plate is worse than accepting an
+ * odd one. Strict only about what is never a plate: a single character, and
+ * punctuation, which would also turn the duplicate lookup's ilike into a
+ * pattern (a plate of "%" otherwise matches every car in the fleet).
+ */
+const PLATE_RE = /^[A-Z0-9][A-Z0-9 -]{1,19}$/;
+export function plateProblem(plate: string): string | null {
+  return PLATE_RE.test(plate) ? null : "A plate is 2 to 20 letters, numbers, spaces or dashes.";
+}
 
 /** Fields that are always stored upper-cased, so lookups and the case-insensitive unique indexes agree. */
 const UPPERCASE_FIELDS = new Set(["vin", "license_plate", "plate_state", "registration_state"]);
@@ -1032,7 +1061,36 @@ const FIELD_LABEL: Record<string, string> = {
   toll_account: "toll account",
 };
 
-type SectionResult = { ok: boolean; error?: string; field?: string };
+/** One field and what became of it, named the way a person would name it. */
+export type FieldOutcome = { field: string; label: string };
+export type RefusedField = FieldOutcome & { reason: string };
+
+/**
+ * What a save actually did.
+ *
+ * "Saved" used to be the whole answer, which made it a lie in three different
+ * ways: a Manager's title number was dropped on the floor because that column
+ * is Owner-only, a field sent to the wrong section's whitelist vanished, and
+ * pressing Save without changing anything reported a save that never happened.
+ * The outcome is now itemised, and the drawer says which of these it was.
+ *
+ * Only fields the operator actually edited are classified — `intended`. The
+ * per-section drawers post the whole record, so without that list every
+ * untouched column on the car would be reported back as "unchanged".
+ */
+type SectionResult = {
+  ok: boolean;
+  error?: string;
+  field?: string;
+  /** Written. */
+  saved?: FieldOutcome[];
+  /** Sent, owned by this section, already that value. */
+  unchanged?: FieldOutcome[];
+  /** Refused on purpose — permission, not a typo. */
+  rejected?: RefusedField[];
+  /** Not this section's column to write, so nothing happened to it. */
+  ignored?: RefusedField[];
+};
 
 /**
  * Apply one section's values to a vehicle.
@@ -1046,26 +1104,76 @@ type SectionResult = { ok: boolean; error?: string; field?: string };
 async function applySection(
   supabaseAdmin: any,
   actor: Actor,
-  data: { id: string; section: VehicleSection; values: Record<string, unknown> },
+  data: {
+    id: string;
+    section: VehicleSection;
+    values: Record<string, unknown>;
+    /** Fields the operator edited. Omitted = every field this section owns. */
+    intended?: string[];
+  },
 ): Promise<SectionResult> {
   {
     const allowed: readonly string[] = VEHICLE_SECTIONS[data.section as VehicleSection];
+    const named = (k: string): FieldOutcome => ({
+      field: k,
+      label: FIELD_LABEL[k] ?? k.replace(/_/g, " "),
+    });
+    const intended = data.intended?.length
+      ? [...new Set(data.intended)]
+      : Object.keys(data.values).filter((k) => allowed.includes(k));
+    const ignored: RefusedField[] = intended
+      .filter((k) => !allowed.includes(k))
+      .map((k) => ({
+        ...named(k),
+        reason: `The ${SECTION_LABEL[data.section as VehicleSection]} editor does not save that field.`,
+      }));
 
     const patch: Record<string, unknown> = {};
     // Title identifiers are Owner-only (public.vehicle_titles). Only the Owner
     // view may write them, and they go straight to that table, never vehicles.
     const canTitle = (await import("@/lib/experience.server")).ownerView(actor);
     const TITLE_KEYS = ["title_number", "title_status"];
+    // Which of the two actually moved, so the save can say "recorded" or
+    // "already that" rather than "saved" for a value nobody changed.
+    const titleMoved = new Set<string>();
     if (canTitle && TITLE_KEYS.some((k) => k in data.values)) {
       const clean = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
-      const row: Record<string, unknown> = { vehicle_id: data.id, updated_by: actor.userId, updated_at: new Date().toISOString() };
-      for (const k of TITLE_KEYS) if (k in data.values) row[k] = clean(data.values[k]);
-      const { error: tErr } = await supabaseAdmin.from("vehicle_titles").upsert(row, { onConflict: "vehicle_id" });
+      const { data: wasTitle } = await supabaseAdmin
+        .from("vehicle_titles")
+        .select("title_number,title_status")
+        .eq("vehicle_id", data.id)
+        .maybeSingle();
+      const row: Record<string, unknown> = {
+        vehicle_id: data.id,
+        updated_by: actor.userId,
+        updated_at: new Date().toISOString(),
+      };
+      for (const k of TITLE_KEYS)
+        if (k in data.values) {
+          row[k] = clean(data.values[k]);
+          if ((wasTitle?.[k] ?? null) !== row[k]) titleMoved.add(k);
+        }
+      const { error: tErr } = await supabaseAdmin
+        .from("vehicle_titles")
+        .upsert(row, { onConflict: "vehicle_id" });
       if (tErr) throw new Error("Could not save title details");
-      const { data: t } = await supabaseAdmin.from("vehicle_titles").select("title_number,title_status").eq("vehicle_id", data.id).maybeSingle();
-      await supabaseAdmin.from("vehicles").update({ title_on_file: !!(t?.title_number || t?.title_status) }).eq("id", data.id);
+      const { data: t } = await supabaseAdmin
+        .from("vehicle_titles")
+        .select("title_number,title_status")
+        .eq("vehicle_id", data.id)
+        .maybeSingle();
+      await supabaseAdmin
+        .from("vehicles")
+        .update({ title_on_file: !!(t?.title_number || t?.title_status) })
+        .eq("id", data.id);
       // Values deliberately omitted: Managers can read the audit log.
-      await logAudit(actor, { action: "vehicle.title_updated", summary: "Updated Owner-only title details", entityType: "vehicle", entityId: data.id, metadata: { fields: TITLE_KEYS.filter((k) => k in data.values) } });
+      await logAudit(actor, {
+        action: "vehicle.title_updated",
+        summary: "Updated Owner-only title details",
+        entityType: "vehicle",
+        entityId: data.id,
+        metadata: { fields: TITLE_KEYS.filter((k) => k in data.values) },
+      });
     }
     for (const key of allowed) {
       if (!(key in data.values)) continue;
@@ -1086,7 +1194,24 @@ async function applySection(
       patch[key] = v ?? null;
     }
 
-    if (!Object.keys(patch).length) return { ok: true };
+    if (!Object.keys(patch).length) {
+      return {
+        ok: true,
+        saved: [...titleMoved].map(named),
+        unchanged: intended
+          .filter(
+            (k) =>
+              allowed.includes(k) && (!TITLE_KEYS.includes(k) || (canTitle && !titleMoved.has(k))),
+          )
+          .map(named),
+        rejected: canTitle
+          ? []
+          : intended
+              .filter((k) => allowed.includes(k) && TITLE_KEYS.includes(k))
+              .map((k) => ({ ...named(k), reason: "Title details are Owner-only." })),
+        ignored,
+      };
+    }
 
     // weekly_rate may be null ("Not Set"). The database refuses Available /
     // Reserved without Rental Ready; that message is translated below.
@@ -1108,7 +1233,10 @@ async function applySection(
       if (patch.status === "archived" || before.status === "archived") {
         return {
           ok: false,
-          error: patch.status === "archived" ? "Use Archive Vehicle to archive." : "Use Restore Vehicle to bring this vehicle back.",
+          error:
+            patch.status === "archived"
+              ? "Use Archive Vehicle to archive."
+              : "Use Restore Vehicle to bring this vehicle back.",
           field: "status",
         };
       }
@@ -1159,6 +1287,27 @@ async function applySection(
           field: "vin",
         };
       }
+    }
+    // Plate identity is checked only when the value actually moves. A car
+    // whose plate was recorded before these rules existed must still be
+    // editable in every other respect, so an untouched value is left alone.
+    const nextPlate = patch.license_plate;
+    if (typeof nextPlate === "string" && nextPlate && nextPlate !== before.license_plate) {
+      const problem = plateProblem(nextPlate);
+      if (problem) return { ok: false, error: problem, field: "license_plate" };
+    }
+    const nextPlateState = patch.plate_state;
+    if (
+      typeof nextPlateState === "string" &&
+      nextPlateState &&
+      nextPlateState !== before.plate_state
+    ) {
+      if (!isUsStateCode(nextPlateState))
+        return {
+          ok: false,
+          error: "Choose the state that issued the plate.",
+          field: "plate_state",
+        };
     }
     for (const [col, field, label] of [
       ["license_plate", "license_plate", "plate"],
@@ -1236,7 +1385,22 @@ async function applySection(
       }
     }
 
-    return { ok: true };
+    // What the operator asked for, item by item. A field is "saved" only if
+    // the row actually moved — `changed` comes from the real before/after, not
+    // from what was posted.
+    const saved: FieldOutcome[] = [];
+    const unchanged: FieldOutcome[] = [];
+    const rejected: RefusedField[] = [];
+    for (const k of intended) {
+      if (!allowed.includes(k)) continue; // already in `ignored`
+      if (TITLE_KEYS.includes(k)) {
+        if (!canTitle) rejected.push({ ...named(k), reason: "Title details are Owner-only." });
+        else (titleMoved.has(k) ? saved : unchanged).push(named(k));
+        continue;
+      }
+      (changedKeys.includes(k) ? saved : unchanged).push(named(k));
+    }
+    return { ok: true, saved, unchanged, rejected, ignored };
   }
 }
 
@@ -1251,6 +1415,12 @@ export const updateVehicleSection = createServerFn({ method: "POST" })
         // constrains this, so values are validated by column rather than by a
         // schema that would have to be kept in sync with the table twice.
         values: z.record(z.string(), z.unknown()),
+        /**
+         * The fields the operator actually edited. The drawers post the whole
+         * record, so this is the only way the answer can name what changed
+         * rather than listing every column on the car.
+         */
+        intended: z.array(z.string().max(64)).max(200).optional(),
       })
       .parse(d),
   )
@@ -1261,6 +1431,7 @@ export const updateVehicleSection = createServerFn({ method: "POST" })
       id: data.id,
       section: data.section as VehicleSection,
       values: data.values,
+      intended: data.intended,
     });
   });
 
@@ -1295,7 +1466,16 @@ export const updateVehicleSections = createServerFn({ method: "POST" })
     async ({
       data,
       context,
-    }): Promise<{ ok: boolean; error?: string; field?: string; section?: string }> => {
+    }): Promise<{
+      ok: boolean;
+      error?: string;
+      field?: string;
+      section?: string;
+      saved?: FieldOutcome[];
+      unchanged?: FieldOutcome[];
+      rejected?: RefusedField[];
+      ignored?: RefusedField[];
+    }> => {
       const actor = await requireManager(context.userId);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -1303,13 +1483,28 @@ export const updateVehicleSections = createServerFn({ method: "POST" })
       // abandon a save, so it should be reported before anything is written.
       const ORDER: VehicleSection[] = ["dmv", "identity", "insurance", "gps", "keys", "service"];
 
+      const saved: FieldOutcome[] = [];
+      const unchanged: FieldOutcome[] = [];
+      const rejected: RefusedField[] = [];
+      const ignored: RefusedField[] = [];
       for (const section of ORDER) {
         const values = (data.sections as Record<string, Record<string, unknown>>)[section];
         if (!values || !Object.keys(values).length) continue;
-        const res = await applySection(supabaseAdmin, actor, { id: data.id, section, values });
+        // This editor already posts only the fields it changed, so its own
+        // keys are the intent — no second list to keep in step.
+        const res = await applySection(supabaseAdmin, actor, {
+          id: data.id,
+          section,
+          values,
+          intended: Object.keys(values),
+        });
         if (!res.ok) return { ok: false, error: res.error, field: res.field, section };
+        saved.push(...(res.saved ?? []));
+        unchanged.push(...(res.unchanged ?? []));
+        rejected.push(...(res.rejected ?? []));
+        ignored.push(...(res.ignored ?? []));
       }
-      return { ok: true };
+      return { ok: true, saved, unchanged, rejected, ignored };
     },
   );
 

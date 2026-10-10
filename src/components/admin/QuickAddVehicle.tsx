@@ -19,7 +19,7 @@ import { useVehicleDefaultPrefill } from "./useVehicleDefaults";
 
 const MAX_BYTES = 15 * 1024 * 1024;
 
-export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: string) => void; onMore: () => void; onClose?: () => void }) {
+export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: string, label: string) => void; onMore: () => void; onClose?: () => void }) {
   const create = useServerFn(createVehicle);
   const register = useServerFn(registerVehicleMedia);
   const [f, setF] = useState({ year: "", make: "", model: "", vin: "", rate: "", body: "", monthly: "", deposit: "" });
@@ -71,10 +71,13 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
           toast.error("Vehicle saved, but the photo didn't upload. Add it from the Photos tab.");
         }
       }
+      const label = `${res.unit_number ? res.unit_number + " · " : ""}${f.year} ${f.make} ${f.model}`;
       toast.success(
         `${res.unit_number ? res.unit_number + " — " : ""}${f.year} ${f.make} ${f.model} ${makeAvailable ? "added and Available" : "saved as Needs Setup"}`,
       );
-      onCreated(res.id);
+      // The car is saved. The dialog offers its paperwork next, so it needs a
+      // name for it that reads the way the toast above does.
+      onCreated(res.id, label);
     } catch (e: any) {
       toast.error(e?.message === "Forbidden" ? "Only a Manager or Owner can add vehicles." : "Could not add the vehicle.");
     } finally {
