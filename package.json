@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test:readiness": "node scripts/vehicle-readiness-phase1.test.mjs",
     "test:public-copy": "node scripts/public-copy.test.mjs",
-    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs && node scripts/marketing-fleet.test.mjs && node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs && node scripts/vehicle-doc-permissions.test.mjs && node scripts/vehicle-doc-upload-states.test.mjs && node scripts/vehicle-photo-publishing.test.mjs && node scripts/photo-enhance-guards.test.mjs && node scripts/vehicle-photo-public-route.test.mjs && node scripts/safe-autofill-channel.test.mjs && node scripts/vehicle-photo-analysis.test.mjs && node scripts/vehicle-photo-analysis-ui.test.mjs && node scripts/photo-reading-cap.test.mjs && node scripts/vehicle-readiness-phase1.test.mjs",
+    "test": "bash scripts/readiness-test.sh && node scripts/public-copy.test.mjs && node scripts/grants.test.mjs && node scripts/client-chunks.test.mjs && node scripts/duration-vocabulary.test.mjs && node scripts/marketing-fleet.test.mjs && node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs && node scripts/vehicle-doc-permissions.test.mjs && node scripts/vehicle-doc-upload-states.test.mjs && node scripts/vehicle-photo-publishing.test.mjs && node scripts/photo-enhance-guards.test.mjs && node scripts/vehicle-photo-public-route.test.mjs && node scripts/safe-autofill-channel.test.mjs && node scripts/vehicle-photo-analysis.test.mjs && node scripts/vehicle-photo-analysis-ui.test.mjs && node scripts/photo-reading-cap.test.mjs && node scripts/vehicle-readiness-phase1.test.mjs && node scripts/vehicle-plate-editing.test.mjs",
     "test:grants": "node scripts/grants.test.mjs",
     "test:nav": "node scripts/admin-navigation.test.mjs",
     "test:fleet": "node scripts/marketing-fleet.test.mjs",
@@ -30,6 +30,8 @@
     "test:photo-cap": "node scripts/photo-reading-cap.test.mjs",
     "test:photo-read-e2e": "node scripts/vehicle-photo-read-e2e.test.mjs",
     "test:readiness-e2e": "node scripts/vehicle-readiness-e2e.test.mjs",
+    "test:plate": "node scripts/vehicle-plate-editing.test.mjs",
+    "test:plate-e2e": "node scripts/vehicle-plate-editing-e2e.test.mjs",
     "test:mutation": "node scripts/mutation-check.mjs",
     "test:driver": "node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs",
     "test:session": "node scripts/session-isolation.test.mjs"

@@ -11,6 +11,7 @@ import {
   OWNERSHIP_TYPES, BODY_TYPES, VEHICLE_STATUSES,
 } from "@/lib/vehicles.functions";
 import { checkVin } from "@/lib/vin";
+import { usStateOptions } from "@/lib/us-states";
 import { TitleScanStep } from "./TitleScanStep";
 import { ImportVehiclesStep } from "./ImportVehiclesStep";
 import { QuickAddForm } from "./QuickAddVehicle";
@@ -399,7 +400,19 @@ function ManualForm({
           <Field label="Plate" bad={badField === "license_plate"}>
             <input value={f.license_plate} onChange={(e) => set("license_plate", e.target.value.toUpperCase())} className={inputCls(badField === "license_plate")} />
           </Field>
-          <Field label="Plate State"><input value={f.plate_state} onChange={(e) => set("plate_state", e.target.value.toUpperCase())} maxLength={2} className={inputCls()} /></Field>
+          <Field label="Plate State" bad={badField === "plate_state"}>
+            <select
+              value={f.plate_state}
+              onChange={(e) => set("plate_state", e.target.value)}
+              className={inputCls(badField === "plate_state")}
+            >
+              {usStateOptions().map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
       </section>
 

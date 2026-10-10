@@ -10,8 +10,8 @@
  * that had simply found nothing would pass as if they had been refused.
  *
  * Supported: select / insert / update / delete / upsert, chained with
- * eq, neq, in, is, or, gte, lte, order, limit, single, maybeSingle, and
- * select(..., { count, head }). Plus storage.from().download().
+ * eq, neq, ilike, in, is, or, gte, lte, order, limit, single, maybeSingle,
+ * and select(..., { count, head }). Plus storage.from().download().
  */
 const S = (globalThis.__fakeSb ??= { tables: {}, files: {}, log: [], defaults: {} });
 
@@ -49,6 +49,20 @@ class Query {
     return this;
   }
   neq(f, v) { this.filters.push((r) => String(r[f]) !== String(v)); return this; }
+  /**
+   * ilike is a case-insensitive LIKE, not a case-insensitive equals: % and _
+   * are wildcards. The duplicate-plate check hands a plate straight to it, so
+   * a fake that compared strings would hide the reason a plate's characters
+   * are validated at all — a plate of "%" matches every car in the fleet.
+   */
+  ilike(f, pat) {
+    const rx = new RegExp(
+      `^${String(pat).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`,
+      "i",
+    );
+    this.filters.push((r) => r[f] != null && rx.test(String(r[f])));
+    return this;
+  }
   in(f, vs) { this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
   or(expr) { this.filters.push((r) => matchOr(r, expr)); return this; }

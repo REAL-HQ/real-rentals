@@ -32,6 +32,7 @@ import { checkVin, normalizeVin } from "@/lib/vin";
 import { Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { MicroLabel } from "./ui";
 import { fmtDateTime } from "@/lib/date-format";
+import { usStateOptions } from "@/lib/us-states";
 
 // Edit a vehicle without walking every tab.
 //
@@ -520,10 +521,12 @@ export function VehicleEditorDrawer({
           {/* ===== 2. Registration ========================================= */}
           <Group id="dmv" title="Registration" icon={ScrollText}>
             <Grid>
-              <Text
+              <Choice
                 label="Plate State"
                 value={str("plate_state")}
                 onChange={(x) => set("dmv", "plate_state", x)}
+                options={usStateOptions()}
+                error={fieldErr("plate_state")}
               />
               <DateInput
                 label="Plate Expires"

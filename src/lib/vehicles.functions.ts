@@ -6,6 +6,7 @@ import { logAudit, diffFields } from "@/lib/audit";
 import { checkVin, normalizeVin } from "@/lib/vin";
 import { notReadyMessage, hasValidRate } from "@/lib/vehicle-readiness";
 import { normalizeDisplayText } from "@/lib/display-normalize";
+import { isUsStateCode } from "@/lib/us-states";
 import { fmtDate as formatDate } from "@/lib/date-format";
 
 async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance: boolean) {
@@ -273,7 +274,16 @@ export const createVehicle = createServerFn({ method: "POST" })
         }
       }
 
+      if (data.plate_state && !isUsStateCode(data.plate_state)) {
+        return {
+          ok: false,
+          error: "Choose the state that issued the plate.",
+          field: "plate_state",
+        };
+      }
       if (data.license_plate) {
+        const problem = plateProblem(data.license_plate.trim().toUpperCase());
+        if (problem) return { ok: false, error: problem, field: "license_plate" };
         const { data: dupe } = await supabaseAdmin
           .from("vehicles")
           .select("id,unit_number,year,make,model")
@@ -880,6 +890,11 @@ export const VEHICLE_SECTIONS = {
     "trim",
     "color",
     "body_type",
+    // The Vehicle Details card shows the plate, so the drawer that card opens
+    // can edit it. Same column, same write path, same duplicate check as
+    // Registration & Title — one plate with two doors, not two plates.
+    "license_plate",
+    "plate_state",
     "seats",
     "doors",
     "mpg",
@@ -947,6 +962,20 @@ export const VEHICLE_SECTIONS = {
 } as const;
 
 export type VehicleSection = keyof typeof VEHICLE_SECTIONS;
+
+/**
+ * Does this look like a plate at all?
+ *
+ * Deliberately permissive — temporary tags, dealer tags and out-of-state
+ * formats all differ, and refusing a real plate is worse than accepting an
+ * odd one. Strict only about what is never a plate: a single character, and
+ * punctuation, which would also turn the duplicate lookup's ilike into a
+ * pattern (a plate of "%" otherwise matches every car in the fleet).
+ */
+const PLATE_RE = /^[A-Z0-9][A-Z0-9 -]{1,19}$/;
+export function plateProblem(plate: string): string | null {
+  return PLATE_RE.test(plate) ? null : "A plate is 2 to 20 letters, numbers, spaces or dashes.";
+}
 
 /** Fields that are always stored upper-cased, so lookups and the case-insensitive unique indexes agree. */
 const UPPERCASE_FIELDS = new Set(["vin", "license_plate", "plate_state", "registration_state"]);
@@ -1159,6 +1188,27 @@ async function applySection(
           field: "vin",
         };
       }
+    }
+    // Plate identity is checked only when the value actually moves. A car
+    // whose plate was recorded before these rules existed must still be
+    // editable in every other respect, so an untouched value is left alone.
+    const nextPlate = patch.license_plate;
+    if (typeof nextPlate === "string" && nextPlate && nextPlate !== before.license_plate) {
+      const problem = plateProblem(nextPlate);
+      if (problem) return { ok: false, error: problem, field: "license_plate" };
+    }
+    const nextPlateState = patch.plate_state;
+    if (
+      typeof nextPlateState === "string" &&
+      nextPlateState &&
+      nextPlateState !== before.plate_state
+    ) {
+      if (!isUsStateCode(nextPlateState))
+        return {
+          ok: false,
+          error: "Choose the state that issued the plate.",
+          field: "plate_state",
+        };
     }
     for (const [col, field, label] of [
       ["license_plate", "license_plate", "plate"],
