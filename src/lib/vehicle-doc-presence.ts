@@ -45,6 +45,21 @@ export function isFinanceKind(kind: string | null | undefined): boolean {
   return !!s && FINANCE_SLOTS.has(s);
 }
 
+/**
+ * Kinds whose PAPERWORK is the Owner's alone: the finance slots plus the
+ * title. Storage already draws this line (private.vehicle_doc_object_owner_only
+ * includes 'title'); the server functions that write with the admin client —
+ * which bypasses RLS and the storage policies — must draw the same one, or a
+ * Manager can destroy a title scan the policies would never have let them read.
+ *
+ * Kept separate from isFinanceKind, which answers a narrower question: which
+ * SLOTS to show, matching private.is_ownership_finance_kind. Staff are still
+ * told that a title is on file; they just cannot create or delete it.
+ */
+export function isOwnerOnlyDocKind(kind: string | null | undefined): boolean {
+  return isFinanceKind(kind) || slotForKind(kind) === "title";
+}
+
 const MAINTENANCE_KINDS = new Set(["service_receipt", "repair_invoice", "oil_service", "tires", "brakes", "parts_receipt"]);
 
 export type PresenceDoc = { id: string; kind: string; source?: "direct" | "linked"; file_name?: string | null; expires_at?: string | null; created_at?: string; relatedVehicles?: number };

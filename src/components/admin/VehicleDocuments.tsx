@@ -27,7 +27,26 @@ import { fmtDate } from "@/lib/date-format";
 // Uploading a document of a kind that already exists supersedes the old one
 // rather than deleting it, so last year's registration is still on file.
 
-export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This Vehicle", canEdit = true }: { vehicleId: string; bare?: boolean; vehicleLabel?: string; canEdit?: boolean }) {
+export function VehicleDocuments({
+  vehicleId,
+  bare = false,
+  vehicleLabel = "This Vehicle",
+  canEdit = true,
+  onVehicleChanged,
+}: {
+  vehicleId: string;
+  bare?: boolean;
+  vehicleLabel?: string;
+  canEdit?: boolean;
+  /**
+   * Called only when accepting extracted details has actually written vehicle
+   * fields, so the profile and its Readiness checklist can reload. Deliberately
+   * NOT called while polling, uploading, or on ordinary document-list changes:
+   * the profile is a separate, heavier read and re-fetching it every three
+   * seconds would be waste.
+   */
+  onVehicleChanged?: () => void;
+}) {
   const [uploadType, setUploadType] = useState<string | null>(null);
   const load = useServerFn(listVehicleDocs);
   const register = useServerFn(registerVehicleDoc);
@@ -104,7 +123,9 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
         },
       });
       if (!res.ok) throw new Error(res.error);
-      toast.success("Document saved");
+      toast.success(res.duplicate
+        ? "That exact file was already on file — linked to this vehicle, not stored again."
+        : "Document saved");
       void refresh();
     } catch (e: any) {
       console.error("[vehicle-docs] upload failed", e);
@@ -115,7 +136,15 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
   async function onDelete(d: VehicleDoc) {
     if (!confirm(`Delete the ${d.kind_label} on file?\n\nThis removes the file permanently.`)) return;
     try {
-      await remove({ data: { id: d.id } });
+      // The server refuses some deletions (title and finance paperwork are the
+      // Owner's) by returning ok: false. Toasting "Deleted" over a refusal told
+      // staff a document was gone while it was still on file.
+      const res = await remove({ data: { id: d.id } });
+      if (!res.ok) {
+        toast.error(res.error);
+        void refresh();
+        return;
+      }
       toast.success("Deleted");
       void refresh();
     } catch (e: any) {
@@ -181,6 +210,7 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
           onClose={() => { setUploadType(null); void refresh(); }}
           onSaveDirect={upload}
           onChanged={() => void refresh()}
+          onVehicleChanged={onVehicleChanged}
         />
       )}
 
@@ -218,6 +248,13 @@ export function VehicleDocuments({ vehicleId, bare = false, vehicleLabel = "This
   );
 }
 
+/** Whole days from today to an ISO date, negative once it has passed. */
+function daysUntil(date: string): number {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return Math.round((new Date(`${date.slice(0, 10)}T00:00:00`).getTime() - t.getTime()) / 86400_000);
+}
+
 function DocRow({
   type,
   doc,
@@ -237,7 +274,12 @@ function DocRow({
 }) {
   // Anything inside 30 days is worth flagging; already lapsed is worth
   // shouting about, because the car may be on the road right now.
-  const days = doc?.days_until_expiry ?? null;
+  //
+  // Evidence linked from Fleet Inbox counts the same. It used to render with no
+  // date at all, so a registration that came through the reader showed "On
+  // file" and nothing else — expired or not.
+  const expiresAt = doc?.expires_at ?? evidence?.expires_at ?? null;
+  const days = doc?.days_until_expiry ?? (expiresAt ? daysUntil(expiresAt) : null);
   const lapsed = days != null && days < 0;
   const soon = days != null && days >= 0 && days <= 30;
 
@@ -273,6 +315,19 @@ function DocRow({
           <p className="text-xs text-muted-foreground truncate">
             <span className="font-medium text-[#1E7B3C]">On file</span> · from Fleet Inbox · {evidence.file_name ?? "linked document"}
             {(evidence.relatedVehicles ?? 1) > 1 ? ` · shared with ${(evidence.relatedVehicles ?? 1) - 1} other vehicle${(evidence.relatedVehicles ?? 1) > 2 ? "s" : ""}` : ""}
+            {expiresAt && (
+              <>
+                {" · "}
+                {lapsed ? (
+                  <span className="text-[#D03020] font-medium">expired {fmtDate(expiresAt)}</span>
+                ) : (
+                  <span className={soon ? "text-[#B45309] font-medium" : ""}>
+                    expires {fmtDate(expiresAt)}
+                    {soon ? ` (${days}d)` : ""}
+                  </span>
+                )}
+              </>
+            )}
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">Not on file</p>
