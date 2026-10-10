@@ -28,12 +28,18 @@ const PHOTOS = "src/components/admin/VehiclePhotos.tsx";
 const PANEL = "src/components/admin/VehicleSuggestions.tsx";
 const CAP = "src/lib/photo-reading.server.ts";
 const RULES2 = "src/lib/photo-reading.ts";
+const READY = "src/lib/vehicle-readiness.ts";
+const INSPFN = "src/lib/inspections.functions.ts";
+const INSPUI = "src/components/admin/InspectionsPanel.tsx";
+const PROFILE = "src/components/admin/VehicleProfile.tsx";
+const ADMIN = "src/routes/admin.tsx";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
 const UI = "scripts/vehicle-photo-analysis-ui.test.mjs";
 const CAPTEST = "scripts/photo-reading-cap.test.mjs";
 const E2E = "scripts/vehicle-photo-read-e2e.test.mjs";
+const READYTEST = "scripts/vehicle-readiness-phase1.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -78,6 +84,27 @@ const MUTATIONS = [
   ["a reserved slot is released when the queue insert fails", DOORWAY,
     "      await sb.from(\"fleet_import_items\").update({ status: \"failed\", error: \"Could not queue the reading.\" }).eq(\"id\", item.id);\n      await releasePhotoRead(sb, slot.day);",
     "      await sb.from(\"fleet_import_items\").update({ status: \"failed\", error: \"Could not queue the reading.\" }).eq(\"id\", item.id);", CAPTEST],
+  ["an inspection cannot be started against a vehicle that is not there", INSPFN,
+    '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", READYTEST],
+  ["an archived vehicle cannot be inspected", INSPFN,
+    '    if (vehicle.archived_at) throw new Error("That vehicle is archived — restore it before inspecting it.");', "", READYTEST],
+  ["the inspection form prefers the vehicle it was sent", INSPUI,
+    "useState(initialVehicleId ?? vehicles[0]?.id ?? \"\")", 'useState(vehicles[0]?.id ?? "")', READYTEST],
+  ["a readiness Fix carries the vehicle id", PROFILE,
+    "search: { tab: f.tab, id: v.id } as never", "search: { tab: f.tab } as never", READYTEST],
+  ["the router lets the inspections tab keep the vehicle id", ADMIN,
+    '  id: ["drivers", "vehicles", "inspections"],', '  id: ["drivers", "vehicles"],', READYTEST],
+  ["a title scan counts as a title on file", READY,
+    "  if (t) return t.documentOnFile || t.metadataRecorded;", "  if (t) return t.metadataRecorded;", READYTEST],
+  ["a missing registration expiry still blocks (no quiet downgrade)", READY,
+    'checks.push(expiryCheck("registration", "Registration", v.registration_expires_on ?? null, slots.has("registration"), today, { kind: "edit", section: "dmv" }, "not_ready", "Open Registration"));',
+    'checks.push(expiryCheck("registration", "Registration", v.registration_expires_on ?? null, slots.has("registration"), today, { kind: "edit", section: "dmv" }, "attention", "Open Registration"));', READYTEST],
+  ["a missing insurance expiry still blocks (no quiet downgrade)", READY,
+    'checks.push(expiryCheck("insurance", "Insurance", v.insurance_expires_on ?? null, slots.has("insurance_card"), today, { kind: "edit", section: "insurance" }, "not_ready", "Open Insurance"));',
+    'checks.push(expiryCheck("insurance", "Insurance", v.insurance_expires_on ?? null, slots.has("insurance_card"), today, { kind: "edit", section: "insurance" }, "attention", "Open Insurance"));', READYTEST],
+  ["every check carries a category", READY,
+    '{ key: "safety", label: "Safety Issues", category: "operational", status: "ready"',
+    '{ key: "safety", label: "Safety Issues", status: "ready"', READYTEST],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -120,7 +147,7 @@ for (const [what, file, from, to, suite] of ALL) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

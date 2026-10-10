@@ -96,7 +96,13 @@ type AdminSearch = {
  */
 const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly string[]> = {
   // A selected record. Only tabs that can show one.
-  id: ["drivers", "vehicles"],
+  //
+  // "inspections" is here because the Vehicle Readiness card sends the
+  // operator there to inspect a SPECIFIC car. Without it the normaliser
+  // stripped the id back out of the URL a moment after the navigation, the
+  // panel fell back to whichever vehicle sorted first, and a pre-delivery
+  // inspection could be filed against the wrong one.
+  id: ["drivers", "vehicles", "inspections"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".

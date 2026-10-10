@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -57,12 +58,21 @@ const FUEL_LEVELS = [
 ];
 
 export function InspectionsPanel() {
+  // A readiness Fix arrives as /admin?tab=inspections&id=<vehicle>. Honour it:
+  // without it this panel used to open Start Inspection on whichever vehicle
+  // sorted first, which is how a pre-delivery inspection gets filed against
+  // the wrong car. An id for a vehicle that is not in the list is ignored
+  // rather than guessed at, and the server checks it again on submit.
+  const search = useSearch({ strict: false }) as { id?: string };
+  const fromVehicleId = typeof search?.id === "string" ? search.id : null;
   const [rows, setRows] = useState<Row[]>([]);
   const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  /** Opened once per arrival, so closing the dialog does not reopen it. */
+  const [autoOpened, setAutoOpened] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -90,6 +100,14 @@ export function InspectionsPanel() {
   useEffect(() => {
     load();
   }, []);
+
+  const arrivedVehicle = fromVehicleId && vehicles.some((v) => v.id === fromVehicleId) ? fromVehicleId : null;
+  useEffect(() => {
+    if (arrivedVehicle && !autoOpened && !openId) {
+      setAutoOpened(true);
+      setStarting(true);
+    }
+  }, [arrivedVehicle, autoOpened, openId]);
 
   const vName = (id: string) => {
     const v = vehicles.find((x) => x.id === id);
@@ -174,6 +192,7 @@ export function InspectionsPanel() {
         <StartForm
           vehicles={vehicles}
           templates={templates}
+          initialVehicleId={arrivedVehicle}
           onClose={() => setStarting(false)}
           onStarted={(id) => {
             setStarting(false);
@@ -188,16 +207,20 @@ export function InspectionsPanel() {
 function StartForm({
   vehicles,
   templates,
+  initialVehicleId,
   onClose,
   onStarted,
 }: {
   vehicles: VehicleLite[];
   templates: Template[];
+  /** The vehicle the operator came from, when a readiness Fix sent them here. */
+  initialVehicleId?: string | null;
   onClose: () => void;
   onStarted: (id: string) => void;
 }) {
   const start = useServerFn(startInspection);
-  const [vehicleId, setVehicleId] = useState(vehicles[0]?.id ?? "");
+  // Defaulting to vehicles[0] is only acceptable when nobody named a vehicle.
+  const [vehicleId, setVehicleId] = useState(initialVehicleId ?? vehicles[0]?.id ?? "");
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
   const [odometer, setOdometer] = useState("");
   const [busy, setBusy] = useState(false);

@@ -311,6 +311,20 @@ export const startInspection = createServerFn({ method: "POST" })
     if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    // The vehicle was never checked here: a well-formed UUID for a car that
+    // does not exist produced an inspection against nothing, and the readiness
+    // "Open Inspections" button used to arrive with no vehicle at all and let
+    // the form default to whichever car sorted first. Both are how a
+    // pre-delivery inspection ends up filed against the wrong vehicle, so the
+    // id is now verified on the server rather than trusted from the page.
+    const { data: vehicle } = await supabaseAdmin
+      .from("vehicles")
+      .select("id,archived_at")
+      .eq("id", data.vehicleId)
+      .maybeSingle();
+    if (!vehicle) throw new Error("That vehicle no longer exists.");
+    if (vehicle.archived_at) throw new Error("That vehicle is archived — restore it before inspecting it.");
+
     const { data: template } = await supabaseAdmin
       .from("inspection_templates")
       .select("id,inspection_type")

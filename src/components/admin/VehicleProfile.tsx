@@ -16,6 +16,7 @@ import {
   Images,
   ArrowUpRight,
   ShieldCheck,
+  Sparkles,
   ScrollText,
   Satellite,
   KeyRound,
@@ -47,7 +48,7 @@ import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
-import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
+import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 // The vehicle as a record you read.
@@ -112,6 +113,11 @@ export function VehicleProfile({
 }) {
   const load = useServerFn(getVehicleProfile);
   const [tab, setTab] = useState<Tab>("overview");
+  // How many extracted details are waiting, and a nudge to open the review.
+  // The header already renders VehicleSuggestions, so the Readiness card
+  // borrows its count rather than fetching the same list again.
+  const [pendingDetails, setPendingDetails] = useState(0);
+  const [openSuggest, setOpenSuggest] = useState(0);
   const [p, setP] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -210,7 +216,13 @@ export function VehicleProfile({
                     {p?.vinLast4 ? ` · VIN …${p.vinLast4}` : ""}
                     {v.license_plate ? ` · ${v.license_plate}` : ""}
                   </div>
-                  <VehicleSuggestions vehicleId={vehicleId} canEdit={!!p?.canEdit} onApplied={refresh} />
+                  <VehicleSuggestions
+                    vehicleId={vehicleId}
+                    canEdit={!!p?.canEdit}
+                    onApplied={refresh}
+                    onCount={setPendingDetails}
+                    openSignal={openSuggest}
+                  />
                 </>
               )}
             </div>
@@ -303,7 +315,16 @@ export function VehicleProfile({
             />
           ) : (
             <>
-              {tab === "overview" && <Overview p={p} onEdit={setEditing} onOpenTab={setTab} onRefresh={refresh} />}
+              {tab === "overview" && (
+                <Overview
+                  p={p}
+                  onEdit={setEditing}
+                  onOpenTab={setTab}
+                  onRefresh={refresh}
+                  pendingDetails={pendingDetails}
+                  onReviewDetails={() => setOpenSuggest((n) => n + 1)}
+                />
+              )}
               {tab === "service" && <VehicleService vehicleId={vehicleId} />}
               {tab === "timeline" && <VehicleTimeline vehicleId={vehicleId} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
@@ -408,10 +429,15 @@ function Overview({
   onEdit,
   onOpenTab,
   onRefresh,
+  pendingDetails,
+  onReviewDetails,
 }: {
   p: Profile;
   onEdit: (s: VehicleSection | "finance") => void;
   onOpenTab: (t: Tab) => void;
+  /** Extracted details waiting for staff confirmation. */
+  pendingDetails?: number;
+  onReviewDetails?: () => void;
   onRefresh?: () => void;
 }) {
   const v = p.vehicle;
@@ -433,7 +459,7 @@ function Overview({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
-        <ReadinessChecklist p={p} onEdit={onEdit} onOpenTab={onOpenTab} />
+        <ReadinessChecklist p={p} onEdit={onEdit} onOpenTab={onOpenTab} pendingDetails={pendingDetails ?? 0} onReviewDetails={onReviewDetails} />
         <SectionCard
           title="Vehicle Details"
           icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
@@ -619,13 +645,16 @@ function Dmv({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         icon={<ScrollText className="w-4 h-4" strokeWidth={1.75} />}
       >
         <Row label="VIN" value={v.vin} mono />
-        {p.canSeeFinance ? (
+        {/* Document and metadata are separate facts and every tier sees both
+            the same way. The NUMBER and the STATUS stay Owner-only, and a
+            document on file never implies the title has been verified. */}
+        <Row label="Title Document" value={p.title?.documentOnFile ? "On File" : "Not On File"} />
+        <Row label="Title Details" value={p.title?.metadataRecorded ? "Recorded" : "Not Recorded"} />
+        {p.canSeeFinance && (
           <>
             <Row label="Title Status" value={titleCase(v.title_status)} />
             <Row label="Title Number" value={v.title_number} mono />
           </>
-        ) : (
-          <Row label="Title" value={v.title_on_file ? "Title On File" : "Not On File"} />
         )}
         <div className="mt-3 text-[11px] text-[#9A9AA3]">
           Changing a VIN or plate is recorded in Activity with what it was before.
@@ -1303,7 +1332,7 @@ const CHECK_STYLE: Record<ReadinessCheck["status"], { dot: string; text: string;
   not_ready: { dot: "bg-[#D03020]", text: "text-[#B42318]", label: "Not Ready" },
   info: { dot: "bg-[#9A9AA3]", text: "text-[#55555E]", label: "Info" },
 };
-function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void }) {
+function ReadinessChecklist({ p, onEdit, onOpenTab, pendingDetails = 0, onReviewDetails }: { p: Profile; onEdit: (s: VehicleSection | "finance") => void; onOpenTab: (t: Tab) => void; pendingDetails?: number; onReviewDetails?: () => void }) {
   const v = p.vehicle;
   const facts = p.readinessFacts;
   const navigate = useNavigate();
@@ -1311,7 +1340,7 @@ function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: 
   const [busy, setBusy] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   if (!facts) return null;
-  const checks = vehicleReadinessChecks(v, facts, p.profileContext?.docKinds ?? [], p.counts.publishedPhotos ?? 0);
+  const checks = vehicleReadinessChecks(v, facts, p.profileContext?.docKinds ?? []);
   const overall = overallReadiness(checks);
   const avail = vehicleAvailability(String(v.status ?? ""), facts.hasActiveRental);
   const photo = listingPhotoCheck(p.counts.publishedPhotos ?? 0, p.counts.photos ?? 0);
@@ -1336,7 +1365,10 @@ function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: 
   const go = (f?: FixTarget) => {
     if (!f) return;
     if (f.kind === "edit") onEdit(f.section as VehicleSection);
-    else if (f.kind === "admin") void navigate({ to: "/admin", search: { tab: f.tab } as never });
+    // Carry the vehicle. Without the id the Inspections panel fell back to
+    // whichever car sorted first, so a Fix clicked on RR-007 opened a
+    // pre-delivery inspection pointed at RR-001.
+    else if (f.kind === "admin") void navigate({ to: "/admin", search: { tab: f.tab, id: v.id } as never });
     else onOpenTab(f.tab as Tab);
   };
   const canFix = (f: FixTarget) => p.canEdit || f.kind !== "edit";
@@ -1369,6 +1401,27 @@ function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: 
         <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
       </div>
 
+      {/* Several of the gaps below are usually already answered by a document
+          somebody uploaded — the value is extracted and waiting in review. The
+          checklist used to send staff off to type it by hand instead. Nothing
+          is applied from here: this opens the existing review, where each
+          field is confirmed on its own and the plate, VIN and mileage still
+          need an individual tick. */}
+      {pendingDetails > 0 && (
+        <button
+          data-testid="readiness-pending-details"
+          onClick={() => onReviewDetails?.()}
+          className="mb-4 flex w-full items-center gap-2 rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] px-3 py-2.5 text-left hover:bg-white"
+        >
+          <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#D03020]" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1 text-[12px] text-[#111114]">
+            <span className="font-semibold">{pendingDetails} Detail{pendingDetails === 1 ? "" : "s"} Ready to Review</span>
+            <span className="text-[#77777F]"> — read from documents, nothing saved until you approve each one.</span>
+          </span>
+          <span className="shrink-0 text-[12px] font-medium text-[#D03020]">Review</span>
+        </button>
+      )}
+
       {/* Enforced today by the server */}
       <div data-testid="enforced-minimum" className="rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3 mb-4">
         <Head>Required Now — Enforced</Head>
@@ -1396,7 +1449,18 @@ function ReadinessChecklist({ p, onEdit, onOpenTab }: { p: Profile; onEdit: (s: 
       </div>
 
       <Head>Readiness Checklist — Advisory</Head>
-      <ul className="divide-y divide-[#F0F0F2]">{checks.map((c) => <Row key={c.key} c={c} />)}</ul>
+      {/* Grouped, not re-graded. Every status is exactly what it was; the
+          split just stops "no pre-delivery inspection" and "registration
+          expiry not recorded" reading as one undifferentiated wall of red. */}
+      {readinessByCategory(checks).map((g) => (
+        <div key={g.category} data-category={g.category} data-category-status={g.status} className="mt-2 first:mt-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[11px] font-semibold text-[#55555E]">{g.label}</span>
+            <span className={`text-[11px] font-semibold ${CHECK_STYLE[g.status].text}`}>{CHECK_STYLE[g.status].label}</span>
+          </div>
+          <ul className="divide-y divide-[#F0F0F2]">{g.checks.map((c) => <Row key={c.key} c={c} />)}</ul>
+        </div>
+      ))}
       <div className="text-[11px] text-[#9A9AA3] mt-1">Advisory today. Rental start still requires a passed pre-delivery inspection or a recorded override.</div>
 
       <div className="mt-4 pt-3 border-t border-[#EDEDF0]">
