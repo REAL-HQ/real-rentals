@@ -228,7 +228,7 @@ const REG_READING = {
   vin: { value: VIN, raw: VIN, confidence: "high" },
 };
 
-function seedInbox({ plate = null } = {}) {
+function seedInbox({ plate = null, vin = VIN, state = null } = {}) {
   S.experience = null;
   S.defaults = { fleet_import_proposals: { status: "pending" }, fleet_import_items: { status: "uploaded" } };
   S.tables = {
@@ -239,8 +239,8 @@ function seedInbox({ plate = null } = {}) {
         usage_date: new Date().toISOString().slice(0, 10), used_today: 0, version: 1 } },
     ],
     vehicles: [{
-      id: V1, unit_number: "SYN-1", year: 2013, make: "Ford", model: "Fusion", vin: VIN,
-      color: null, body_type: null, trim: null, license_plate: plate, plate_state: null,
+      id: V1, unit_number: "SYN-1", year: 2013, make: "Ford", model: "Fusion", vin,
+      color: null, body_type: null, trim: null, license_plate: plate, plate_state: state,
       registration_number: null, registration_state: null, registration_expires_on: null,
       insurance_carrier: null, current_odometer: null, archived_at: null, title_on_file: false,
       weekly_rate: 350, status: "onboarding",
@@ -329,6 +329,156 @@ ok(!S.tables.vehicle_titles.length && S.tables.vehicles[0].title_number == null,
 ok(Object.keys((out.rejected ?? [])[0] ?? {}).sort().join() === "field,label,reason",
   "  and the refusal names the field, not the value a Manager may not see");
 ok((out.applied ?? []).includes("registration_number"), "  while the rest of the acceptance went through");
+
+// ============================= the plate needs a tick, at the server layer
+//
+// The Phase 2 review found that the rule "VIN, plate and mileage need
+// individual approval" was enforced by the review panel alone: `safe: false`
+// kept the plate out of bulk approval, but a request that named the field —
+// which the UI cannot produce — applied an extracted plate into a blank
+// column with nothing ticked. license_plate is now HIGH_RISK, so the apply
+// path refuses it, and the confirmation UI reads the same list.
+console.log("\na blank plate is not filled from a document without a tick");
+seedInbox();
+prop = await readRegistration();
+res = await applyFields(prop, ["license_plate"], []);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("license_plate"),
+  "accepting the plate with no confirmation is reported as waiting");
+ok(!(out.applied ?? []).includes("license_plate"), "  it is not applied");
+ok(S.tables.vehicles[0].license_plate === null, "  and the column is still blank");
+
+console.log("\na confirmation that names another field does not confirm the plate");
+seedInbox();
+prop = await readRegistration();
+res = await applyFields(prop, ["license_plate", "registration_number"], ["registration_number"]);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("license_plate"),
+  "ticking a different field does not tick the plate");
+ok(S.tables.vehicles[0].license_plate === null, "  the plate is still blank");
+ok(S.tables.vehicles[0].registration_number === "R-000-01",
+  "  control: the field that WAS accepted went through, so this is not a refusal of everything");
+
+console.log("\nthe tick has to be for this plate, and then it applies");
+seedInbox();
+prop = await readRegistration();
+res = await applyFields(prop, ["license_plate"], ["license_plate"]);
+out = res.results[0];
+ok((out.applied ?? []).includes("license_plate") && S.tables.vehicles[0].license_plate === "ZZZ999",
+  "a plate confirmed individually is written");
+ok((out.needsConfirmation ?? []).length === 0, "  and nothing is left waiting");
+
+console.log("\nan existing plate is never replaced without a tick");
+seedInbox({ plate: "XLK331" });
+prop = await readRegistration();
+res = await applyFields(prop, ["license_plate"], []);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("license_plate"), "the conflict is reported as waiting");
+ok(S.tables.vehicles[0].license_plate === "XLK331", "  and the plate on file stands");
+
+console.log("\na disagreement on an ordinary field also waits for a tick");
+// plate_state is normal-risk, so this exercises the conflict branch rather
+// than the high-risk one — the two refusals are separate guards.
+seedInbox({ state: "GA" });
+prop = await readRegistration();
+res = await applyFields(prop, ["plate_state"], []);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("plate_state"),
+  "a value that contradicts the record is reported as waiting, whatever its risk");
+ok(S.tables.vehicles[0].plate_state === "GA", "  and the record stands");
+seedInbox({ state: "GA" });
+prop = await readRegistration();
+await applyFields(prop, ["plate_state"], ["plate_state"]);
+ok(S.tables.vehicles[0].plate_state === "FL", "  with the tick it is applied");
+
+console.log("\nbulk approval cannot reach a plate at all");
+seedInbox();
+prop = await readRegistration();
+const offered = await call(getVehicleSuggestions, { vehicleId: V1 });
+const plateRow = (offered.suggestions ?? []).find((x) => x.field === "license_plate");
+ok(!!plateRow, "the plate is still offered for review");
+ok(plateRow.safe === false, "  but never as a safe field");
+ok(plateRow.risk === "high", "  and it is marked high-risk, so Fleet Inbox's Select All Safe skips it");
+const bulk = (offered.suggestions ?? []).filter((x) => x.safe).map((x) => x.field);
+ok(!bulk.includes("license_plate"), "the bulk set contains no plate");
+ok(bulk.length > 0, "  control: there IS a bulk set, so that is not an empty list passing");
+res = await applyFields(prop, bulk, []);
+out = res.results[0];
+ok(!(out.applied ?? []).includes("license_plate"), "applying the whole bulk set writes no plate");
+ok(S.tables.vehicles[0].license_plate === null, "  the column is still blank");
+ok((out.applied ?? []).length === bulk.length, "  and everything that WAS safe applied");
+
+console.log("\nthe older protections are untouched");
+// The reading's VIN matches the car in the other cases, so there is nothing to
+// apply. Blank is where the tick decides.
+seedInbox({ vin: null });
+prop = await readRegistration();
+res = await applyFields(prop, ["vin"], []);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("vin"), "a blank VIN still needs its own tick");
+ok(S.tables.vehicles[0].vin === null, "  and is not filled without one");
+seedInbox({ vin: null });
+prop = await readRegistration();
+await applyFields(prop, ["vin"], ["vin"]);
+ok(S.tables.vehicles[0].vin === VIN, "  a ticked VIN is applied, so that refusal is the guard");
+// And a VIN that disagrees with the car is stronger than a tick: the whole
+// apply is refused, which is why the case above has to use a blank one.
+seedInbox({ vin: VIN2 });
+prop = await readRegistration();
+res = await applyFields(prop, ["vin"], ["vin"]);
+out = res.results[0];
+ok(out.ok === false && /VIN conflict/.test(out.message), "a VIN that contradicts the car refuses the whole apply");
+ok(S.tables.vehicles[0].vin === VIN2, "  and nothing on that car moved");
+seedInbox();
+prop = await readRegistration();
+res = await applyFields(prop, ["title_number", "registration_number"], []);
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("title_number"), "the title number still needs its own tick");
+ok((out.applied ?? []).includes("registration_number"), "  while an ordinary field still applies");
+seedInbox();
+prop = await readRegistration("mgr-1");
+res = await applyFields(prop, ["title_number"], ["title_number"], "mgr-1");
+out = res.results[0];
+ok(fields(out.rejected).includes("title_number") && !S.tables.vehicle_titles.length,
+  "a Manager's ticked title number is still refused as Owner-only");
+
+console.log("\nand the authorization around it is unchanged");
+// This path is requireStaff, not requireManager: a Coordinator may apply an
+// ordinary extracted field here, while the same column through the profile
+// drawer is Manager-only. That difference predates this work and is NOT
+// changed by it — these assertions exist so the boundary is written down and
+// a future change to it goes red rather than passing unnoticed.
+seedInbox();
+prop = await readRegistration("crd-1");
+res = await applyFields(prop, ["license_plate", "registration_number"], [], "crd-1");
+out = res.results[0];
+ok((out.needsConfirmation ?? []).includes("license_plate"),
+  "a Coordinator gets the same refusal for an unticked plate");
+ok(S.tables.vehicles[0].license_plate === null, "  and no plate was written");
+seedInbox();
+prop = await readRegistration("crd-1");
+res = await applyFields(prop, ["license_plate"], ["license_plate"], "crd-1");
+ok(S.tables.vehicles[0].license_plate === "ZZZ999",
+  "with the tick a Coordinator CAN apply it — this path is staff-level, as it was");
+seedInbox();
+prop = await readRegistration("crd-1");
+res = await applyFields(prop, ["title_number"], ["title_number"], "crd-1");
+out = res.results[0];
+ok(fields(out.rejected).includes("title_number") && !S.tables.vehicle_titles.length,
+  "  but the Owner-only fields are still refused for them");
+let plateThrew = null;
+try { await post("dmv", { license_plate: "ABC1234" }, "crd-1"); } catch (e) { plateThrew = e; }
+ok(!!plateThrew && /Forbidden/.test(String(plateThrew.message)),
+  "and the drawer that writes the same column is still Manager-only");
+
+console.log("\nthe confirmation UI reads the same list");
+const INBOXUI = readFileSync("src/components/admin/FleetInboxPanel.tsx", "utf8");
+ok(/HIGH_RISK\.has\(c\.field\) \|\| c\.kind === "conflict"/.test(INBOXUI),
+  "Fleet Inbox asks for a tick on every HIGH_RISK field, so the plate gets one");
+ok(/I confirm changing \{c\.label\}/.test(INBOXUI), "  through the confirmation line it already used");
+ok(/c\.risk === "high" && <span[^>]*>HIGH-RISK/.test(INBOXUI), "  and labels it HIGH-RISK");
+ok(/\.filter\(\(c\) => c\.safe\)\.map\(\(c\) => c\.field\)/.test(INBOXUI),
+  "Select All Safe selects only safe fields, which a plate can no longer be");
 
 console.log("\nthe review panel reports each of those outcomes");
 const SUG = readFileSync("src/components/admin/VehicleSuggestions.tsx", "utf8");

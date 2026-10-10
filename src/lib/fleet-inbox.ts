@@ -103,9 +103,22 @@ export const PHOTO_NEVER_FIELDS = new Set<string>([
   ...FINANCE_FIELDS,
 ]);
 
-/** Always need explicit confirmation; never in "Accept Safe Changes". */
+/**
+ * Always need explicit confirmation; never in "Accept Safe Changes".
+ *
+ * The plate is here because the rule "VIN, plate and mileage need individual
+ * approval" was only ever enforced by the review panel: `safe: false` stopped
+ * bulk approval, but a request that named the field directly — not one the UI
+ * can produce — applied an extracted plate into a blank column with nothing
+ * ticked. The apply path is the authorization layer, so the requirement lives
+ * here, where both the server check and the confirmation UI read it.
+ *
+ * Mileage is not in this list because it is never written to the vehicle at
+ * all: it becomes a dated, evidence-backed odometer reading and the history
+ * decides current mileage.
+ */
 export const HIGH_RISK = new Set<string>([
-  "vin", "title_number", "title_status", ...FINANCE_FIELDS,
+  "vin", "license_plate", "title_number", "title_status", ...FINANCE_FIELDS,
 ]);
 /** Identity fields: a differing existing value is a conflict, never an update. */
 const IDENTITY = new Set(["vin", "year", "make", "model", "license_plate", "plate_state", "title_number"]);
