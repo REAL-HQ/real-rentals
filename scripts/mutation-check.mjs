@@ -26,10 +26,14 @@ const INBOX = "src/lib/fleet-inbox.functions.ts";
 const DOORWAY = "src/lib/vehicle-photo-analysis.functions.ts";
 const PHOTOS = "src/components/admin/VehiclePhotos.tsx";
 const PANEL = "src/components/admin/VehicleSuggestions.tsx";
+const CAP = "src/lib/photo-reading.server.ts";
+const RULES2 = "src/lib/photo-reading.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
 const UI = "scripts/vehicle-photo-analysis-ui.test.mjs";
+const CAPTEST = "scripts/photo-reading-cap.test.mjs";
+const E2E = "scripts/vehicle-photo-read-e2e.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -59,13 +63,42 @@ const MUTATIONS = [
     "                        if (written > 0) {", "                        if (true) {", UI],
   ["only originals can be chosen for reading", PHOTOS,
     '              {picking && m.kind === "original" && (', "              {picking && (", UI],
+  ["two simultaneous reads cannot both take the last slot", CAP,
+    '      .eq("key", PHOTO_READING_KEY).eq("value->>version", String(current.version)).select("key");\n    // Exactly one writer sees rows come back',
+    '      .eq("key", PHOTO_READING_KEY).select("key");\n    // Exactly one writer sees rows come back', CAPTEST],
+  ["reading is off until an Owner turns it on", RULES2,
+    '  if (!s.enabled) return "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading.";',
+    "", CAPTEST],
+  ["the daily limit refuses the read that would exceed it", RULES2,
+    "  if (remainingOn(s, day) <= 0) return `Today's limit of ${s.dailyLimit} photo${s.dailyLimit === 1 ? \"\" : \"s\"} has been reached. It resets at midnight UTC.`;",
+    "", CAPTEST],
+  ["a reserved slot is released when the item insert fails", DOORWAY,
+    "    if (!item) {\n      await releasePhotoRead(sb, slot.day);",
+    "    if (!item) {", CAPTEST],
+  ["a reserved slot is released when the queue insert fails", DOORWAY,
+    "      await sb.from(\"fleet_import_items\").update({ status: \"failed\", error: \"Could not queue the reading.\" }).eq(\"id\", item.id);\n      await releasePhotoRead(sb, slot.day);",
+    "      await sb.from(\"fleet_import_items\").update({ status: \"failed\", error: \"Could not queue the reading.\" }).eq(\"id\", item.id);", CAPTEST],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
 ];
 
+// Browser-level safeguards. These need `npm run dev` running and take about
+// a minute and a half each, so they are opt-in: MUTATE_E2E=1 node scripts/mutation-check.mjs
+const E2E_MUTATIONS = [
+  ["the Owner's switch actually disables the button", PHOTOS,
+    "                      disabled={reading || !!readingStatus?.refusal}", "                      disabled={reading}", E2E],
+  ["only original photographs can be chosen for reading", PHOTOS,
+    '              {picking && m.kind === "original" && (', "              {picking && (", E2E],
+  ["accepting a detail reloads the vehicle profile", PHOTOS,
+    "                          window.dispatchEvent(new Event(\"vehicle-profile-refresh\"));\n                        }\n                      }}",
+    "                        }\n                      }}", E2E],
+];
+
+const ALL = process.env.MUTATE_E2E ? [...MUTATIONS, ...E2E_MUTATIONS] : MUTATIONS;
+
 let blockers = 0;
-for (const [what, file, from, to, suite] of MUTATIONS) {
+for (const [what, file, from, to, suite] of ALL) {
   const src = readFileSync(file, "utf8");
   if (!src.includes(from)) {
     console.log(`  BLOCKER  ${what}\n           anchor no longer present in ${file} — update scripts/mutation-check.mjs`);
@@ -87,7 +120,7 @@ for (const [what, file, from, to, suite] of MUTATIONS) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

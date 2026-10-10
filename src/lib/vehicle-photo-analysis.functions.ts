@@ -19,8 +19,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireStaff } from "@/lib/roles.server";
+import { requireStaff, requireOwner } from "@/lib/roles.server";
 import { PHOTO_CLASSES } from "@/lib/fleet-inbox";
+import { remainingOn, refusalReason, todayUtc, usedOn } from "@/lib/photo-reading";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
@@ -35,6 +36,8 @@ export type PhotoReadResult = {
   itemId?: string;
   /** Already read before: the earlier item is reused rather than read again. */
   duplicate?: boolean;
+  /** Slots left against the Owner's daily limit after this one was taken. */
+  remainingToday?: number;
   error?: string;
 };
 
@@ -127,6 +130,13 @@ export const readVehiclePhoto = createServerFn({ method: "POST" })
       }
     }
 
+    // Everything above this line is free. From here a reading will be queued,
+    // so a slot against the Owner's daily limit is taken FIRST — and handed
+    // back below if the work never makes it onto the queue.
+    const { reservePhotoRead, releasePhotoRead } = await import("@/lib/photo-reading.server");
+    const slot = await reservePhotoRead(sb);
+    if (!slot.ok) return { ok: false, mediaId: data.mediaId, error: slot.error };
+
     const { data: item } = await sb.from("fleet_import_items").insert({
       batch_id: data.batchId, document_id: documentId, file_name: media.file_name ?? "Vehicle photo",
       mime_type: mime, size_bytes: media.size_bytes ?? bytes.byteLength, content_sha256: sha,
@@ -134,10 +144,19 @@ export const readVehiclePhoto = createServerFn({ method: "POST" })
       // The operator's expectation, not a reading — a confident classification wins.
       doc_class: data.intendedClass, class_confidence: "low",
     }).select("id").single();
-    if (!item) return { ok: false, mediaId: data.mediaId, error: "Could not queue that photo for reading." };
+    if (!item) {
+      await releasePhotoRead(sb, slot.day);
+      return { ok: false, mediaId: data.mediaId, error: "Could not queue that photo for reading." };
+    }
 
     await sb.from("fleet_import_batches").update({ status: "processing" }).eq("id", data.batchId);
-    await sb.from("fleet_inbox_jobs").insert({ item_id: item.id, batch_id: data.batchId, source: "vehicle_photo" });
+    const { error: jobErr } = await sb.from("fleet_inbox_jobs").insert({ item_id: item.id, batch_id: data.batchId, source: "vehicle_photo" });
+    if (jobErr) {
+      // Nothing will read it, so nothing will be spent on it.
+      await sb.from("fleet_import_items").update({ status: "failed", error: "Could not queue the reading." }).eq("id", item.id);
+      await releasePhotoRead(sb, slot.day);
+      return { ok: false, mediaId: data.mediaId, error: "Could not queue that photo for reading." };
+    }
 
     const { logAudit } = await import("@/lib/audit");
     await logAudit(actor, {
@@ -147,7 +166,7 @@ export const readVehiclePhoto = createServerFn({ method: "POST" })
       metadata: { mediaId: data.mediaId, documentId, itemId: item.id, docClass: data.intendedClass },
     });
 
-    return { ok: true, mediaId: data.mediaId, itemId: item.id as string, duplicate: false };
+    return { ok: true, mediaId: data.mediaId, itemId: item.id as string, duplicate: false, remainingToday: slot.remaining };
   });
 
 /** Which photos on this vehicle have already been read, so the UI can say so. */
@@ -163,4 +182,56 @@ export const listReadPhotos = createServerFn({ method: "POST" })
       .eq("storage_bucket", "vehicle-photos")
       .eq("source", "vehicle_photo");
     return { readPaths: (docs ?? []).map((d: any) => d.storage_path as string) };
+  });
+
+/**
+ * What the Photos tab and the Settings panel need to know. Staff may READ the
+ * state — a Manager has to be told why the button is dead — but only an Owner
+ * may change it, below and in the RLS policy on app_settings.
+ */
+export const getPhotoReadingStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const actor = await requireStaff(context.userId);
+    const sb = await admin();
+    const { loadPhotoReading } = await import("@/lib/photo-reading.server");
+    const s = await loadPhotoReading(sb);
+    const day = todayUtc();
+    return {
+      enabled: s.enabled,
+      dailyLimit: s.dailyLimit,
+      usedToday: usedOn(s, day),
+      remainingToday: remainingOn(s, day),
+      pausedReason: s.pausedReason,
+      pausedAt: s.pausedAt,
+      updatedAt: s.updatedAt,
+      updatedBy: s.updatedBy,
+      /** Null when a read may start right now; otherwise why it may not. */
+      refusal: refusalReason(s, day),
+      isOwner: actor.tier === "owner",
+    };
+  });
+
+export const savePhotoReadingSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      enabled: z.boolean(),
+      dailyLimit: z.number().int().min(0).max(1000),
+      clearPause: z.boolean().optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const actor = await requireOwner(context.userId);
+    const sb = await admin();
+    const { savePhotoReadingConfig } = await import("@/lib/photo-reading.server");
+    const next = await savePhotoReadingConfig(sb, actor.userId, data);
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit(actor, {
+      action: "settings.photo_reading",
+      summary: `Photo Reading ${next.enabled ? "On" : "Off"}, ${next.dailyLimit}/day`,
+      entityType: "settings", entityId: null as any,
+      metadata: { enabled: next.enabled, dailyLimit: next.dailyLimit, clearPause: !!data.clearPause },
+    });
+    return { ok: true as const };
   });

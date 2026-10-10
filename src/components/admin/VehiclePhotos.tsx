@@ -26,7 +26,7 @@ import {
 } from "@/lib/vehicle-media.functions";
 import { loadStaffPhoto } from "@/lib/photoUrl";
 import { createImportBatch, getImportBatch } from "@/lib/fleet-inbox.functions";
-import { readVehiclePhoto } from "@/lib/vehicle-photo-analysis.functions";
+import { readVehiclePhoto, getPhotoReadingStatus } from "@/lib/vehicle-photo-analysis.functions";
 import { VehicleSuggestions } from "@/components/admin/VehicleSuggestions";
 import {
   getPhotoEnhanceStatus,
@@ -145,6 +145,16 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   // chosen photo to the server, and then watches the batch with the ordinary
   // getImportBatch poll until every item has settled. The results appear in
   // the ordinary review panel, where each field is confirmed one at a time.
+  // The Owner's switch and daily limit. Read here so the tab can say WHY the
+  // button is dead instead of letting someone click it and get a refusal —
+  // the server enforces it either way.
+  const readingStatusFn = useServerFn(getPhotoReadingStatus);
+  const [readingStatus, setReadingStatus] = useState<{ enabled: boolean; remainingToday: number; dailyLimit: number; usedToday: number; refusal: string | null } | null>(null);
+  const refreshReadingStatus = useCallback(async () => {
+    try { setReadingStatus(await readingStatusFn()); } catch { setReadingStatus(null); }
+  }, [readingStatusFn]);
+  useEffect(() => { void refreshReadingStatus(); }, [refreshReadingStatus]);
+
   const makeBatch = useServerFn(createImportBatch);
   const readPhoto = useServerFn(readVehiclePhoto);
   const getBatch = useServerFn(getImportBatch);
@@ -226,6 +236,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       setReading(false);
       setPicking(false);
       setChosen(new Set());
+      void refreshReadingStatus();
     }
   }
 
@@ -416,7 +427,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                   {!picking ? (
                     <button
                       onClick={() => { setPicking(true); setChosen(new Set()); }}
-                      disabled={reading}
+                      disabled={reading || !!readingStatus?.refusal}
+                      title={readingStatus?.refusal ?? undefined}
                       className="rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] disabled:opacity-50"
                     >
                       Choose Photos
@@ -443,7 +455,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                       </button>
                       <button
                         onClick={() => void readChosen()}
-                        disabled={reading || chosen.size === 0}
+                        disabled={reading || chosen.size === 0 || !!readingStatus?.refusal || chosen.size > (readingStatus?.remainingToday ?? 0)}
                         className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
                       >
                         {reading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -453,6 +465,17 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                   )}
                 </div>
 
+                {readingStatus?.refusal && (
+                  <p className="mt-2 text-[11px] text-[#8A4B00]">{readingStatus.refusal}</p>
+                )}
+                {readingStatus && !readingStatus.refusal && (
+                  <p className="mt-2 text-[11px] text-[#55555E]">
+                    {readingStatus.remainingToday} of {readingStatus.dailyLimit} reads left today.
+                    {picking && chosen.size > readingStatus.remainingToday
+                      ? ` Choose at most ${readingStatus.remainingToday}.`
+                      : ""}
+                  </p>
+                )}
                 {(reading || Object.keys(readState).length > 0) && (
                   <ul className="mt-2 space-y-0.5 text-[11px] text-[#55555E]">
                     {Object.entries(readState).map(([id, st]) => (

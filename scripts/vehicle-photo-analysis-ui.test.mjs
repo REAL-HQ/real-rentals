@@ -51,8 +51,12 @@ ok(/type="checkbox"[\s\S]{0,400}?checked=\{chosen\.has\(m\.id\)\}/.test(photos),
   "each photo can be ticked individually");
 ok(/\{picking && m\.kind === "original" &&/.test(photos),
   "only original photographs can be chosen — a retouched copy is not evidence");
-ok(/disabled=\{reading \|\| chosen\.size === 0\}/.test(photos),
+ok(/disabled=\{reading \|\| chosen\.size === 0 \|\|/.test(photos),
   "the Read button is dead until something is chosen");
+ok(/!!readingStatus\?\.refusal \|\| chosen\.size > \(readingStatus\?\.remainingToday \?\? 0\)\}/.test(photos),
+  "  and also when Photo Reading is off, paused, or would exceed today's limit");
+ok(/disabled=\{reading \|\| !!readingStatus\?\.refusal\}/.test(photos),
+  "Choose Photos is dead for the same reasons, so the refusal is seen before the click");
 ok(/aria-label=\{`Read \$\{m\.file_name/.test(photos),
   "each checkbox says which photo it is for");
 

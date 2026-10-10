@@ -184,7 +184,15 @@ function seed({ tier = "owner", mediaKind = "original", mediaVehicle = VEHICLE, 
   S.ownerView = tier === "owner";
   S.defaults = { fleet_import_proposals: { status: "pending" }, fleet_import_items: { status: "uploaded" } };
   S.tables = {
-    app_settings: [{ key: "safe_autofill", value: { enabled: true, daily_cap: 50, paused_at: null, paused_reason: null } }],
+    app_settings: [
+      { key: "safe_autofill", value: { enabled: true, daily_cap: 50, paused_at: null, paused_reason: null } },
+      // Photo Reading is Off until an Owner turns it on, so these scenarios
+      // turn it on deliberately. The switch itself is covered in
+      // scripts/photo-reading-cap.test.mjs.
+      { key: "photo_reading", value: { enabled: true, daily_limit: 100, paused_reason: null, paused_at: null,
+        usage_date: new Date().toISOString().slice(0, 10), used_today: 0, updated_by: "owner-1",
+        updated_at: new Date().toISOString(), version: 1 } },
+    ],
     vehicles: [{ ...blankVehicle(), archived_at: null }, { ...blankVehicle(), id: OTHER, vin: "1HGCM82633A004353", unit_number: "TEST-2", archived_at: null }],
     vehicle_titles: [], vehicle_field_provenance: [], vehicle_autofill_events: [],
     vehicle_media: [{ id: MEDIA, vehicle_id: mediaVehicle, kind: mediaKind, storage_bucket: "vehicle-photos",
@@ -194,7 +202,7 @@ function seed({ tier = "owner", mediaKind = "original", mediaVehicle = VEHICLE, 
     fleet_inbox_jobs: [], fleet_service_transactions: [], documents: [], document_vehicle_links: [], audit_log: [],
   };
   S.files = { [`vehicle-photos/${mediaVehicle}/1791596541357-n4wzeu.jpg`]: [0xff, 0xd8, 0xff, 0xe0] };
-  S.log = []; S.audits = []; S.readerCalls = 0; S.readerFails = false; S.readerGarbage = false;
+  S.log = []; S.audits = []; S.failInsert = null; S.readerCalls = 0; S.readerFails = false; S.readerGarbage = false;
   S.readerPayload = {
     documentClass: "condition_photo", classConfidence: "high", pageCount: 1, shared: {},
     vehicles: [{ page: 1, fields: OVERREACH }], warnings: [],

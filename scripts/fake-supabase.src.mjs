@@ -40,7 +40,14 @@ class Query {
     this.filters = []; this.orders = []; this.limitN = null;
     this.count = opts.count ?? null; this.head = opts.head ?? false;
   }
-  eq(f, v) { this.filters.push((r) => String(r[f]) === String(v)); return this; }
+  // PostgREST lets a filter address inside a json column: value->>version.
+  // The compare-and-swap that enforces the photo-reading limit depends on it,
+  // so the fake has to understand it too or the test proves nothing.
+  eq(f, v) {
+    const [col, key] = String(f).split("->>");
+    this.filters.push((r) => String(key ? (r[col] ?? {})[key] : r[f]) === String(v));
+    return this;
+  }
   neq(f, v) { this.filters.push((r) => String(r[f]) !== String(v)); return this; }
   in(f, vs) { this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
@@ -73,6 +80,9 @@ class Query {
       return { data: this.head ? null : m.map(clone), error: null, count: m.length };
     }
     if (this.kind === "insert") {
+      // Lets a test make one table refuse writes, to exercise the paths that
+      // have to undo work — releasing a reserved slot, for instance.
+      if (S.failInsert === t) return { data: null, error: { message: `insert into ${t} refused` } };
       const list = Array.isArray(this.payload) ? this.payload : [this.payload];
       // Column defaults matter: fleet_import_proposals.status defaults to
       // 'pending' in Postgres and the insert never names it, so a fake without
@@ -106,9 +116,19 @@ class Query {
     }
     return { data: null, error: null };
   }
-  single() { const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return Promise.resolve({ data: d ?? null, error: d ? null : { message: "no rows" }, count: r.count }); }
-  maybeSingle() { const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return Promise.resolve({ data: d ?? null, error: null, count: r.count }); }
-  then(res, rej) { return Promise.resolve(this._run()).then(res, rej); }
+  /**
+   * A test can hold every read of one table until it chooses to release them.
+   * Without this, "concurrent" callers in a single-threaded runtime simply
+   * take turns, each seeing the previous one's write — so a compare-and-swap
+   * test passes just as well with the compare removed. S.gate makes the race
+   * real: everyone reads the same stale row, then they all try to write.
+   */
+  async _gate() {
+    if (S.gateTable === this.table && S.gate) await S.gate;
+  }
+  async single() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: d ? null : { message: "no rows" }, count: r.count }; }
+  async maybeSingle() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: null, count: r.count }; }
+  then(res, rej) { return this._gate().then(() => this._run()).then(res, rej); }
 }
 
 const table = (name) => ({
