@@ -38,6 +38,7 @@ const EDITOR = "src/components/admin/AddVehicleDialog.tsx";
 const LIST = "src/lib/vehicles-list.functions.ts";
 const LISTRULES = "src/lib/vehicles-list.ts";
 const PANELUI = "src/components/admin/VehiclesPanel.tsx";
+const INBOXUI = "src/components/admin/FleetInboxPanel.tsx";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
@@ -154,6 +155,16 @@ const MUTATIONS = [
     "      .filter((k) => !allowed.includes(k))", "      .filter(() => false)", PHASE2],
   ["the save answers about the fields the operator edited", VEH,
     "      intended: data.intended,", "      intended: undefined,", PHASE2],
+  ["applying an extracted detail is Manager-and-above", INBOX,
+    '    if (!isManager && data.decisions.some((d) => d.action !== "ignore")) {\n      throw new Error("Forbidden: applying extracted details to a vehicle is Manager-only.");\n    }',
+    "", PHASE2],
+  ["a Coordinator keeps dismissing a proposal", INBOX,
+    'data.decisions.some((d) => d.action !== "ignore")', "data.decisions.length", PHASE2],
+  ["the Fleet Inbox apply bar is Manager-only", INBOXUI,
+    "      {isManager && selected.length > 0 && (", "      {selected.length > 0 && (", PHASE2],
+  ["the accept checkboxes are Manager-only", INBOXUI,
+    '                  {p.kind !== "new" && !done && isManager && (',
+    '                  {p.kind !== "new" && !done && (', PHASE2],
   ["an extracted plate needs an individual tick", RULES,
     '  "vin", "license_plate", "title_number", "title_status", ...FINANCE_FIELDS,',
     '  "vin", "title_number", "title_status", ...FINANCE_FIELDS,', PHASE2],
@@ -254,7 +265,7 @@ for (const [what, file, from, to, suite] of ALL) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

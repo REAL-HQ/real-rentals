@@ -442,34 +442,117 @@ out = res.results[0];
 ok(fields(out.rejected).includes("title_number") && !S.tables.vehicle_titles.length,
   "a Manager's ticked title number is still refused as Owner-only");
 
-console.log("\nand the authorization around it is unchanged");
-// This path is requireStaff, not requireManager: a Coordinator may apply an
-// ordinary extracted field here, while the same column through the profile
-// drawer is Manager-only. That difference predates this work and is NOT
-// changed by it — these assertions exist so the boundary is written down and
-// a future change to it goes red rather than passing unnoticed.
+// ================================= applying is Manager-and-above, like the drawer
+//
+// Writing a vehicle column through a document used to be staff-level while
+// the profile drawer that writes the SAME columns was Manager-only — the
+// document route was the weaker of two doors into one table. The approved
+// role model closes that: a Coordinator uploads, classifies, reads the
+// results and dismisses proposals; applying is Manager or Owner.
+console.log("\napplying an extracted detail is Manager-and-above");
+seedInbox();
+prop = await readRegistration("mgr-1");
+res = await applyFields(prop, ["registration_number"], [], "mgr-1");
+ok(S.tables.vehicles[0].registration_number === "R-000-01", "a Manager may apply");
+seedInbox();
+prop = await readRegistration("own-1");
+res = await applyFields(prop, ["registration_number"], [], "own-1");
+ok(S.tables.vehicles[0].registration_number === "R-000-01", "so may an Owner");
+
+console.log("\na Coordinator cannot apply, however the request is shaped");
+for (const [label, accept, confirm] of [
+  ["an ordinary field", ["registration_number"], []],
+  ["a plate with a tick", ["license_plate"], ["license_plate"]],
+  ["a title number with a tick", ["title_number"], ["title_number"]],
+  ["nothing at all", [], []],
+]) {
+  seedInbox();
+  prop = await readRegistration("crd-1");
+  let threwC = null;
+  try { await applyFields(prop, accept, confirm, "crd-1"); } catch (e) { threwC = e; }
+  ok(!!threwC && /Forbidden/.test(String(threwC.message)), `${label} is refused`);
+  ok(/Manager-only/.test(String(threwC?.message ?? "")), `  and says why`);
+  const car0 = S.tables.vehicles[0];
+  ok(car0.registration_number === null && car0.license_plate === null && !S.tables.vehicle_titles.length,
+    `  and nothing was written`);
+  ok(S.tables.fleet_import_proposals[0].status === "pending",
+    `  the proposal is still pending, not claimed`);
+}
+
+console.log("\na forged request cannot apply to a vehicle it names directly");
 seedInbox();
 prop = await readRegistration("crd-1");
-res = await applyFields(prop, ["license_plate", "registration_number"], [], "crd-1");
-out = res.results[0];
-ok((out.needsConfirmation ?? []).includes("license_plate"),
-  "a Coordinator gets the same refusal for an unticked plate");
-ok(S.tables.vehicles[0].license_plate === null, "  and no plate was written");
+let forged = null;
+try {
+  await call(applyImportDecisions, {
+    batchId: BATCH,
+    decisions: [
+      { proposalId: prop.id, action: "ignore", applyFinance: false, confirmHighRisk: [], acceptFields: [] },
+      { proposalId: prop.id, action: "match", vehicleId: V1, acceptFields: ["license_plate"],
+        confirmHighRisk: ["license_plate"], applyFinance: false, partial: true },
+    ],
+  }, "crd-1");
+} catch (e) { forged = e; }
+ok(!!forged && /Forbidden/.test(String(forged.message)),
+  "one apply hidden among dismissals refuses the whole request");
+ok(S.tables.vehicles[0].license_plate === null, "  and writes nothing — not even the part that was allowed");
+
+console.log("\nwhat a Coordinator keeps");
 seedInbox();
-prop = await readRegistration("crd-1");
-res = await applyFields(prop, ["license_plate"], ["license_plate"], "crd-1");
-ok(S.tables.vehicles[0].license_plate === "ZZZ999",
-  "with the tick a Coordinator CAN apply it — this path is staff-level, as it was");
-seedInbox();
-prop = await readRegistration("crd-1");
-res = await applyFields(prop, ["title_number"], ["title_number"], "crd-1");
-out = res.results[0];
-ok(fields(out.rejected).includes("title_number") && !S.tables.vehicle_titles.length,
-  "  but the Owner-only fields are still refused for them");
+let crdProp = null;
+let uploadThrew = null;
+try { crdProp = await readRegistration("crd-1"); } catch (e) { uploadThrew = e; }
+ok(!uploadThrew && !!crdProp, "a Coordinator can still upload a photo and have it read");
+ok(S.tables.documents.length === 1 && S.tables.fleet_import_items.length === 1,
+  "  the document and the item exist");
+const crdReview = await call(getVehicleSuggestions, { vehicleId: V1 }, "crd-1");
+ok((crdReview.suggestions ?? []).length > 0, "and can read what the document says");
+ok(crdReview.canOwnership === false, "  without the Owner-only part of it");
+ok(S.tables.vehicles[0].license_plate === null, "  and reading changed nothing");
+res = await call(applyImportDecisions, {
+  batchId: BATCH,
+  decisions: [{ proposalId: crdProp.id, action: "ignore", acceptFields: [], confirmHighRisk: [], applyFinance: false }],
+}, "crd-1");
+ok(res.results[0]?.ok === true && /Ignored/.test(res.results[0].message),
+  "and can dismiss a proposal, which is preparation, not a vehicle change");
+ok(S.tables.fleet_import_proposals[0].status === "ignored", "  the proposal is marked ignored");
+ok(S.tables.vehicles[0].license_plate === null && S.tables.vehicles[0].registration_number === null,
+  "  and the vehicle is untouched");
+
+console.log("\nthe drawer that writes the same columns is unchanged");
+seedOne();
 let plateThrew = null;
 try { await post("dmv", { license_plate: "ABC1234" }, "crd-1"); } catch (e) { plateThrew = e; }
 ok(!!plateThrew && /Forbidden/.test(String(plateThrew.message)),
-  "and the drawer that writes the same column is still Manager-only");
+  "a Coordinator is still refused by updateVehicleSection");
+seedOne();
+r = await post("dmv", { license_plate: "MGR7777" }, "mgr-1");
+ok(r.ok === true && car().license_plate === "MGR7777", "  and a Manager still writes through it");
+
+console.log("\nbackground extraction is not blocked");
+seedInbox();
+// readRegistration IS the background path: queue the read, then analyse it.
+await readRegistration("crd-1");
+ok(S.tables.fleet_import_proposals.length > 0,
+  "a Coordinator's upload is still read and proposed, so the queue keeps moving");
+ok(S.tables.fleet_import_items[0].status !== "failed", "  the item did not fail");
+ok(S.tables.vehicles[0].license_plate === null,
+  "  and the reading alone writes nothing to the vehicle");
+
+console.log("\nthe Fleet Inbox screen matches the server");
+const FI = readFileSync("src/components/admin/FleetInboxPanel.tsx", "utf8");
+ok(/\{isManager && selected\.length > 0 && \(/.test(FI), "the Apply bar is Manager-only");
+ok(/\{isManager \? \(\s*\n\s*<button\s*\n\s*onClick=\{selectAllSafe\}/.test(FI), "so is Select All Safe");
+ok(/Ready for Manager review/.test(FI), "  with a line saying so instead of a blank space");
+ok(/\{p\.kind !== "new" && !done && isManager && \(/.test(FI), "the accept checkboxes are Manager-only");
+ok(/\{isManager && p\.kind === "new" && \(/.test(FI), "Create Vehicle is Manager-only");
+ok(/\{isManager && p\.kind !== "new" && changes\.some\(\(c\) => c\.safe\)/.test(FI), "so is Accept Safe Changes");
+const ignoreBtn = FI.split('active={dec.action === "ignore"}')[0].split("\n").slice(-3).join(" ");
+ok(!/isManager/.test(ignoreBtn), "Ignore is NOT gated — dismissing is preparation");
+ok(/isManager={tierAllows\(tier, "manager"\)}/.test(readFileSync("src/routes/admin.tsx", "utf8")),
+  "and the flag the screen uses is a real tier check");
+ok(/canEdit: isManager/.test(readFileSync("src/lib/vehicles.functions.ts", "utf8")),
+  "the profile's review panel is gated by the same tier through canEdit");
 
 console.log("\nthe confirmation UI reads the same list");
 const INBOXUI = readFileSync("src/components/admin/FleetInboxPanel.tsx", "utf8");

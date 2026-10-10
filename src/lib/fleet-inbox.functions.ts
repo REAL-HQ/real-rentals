@@ -374,7 +374,25 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ batchId: z.string().uuid(), decisions: z.array(Decision).min(1).max(200) }).parse(d))
   .handler(async ({ data, context }): Promise<{ results: ApplyResult[] }> => {
     const actor = await requireStaff(context.userId);
-    const canFinance = tierAllows(actor.tier, "manager");
+    const isManager = tierAllows(actor.tier, "manager");
+    /**
+     * Applying an extracted detail WRITES to public.vehicles, so it is
+     * Manager-and-above — the same bar as the profile drawer that writes the
+     * very same columns through updateVehicleSection. This path used to be
+     * staff-level, which made the document route the weaker of two doors into
+     * one table: a Coordinator could set a plate here that the drawer would
+     * have refused them.
+     *
+     * A Coordinator keeps the preparation work: uploading, classifying,
+     * reading the results, and dismissing a proposal — which is why `ignore`
+     * passes. Everything else is refused before anything is claimed or
+     * written, so a partly-applied batch is not a possible outcome. Safe
+     * Autofill is untouched: it is the Owner's standing switch acting on
+     * blank descriptive fields, not a person applying a change.
+     */
+    if (!isManager && data.decisions.some((d) => d.action !== "ignore")) {
+      throw new Error("Forbidden: applying extracted details to a vehicle is Manager-only.");
+    }
     // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
     const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
