@@ -922,8 +922,8 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<{ url: string; revoked: number }> => {
-    const { requireStaff } = await import("@/lib/roles.server");
-    const actor = await requireStaff(context.userId);
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { revokeResumeTokens, issueResumeToken, resumeUrl } =
       await import("@/lib/resume-tokens.server");

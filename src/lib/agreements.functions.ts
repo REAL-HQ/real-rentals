@@ -339,7 +339,7 @@ export const listAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<AgreementRow[]> => {
-    const actor = await requireTierFor(context.userId, "coordinator");
+    const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows } = await supabaseAdmin
@@ -645,6 +645,8 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const { data: ag } = await context.supabase
       .from("agreements")
       .select("id,status,document_id,archive_status")
