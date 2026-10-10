@@ -45,7 +45,7 @@ function EvidencePhoto({ path, onOpen }: { path: string; onOpen: (url: string) =
   );
 }
 
-export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText }: {
+export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText, onCount, openSignal }: {
   vehicleId: string; canEdit: boolean;
   /**
    * How many vehicle fields were actually written. 0 means the server refused,
@@ -63,6 +63,10 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
    * and this component does not; passing null keeps it silent.
    */
   emptyText?: string | null;
+  /** How many details are waiting, so another card can offer the same review. */
+  onCount?: (n: number) => void;
+  /** Changing this number opens the review, for callers outside this button. */
+  openSignal?: number;
 }) {
   const load = useServerFn(getVehicleSuggestions);
   const apply = useServerFn(applyImportDecisions);
@@ -87,6 +91,10 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
   }, [load, vehicleId, batchId]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { if (inline) setOpen(true); }, [inline]);
+  // Tell the caller how many are waiting, so the Readiness card can offer the
+  // same review without fetching the list a second time.
+  useEffect(() => { onCount?.(data?.suggestions?.length ?? 0); }, [data, onCount]);
+  useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
 
   const key = (s: Sug) => `${s.proposalId}:${s.field}`;
   const sugs = data?.suggestions ?? [];

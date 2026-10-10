@@ -574,6 +574,12 @@ export const deleteVehiclePermanently = createServerFn({ method: "POST" })
 
 export type VehicleProfile = {
   vehicle: Record<string, any>;
+  /**
+   * Paperwork facts about the title, separate from what the title says.
+   * Non-sensitive and identical for every staff tier; the number and the
+   * status remain Owner-only on `vehicle`.
+   */
+  title: { documentOnFile: boolean; metadataRecorded: boolean };
   unitLabel: string;
   vinLast4: string;
   isActive: boolean;
@@ -596,7 +602,7 @@ export type VehicleProfile = {
     photos: number;
     publishedPhotos: number;
   };
-  profileContext: { docKinds: string[]; maintenanceCount: number; inspectionCount: number; photoCount: number };
+  profileContext: { docKinds: string[]; maintenanceCount: number; inspectionCount: number; photoCount: number; title: { documentOnFile: boolean; metadataRecorded: boolean } };
   alerts: Array<{ what: string; expires_on: string; days: number }>;
   nextService: { item: string; due_date: string | null; due_mileage: number | null } | null;
   /** Manager and Owner only. Absent — not zeroed — for a Coordinator. */
@@ -757,8 +763,29 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
     const shapedVehicle = isOwnerView
       ? { ...v, title_number: ownerTitle?.title_number ?? null, title_status: ownerTitle?.title_status ?? null }
       : { ...v, title_number: null, title_status: (v as any).title_on_file ? "on_file" : null };
+
+    // Three separate facts about a title, because conflating them had the DMV
+    // tab saying "Not On File" for a vehicle whose title scan was linked while
+    // the Fleet Profile checklist ticked Title as done, on the same screen.
+    //
+    //   documentOnFile   a title scan is filed or linked. Comes from the
+    //                    document slots, so Fleet Inbox uploads count.
+    //   metadataRecorded a title number or status is in Owner-only
+    //                    vehicle_titles. vehicles.title_on_file tracks exactly
+    //                    this and nothing else.
+    //   status/number    what the title says. Owner-only, never inferred from
+    //                    the presence of a document.
+    //
+    // The first two are booleans about paperwork, not identifiers, so every
+    // staff tier gets the same answer.
+    const { presentSlots } = await import("@/lib/vehicle-doc-presence");
+    const titleFacts = {
+      documentOnFile: presentSlots(presence.kinds).has("title"),
+      metadataRecorded: !!(v as any).title_on_file,
+    };
     return {
       vehicle: shapedVehicle,
+      title: titleFacts,
       finance,
       canSeeFinance: isOwnerView,
       canEdit: isManager,
@@ -793,6 +820,7 @@ export const getVehicleProfile = createServerFn({ method: "POST" })
           maintenanceCount: maintAll ?? 0,
           inspectionCount: insp.count ?? 0,
           photoCount: media.count ?? 0,
+          title: titleFacts,
         };
       })(),
       alerts: alerts.sort((a, b) => a.days - b.days),
