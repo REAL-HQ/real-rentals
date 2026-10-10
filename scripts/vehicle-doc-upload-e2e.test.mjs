@@ -262,8 +262,12 @@ function serverFn(name, input) {
       }
       const results = (input?.decisions ?? []).map((d) => {
         for (const f of d.acceptFields ?? []) state.applied.push(`${d.proposalId}:${f}`);
+        // The itemised answer the server gives: the panel reads these arrays,
+        // not the sentence. A stub that returns only the sentence is testing a
+        // contract the server no longer has.
         return { proposalId: d.proposalId, ok: true, vehicleId: VEHICLE_ID,
-          message: `${(d.acceptFields ?? []).length} change(s) applied.` };
+          message: `${(d.acceptFields ?? []).length} change(s) applied.`,
+          applied: [...(d.acceptFields ?? [])], unchanged: [], needsConfirmation: [], rejected: [] };
       });
       return { results };
     }

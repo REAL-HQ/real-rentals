@@ -367,6 +367,7 @@ export function VehicleProfile({
           canTitle={p.canSeeFinance}
           onClose={() => setEditing(null)}
           onSaved={afterSave}
+          onRefresh={refresh}
           onOpenSection={(s) => setEditing(s)}
         />
       )}
@@ -795,6 +796,7 @@ function SectionDrawer({
   canTitle = false,
   onClose,
   onSaved,
+  onRefresh,
   onOpenSection,
 }: {
   section: VehicleSection;
@@ -803,6 +805,12 @@ function SectionDrawer({
   canTitle?: boolean;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
+  /**
+   * Re-read the record WITHOUT closing. Needed when part of a save went
+   * through and part was refused: the card behind must show what was written
+   * while the drawer stays open saying what was not.
+   */
+  onRefresh?: () => void | Promise<void>;
   /** Hand over to another section's drawer — the paperwork is next door. */
   onOpenSection?: (s: VehicleSection) => void;
 }) {
@@ -812,8 +820,16 @@ function SectionDrawer({
   const [fieldError, setFieldError] = useState<{ field?: string; message: string } | null>(null);
 
   const [touched, setTouched] = useState(false);
+  // WHICH fields were edited, not just whether any were. The drawer posts the
+  // whole record, so this is what lets the server answer "saved the plate"
+  // instead of listing every column the car has.
+  const [edited, setEdited] = useState<string[]>([]);
   useUnsavedGuard("vehicle-section-drawer", touched);
-  const set = (k: string, v: any) => { setTouched(true); setF((s) => ({ ...s, [k]: v })); };
+  const set = (k: string, v: any) => {
+    setTouched(true);
+    setEdited((s) => (s.includes(k) ? s : [...s, k]));
+    setF((s) => ({ ...s, [k]: v }));
+  };
   const str = (k: string) => (f[k] === null || f[k] === undefined ? "" : String(f[k]));
   const num = (k: string) =>
     f[k] === null || f[k] === undefined || f[k] === "" ? null : Number(f[k]);
@@ -826,13 +842,37 @@ function SectionDrawer({
     setSaving(true);
     setFieldError(null);
     try {
-      const res = await save({ data: { id: vehicleId, section, values: f } });
+      const res = await save({ data: { id: vehicleId, section, values: f, intended: edited } });
       if (!res.ok) {
         setFieldError({ field: res.field, message: res.error ?? "Could not save." });
         if (!res.field) toast.error(res.error ?? "Could not save.");
         return;
       }
-      toast.success("Saved");
+      const saved = res.saved ?? [];
+      const names = (xs: Array<{ label: string }>) => xs.map((x) => titleCase(x.label)).join(", ");
+      // A field the operator edited that the server would not write is not a
+      // detail to bury in a toast: it stays on screen, with the reason, and
+      // the drawer stays open. Anything that WAS written is already on the
+      // record, so the card behind is re-read either way.
+      const refused = [...(res.rejected ?? []), ...(res.ignored ?? [])];
+      if (refused.length) {
+        await onRefresh?.();
+        setEdited([]);
+        setTouched(false);
+        setFieldError({
+          message: `${saved.length ? `Saved ${names(saved)}. ` : ""}Not saved — ${refused
+            .map((r) => `${titleCase(r.label)}: ${r.reason}`)
+            .join(" ")}`,
+        });
+        return;
+      }
+      if (!saved.length) {
+        // Pressing Save with nothing changed used to report a save. It isn't one.
+        toast.info("No changes to save");
+        await onSaved();
+        return;
+      }
+      toast.success(`Saved ${names(saved)}`);
       await onSaved();
     } catch (e) {
       toast.error(

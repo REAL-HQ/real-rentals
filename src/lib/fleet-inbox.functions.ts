@@ -12,7 +12,7 @@ import { normalizeBodyType } from "@/lib/safe-autofill";
 import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
-  DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
+  DOC_CLASSES, FIELD_LABELS, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
   isFinanceField, isPhotoClass, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
@@ -317,7 +317,31 @@ const Decision = z.object({
   partial: z.boolean().default(false),
 });
 
-type ApplyResult = { proposalId: string; ok: boolean; vehicleId?: string; message: string };
+/**
+ * What one proposal's apply actually did, field by field.
+ *
+ * The count in `message` was the only answer this used to give, and the panel
+ * read it back out of the result SENTENCE with a regular expression. Four
+ * different outcomes were all reported as the same silence: a field dropped
+ * because the viewer is not an Owner, a high-risk field nobody individually
+ * ticked, a value the column cannot store, and a value that is no longer a
+ * change because the record already says it. Each is now named.
+ */
+export type ApplyFieldRefusal = { field: string; label: string; reason: string };
+type ApplyResult = {
+  proposalId: string;
+  ok: boolean;
+  vehicleId?: string;
+  message: string;
+  /** Fields written to the vehicle. */
+  applied?: string[];
+  /** Accepted, but the record already says that. */
+  unchanged?: string[];
+  /** Accepted, but still waiting for an individual tick. */
+  needsConfirmation?: string[];
+  /** Refused: permission, or a value the column cannot hold. */
+  rejected?: ApplyFieldRefusal[];
+};
 
 const DATE_FIELDS = new Set(["registration_expires_on", "insurance_effective_on", "insurance_expires_on"]);
 /** Body-type codes ("4D") become a body type only via verified model mappings; otherwise left for review. */
@@ -398,19 +422,49 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
 
         const changeBy = new Map<string, Change>(fresh.changes.map((c) => [c.field, c]));
         const accept = new Set(dec.action === "create" ? [...changeBy.keys()] : dec.acceptFields);
+        // Every field the operator accepted and did not get, with the reason.
+        const labelOf = (f: string) => FIELD_LABELS[f] ?? f.replace(/_/g, " ");
+        const refused: ApplyFieldRefusal[] = [];
+        const needsConfirmation: string[] = [];
+        const unchangedFields: string[] = [];
         // Title identifiers are Owner-only: a non-Owner request can never write them, even via the diverting trigger.
-        if (!canOwnership) for (const f of [...accept]) if (isOwnerOnlyField(f)) accept.delete(f);
+        if (!canOwnership) {
+          for (const f of [...accept]) {
+            if (!isOwnerOnlyField(f)) continue;
+            accept.delete(f);
+            refused.push({ field: f, label: labelOf(f), reason: "Owner only." });
+          }
+        }
         const toWrite: Record<string, unknown> = {};
         const written: Change[] = [];
         for (const f of accept) {
           const c = changeBy.get(f);
-          if (!c) continue;
+          // Re-derived from current data: the record already says this, so there
+          // is nothing left to apply. Silence here read as "applied".
+          if (!c) {
+            unchangedFields.push(f);
+            continue;
+          }
           if (dec.action === "match") {
-            if (HIGH_RISK.has(f) && !dec.confirmHighRisk.includes(f)) continue;
-            if (c.kind === "conflict" && !dec.confirmHighRisk.includes(f)) continue;
+            if (HIGH_RISK.has(f) && !dec.confirmHighRisk.includes(f)) {
+              needsConfirmation.push(f);
+              continue;
+            }
+            if (c.kind === "conflict" && !dec.confirmHighRisk.includes(f)) {
+              needsConfirmation.push(f);
+              continue;
+            }
           }
           const val = coerce(f, c.proposed);
-          if (val == null) continue;
+          // Not storable in this column: say so rather than dropping it.
+          if (val == null) {
+            refused.push({
+              field: f,
+              label: labelOf(f),
+              reason: "That value cannot be stored in this field.",
+            });
+            continue;
+          }
           // Display-only re-casing for descriptive fields; raw text stays in provenance.
           toWrite[f] = normalizeDisplayField(f, val); written.push(c);
         }
@@ -530,7 +584,35 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         });
         const writtenSet = new Set(written.map((c) => c.field));
         const remaining = dec.partial && dec.action === "match" ? fresh.changes.filter((c) => !writtenSet.has(c.field)) : [];
-        await finish(remaining.length ? "pending" : "applied", { proposalId: p.id, ok: true, vehicleId, message: (dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`) + serviceNote + financeNote }, vehicleId);
+        // One sentence that matches the itemised answer beside it, so the Fleet
+        // Inbox's "Last apply" line and the profile's review panel say the same
+        // thing without either of them parsing the other's prose.
+        const note = (xs: string[], say: string) =>
+          xs.length ? ` ${xs.map(labelOf).join(", ")} ${say}` : "";
+        const refusedNote = refused.length
+          ? ` Not applied — ${refused.map((r) => `${r.label}: ${r.reason}`).join(" ")}`
+          : "";
+        const outcomeNote =
+          note(unchangedFields, "already matched the record.") +
+          note(needsConfirmation, "still needs individual confirmation.") +
+          refusedNote;
+        const applied =
+          dec.action === "create" ? "Vehicle created." : `${written.length} change(s) applied.`;
+        const message = applied + outcomeNote + serviceNote + financeNote;
+        await finish(
+          remaining.length ? "pending" : "applied",
+          {
+            proposalId: p.id,
+            ok: true,
+            vehicleId,
+            message,
+            applied: written.map((c) => c.field),
+            unchanged: unchangedFields,
+            needsConfirmation,
+            rejected: refused,
+          },
+          vehicleId,
+        );
       } catch (e: any) {
         await finish("failed", { proposalId: p.id, ok: false, message: e?.message ?? "Failed." });
       }
