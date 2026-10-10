@@ -317,6 +317,11 @@ export function VehicleProfile({
                     bare
                     canEdit={!!p.canEdit}
                     vehicleLabel={[v.unit_number, [v.year, v.make, v.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ") || "This Vehicle"}
+                    // Accepting details from the upload dialog writes vehicle
+                    // fields, so the profile — and the Readiness checklist it
+                    // feeds — has to be re-read. Same refresh the header's
+                    // suggestion pill already uses.
+                    onVehicleChanged={refresh}
                   />
                 </SectionCard>
               )}

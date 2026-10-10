@@ -14,12 +14,24 @@ type Sug = {
 
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false }: {
-  vehicleId: string; canEdit: boolean; onApplied: () => void;
+export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText }: {
+  vehicleId: string; canEdit: boolean;
+  /**
+   * How many vehicle fields were actually written. 0 means the server refused,
+   * or every chosen field already had a value — neither is a change, and a
+   * caller must not act as though the vehicle moved.
+   */
+  onApplied: (fieldsWritten: number) => void;
   /** Only show details read from this upload (Vehicle Profile upload dialog). */
   batchId?: string;
   /** Render the review list directly (inside another dialog) instead of a button + popup. */
   inline?: boolean;
+  /**
+   * What to say, in inline mode, when there is nothing to review. The caller
+   * knows WHY it is empty — duplicate, failed read, another car's document —
+   * and this component does not; passing null keeps it silent.
+   */
+  emptyText?: string | null;
 }) {
   const load = useServerFn(getVehicleSuggestions);
   const apply = useServerFn(applyImportDecisions);
@@ -37,7 +49,10 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
         setData({ ...r, suggestions: only(r.suggestions), conflicts: only(r.conflicts), possibleMatches: only(r.possibleMatches), needsVerification: only(r.needsVerification) });
       } else setData(r);
     } catch { setData(null); }
-  }, [load, vehicleId]);
+    // batchId belongs here: without it this callback kept the first batch it
+    // was rendered with and filtered a later upload's details away. Masked
+    // today by the caller re-keying the component, which is not a guarantee.
+  }, [load, vehicleId, batchId]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { if (inline) setOpen(true); }, [inline]);
 
@@ -46,7 +61,16 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
   const safeKeys = useMemo(() => sugs.filter((s) => s.safe).map(key), [sugs]);
   const count = sugs.length;
   if (!data || (count === 0 && !data.possibleMatches.length && !data.conflicts.length && !(data.needsVerification ?? []).length)) {
-    return inline && data ? <p className="text-[12px] text-[#55555E]">No new details to add — this vehicle already has every value the document shows.</p> : null;
+    if (!inline || !data) return null;
+    // Accepting the last field empties this list. Reporting "nothing to add"
+    // in place of "Saved 5 Details" told staff their save had done nothing.
+    if (msg) return <p className="text-[12px] text-[#111114]">{msg} Nothing further to review from this document.</p>;
+    if (emptyText === null) return null;
+    return (
+      <p className="text-[12px] text-[#55555E]">
+        {emptyText ?? "No new details to add — this vehicle already has every value the document shows."}
+      </p>
+    );
   }
 
   async function submit(keys: string[]) {
@@ -68,7 +92,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
       }
       setMsg(errors.length ? errors.join(" ") : applied ? `Saved ${applied} Detail${applied === 1 ? "" : "s"}.` : "Nothing Saved — Those Fields Already Have Values.");
       setPicked(new Set());
-      await refresh(); onApplied();
+      await refresh(); onApplied(errors.length ? 0 : applied);
     } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
   }
 

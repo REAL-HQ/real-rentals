@@ -124,14 +124,15 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data, context }): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true; id: string; duplicate?: boolean } | { ok: false; error: string }> => {
     const actor = await requireStaff(context.userId);
-    // Acquisition/lien/loan paperwork is Owner only — same boundary as RLS
-    // (private.is_ownership_finance_kind) and listVehicleDocs. This handler
-    // writes with the admin client, so the check must live here too.
-    const { isFinanceKind } = await import("@/lib/vehicle-doc-presence");
-    if (isFinanceKind(data.kind) && actor.tier !== "owner") {
-      return { ok: false, error: "Only the Owner can add purchase, loan or lien paperwork." };
+    // Title, acquisition, lien and loan paperwork is Owner only. Storage says
+    // the same (private.vehicle_doc_object_owner_only covers 'title'), but this
+    // handler writes with the admin client, which bypasses both RLS and the
+    // storage policies — so the boundary has to be enforced here as well.
+    const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+    if (isOwnerOnlyDocKind(data.kind) && actor.tier !== "owner") {
+      return { ok: false, error: "Only the Owner can add title, purchase, loan or lien paperwork." };
     }
     // The file must sit under this vehicle's folder, so a request cannot
     // attach some other object to this record.
@@ -139,6 +140,50 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       return { ok: false, error: "That file reference is not valid for this vehicle." };
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Content identity, the same way Fleet Inbox computes it. Without it this
+    // path stored a byte-identical file again under a new row, and the two
+    // paths disagreed about what "already on file" means.
+    const { data: file } = await supabaseAdmin.storage.from("vehicle-docs").download(data.path);
+    if (!file) return { ok: false, error: "That upload could not be read back." };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
+    const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    // An original is stored once and related to each vehicle it is evidence
+    // for — the rule the vault already follows for Fleet Inbox files. So an
+    // identical file is linked, not stored again, and the just-uploaded object
+    // is removed rather than left orphaned in the bucket.
+    const { data: dup } = await supabaseAdmin
+      .from("documents")
+      .select("id,vehicle_id,kind")
+      .eq("content_sha256", sha)
+      .is("driver_id", null)
+      .maybeSingle();
+    if (dup) {
+      await supabaseAdmin.storage.from("vehicle-docs").remove([data.path]);
+      const alreadyThisVehicle = dup.vehicle_id === data.vehicleId;
+      if (!alreadyThisVehicle) {
+        await supabaseAdmin
+          .from("document_vehicle_links")
+          .upsert({ document_id: dup.id, vehicle_id: data.vehicleId, created_by: actor.userId },
+                  { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+      }
+      if (data.expiresAt) {
+        await supabaseAdmin.from("documents").update({ expires_at: data.expiresAt }).eq("id", dup.id).is("expires_at", null);
+      }
+      const label = labelFor(String(dup.kind ?? data.kind));
+      await logAudit(actor, {
+        action: alreadyThisVehicle ? "vehicle_doc.duplicate_skipped" : "vehicle_doc.linked_existing",
+        summary: alreadyThisVehicle
+          ? `Re-uploaded an identical ${label}; the file already on this vehicle was kept`
+          : `Linked an existing ${label} to a vehicle (identical file already on file)`,
+        entityType: "vehicle",
+        entityId: data.vehicleId,
+        metadata: { kind: dup.kind ?? data.kind, document_id: dup.id, already_this_vehicle: alreadyThisVehicle },
+      });
+      return { ok: true, id: dup.id as string, duplicate: true };
+    }
 
     // Replacing a document of the same kind supersedes the old one rather than
     // deleting it — an expired registration is still the evidence of what was
@@ -162,6 +207,7 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
         file_name: data.fileName ?? null,
         mime_type: data.mimeType ?? null,
         size_bytes: data.sizeBytes ?? null,
+        content_sha256: sha,
         expires_at: data.expiresAt || null,
         is_current: true,
         // Vehicle paperwork is internal; drivers have no reason to see the
@@ -174,7 +220,21 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
       .select("id")
       .single();
 
-    if (error || !row) return { ok: false, error: error?.message ?? "Could not save the document." };
+    if (error || !row) {
+      // Lost the unique content index to an identical concurrent upload. Same
+      // outcome as above: link the one that won, drop the duplicate object.
+      const { data: raced } = await supabaseAdmin
+        .from("documents").select("id").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
+      if (raced) {
+        await supabaseAdmin.storage.from("vehicle-docs").remove([data.path]);
+        await supabaseAdmin
+          .from("document_vehicle_links")
+          .upsert({ document_id: raced.id, vehicle_id: data.vehicleId, created_by: actor.userId },
+                  { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+        return { ok: true, id: raced.id as string, duplicate: true };
+      }
+      return { ok: false, error: error?.message ?? "Could not save the document." };
+    }
 
     if (prior?.length) {
       await supabaseAdmin
@@ -197,7 +257,7 @@ export const registerVehicleDoc = createServerFn({ method: "POST" })
 export const deleteVehicleDoc = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ ok: boolean }> => {
+  .handler(async ({ data, context }): Promise<{ ok: true } | { ok: false; error: string }> => {
     // Deleting paperwork outright is a manager decision; staff can only
     // supersede it by uploading a newer one.
     const actor = await requireManager(context.userId);
@@ -205,12 +265,21 @@ export const deleteVehicleDoc = createServerFn({ method: "POST" })
 
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,vehicle_id,kind,storage_bucket,storage_path")
+      .select("id,vehicle_id,kind,category,storage_bucket,storage_path")
       .eq("id", data.id)
       .maybeSingle();
-    { const { isFinanceKind } = await import("@/lib/vehicle-doc-presence"); if (doc && isFinanceKind(doc.kind) && actor.tier !== "owner") return { ok: false }; }
+    // Deleting is irreversible and this handler uses the admin client, so the
+    // Owner-only boundary is checked on BOTH columns: a Fleet Inbox original
+    // carries its class in `category`, a slot upload in `kind`.
+    if (!doc) return { ok: false, error: "That document no longer exists." };
+    {
+      const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+      if ((isOwnerOnlyDocKind(doc.kind) || isOwnerOnlyDocKind((doc as any).category)) && actor.tier !== "owner") {
+        return { ok: false, error: "Only the Owner can delete title, purchase, loan or lien paperwork." };
+      }
+    }
 
-    if (doc?.storage_path) {
+    if (doc.storage_path) {
       await supabaseAdmin.storage
         .from(doc.storage_bucket || "vehicle-docs")
         .remove([doc.storage_path]);
@@ -219,10 +288,10 @@ export const deleteVehicleDoc = createServerFn({ method: "POST" })
 
     await logAudit(actor, {
       action: "vehicle_doc.deleted",
-      summary: `Deleted ${labelFor(String(doc?.kind ?? ""))} from a vehicle record`,
+      summary: `Deleted ${labelFor(String(doc.kind ?? ""))} from a vehicle record`,
       entityType: "vehicle",
-      entityId: doc?.vehicle_id ?? null,
-      metadata: { kind: doc?.kind, path: doc?.storage_path },
+      entityId: doc.vehicle_id ?? null,
+      metadata: { kind: doc.kind, category: (doc as any).category ?? null, path: doc.storage_path },
     });
 
     return { ok: true };
@@ -284,9 +353,10 @@ export const listExpiring = createServerFn({ method: "POST" })
       push(v, "Insurance", v.insurance_expires_on);
     }
 
+    // Documents owned directly by a vehicle.
     const { data: docs } = await supabaseAdmin
       .from("documents")
-      .select("vehicle_id,kind,expires_at")
+      .select("id,vehicle_id,kind,expires_at")
       .not("vehicle_id", "is", null)
       .not("expires_at", "is", null)
       .eq("is_current", true)
@@ -295,6 +365,31 @@ export const listExpiring = createServerFn({ method: "POST" })
     const vById = new Map((vehicles ?? []).map((v: any) => [v.id, v]));
     for (const d of (docs ?? []) as any[]) {
       push(vById.get(d.vehicle_id), `${labelFor(d.kind)} (document)`, d.expires_at);
+    }
+
+    // And documents RELATED to a vehicle through document_vehicle_links.
+    // Fleet Inbox originals never carry a vehicle_id — one file can be evidence
+    // for several cars — so the query above could not see them, and a
+    // registration that came through the reader expired silently.
+    const { data: linkedDocs } = await supabaseAdmin
+      .from("documents")
+      .select("id,kind,expires_at")
+      .is("vehicle_id", null)
+      .not("expires_at", "is", null)
+      .eq("is_current", true)
+      .lte("expires_at", horizonStr);
+    const linkedIds = (linkedDocs ?? []).map((d: any) => d.id);
+    if (linkedIds.length) {
+      const { data: links } = await supabaseAdmin
+        .from("document_vehicle_links")
+        .select("document_id,vehicle_id")
+        .in("document_id", linkedIds);
+      const docById = new Map((linkedDocs ?? []).map((d: any) => [d.id, d]));
+      // One shared insurance PDF warns once per vehicle it covers.
+      for (const l of (links ?? []) as any[]) {
+        const d = docById.get(l.document_id);
+        if (d) push(vById.get(l.vehicle_id), `${labelFor(d.kind)} (document)`, d.expires_at);
+      }
     }
 
     // Soonest — and most overdue — first.

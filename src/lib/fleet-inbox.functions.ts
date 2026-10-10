@@ -3,7 +3,7 @@
 // once in the private vehicle-docs bucket and recorded in the existing
 // `documents` vault; document_vehicle_links relates one document to many cars.
 import { isFinanceKind } from "@/lib/vehicle-doc-presence";
-import { normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
+import { isStorableColor, normalizeDisplayField, normalizeDisplayText } from "@/lib/display-normalize";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import {
   DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
   isFinanceField, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
+import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
 import { fmtDate } from "@/lib/date-format";
 
 const BUCKET = "vehicle-docs";
@@ -70,10 +71,30 @@ export const registerInboxFile = createServerFn({ method: "POST" })
       fileName: z.string().trim().min(1).max(200),
       mimeType: z.string().trim().max(120).nullish(),
       sizeBytes: z.number().int().nonnegative().nullish(),
+      /**
+       * What the uploader SAID this is (a Vehicle Profile slot). Only a
+       * fallback: a confident classification from the reader still wins, and
+       * the dialog warns when the two disagree. Without it a document the
+       * reader cannot classify leaves its slot reading "Not on file" even
+       * though the file is stored and linked.
+       */
+      intendedClass: z.enum(DOC_CLASSES as [string, ...string[]]).nullish(),
+      /** An expiry the uploader typed, so lapse warnings work for read uploads. */
+      expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
+    // A declared class is a write of Owner-only paperwork when it names title
+    // or finance, so it is gated exactly like registerVehicleDoc. A reader that
+    // DETECTS one still files it correctly — ingestion is not the boundary,
+    // reading it back is — but nobody below Owner gets to assert it.
+    if (data.intendedClass) {
+      const { isOwnerOnlyDocKind } = await import("@/lib/vehicle-doc-presence");
+      if (isOwnerOnlyDocKind(data.intendedClass) && actor.tier !== "owner") {
+        throw new Error("Only the Owner can file title, purchase, loan or lien paperwork.");
+      }
+    }
     const sb = await admin();
     const { data: file, error: dlErr } = await sb.storage.from(BUCKET).download(data.path);
     if (dlErr || !file) throw new Error("Upload not found.");
@@ -85,6 +106,11 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const { data: dup } = await sb.from("documents").select("id,file_name").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
     if (dup) {
       await sb.storage.from(BUCKET).remove([data.path]);
+      // A date typed for THIS upload still belongs on the file already on
+      // record, blank only — the direct path does the same.
+      if (data.expiresAt) {
+        await sb.from("documents").update({ expires_at: data.expiresAt }).eq("id", dup.id).is("expires_at", null);
+      }
       const { data: item } = await sb.from("fleet_import_items").insert({
         batch_id: data.batchId, file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength,
         content_sha256: sha, status: "duplicate", duplicate_of_document_id: dup.id, document_id: dup.id,
@@ -93,9 +119,12 @@ export const registerInboxFile = createServerFn({ method: "POST" })
       return { itemId: item?.id as string, duplicate: true, existingFileName: dup.file_name as string | null };
     }
 
+    const declared = data.intendedClass ?? null;
     const { data: doc, error: docErr } = await sb.from("documents").insert({
-      kind: "unknown", category: "unknown", label: data.fileName, storage_bucket: BUCKET, storage_path: data.path,
+      kind: declared ?? "unknown", category: declared ?? "unknown", label: data.fileName,
+      storage_bucket: BUCKET, storage_path: data.path,
       file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength, content_sha256: sha,
+      expires_at: data.expiresAt || null,
       is_current: true, visibility: ["admin"], uploaded_by: actor.userId, uploaded_by_role: actor.role,
       source: "fleet_inbox", review_status: "uploaded",
     }).select("id").single();
@@ -113,6 +142,8 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const { data: item } = await sb.from("fleet_import_items").insert({
       batch_id: data.batchId, document_id: doc.id, file_name: data.fileName, mime_type: mime,
       size_bytes: bytes.byteLength, content_sha256: sha, status: "uploaded",
+      // Low confidence on purpose: this is a person's expectation, not a reading.
+      ...(declared ? { doc_class: declared, class_confidence: "low" } : {}),
     }).select("id").single();
     await sb.from("fleet_import_batches").update({ status: "processing" }).eq("id", data.batchId);
     // Background analysis starts now, whether or not anyone keeps the import open.
@@ -205,7 +236,17 @@ function stripServiceCosts(p: any) {
 }
 export const getImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ batchId: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) => z.object({
+    batchId: z.string().uuid(),
+    /**
+     * "referenced" returns only the vehicles this batch's proposals name,
+     * instead of the whole unarchived fleet. The Vehicle Profile dialog polls
+     * this every three seconds and needs nothing but the names of the other
+     * cars a document matched; Fleet Inbox still wants the full list for its
+     * manual attach picker, so the default is unchanged.
+     */
+    vehicleScope: z.enum(["all", "referenced"]).optional(),
+  }).parse(d))
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const canFinance = tierAllows(actor.tier, "manager");
@@ -219,7 +260,13 @@ export const getImportBatch = createServerFn({ method: "POST" })
     const finance = canOwnership
       ? (await sb.from("fleet_import_finance_facts").select("proposal_id,field,value,confidence,page").in("item_id", (items ?? []).map((i: any) => i.id))).data ?? []
       : [];
-    const { data: vehicles } = await sb.from("vehicles").select("id,year,make,model,vin,unit_number,license_plate,current_odometer").is("archived_at", null).order("created_at");
+    const referenced = [...new Set((proposals ?? []).map((p: any) => p.match_vehicle_id).filter(Boolean))] as string[];
+    const vehicleQuery = sb.from("vehicles").select("id,year,make,model,vin,unit_number,license_plate,current_odometer").is("archived_at", null);
+    const { data: vehicles } = data.vehicleScope === "referenced"
+      ? referenced.length
+        ? await vehicleQuery.in("id", referenced).order("created_at")
+        : { data: [] as any[] }
+      : await vehicleQuery.order("created_at");
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
@@ -289,6 +336,10 @@ function coerce(field: string, v: string): unknown {
   if (field === "year" || field === "current_odometer") { const n = parseInt(v.replace(/[^0-9]/g, ""), 10); return Number.isFinite(n) ? n : null; }
   if (DATE_FIELDS.has(field)) return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
   if (field === "body_type") { const b = v.toLowerCase(); return ["sedan","suv","xl","truck","van","minivan","coupe","hatchback","wagon","convertible","other"].includes(b) ? b : null; }
+  // A colour code the table does not know ("DKB", "LTG") would be re-cased into
+  // "Dkb" and stored as if it were a colour. Refuse it; the caller shows it for
+  // verification instead of inventing a colour nobody wrote down.
+  if (field === "color" && !isStorableColor(String(normalizeDisplayField("color", v)))) return null;
   return v;
 }
 
@@ -393,6 +444,21 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
 
         await sb.from("document_vehicle_links").upsert({ document_id: item.document_id, vehicle_id: vehicleId, page: p.page, created_by: actor.userId }, { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
 
+        // An accepted expiry is also the DOCUMENT's expiry, when its class makes
+        // it the authority for that field. Without this, a registration read by
+        // the reader produced a confirmed date that warned nobody: expires_at
+        // was only ever filled by hand on the direct upload path, and that is
+        // the column the lapse badges and listExpiring read. Blank only — a
+        // date somebody already recorded is never overwritten here.
+        const docExpiry = documentExpiryFrom(
+          docClass,
+          Object.fromEntries(written.map((c) => [c.field, c.proposed])),
+        );
+        if (docExpiry) {
+          await sb.from("documents").update({ expires_at: docExpiry })
+            .eq("id", item.document_id).is("expires_at", null);
+        }
+
         let serviceNote = "";
         const isService = docGroupOf(docClass) === "Maintenance";
         const { recordServiceEvent, addOdometerReading } = await import("@/lib/maintenance.server");
@@ -458,7 +524,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           action: dec.action === "create" ? "fleet_inbox.vehicle_created" : "fleet_inbox.vehicle_updated",
           summary: dec.action === "create" ? `Created vehicle from Fleet Inbox (VIN …${(fresh.vin ?? "").slice(-6)})` : `Applied ${written.length} Fleet Inbox change(s)`,
           entityType: "vehicle", entityId: vehicleId,
-          metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field) },
+          metadata: { proposal_id: p.id, document_id: item.document_id, fields: written.map((c) => c.field), document_expires_at: docExpiry ?? null },
         });
         const writtenSet = new Set(written.map((c) => c.field));
         const remaining = dec.partial && dec.action === "match" ? fresh.changes.filter((c) => !writtenSet.has(c.field)) : [];
@@ -694,6 +760,7 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
         // Never offer a value the save path can't store (e.g. body type "4D"): show it for verification only.
         if (coerce(c.field, c.proposed) == null) {
           if (c.field === "body_type" && c.kind === "fill") needsVerification.push({ ...source, field: c.field, label: c.label, current: c.current, proposed: String(f.raw ?? c.proposed), note: "Body style requires verification — the document shows a door count only.", evidence: { raw: f.raw ?? null, note: f.note ?? null } });
+          else if (c.field === "color" && c.kind === "fill") needsVerification.push({ ...source, field: c.field, label: c.label, current: c.current, proposed: String(f.raw ?? c.proposed), note: "Colour code not recognised — set the colour by hand if this is right.", evidence: { raw: f.raw ?? null, note: f.note ?? null } });
           continue;
         }
         const row = {
