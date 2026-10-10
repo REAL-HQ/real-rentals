@@ -13,7 +13,7 @@ import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
   DOC_CLASSES, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
-  isFinanceField, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
+  isFinanceField, isPhotoClass, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
 import { fmtDate } from "@/lib/date-format";
@@ -29,12 +29,14 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 // ---------------------------------------------------------------- batches
 export const createImportBatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ label: z.string().trim().max(120).optional(), source: z.enum(["vehicle_profile"]).optional() }).parse(d ?? {}))
+  .inputValidator((d: unknown) => z.object({ label: z.string().trim().max(120).optional(), source: z.enum(["vehicle_profile", "vehicle_photo"]).optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const sb = await admin();
     const label = data.label || `Fleet Import — ${fmtDate(new Date())}`;
-    // source "vehicle_profile": uploads from a vehicle's Documents tab. Safe Autofill never runs for these — staff review every field.
+    // "vehicle_profile" (Documents tab) and "vehicle_photo" (Photos tab) are
+    // uploads made from one vehicle. Safe Autofill never runs for either —
+    // staff review every field. See STAFF_REVIEW_CHANNELS.
     const { data: row, error } = await sb.from("fleet_import_batches").insert({ label, created_by: actor.userId, ...(data.source ? { source_channel: data.source } : {}) }).select("id").single();
     if (error) throw new Error("Could not start an import.");
     return { id: row.id as string };
@@ -729,6 +731,15 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       ? await sb.from("fleet_import_items").select("id,document_id,file_name,doc_class,analyzed_at").in("id", itemIds)
       : { data: [] as any[] };
     const itemBy = Object.fromEntries((items ?? []).map((i: any) => [i.id, i]));
+    // Where the evidence is a photograph, the reviewer should be able to LOOK
+    // at it. Only the private vehicle-photos bucket is surfaced, and only as a
+    // path: the browser fetches the bytes itself through the staff storage
+    // policy, so nothing here widens who can see an unpublished photo.
+    const docIds = [...new Set((items ?? []).map((i: any) => i.document_id).filter(Boolean))];
+    const { data: docRows } = docIds.length
+      ? await sb.from("documents").select("id,storage_bucket,storage_path").in("id", docIds)
+      : { data: [] as any[] };
+    const docBy = Object.fromEntries((docRows ?? []).map((d: any) => [d.id, d]));
     const prov = await loadProvenance(sb, [target.id]);
     const diff = (a: string, b: string) => { let n = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++; return n; };
 
@@ -741,7 +752,9 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
       if (!it) continue;
       const pVin = String(p.vin ?? "").toUpperCase();
       const exact = (!!vin && pVin === vin) || (!pVin && p.match_vehicle_id === target.id);
-      const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at };
+      const doc = docBy[it.document_id];
+      const photoPath = doc?.storage_bucket === "vehicle-photos" ? (doc.storage_path as string) : null;
+      const source = { proposalId: p.id, batchId: p.batch_id, documentId: it.document_id, fileName: it.file_name, docClass: it.doc_class, page: p.page, analyzedAt: it.analyzed_at, photoPath, fromPhoto: isPhotoClass(it.doc_class) };
       if (!exact) {
         // Ambiguous evidence: report why, never its values.
         const pPlate = String((p.fields as any)?.license_plate?.value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -766,8 +779,14 @@ export const getVehicleSuggestions = createServerFn({ method: "POST" })
         const row = {
           ...source, field: c.field, label: c.label, current: c.current, proposed: normalizeDisplayField(c.field, c.proposed),
           confidence: c.confidence, risk: c.risk, kind: c.kind,
-          // Safe = blank, non-sensitive field. VIN, plate, title, finance and mileage always need individual confirmation.
-          safe: c.kind === "fill" && c.risk === "normal" && !["license_plate", "plate_state", "current_odometer", "vin"].includes(c.field),
+          // Safe = blank, non-sensitive field, read from PAPERWORK. VIN, plate,
+          // title, finance and mileage always need individual confirmation —
+          // and so does anything read from a photograph, whatever the field:
+          // a camera can be wrong about a colour in a way a registration card
+          // cannot, so no photo value is ever swept in by "Approve Safe Fields".
+          safe: c.kind === "fill" && c.risk === "normal"
+            && !["license_plate", "plate_state", "current_odometer", "vin"].includes(c.field)
+            && !isPhotoClass(it.doc_class),
           evidence: { raw: f.raw ?? null, note: f.note ?? null },
         };
         (c.kind === "fill" ? suggestions : conflicts).push(row);

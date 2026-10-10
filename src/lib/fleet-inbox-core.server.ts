@@ -1,7 +1,7 @@
 // Server-only core of Fleet Inbox analysis. Shared by the staff "Analyze /
 // Retry" action and the background job worker, so there is exactly one
 // analysis path (claim → read → classify → proposals / service transactions).
-import { isFinanceField, DOC_CLASSES, FINANCE_FIELDS, VEHICLE_FIELDS, buildProposal, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex } from "@/lib/fleet-inbox";
+import { isFinanceField, isPhotoClass, isStaffReviewChannel, DOC_CLASSES, FINANCE_FIELDS, VEHICLE_FIELDS, buildProposal, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex } from "@/lib/fleet-inbox";
 
 const BUCKET = "vehicle-docs";
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
@@ -116,7 +116,9 @@ export async function buildItemProposals(sb: any, itemId: string) {
       fields: Object.fromEntries(Object.entries(e.fields).filter(([k]) => !isFinanceField(k))),
       match_vehicle_id: draft.matchVehicleId, match_basis: draft.matchBasis, changes: draft.changes, issues: draft.issues,
     }).select("id").single();
-    const fin = Object.entries(e.fields).filter(([k]) => isFinanceField(k));
+    // Acquisition price, lienholder, payoff: office facts. A photograph is
+    // never evidence of one, so a photo item files no finance facts at all.
+    const fin = isPhotoClass(docClass) ? [] : Object.entries(e.fields).filter(([k]) => isFinanceField(k));
     if (fin.length && p) {
       await sb.from("fleet_import_finance_facts").insert(fin.map(([field, f]) => ({ item_id: itemId, proposal_id: p.id, field, value: (f as ExtractedField).value, confidence: (f as ExtractedField).confidence, page: e.page ?? null })));
     }
@@ -233,7 +235,7 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
   // Safe Autofill (Owner setting, default Off): blank non-sensitive specs only; never throws.
   // Never for Vehicle Profile uploads: those always go through explicit staff review.
   const { data: srcBatch } = await sb.from("fleet_import_batches").select("source_channel").eq("id", claimed.batch_id).maybeSingle();
-  if (srcBatch?.source_channel !== "vehicle_profile") await (await import("@/lib/safe-autofill.server")).runSafeAutofillForItem(sb, data.itemId);
+  if (!isStaffReviewChannel(srcBatch?.source_channel)) await (await import("@/lib/safe-autofill.server")).runSafeAutofillForItem(sb, data.itemId);
   const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
   await sb.from("fleet_import_items").update({ status: needs ? "needs_attention" : "ready" }).eq("id", data.itemId);
   await refreshBatchStatus(claimed.batch_id);

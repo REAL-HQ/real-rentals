@@ -5,14 +5,45 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Sparkles, X, FileText, AlertTriangle } from "lucide-react";
 import { getVehicleSuggestions, applyImportDecisions } from "@/lib/fleet-inbox.functions";
+import { loadStaffPhoto } from "@/lib/photoUrl";
 
 type Sug = {
   proposalId: string; batchId: string; fileName: string; docClass: string | null; page: number | null;
   field: string; label: string; current: string | null; proposed: string; confidence: string;
   safe: boolean; risk: string; evidence: { raw: string | null; note: string | null };
+  /** Set when the evidence is a photograph in the private vehicle-photos bucket. */
+  photoPath?: string | null;
+  fromPhoto?: boolean;
 };
 
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/**
+ * The photograph a value was read from.
+ *
+ * Bytes come through loadStaffPhoto — the browser's own staff-authenticated
+ * storage download — so an unpublished photo stays unreachable to anyone the
+ * storage policy would refuse. Nothing is proxied and no URL is signed here.
+ */
+function EvidencePhoto({ path, onOpen }: { path: string; onOpen: (url: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });
+    return () => { live = false; };
+  }, [path]);
+  if (!url) return <div className="w-14 h-14 rounded-lg bg-[#F2F2F4] shrink-0" aria-hidden />;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpen(url); }}
+      className="shrink-0 rounded-lg overflow-hidden border border-[#EDEDF0]"
+      aria-label="View the photograph this was read from"
+    >
+      <img src={url} alt="" className="w-14 h-14 object-cover" />
+    </button>
+  );
+}
 
 export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inline = false, emptyText }: {
   vehicleId: string; canEdit: boolean;
@@ -40,6 +71,7 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -117,12 +149,14 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
             {sugs.map((s) => (
               <label key={key(s)} className="flex gap-3 border border-[#EDEDF0] rounded-xl p-3 mb-2 cursor-pointer">
                 {canEdit && <input type="checkbox" className="mt-1" checked={picked.has(key(s))} onChange={(e) => { const n = new Set(picked); e.target.checked ? n.add(key(s)) : n.delete(key(s)); setPicked(n); }} />}
+                {s.photoPath && <EvidencePhoto path={s.photoPath} onOpen={setViewing} />}
                 <div className="min-w-0 flex-1 text-[12px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-[#111114]">{s.label.replace(/\b\w/g, (c) => c.toUpperCase())}</span>
                     <span className={s.field === "body_type" ? "text-[#111114]" : "font-mono text-[#111114]"}>{s.field === "body_type" ? titleCase(s.proposed) : s.proposed}</span>
                     <span className="rounded-full bg-[#F2F2F4] px-2 py-0.5 text-[10px]">{titleCase(s.confidence)} Confidence</span>
                     {!s.safe && <span className="rounded-full bg-[#FFF4E5] px-2 py-0.5 text-[10px] text-[#8A4B00]">Confirm Individually</span>}
+                    {s.fromPhoto && <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] text-[#3730A3]">Read From A Photo</span>}
                   </div>
                   <div className="text-[#55555E] mt-1">Current: {s.current ?? "Not Set"}</div>
                   <div className="text-[#55555E] mt-0.5 flex items-center gap-1"><FileText className="w-3 h-3" /> {s.fileName}{s.docClass ? ` · ${titleCase(s.docClass)}` : ""}{s.page ? ` · Page ${s.page}` : ""}</div>
@@ -151,6 +185,12 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
               <div className="mt-3 text-[12px]">
                 <div className="font-semibold mb-1 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-[#8A4B00]" /> Possible Matches — Review In Fleet Inbox</div>
                 {data.possibleMatches.map((m: any) => <div key={m.proposalId} className="text-[#55555E]">{m.fileName}: {m.reason}</div>)}
+              </div>
+            )}
+
+            {viewing && (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4" onClick={() => setViewing(null)}>
+                <img src={viewing} alt="Source photograph" className="max-h-[90vh] max-w-full object-contain" />
               </div>
             )}
 
