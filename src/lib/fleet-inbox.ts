@@ -19,6 +19,37 @@ export const DOC_GROUPS = [
 export const DOC_CLASSES = DOC_GROUPS.flatMap((g) => g.classes as readonly string[]);
 export type DocClass = string;
 
+/**
+ * Photographs, as opposed to paperwork.
+ *
+ * A photo is first-hand evidence of what is visible ON the car — the plate, the
+ * colour, the shape, the number on the odometer — and says nothing about what
+ * an office recorded: when registration lapses, who holds the title, whether
+ * anything is insured. The authority table below encodes that: strong where the
+ * camera is the best witness, weak everywhere else.
+ */
+export const PHOTO_CLASSES = ["odometer_photo", "vin_photo", "acquisition_photo", "condition_photo", "repair_photo", "damage_photo"] as const;
+const PHOTO_CLASS_SET = new Set<string>(PHOTO_CLASSES);
+export function isPhotoClass(c: string | null | undefined): boolean {
+  return PHOTO_CLASS_SET.has(String(c ?? ""));
+}
+
+/**
+ * Upload channels where a person reviews every field before it is written.
+ *
+ * Uploads made FROM a vehicle are not a bulk import: the operator is looking at
+ * that one car and will accept or reject each value in Vehicle Suggestions. Safe
+ * Autofill therefore never runs for them. A channel missing from this set gets
+ * Fleet Inbox behaviour, which is the documented default for an unlabelled
+ * batch — so every new staff-facing channel must be added HERE, in one place,
+ * rather than bolted onto a comparison at the call site.
+ */
+export const STAFF_REVIEW_CHANNELS = ["vehicle_profile", "vehicle_photo"] as const;
+const STAFF_REVIEW_SET = new Set<string>(STAFF_REVIEW_CHANNELS);
+export function isStaffReviewChannel(c: string | null | undefined): boolean {
+  return STAFF_REVIEW_SET.has(String(c ?? ""));
+}
+
 export function docClassLabel(c: string | null | undefined): string {
   if (!c) return "Unknown";
   return c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
@@ -61,6 +92,17 @@ export const FIELD_LABELS: Record<string, string> = {
   monthly_payment: "Monthly payment",
 };
 
+/**
+ * Paperwork facts. Never taken from a photograph, whatever the model returns —
+ * these are office records, and a photo of a car is not evidence of any of them.
+ */
+export const PHOTO_NEVER_FIELDS = new Set<string>([
+  "registration_number", "registration_state", "registration_expires_on",
+  "title_number", "title_status",
+  "insurance_carrier", "insurance_policy_number", "insurance_effective_on", "insurance_expires_on",
+  ...FINANCE_FIELDS,
+]);
+
 /** Always need explicit confirmation; never in "Accept Safe Changes". */
 export const HIGH_RISK = new Set<string>([
   "vin", "title_number", "title_status", ...FINANCE_FIELDS,
@@ -88,9 +130,27 @@ const AUTH: Record<string, Record<string, number>> = {
 const DEFAULT_AUTH = A({ title: 90, registration: 80, purchase_agreement: 70, bill_of_sale: 70, insurance_card: 60, insurance_policy: 60, inspection: 55, service_receipt: 50, repair_invoice: 50 });
 export const STAFF_AUTHORITY = 70; // manual staff entry without a document
 
+/**
+ * What an ordinary photograph is worth, per field, when the table above has no
+ * entry for that photo class.
+ *
+ * Deliberately below every paperwork source — a registration card scores 80-100
+ * for these — so a photo can fill a blank but can never win an argument with a
+ * document. The two cases where a photo IS the best witness are in AUTH itself
+ * and keep their 100: a VIN plate in vin_photo, an odometer in odometer_photo.
+ * Fields absent here fall through to 10: a mileage number glimpsed in a
+ * condition photo is context, not a reading.
+ */
+const PHOTO_AUTH: Record<string, number> = {
+  license_plate: 35, plate_state: 35, color: 35, body_type: 35, make: 35, model: 30, trim: 30, year: 30,
+};
+
 export function authorityOf(field: string, docClass: string | null | undefined): number {
   const table = AUTH[field] ?? DEFAULT_AUTH;
-  return table[docClass ?? ""] ?? 10;
+  const listed = table[docClass ?? ""];
+  if (listed != null) return listed;
+  if (isPhotoClass(docClass) && PHOTO_AUTH[field] != null) return PHOTO_AUTH[field];
+  return 10;
 }
 
 export type Confidence = "high" | "medium" | "low";
@@ -217,7 +277,14 @@ function proposedFills(
 ): Change[] {
   const out: Change[] = [];
   const vp = vehicle ? prov[vehicle.id] ?? {} : {};
+  const photo = isPhotoClass(docClass);
   for (const field of [...VEHICLE_FIELDS]) {
+    // A camera can see the car. It cannot see when the registration lapses, who
+    // holds the title or whether anything is insured — and a model asked to
+    // read a photo will cheerfully supply all three. Refuse them here, in the
+    // rules both the analyzer and the apply-time revalidation run, rather than
+    // trusting a prompt to stay polite.
+    if (photo && PHOTO_NEVER_FIELDS.has(field)) continue;
     const ef = f[field];
     if (!ef?.value) continue;
     const proposed = norm(field, ef.value);

@@ -68,6 +68,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
   { id: "safe_autofill", label: "Safe Autofill", group: "FLEET", minTier: "owner" },
   { id: "photo_enhancement", label: "Photo Enhancement", group: "FLEET", minTier: "owner" },
+  { id: "photo_reading", label: "Photo Reading", group: "FLEET", minTier: "owner" },
   { id: "vehicle_defaults", label: "Vehicle Pricing", group: "RENTALS", minTier: "manager" },
   { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },

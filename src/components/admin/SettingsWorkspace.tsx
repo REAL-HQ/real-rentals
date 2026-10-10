@@ -7,6 +7,7 @@ import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
 import { SafeAutofillPanel } from "@/components/admin/SafeAutofillPanel";
+import { PhotoReadingPanel } from "@/components/admin/PhotoReadingPanel";
 import { PhotoEnhancePanel } from "@/components/admin/PhotoEnhancePanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
@@ -22,6 +23,7 @@ const DESCRIPTIONS: Record<string, string> = {
   maintenance: "Company maintenance intervals by miles, time or both. A vehicle can override an interval from its Service tab.",
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
   photo_enhancement: "Owner-only. Free on-device lighting and studio backgrounds for listing photos. Off by default.",
+  photo_reading: "Owner-only. Reads details off a vehicle photograph — the one feature here that costs money. Off by default, with a daily limit enforced on the server.",
   rental_terms: "Minimum term, return notice and the terms text.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
@@ -113,6 +115,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <SafeAutofillPanel />
         ) : current.id === "photo_enhancement" ? (
           <PhotoEnhancePanel />
+        ) : current.id === "photo_reading" ? (
+          <PhotoReadingPanel />
         ) : current.id === "maintenance" ? (
           <MaintenanceDefaultsPanel />
         ) : current.id === "website" ? (

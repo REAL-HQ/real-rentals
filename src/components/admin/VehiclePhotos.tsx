@@ -12,6 +12,8 @@ import {
   Info,
   ImageOff,
   Link2,
+  ScanLine,
+  Check,
 } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import {
@@ -23,6 +25,9 @@ import {
   type VehicleMediaList,
 } from "@/lib/vehicle-media.functions";
 import { loadStaffPhoto } from "@/lib/photoUrl";
+import { createImportBatch, getImportBatch } from "@/lib/fleet-inbox.functions";
+import { readVehiclePhoto, getPhotoReadingStatus } from "@/lib/vehicle-photo-analysis.functions";
+import { VehicleSuggestions } from "@/components/admin/VehicleSuggestions";
 import {
   getPhotoEnhanceStatus,
   startPhotoEnhance,
@@ -131,6 +136,108 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   function afterUpload() {
     void refresh();
     window.dispatchEvent(new Event("vehicle-profile-refresh"));
+  }
+
+  // ------------------------------------------------------- reading photos
+  //
+  // A photograph goes into the SAME Fleet Inbox pipeline a document does.
+  // Nothing here reads anything itself: it creates the batch, hands each
+  // chosen photo to the server, and then watches the batch with the ordinary
+  // getImportBatch poll until every item has settled. The results appear in
+  // the ordinary review panel, where each field is confirmed one at a time.
+  // The Owner's switch and daily limit. Read here so the tab can say WHY the
+  // button is dead instead of letting someone click it and get a refusal —
+  // the server enforces it either way.
+  const readingStatusFn = useServerFn(getPhotoReadingStatus);
+  const [readingStatus, setReadingStatus] = useState<{ enabled: boolean; remainingToday: number; dailyLimit: number; usedToday: number; refusal: string | null } | null>(null);
+  const refreshReadingStatus = useCallback(async () => {
+    try { setReadingStatus(await readingStatusFn()); } catch { setReadingStatus(null); }
+  }, [readingStatusFn]);
+  useEffect(() => { void refreshReadingStatus(); }, [refreshReadingStatus]);
+
+  const makeBatch = useServerFn(createImportBatch);
+  const readPhoto = useServerFn(readVehiclePhoto);
+  const getBatch = useServerFn(getImportBatch);
+  const [picking, setPicking] = useState(false);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [shotKind, setShotKind] = useState<"condition_photo" | "odometer_photo" | "vin_photo">("condition_photo");
+  const [reading, setReading] = useState(false);
+  const [readState, setReadState] = useState<Record<string, string>>({});
+  const [readErrors, setReadErrors] = useState<{ name: string; error: string }[]>([]);
+  const [readBatch, setReadBatch] = useState<string | null>(null);
+  const [readNote, setReadNote] = useState<string | null>(null);
+
+  const READ_POLL_MS = 2500;
+  const READ_CEILING_MS = 3 * 60 * 1000;
+  const SETTLED = new Set(["ready", "needs_attention", "failed", "duplicate", "applied"]);
+
+  async function readChosen() {
+    const ids = [...chosen];
+    if (!ids.length || reading) return;
+    setReading(true);
+    setReadErrors([]);
+    setReadNote(null);
+    setReadState(Object.fromEntries(ids.map((id) => [id, "queued"])));
+    const nameOf = (id: string) => byId.get(id)?.file_name ?? "photo";
+    try {
+      const batch = await makeBatch({ data: { label: `Vehicle Photos — ${new Date().toLocaleDateString()}`, source: "vehicle_photo" as const } });
+      setReadBatch(batch.id);
+      let queued = 0;
+      const errs: { name: string; error: string }[] = [];
+      for (const mediaId of ids) {
+        setReadState((st) => ({ ...st, [mediaId]: "sending" }));
+        try {
+          const r = await readPhoto({ data: { batchId: batch.id, vehicleId, mediaId, intendedClass: shotKind } });
+          if (!r.ok) {
+            errs.push({ name: nameOf(mediaId), error: r.error ?? "Could not read that photo." });
+            setReadState((st) => ({ ...st, [mediaId]: "error" }));
+          } else {
+            queued += r.duplicate ? 0 : 1;
+            setReadState((st) => ({ ...st, [mediaId]: r.duplicate ? "already read" : "reading" }));
+          }
+        } catch (e: any) {
+          errs.push({ name: nameOf(mediaId), error: e?.message ?? "Could not read that photo." });
+          setReadState((st) => ({ ...st, [mediaId]: "error" }));
+        }
+      }
+      setReadErrors(errs);
+      if (!queued && !errs.length) setReadNote("Those photos have been read already — their details are below.");
+
+      // Watch until the reader has finished with every file, or give up loudly.
+      const deadline = Date.now() + READ_CEILING_MS;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, READ_POLL_MS));
+        let b: any;
+        try {
+          b = await getBatch({ data: { batchId: batch.id, vehicleScope: "referenced" as const } });
+        } catch {
+          continue;
+        }
+        const seen: any[] = b?.items ?? [];
+        const waiting = seen.length < ids.length - errs.length || seen.some((i) => !SETTLED.has(String(i.status ?? "")));
+        if (!waiting) {
+          const failed = seen.filter((i) => String(i.status) === "failed");
+          if (failed.length) {
+            setReadErrors((prev) => [
+              ...prev,
+              ...failed.map((i: any) => ({ name: i.file_name ?? "photo", error: i.error ?? "That photo could not be read." })),
+            ]);
+          }
+          break;
+        }
+        if (Date.now() > deadline) {
+          setReadNote("Still reading. It is running in the background — reopen this tab shortly.");
+          break;
+        }
+      }
+    } catch (e: any) {
+      setReadErrors((prev) => [...prev, { name: "Reading", error: e?.message ?? "Could not start reading." }]);
+    } finally {
+      setReading(false);
+      setPicking(false);
+      setChosen(new Set());
+      void refreshReadingStatus();
+    }
   }
 
   type MediaPatch = {
@@ -308,10 +415,121 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 </span>
               </p>
             )}
+            {canEdit && originals.length > 0 && (
+              <div className="mb-3 rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <ScanLine className="w-4 h-4 text-[#D03020] shrink-0" strokeWidth={1.75} />
+                  <span className="text-[12px] font-medium text-[#111114]">Read Photos For Vehicle Details</span>
+                  <span className="text-[11px] text-[#55555E] basis-full sm:basis-auto">
+                    Reads what is visible on the car. Nothing is saved until you approve each detail.
+                  </span>
+                  <div className="flex-1" />
+                  {!picking ? (
+                    <button
+                      onClick={() => { setPicking(true); setChosen(new Set()); }}
+                      disabled={reading || !!readingStatus?.refusal}
+                      title={readingStatus?.refusal ?? undefined}
+                      className="rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] disabled:opacity-50"
+                    >
+                      Choose Photos
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="sr-only" htmlFor="shot-kind">What Are These Photos Of</label>
+                      <select
+                        id="shot-kind"
+                        value={shotKind}
+                        onChange={(e) => setShotKind(e.target.value as typeof shotKind)}
+                        className="rounded-md border border-[#EDEDF0] bg-white px-2 py-1.5 text-[12px]"
+                      >
+                        <option value="condition_photo">The Car</option>
+                        <option value="odometer_photo">The Odometer</option>
+                        <option value="vin_photo">The VIN Plate</option>
+                      </select>
+                      <button
+                        onClick={() => { setPicking(false); setChosen(new Set()); }}
+                        disabled={reading}
+                        className="rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => void readChosen()}
+                        disabled={reading || chosen.size === 0 || !!readingStatus?.refusal || chosen.size > (readingStatus?.remainingToday ?? 0)}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+                      >
+                        {reading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {reading ? "Reading…" : `Read ${chosen.size} Photo${chosen.size === 1 ? "" : "s"}`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {readingStatus?.refusal && (
+                  <p className="mt-2 text-[11px] text-[#8A4B00]">{readingStatus.refusal}</p>
+                )}
+                {readingStatus && !readingStatus.refusal && (
+                  <p className="mt-2 text-[11px] text-[#55555E]">
+                    {readingStatus.remainingToday} of {readingStatus.dailyLimit} reads left today.
+                    {picking && chosen.size > readingStatus.remainingToday
+                      ? ` Choose at most ${readingStatus.remainingToday}.`
+                      : ""}
+                  </p>
+                )}
+                {(reading || Object.keys(readState).length > 0) && (
+                  <ul className="mt-2 space-y-0.5 text-[11px] text-[#55555E]">
+                    {Object.entries(readState).map(([id, st]) => (
+                      <li key={id} className="flex items-center gap-1.5">
+                        {st === "error" ? <Info className="w-3 h-3 text-[#D03020]" /> : st === "reading" || st === "sending" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 text-[#15803D]" />}
+                        <span className="truncate">{byId.get(id)?.file_name ?? "Photo"} — {st}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {readErrors.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 text-[11px] text-[#8A1B10]">
+                    {readErrors.map((e, i) => <li key={i}>{e.name}: {e.error}</li>)}
+                  </ul>
+                )}
+                {readNote && <p className="mt-2 text-[11px] text-[#55555E]">{readNote}</p>}
+
+                {readBatch && !reading && (
+                  <div className="mt-3 border-t border-[#EDEDF0] pt-3">
+                    <VehicleSuggestions
+                      vehicleId={vehicleId}
+                      canEdit={canEdit}
+                      inline
+                      batchId={readBatch}
+                      emptyText="Nothing could be read from those photos that this vehicle does not already have."
+                      onApplied={(written) => {
+                        if (written > 0) {
+                          void refresh();
+                          window.dispatchEvent(new Event("vehicle-profile-refresh"));
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {items.map((m) => (
+              <div key={m.id} className="relative">
+              {picking && m.kind === "original" && (
+                <label className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-1 shadow-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    aria-label={`Read ${m.file_name ?? "this photo"} for vehicle details`}
+                    checked={chosen.has(m.id)}
+                    onChange={(e) => {
+                      const n = new Set(chosen);
+                      e.target.checked ? n.add(m.id) : n.delete(m.id);
+                      setChosen(n);
+                    }}
+                  />
+                </label>
+              )}
               <PhotoTile
-                key={m.id}
                 m={m}
                 source={m.derived_from_id ? (byId.get(m.derived_from_id) ?? null) : null}
                 canEdit={canEdit}
@@ -329,6 +547,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onDelete={() => destroy(m)}
                 onEnhance={(mode) => enhance(m, mode as EnhanceMode)}
               />
+              </div>
             ))}
             </div>
           </>
