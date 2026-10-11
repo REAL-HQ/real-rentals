@@ -57,7 +57,7 @@ function missingColumns(err: { code?: string | null; message?: string | null } |
   if (!err) return false;
   // Undefined column (a select), and PostgREST's schema cache refusing an
   // update for a column it has never heard of.
-  if (err.code === "42703" || err.code === "PGRST204") return true;
+
   // Older PostgREST versions report it in words only.
   return /contact_status|contact_follow_up_on/.test(String(err.message ?? ""));
 }
@@ -124,7 +124,7 @@ export const setContactStatus = createServerFn({ method: "POST" })
         ...patch,
         // Who and when, on the row, so the list can show it without a join.
         contact_status_at: new Date().toISOString(),
-        contact_status_by: null,
+        contact_status_by: actor.userId,
       } as never)
       .eq("id", data.applicationId)
       .select(`id,${CONTACT_COLUMNS}`)

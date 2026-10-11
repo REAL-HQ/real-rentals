@@ -63,7 +63,7 @@ var SENSITIVE_LIST_FIELDS = [
 ];
 function projectDriverRow(row, canSeeSensitive) {
   if (canSeeSensitive) return row;
-  const out = {};
+  const out = { ...row };
   for (const f of COORDINATOR_LIST_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(row, f)) out[f] = row[f];
   }
