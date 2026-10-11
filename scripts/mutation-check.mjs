@@ -50,6 +50,8 @@ const BOOKACT = "src/components/admin/BookingActions.tsx";
 const RENTALFN2 = "src/lib/rentals.functions.ts";
 const CSFN = "src/lib/contact-status.functions.ts";
 const CSRULES = "src/lib/contact-status.ts";
+const DOCFN = "src/lib/documents.functions.ts";
+const APPFN = "src/lib/applications.functions.ts";
 const INSPFN2 = "src/lib/inspections.functions.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
@@ -70,6 +72,7 @@ const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
 const INSPPERMS = "scripts/inspection-permissions.test.mjs";
 const AGPDF = "scripts/agreement-pdf-access.test.mjs";
 const CONTACT = "scripts/contact-status.test.mjs";
+const IDENTITY = "scripts/identity-authorization.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -347,6 +350,25 @@ const MUTATIONS = [
   ["a database without the columns is not reported as supported", CSRULES,
     '  const supported = Object.prototype.hasOwnProperty.call(r, "contact_status");',
     "  const supported = true;", CONTACT],
+  // ------------------------------------- identity documents are Manager+
+  ["a driver's document vault is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);", IDENTITY],
+  ["staff uploading a document must be a Manager", DOCFN,
+    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    let applicationId = data.applicationId ?? null;",
+    "    let applicationId = data.applicationId ?? null;", IDENTITY],
+  ["staff confirming a document must be a Manager", DOCFN,
+    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    const staff = admin || (await isStaffUser(context.userId));",
+    "    const staff = admin || (await isStaffUser(context.userId));", IDENTITY],
+  ["retitling a document is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    await assertMayTouch(context.userId, data.documentId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    await assertMayTouch(context.userId, data.documentId);", IDENTITY],
+  ["verifying an identity document is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    const { logAudit } = await import(\"@/lib/audit.server\");\n    const actor = await requireManager(context.userId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    const { logAudit } = await import(\"@/lib/audit.server\");\n    const actor = await requireStaff(context.userId);", IDENTITY],
+  ["reissuing an applicant link is Manager-and-above", APPFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    const actor = await requireManager(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    const actor = await requireStaff(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =", IDENTITY],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -426,7 +448,7 @@ for (const [what, file, from, to, suite] of ALL) {
 }
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
   INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
-  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES]) {
+  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
