@@ -150,7 +150,9 @@ ok(/vehicles\.some\(\(v\) => v\.id === fromVehicleId\)/.test(panelSrc),
 // inspections tab was not listed as an owner of `id`. Source-matching the
 // navigate() call passed the whole time.
 const adminSrc = readFileSync("src/routes/admin.tsx", "utf8");
-ok(/id: \["drivers", "vehicles", "inspections"\]/.test(adminSrc),
+// Asserted as membership, not as the whole list: another tab joining the
+// owners of `id` is not this guard breaking.
+ok(/\n  id: \[[^\]]*"inspections"[^\]]*\],/.test(adminSrc),
   "the inspections tab is allowed to keep a vehicle id in its URL");
 
 // ====================================================== 2. three title facts

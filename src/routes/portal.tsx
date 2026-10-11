@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBusinessPhone } from "@/lib/company.functions";
 import {
   getDriverDashboard,
+  getMyRentalHistory,
   getDriverDocuments,
   getDriverIssues,
   createDriverIssue,
@@ -1541,6 +1542,59 @@ function DashboardView({
           </ul>
         </div>
       )}
+
+      <MyRentalsCard />
+    </div>
+  );
+}
+
+/**
+ * The driver's own rentals, past and present.
+ *
+ * Every other portal read asks for the ACTIVE rental, which is right for "what
+ * am I driving?" and wrong for "what did I drive?": a rental that ended simply
+ * disappeared, so a driver could not see the dates, the car or the agreement of
+ * something they had lived with for months. Read-only, their own rentals only,
+ * and silent when there is nothing to show rather than printing an empty box.
+ */
+function MyRentalsCard() {
+  const fetchHistory = usePortalRead(getMyRentalHistory);
+  const { data } = useQuery({
+    queryKey: ["driver-rental-history"],
+    queryFn: () => fetchHistory(),
+  });
+  const rows = (data ?? []) as Awaited<ReturnType<typeof getMyRentalHistory>>;
+  if (!rows.length) return null;
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5" data-testid="my-rentals">
+      <div className="text-sm font-semibold">My Rentals</div>
+      <ul className="mt-3 space-y-3">
+        {rows.map((r) => {
+          const car = r.vehicle
+            ? [r.vehicle.year, r.vehicle.make, r.vehicle.model].filter(Boolean).join(" ")
+            : null;
+          return (
+            <li
+              key={r.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+              data-rental={r.id}
+            >
+              <span className="font-medium">{car ?? "Vehicle not recorded"}</span>
+              {r.vehicle?.plate && (
+                <span className="font-mono text-xs text-muted-foreground">{r.vehicle.plate}</span>
+              )}
+              <span className="text-muted-foreground">
+                {r.start_date ?? "Start date not recorded"} →{" "}
+                {r.end_date ?? (r.open_ended ? "Open-ended" : "End date not recorded")}
+              </span>
+              <span className="rounded-full bg-soft px-2 py-0.5 text-xs">{r.phase}</span>
+              {r.agreement?.signed_at && (
+                <span className="text-xs text-muted-foreground">Agreement signed</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
