@@ -10,8 +10,8 @@
  * that had simply found nothing would pass as if they had been refused.
  *
  * Supported: select / insert / update / delete / upsert, chained with
- * eq, neq, in, is, or, gte, lte, order, limit, single, maybeSingle, and
- * select(..., { count, head }). Plus storage.from().download().
+ * eq, neq, ilike, in, is, or, gte, lte, order, limit, range, single,
+ * maybeSingle, and select(..., { count, head }). Plus storage.from().download().
  */
 const S = (globalThis.__fakeSb ??= { tables: {}, files: {}, log: [], defaults: {} });
 
@@ -38,6 +38,7 @@ class Query {
   constructor(table, kind, payload, opts = {}) {
     this.table = table; this.kind = kind; this.payload = payload;
     this.filters = []; this.orders = []; this.limitN = null;
+    this.rangeFrom = null; this.rangeTo = null; this.total = null;
     this.count = opts.count ?? null; this.head = opts.head ?? false;
   }
   // PostgREST lets a filter address inside a json column: value->>version.
@@ -49,6 +50,20 @@ class Query {
     return this;
   }
   neq(f, v) { this.filters.push((r) => String(r[f]) !== String(v)); return this; }
+  /**
+   * ilike is a case-insensitive LIKE, not a case-insensitive equals: % and _
+   * are wildcards. The duplicate-plate check hands a plate straight to it, so
+   * a fake that compared strings would hide the reason a plate's characters
+   * are validated at all — a plate of "%" matches every car in the fleet.
+   */
+  ilike(f, pat) {
+    const rx = new RegExp(
+      `^${String(pat).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`,
+      "i",
+    );
+    this.filters.push((r) => r[f] != null && rx.test(String(r[f])));
+    return this;
+  }
   in(f, vs) { this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
   or(expr) { this.filters.push((r) => matchOr(r, expr)); return this; }
@@ -56,6 +71,12 @@ class Query {
   lte(f, v) { this.filters.push((r) => String(r[f]) <= String(v)); return this; }
   order(f, o = {}) { this.orders.push([f, o.ascending !== false]); return this; }
   limit(n) { this.limitN = n; return this; }
+  /**
+   * One page, PostgREST's inclusive from–to. `count: "exact"` still reports
+   * the TOTAL that matched, not the size of the page — a fake that counted
+   * the slice would make a paginated list claim one page was the whole fleet.
+   */
+  range(from, to) { this.rangeFrom = from; this.rangeTo = to; return this; }
   select(_cols, opts = {}) {
     this.selected = true;
     if (opts.count) this.count = opts.count;
@@ -70,14 +91,16 @@ class Query {
         return x === y ? 0 : (x < y ? -1 : 1) * (asc ? 1 : -1);
       });
     }
+    this.total = out.length;
     if (this.limitN != null) out = out.slice(0, this.limitN);
+    if (this.rangeFrom != null) out = out.slice(this.rangeFrom, (this.rangeTo ?? out.length) + 1);
     return out;
   }
   _run() {
     const t = this.table;
     if (this.kind === "select") {
       const m = this._matching();
-      return { data: this.head ? null : m.map(clone), error: null, count: m.length };
+      return { data: this.head ? null : m.map(clone), error: null, count: this.total ?? m.length };
     }
     if (this.kind === "insert") {
       // Lets a test make one table refuse writes, to exercise the paths that

@@ -394,7 +394,21 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       {props.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-[13px] font-semibold mr-auto">Vehicles</h3>
-          <button onClick={selectAllSafe} disabled={!pending.length} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white px-4 text-sm font-medium disabled:opacity-40">Select All Safe</button>
+          {isManager ? (
+            <button
+              onClick={selectAllSafe}
+              disabled={!pending.length}
+              className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white px-4 text-sm font-medium disabled:opacity-40"
+            >
+              Select All Safe
+            </button>
+          ) : (
+            /* A Coordinator prepares; a Manager applies. Saying so beats a
+               screen that is simply missing its buttons. */
+            <span className="text-xs text-[#9A9AA3]">
+              Ready for Manager review — applying details to a vehicle is Manager-only.
+            </span>
+          )}
         </div>
       )}
       <div className="space-y-3">
@@ -404,7 +418,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
         ))}
       </div>
 
-      {selected.length > 0 && (
+      {isManager && selected.length > 0 && (
         <div className="fixed bottom-0 inset-x-0 md:left-auto md:right-6 md:bottom-6 md:w-auto z-30 bg-white border-t md:border md:rounded-xl border-[#EDEDF0] shadow-lg p-3 flex items-center gap-3">
           <span className="text-sm text-[#55555E]">{selected.length} selected</span>
           <button onClick={() => setConfirming(true)} className="min-h-[44px] rounded-md bg-[#D03020] text-white px-5 text-sm font-medium ml-auto">
@@ -474,13 +488,13 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-xs min-w-[420px]">
             <thead><tr className="text-left text-[#9A9AA3]">
-              {p.kind !== "new" && !done && <th className="py-1 w-6"></th>}
+              {p.kind !== "new" && !done && isManager && <th className="py-1 w-6"></th>}
               <th className="py-1">Field</th>{p.kind !== "new" && <th>Current</th>}<th>{p.kind === "new" ? "Value" : "Proposed"}</th><th>Confidence</th>
             </tr></thead>
             <tbody>
               {changes.map((c) => (
                 <tr key={c.field} className="border-t border-[#F2F2F4]">
-                  {p.kind !== "new" && !done && (
+                  {p.kind !== "new" && !done && isManager && (
                     <td className="py-1.5">
                       <input type="checkbox" aria-label={`Accept ${c.label}`} checked={dec.accept.has(c.field)}
                         onChange={() => setOne({ accept: toggle(dec.accept, c.field), action: dec.action ?? "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id })} />
@@ -522,19 +536,30 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
 
       {!done && (
         <div className="mt-3 flex flex-wrap gap-2 items-center">
-          {p.kind === "new" && (
+          {/* Creating or matching WRITES to the vehicle, so those two are
+              Manager-and-above, as the server now requires. Dismissing a
+              proposal changes no vehicle and stays part of preparing the
+              queue for review. */}
+          {isManager && p.kind === "new" && (
             <ActionBtn active={dec.action === "create"} onClick={() => setOne({ action: dec.action === "create" ? null : "create" })} disabled={!p.vin_check?.formatValid}>Create Vehicle</ActionBtn>
           )}
-          <ActionBtn active={dec.action === "match"} onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })} disabled={!vehicles.length}>
-            <Link2 className="w-3.5 h-3.5" /> {p.kind === "new" ? "Match Existing" : "Apply to Vehicle"}
-          </ActionBtn>
-          {dec.action === "match" && (
+          {isManager && (
+            <ActionBtn
+              active={dec.action === "match"}
+              onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })}
+              disabled={!vehicles.length}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              {p.kind === "new" ? "Match Existing" : "Apply to Vehicle"}
+            </ActionBtn>
+          )}
+          {isManager && dec.action === "match" && (
             <select value={dec.vehicleId ?? ""} onChange={(e) => setOne({ vehicleId: e.target.value })} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-full">
               {vehicles.map((v) => <option key={v.id} value={v.id}>{vehLabel(v.id)}</option>)}
             </select>
           )}
           <ActionBtn active={dec.action === "ignore"} onClick={() => setOne({ action: dec.action === "ignore" ? null : "ignore" })}>Ignore</ActionBtn>
-          {p.kind !== "new" && changes.some((c) => c.safe) && (
+          {isManager && p.kind !== "new" && changes.some((c) => c.safe) && (
             <button onClick={() => setOne({ action: "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id, accept: new Set(changes.filter((c) => c.safe).map((c) => c.field)) })}
               className="min-h-[44px] px-3 text-xs text-[#D03020]">Accept Safe Changes</button>
           )}

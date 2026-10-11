@@ -33,13 +33,23 @@ const INSPFN = "src/lib/inspections.functions.ts";
 const INSPUI = "src/components/admin/InspectionsPanel.tsx";
 const PROFILE = "src/components/admin/VehicleProfile.tsx";
 const ADMIN = "src/routes/admin.tsx";
+const VEH = "src/lib/vehicles.functions.ts";
+const EDITOR = "src/components/admin/AddVehicleDialog.tsx";
+const LIST = "src/lib/vehicles-list.functions.ts";
+const LISTRULES = "src/lib/vehicles-list.ts";
+const PANELUI = "src/components/admin/VehiclesPanel.tsx";
+const INBOXUI = "src/components/admin/FleetInboxPanel.tsx";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
 const UI = "scripts/vehicle-photo-analysis-ui.test.mjs";
 const CAPTEST = "scripts/photo-reading-cap.test.mjs";
 const E2E = "scripts/vehicle-photo-read-e2e.test.mjs";
+const PLATE_E2E = "scripts/vehicle-plate-editing-e2e.test.mjs";
+const PHASE2_E2E = "scripts/vehicle-onboarding-phase2-e2e.test.mjs";
 const READYTEST = "scripts/vehicle-readiness-phase1.test.mjs";
+const PLATETEST = "scripts/vehicle-plate-editing.test.mjs";
+const PHASE2 = "scripts/vehicle-onboarding-phase2.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -105,6 +115,91 @@ const MUTATIONS = [
   ["every check carries a category", READY,
     '{ key: "safety", label: "Safety Issues", category: "operational", status: "ready"',
     '{ key: "safety", label: "Safety Issues", status: "ready"', READYTEST],
+  ["the drawer that shows the plate can edit it", VEH,
+    '    "license_plate",\n    "plate_state",\n    "seats",', '    "seats",', PLATETEST],
+  ["a plate is stored upper-cased, so the unique index agrees with it", VEH,
+    'const UPPERCASE_FIELDS = new Set(["vin", "license_plate", "plate_state", "registration_state"]);',
+    'const UPPERCASE_FIELDS = new Set(["vin", "registration_state"]);', PLATETEST],
+  ["what is never a plate is refused", VEH,
+    "      const problem = plateProblem(nextPlate);\n      if (problem) return { ok: false, error: problem, field: \"license_plate\" };",
+    "", PLATETEST],
+  ["a plate state is one of the states", VEH,
+    "      if (!isUsStateCode(nextPlateState))", "      if (false)", PLATETEST],
+  ["two cars cannot wear one plate", VEH,
+    '      ["license_plate", "license_plate", "plate"],\n', "", PLATETEST],
+  ["Add Vehicle refuses what the drawer would refuse", VEH,
+    "        const problem = plateProblem(data.license_plate.trim().toUpperCase());\n        if (problem) return { ok: false, error: problem, field: \"license_plate\" };",
+    "", PLATETEST],
+  ["editing a vehicle is Manager-only", VEH,
+    "    const actor = await requireManager(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    return applySection(supabaseAdmin, actor, {",
+    "    const actor = await requireStaff(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    return applySection(supabaseAdmin, actor, {",
+    PLATETEST],
+  ["the plate state dropdown offers the states", PROFILE,
+    "            options={usStateOptions()}", '            options={[{ value: "", label: "—" }]}', PLATETEST],
+  ["Edit Details points at the drawer that owns the expiry dates", PROFILE,
+    'onOpenSection("dmv");', 'onOpenSection("identity");', PLATETEST],
+  ["a handed-over drawer starts from the saved record", PROFILE,
+    "          key={editing}\n", "", PLATETEST],
+  ["an extracted plate is never swept in by Approve Safe Fields", INBOX,
+    '            && !["license_plate", "plate_state", "current_odometer", "vin"].includes(c.field)',
+    "            && true", PLATETEST],
+  ["Add Vehicle chooses a state rather than typing one", EDITOR,
+    "              {usStateOptions().map((o) => (", "              {[{ value: \"\", label: \"—\" }].map((o) => (", PLATETEST],
+  ["a refused field is reported, not swallowed", VEH,
+    '        if (!canTitle) rejected.push({ ...named(k), reason: "Title details are Owner-only." });',
+    "        if (!canTitle) { /* nothing */ }", PHASE2],
+  ["a field that did not move is not reported as saved", VEH,
+    "      (changedKeys.includes(k) ? saved : unchanged).push(named(k));",
+    "      saved.push(named(k));", PHASE2],
+  ["a field this section does not own is reported as ignored", VEH,
+    "      .filter((k) => !allowed.includes(k))", "      .filter(() => false)", PHASE2],
+  ["the save answers about the fields the operator edited", VEH,
+    "      intended: data.intended,", "      intended: undefined,", PHASE2],
+  ["applying an extracted detail is Manager-and-above", INBOX,
+    '    if (!isManager && data.decisions.some((d) => d.action !== "ignore")) {\n      throw new Error("Forbidden: applying extracted details to a vehicle is Manager-only.");\n    }',
+    "", PHASE2],
+  ["a Coordinator keeps dismissing a proposal", INBOX,
+    'data.decisions.some((d) => d.action !== "ignore")', "data.decisions.length", PHASE2],
+  ["the Fleet Inbox apply bar is Manager-only", INBOXUI,
+    "      {isManager && selected.length > 0 && (", "      {selected.length > 0 && (", PHASE2],
+  ["the accept checkboxes are Manager-only", INBOXUI,
+    '                  {p.kind !== "new" && !done && isManager && (',
+    '                  {p.kind !== "new" && !done && (', PHASE2],
+  ["an extracted plate needs an individual tick", RULES,
+    '  "vin", "license_plate", "title_number", "title_status", ...FINANCE_FIELDS,',
+    '  "vin", "title_number", "title_status", ...FINANCE_FIELDS,', PHASE2],
+  ["a high-risk field with no tick is reported as waiting", INBOX,
+    "            if (HIGH_RISK.has(f) && !dec.confirmHighRisk.includes(f)) {\n              needsConfirmation.push(f);",
+    "            if (HIGH_RISK.has(f) && !dec.confirmHighRisk.includes(f)) {", PHASE2],
+  ["a conflicting value with no tick is reported as waiting", INBOX,
+    '            if (c.kind === "conflict" && !dec.confirmHighRisk.includes(f)) {\n              needsConfirmation.push(f);',
+    '            if (c.kind === "conflict" && !dec.confirmHighRisk.includes(f)) {', PHASE2],
+  ["an Owner-only field dropped by the apply path says so", INBOX,
+    '          refused.push({ field: f, label: labelOf(f), reason: "Owner only." });', "", PHASE2],
+  ["a value the record already holds is not reported as applied", INBOX,
+    "          if (!c) {\n            unchangedFields.push(f);", "          if (!c) {", PHASE2],
+  ["a car that cannot be rented is not graded ready", LISTRULES,
+    '  if (!isRentalReady(v)) return "not_ready";', '  if (false) return "not_ready";', PHASE2],
+  ["an unpublished photo does not make a car listing ready", LISTRULES,
+    '  return hasPublishedPhoto ? "listing_ready" : "rental_ready";', '  return "listing_ready";', PHASE2],
+  ["only an explicitly published photo counts", LIST,
+    '      supabaseAdmin.from("vehicle_media").select("vehicle_id").eq("published", true).limit(20000),',
+    '      supabaseAdmin.from("vehicle_media").select("vehicle_id").limit(20000),', PHASE2],
+  ["the readiness chips count the scope, not the page", LIST,
+    "        READINESS_SWEEP_MAX + 1,", "        1,", PHASE2],
+  ["the readiness filter reaches the query, so paging stays right", LIST,
+    '      query = query.in("id", matching);', "", PHASE2],
+  ["an unknown band is not a filter", LIST,
+    '    const ready = isReadinessFilter(data.ready) ? data.ready : "all";',
+    "    const ready = data.ready;", PHASE2],
+  ["the review panel reads the itemised answer", PANEL,
+    "          applied += Array.isArray(r.applied)",
+    "          applied += (0, Array).isArray(r.applied)", PHASE2],
+  ["the review panel reports a refused detail", PANEL,
+    "      for (const r of refused) parts.push(`${titleCase(r.label)} was not saved: ${r.reason}`);",
+    "", PHASE2],
+  ["paperwork is offered after the car is saved", EDITOR,
+    '    setCreated({ id, label });\n    setMode("docs");', "    onCreated(id);", PHASE2],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -117,6 +212,23 @@ const E2E_MUTATIONS = [
     "                      disabled={reading || !!readingStatus?.refusal}", "                      disabled={reading}", E2E],
   ["only original photographs can be chosen for reading", PHOTOS,
     '              {picking && m.kind === "original" && (', "              {picking && (", E2E],
+  ["Edit Details really has somewhere to type a plate", PROFILE,
+    '              label="License Plate"\n              value={str("license_plate")}',
+    '              label="Listing Name"\n              value={str("nickname")}', PLATE_E2E],
+  ["the plate state is chosen, not typed", PROFILE,
+    "            <Choice\n              label=\"Plate State\"\n              value={str(\"plate_state\")}\n              onChange={(v) => set(\"plate_state\", v)}\n              options={usStateOptions()}",
+    "            <Text\n              label=\"Plate State\"\n              value={str(\"plate_state\")}\n              onChange={(v) => set(\"plate_state\", v)}\n              hint={undefined}", PLATE_E2E],
+  ["a drawer handed to another section does not carry stale edits", PROFILE,
+    "          key={editing}\n", "", PLATE_E2E],
+  ["the vehicles tab owns the readiness filter, so the router keeps it", ADMIN,
+    '  ready: ["vehicles"],', "", PHASE2_E2E],
+  ["the readiness chip actually filters", PANELUI,
+    '                    onClick={() => setList({ ready: active ? "all" : band })}',
+    "                    onClick={() => setList({})}", PHASE2_E2E],
+  ["the drawer tells the server which fields were edited", PROFILE,
+    "values: f, intended: edited }", "values: f, intended: [] }", PHASE2_E2E],
+  ["a save with nothing changed does not claim one", PROFILE,
+    '        toast.info("No changes to save");', '        toast.success("Saved");', PHASE2_E2E],
   ["accepting a detail reloads the vehicle profile", PHOTOS,
     "                          window.dispatchEvent(new Event(\"vehicle-profile-refresh\"));\n                        }\n                      }}",
     "                        }\n                      }}", E2E],
@@ -136,6 +248,12 @@ for (const [what, file, from, to, suite] of ALL) {
   copyFileSync(file, bak);
   try {
     writeFileSync(file, src.replace(from, to));
+    // A browser suite asks the dev server for the file it is mid-way through
+    // recompiling, and a page that failed to build fails every assertion —
+    // including the ones this mutation was not about. Observed: a dropdown
+    // mutation whose first red line was a field three checks earlier. Let HMR
+    // settle so the suite goes red for the reason under test.
+    if (/-e2e\.test\.mjs$/.test(suite)) await new Promise((r) => setTimeout(r, 6000));
     const run = spawnSync("node", [suite], { encoding: "utf8" });
     if (run.status === 0) {
       console.log(`  BLOCKER  ${what}\n           ${suite.split("/").pop()} still passed with the guard removed`);
@@ -147,7 +265,7 @@ for (const [what, file, from, to, suite] of ALL) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
