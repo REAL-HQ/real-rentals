@@ -1,1 +1,0 @@
-export const getRequest = () => ({ headers: new Map() });
