@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import type { ReadinessResult } from "@/lib/readiness";
 
 // Cars Available + waitlist.
 //
@@ -152,7 +153,17 @@ export type WaitlistEntry = {
   source: string | null;
   created_at: string;
   position: number | null;
+  /** null = no linked application: the list shows "Not Started". */
+  readiness: { result: ReadinessResult | null; docCount: number } | null;
 };
+
+/**
+ * The three availability numbers, kept separate on purpose:
+ *  fleetAvailable  vehicles whose status is Available (same rule as Overview)
+ *  rentalReady     active vehicles passing Rental Ready (identity + VIN + rate)
+ *  carsAvailable   the optional manual public override (app_settings)
+ */
+export type FleetAvailability = { fleetAvailable: number; rentalReady: number };
 
 export const listWaitlist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -160,6 +171,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
     entries: WaitlistEntry[];
     carsAvailable: number | null;
     waitingCount: number;
+    fleet: FleetAvailability;
   }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -185,6 +197,46 @@ export const listWaitlist = createServerFn({ method: "POST" })
         "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at",
       )
       .order("created_at", { ascending: true });
+
+    // Readiness only for entries linked to a real application (promotion
+    // writes promoted_application_id). No email/phone matching: that would be
+    // an identity guess. Same three bulk queries and the same module as Drivers.
+    const appIds = Array.from(
+      new Set(((rows ?? []) as any[]).map((r) => r.promoted_application_id).filter(Boolean)),
+    ) as string[];
+    const { buildReadinessIndex, READINESS_APPLICATION_SELECT, READINESS_SCREENING_SELECT, READINESS_DOCUMENT_SELECT } =
+      await import("@/lib/readiness-index");
+    const { requiredDocCounts } = await import("@/lib/required-docs");
+    let readinessIndex = new Map<string, ReadinessResult>();
+    let docCounts: Record<string, number> = {};
+    if (appIds.length) {
+      const [apps, scr, docs] = await Promise.all([
+        supabaseAdmin.from("applications").select(READINESS_APPLICATION_SELECT).in("id", appIds).is("deleted_at", null),
+        supabaseAdmin.from("driver_screenings").select(READINESS_SCREENING_SELECT).in("lead_id", appIds),
+        supabaseAdmin.from("documents").select(READINESS_DOCUMENT_SELECT).in("driver_id", appIds),
+      ]);
+      readinessIndex = buildReadinessIndex((apps.data ?? []) as any, (scr.data ?? []) as any, (docs.data ?? []) as any);
+      docCounts = requiredDocCounts((docs.data ?? []) as any);
+    }
+
+    // Fleet numbers from the existing rules — status via summarizeFleet (as
+    // on Overview), readiness via isRentalReady (mirror of
+    // vehicle_rental_ready_missing). Nothing here writes or infers status.
+    const { summarizeFleet, INACTIVE_VEHICLE_STATUSES } = await import("@/lib/fleet-summary");
+    const { isRentalReady } = await import("@/lib/vehicle-readiness");
+    const { data: vrows } = await supabaseAdmin
+      .from("vehicles")
+      .select("status,archived_at,year,make,model,vin,weekly_rate");
+    const vlist = (vrows ?? []) as any[];
+    const fleet: FleetAvailability = {
+      fleetAvailable: summarizeFleet(vlist).available,
+      rentalReady: vlist.filter(
+        (v) =>
+          !v.archived_at &&
+          !(INACTIVE_VEHICLE_STATUSES as readonly string[]).includes(String(v.status ?? "").toLowerCase()) &&
+          isRentalReady(v),
+      ).length,
+    };
 
     const counters = new Map<string, number>();
     const entries: WaitlistEntry[] = ((rows ?? []) as any[]).map((r) => {
@@ -212,6 +264,9 @@ export const listWaitlist = createServerFn({ method: "POST" })
         source: r.source,
         created_at: r.created_at,
         position,
+        readiness: r.promoted_application_id && readinessIndex.has(r.promoted_application_id)
+          ? { result: readinessIndex.get(r.promoted_application_id)!, docCount: docCounts[r.promoted_application_id] ?? 0 }
+          : null,
       };
     });
 
@@ -219,6 +274,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
       entries,
       carsAvailable,
       waitingCount: entries.filter((e) => e.status === "waiting").length,
+      fleet,
     };
   });
 
