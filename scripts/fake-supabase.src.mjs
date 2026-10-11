@@ -205,6 +205,13 @@ export const supabaseAdmin = {
       // A signed URL is how private evidence reaches a staff screen. The fake
       // hands back a recognisable stand-in so a test can tell "signed" from
       // "served straight out of a public bucket", which is the real risk.
+      // A signed UPLOAD url is scoped to one path. Returning the path back is
+      // what lets a test prove the server pinned it to one vehicle's folder
+      // instead of handing out the bucket.
+      createSignedUploadUrl: async (path) => ({
+        data: { path, token: `upload-token:${bucket}/${path}` },
+        error: null,
+      }),
       createSignedUrl: async (path, seconds) => ({
         data: { signedUrl: `signed://${bucket}/${path}?exp=${seconds}` },
         error: null,

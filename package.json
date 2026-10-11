@@ -33,6 +33,7 @@
     "test:bookings": "node scripts/bookings-list.test.mjs",
     "test:bookings-detail": "node scripts/bookings-details.test.mjs",
     "test:bookings-actions": "node scripts/bookings-actions.test.mjs",
+    "test:insp-perms": "node scripts/inspection-permissions.test.mjs",
     "test:bookings-e2e": "node scripts/bookings-e2e.test.mjs",
     "test:mutation": "node scripts/mutation-check.mjs",
     "test:driver": "node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs",

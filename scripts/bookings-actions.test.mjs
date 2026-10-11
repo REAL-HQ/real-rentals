@@ -188,14 +188,22 @@ ok(afterInsp.inspections.length === 1, "the inspection shows on the booking");
 ok(afterInsp.counts.conditionPhotos === 1, "and so does its photo");
 ok(afterInsp.inspections[0].photoCount === 1, "counted against the inspection that took it");
 
-console.log("\\nwho may start one is unchanged by this release");
-for (const [who, why] of [[U1, "a driver"], ["nobody", "somebody with no role"], ["crd-1", "a Coordinator — isStaff() here is admin/team only"]]) {
+console.log("\\nwho may start one");
+for (const [who, why] of [[U1, "a driver"], ["nobody", "somebody with no role"]]) {
   seed();
   let t = null;
   try { await call(startInspection, { vehicleId: V1, templateId: TPL_IN }, who); } catch (e) { t = e; }
   ok(!!t && /Forbidden/.test(String(t.message)), `${why} is refused`);
   ok(S.tables.inspections.length === 0, `  and no inspection row was written`);
 }
+// A Coordinator may now record a handoff — canInspect() admits them, and the
+// whole boundary is pinned in scripts/inspection-permissions.test.mjs. Here it
+// matters only because the Bookings buttons are offered on that basis.
+seed();
+const crdStarted = await call(startInspection, { vehicleId: V1, templateId: TPL_IN }, "crd-1");
+ok(!!crdStarted?.id, "a Coordinator CAN start a handoff inspection");
+ok(S.tables.inspections.find((x) => x.id === crdStarted.id)?.rental_id === R1,
+  "  and it is filed against the rental the car is out on");
 let threw = null;
 
 // ====================================== incidents and service on the booking

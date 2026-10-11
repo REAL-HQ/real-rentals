@@ -52,6 +52,7 @@ const BOOKLIST = "scripts/bookings-list.test.mjs";
 const BOOKDETAIL = "scripts/bookings-details.test.mjs";
 const BOOKE2E = "scripts/bookings-e2e.test.mjs";
 const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
+const INSPPERMS = "scripts/inspection-permissions.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -99,7 +100,8 @@ const MUTATIONS = [
   ["an inspection cannot be started against a vehicle that is not there", INSPFN,
     '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", READYTEST],
   ["an archived vehicle cannot be inspected", INSPFN,
-    '    if (vehicle.archived_at) throw new Error("That vehicle is archived — restore it before inspecting it.");', "", READYTEST],
+    '    if (vehicle.archived_at)\n      throw new Error("That vehicle is archived — restore it before inspecting it.");',
+    "", READYTEST],
   ["the inspection form prefers the vehicle it was sent", INSPUI,
     "useState(initialVehicleId ?? vehicles[0]?.id ?? \"\")", 'useState(vehicles[0]?.id ?? "")', READYTEST],
   ["a readiness Fix carries the vehicle id", PROFILE,
@@ -171,6 +173,28 @@ const MUTATIONS = [
   ["End Rental is a Manager action", RENTALFN2,
     '  const { requireManager } = await import("@/lib/roles.server");\n  return requireManager(userId);',
     '  const { requireStaff } = await import("@/lib/roles.server");\n  return requireStaff(userId);', BOOKACTTEST],
+  // ------------------------------------ the Coordinator handoff permission
+  ["destroying a condition photo stays Owner-or-Manager", INSPFN2,
+    "async function isStaff(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"manager\");",
+    "async function isStaff(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"coordinator\");", INSPPERMS],
+  ["the handoff permission is Coordinator-and-above, not narrower", INSPFN2,
+    "async function canInspect(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"coordinator\");",
+    "async function canInspect(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"manager\");", INSPPERMS],
+  ["the delete is the one endpoint still asking isStaff", INSPFN2,
+    '    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");',
+    '    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");', INSPPERMS],
+  ["an upload is pinned to one vehicle's folder", INSPFN2,
+    '    if (!data.path.startsWith(`${data.vehicleId}/`)) throw new Error("Invalid upload path");',
+    "", INSPPERMS],
+  ["a driver's upload cannot name another car", INSPFN2,
+    '      if (!rental?.vehicle_id) throw new Error("No active rental on file");\n      vehicleId = rental.vehicle_id as string;',
+    '      if (!rental?.vehicle_id) throw new Error("No active rental on file");',
+    INSPPERMS],
+  ["a driver reads only an inspection on the car they rent", INSPFN2,
+    '      if (!rental || rental.vehicle_id !== inspection.vehicle_id) throw new Error("Forbidden");',
+    "", INSPPERMS],
+  ["a forged vehicle id cannot start an inspection", INSPFN2,
+    '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", INSPPERMS],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],

@@ -544,14 +544,37 @@ async function runCoordinator(label, viewport) {
   // inspections.functions.ts is admin/team only — the button matches the
   // server rather than offering a call that would be refused.
   ok(await page.locator('[data-testid="booking-actions"]').count() === 1, "the Actions card still renders");
-  for (const a of ["end-rental", "settle-deposit", "charges", "incidents", "checkout", "checkin"]) {
+  for (const a of ["end-rental", "settle-deposit", "charges", "incidents"]) {
     ok(await page.locator(`[data-testid="action-${a}"]`).count() === 0,
       `  ${a} is not offered to a Coordinator`);
   }
-  for (const a of ["message", "maintenance"]) {
+  // The handoff IS theirs now: canInspect() admits a Coordinator to recording
+  // one. Destroying a condition photo still asks isStaff(), unchanged.
+  for (const a of ["checkout", "checkin", "message", "maintenance"]) {
     ok(await page.locator(`[data-testid="action-${a}"]`).count() === 1,
-      `  control: ${a} IS offered, so the absences above are the boundary`);
+      `  ${a} IS offered to a Coordinator, so the absences above are the boundary`);
   }
+
+  // And it works end to end at this width, not merely renders.
+  inputs.length = 0;
+  await page.locator('[data-testid="action-checkin"]').click();
+  await page.waitForTimeout(1200);
+  ok(await page.locator('[data-testid="handoff-dialog"]').count() === 1,
+    "a Coordinator can open the handoff dialog");
+  await page.locator('[data-testid="handoff-start"]').click();
+  await page.waitForTimeout(1800);
+  const crdStart = inputs.find((i) => /startInspection/.test(i.name));
+  ok(!!crdStart, "and start the inspection");
+  ok(crdStart?.input?.rentalId === R1 && crdStart?.input?.vehicleId === V1,
+    "  carrying this rental and this vehicle");
+  ok(await page.locator('[data-testid="handoff-runner"]').count() === 1,
+    "  landing in the same runner a Manager uses");
+  ok(!calls.some((c) => /deleteConditionMedia/.test(c)),
+    "and nothing on their path reaches the delete");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(800);
+  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2200);
   ok(await page.locator('[data-testid="booking-incidents"]').count() === 1,
     "they can see the car was in an accident — they may be arranging the tow");
   const crdOv = await page.locator("body").innerText();

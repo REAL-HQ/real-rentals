@@ -93,34 +93,29 @@ export function BookingActions({
           />
         )}
         {/*
-          Handoffs are Manager+ because that is who the SERVER lets inspect:
-          isStaff() in inspections.functions.ts accepts 'admin' and 'team'
-          only. The approved role model would like a Coordinator to record a
-          handoff, and widening that gate is a permission change on its own —
-          not something to slip in behind a new button. So the button matches
-          the real boundary rather than offering a Coordinator a call that
-          would be refused.
+          A handoff is operational work and needs no tier gate here: anybody who
+          can open a booking is at least a Coordinator (getBooking requires
+          staff), and canInspect() in inspections.functions.ts now admits a
+          Coordinator to exactly the handoff — start, record, complete, upload
+          and read photos. Destroying a condition photo still asks isStaff(),
+          which is unchanged at Manager+.
         */}
-        {d.canManage && (
-          <ActionButton
-            icon={<ClipboardCheck className="w-3.5 h-3.5" strokeWidth={1.75} />}
-            label="Check-Out"
-            testId="action-checkout"
-            disabled={!vehicleId}
-            title={vehicleId ? undefined : "This rental has no vehicle linked."}
-            onClick={() => setHandoff("checkout")}
-          />
-        )}
-        {d.canManage && (
-          <ActionButton
-            icon={<ClipboardCheck className="w-3.5 h-3.5" strokeWidth={1.75} />}
-            label="Check-In"
-            testId="action-checkin"
-            disabled={!vehicleId}
-            title={vehicleId ? undefined : "This rental has no vehicle linked."}
-            onClick={() => setHandoff("checkin")}
-          />
-        )}
+        <ActionButton
+          icon={<ClipboardCheck className="w-3.5 h-3.5" strokeWidth={1.75} />}
+          label="Check-Out"
+          testId="action-checkout"
+          disabled={!vehicleId}
+          title={vehicleId ? undefined : "This rental has no vehicle linked."}
+          onClick={() => setHandoff("checkout")}
+        />
+        <ActionButton
+          icon={<ClipboardCheck className="w-3.5 h-3.5" strokeWidth={1.75} />}
+          label="Check-In"
+          testId="action-checkin"
+          disabled={!vehicleId}
+          title={vehicleId ? undefined : "This rental has no vehicle linked."}
+          onClick={() => setHandoff("checkin")}
+        />
         <ActionButton
           icon={<MessageSquare className="w-3.5 h-3.5" strokeWidth={1.75} />}
           label="Message Driver"
