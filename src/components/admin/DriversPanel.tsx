@@ -866,7 +866,7 @@ setDocCounts(requiredDocCounts(rows));
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Contact Status
+                  Contact
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Created

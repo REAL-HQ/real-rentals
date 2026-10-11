@@ -189,7 +189,7 @@ async function open(viewport, { migrated = true, role = "coordinator", canSeeSen
   // domcontentloaded, not networkidle: the admin shell keeps a poll open, so
   // the network never goes idle and the navigation times out instead.
   await page.goto(`${BASE}/admin?tab=drivers`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("th:has-text(\"Contact Status\"), td:has-text(\"Not Enabled\")", { timeout: 30000 });
+  await page.waitForSelector("th:has-text(\"Contact\"), td:has-text(\"Not Enabled\")", { timeout: 30000 });
   await page.waitForTimeout(1800);
   return { ctx, page, errors };
 }
@@ -213,8 +213,8 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   const { ctx, page, errors } = await open(viewport);
 
   console.log("\nthe column and the badges");
-  const header = await page.locator("th", { hasText: "Contact Status" }).count();
-  ok(header === 1, `there is one Contact Status column (${header})`);
+  const header = await page.locator("th", { hasText: /^Contact$/ }).count();
+  ok(header === 1, `there is one Contact column (${header})`);
   const appStatus = await page.locator("th").filter({ hasText: /^Status$/i }).count();
   ok(appStatus === 1, "and the application Status column is still beside it");
   const shown = await page.locator("[data-contact-status]").evaluateAll((e) => e.map((x) => x.dataset.contactStatus));
