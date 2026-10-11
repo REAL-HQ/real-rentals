@@ -5826,6 +5826,8 @@ export type Database = {
       }
     }
     Views: {
+      application_read_projection: { Row: Database["public"]["Tables"]["applications"]["Row"] & { identity_license_on_file: boolean; identity_insurance_on_file: boolean; identity_profile_on_file: boolean; identity_trips_on_file: boolean }; Relationships: Database["public"]["Tables"]["applications"]["Relationships"] };
+      identity_review_read_projection: { Row: Database["public"]["Tables"]["application_identity_reviews"]["Row"]; Relationships: Database["public"]["Tables"]["application_identity_reviews"]["Relationships"] };
       vehicles_public: {
         Row: {
           badges: string[] | null

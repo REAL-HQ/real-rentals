@@ -82,6 +82,7 @@ function client(role = "service") {
       throw Error("Unexpected RPC " + name);
     },
     from(table) {
+      if (table === "identity_review_read_projection") table = "application_identity_reviews";
       let filters = [],
         op = "read",
         values,

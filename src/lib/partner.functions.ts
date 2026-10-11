@@ -75,7 +75,7 @@ export const getMyPartner = createServerFn({ method: "GET" })
     const [{ data: drivers }, { data: docs }] = await Promise.all([
       ids.length
         ? supabase
-            .from("applications")
+            .from("application_read_projection")
             .select(
               "id,full_name,vehicle_id,background_check_status,mvr_status,rideshare_history_status,earnings_verified_status,status",
             )

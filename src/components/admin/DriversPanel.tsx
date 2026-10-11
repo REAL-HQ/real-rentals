@@ -478,7 +478,7 @@ export function DriversPanel({
 
   useEffect(() => {
     supabase
-      .from("applications")
+      .from("application_read_projection")
       .select("*")
       .neq("status", "duplicate")
       .is("deleted_at", null)
@@ -621,7 +621,7 @@ setDocCounts(requiredDocCounts(rows));
       const res = await runMerge();
       toast.success(`Linked ${res.merged} duplicate rows.`);
       const { data } = await supabase
-        .from("applications")
+        .from("application_read_projection")
         .select("*")
         .neq("status", "duplicate")
       .is("deleted_at", null)
@@ -698,6 +698,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        canReviewIdentity={canManageWaitlist}
       />
       {deleteDialog}
       </>
@@ -736,7 +737,7 @@ setDocCounts(requiredDocCounts(rows));
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
           onRestored={() =>
-            void supabase.from("applications").select("*").neq("status", "duplicate").is("deleted_at", null)
+            void supabase.from("application_read_projection").select("*").neq("status", "duplicate").is("deleted_at", null)
               .order("created_at", { ascending: false }).then(({ data }) => data && setDrivers(data))
           }
         />
@@ -1024,7 +1025,7 @@ setDocCounts(requiredDocCounts(rows));
             onEntriesChange={(n) => setWaitlistCount(n)}
             onPromoted={() =>
               void supabase
-                .from("applications")
+                .from("application_read_projection")
                 .select("*")
                 .neq("status", "duplicate")
       .is("deleted_at", null)
@@ -1046,6 +1047,7 @@ function DriverDetail({
   onDelete,
   onScreeningChange,
   onVaultChange,
+  canReviewIdentity,
   isOwner,
   hasActiveRental,
   onRentalStarted,
@@ -1058,6 +1060,7 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  canReviewIdentity: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -1122,6 +1125,7 @@ function DriverDetail({
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [vaultLoading, setVaultLoading] = useState(true);
   const refreshVault = useCallback(async () => {
+    if (!canReviewIdentity) { setVaultDocs([]); setVaultLoading(false); return; }
     try {
       setVaultDocs(await listVaultDocs({ data: { applicationId: driver.id } }));
     } catch (e) {
@@ -1129,7 +1133,7 @@ function DriverDetail({
     } finally {
       setVaultLoading(false);
     }
-  }, [driver.id, listVaultDocs]);
+  }, [driver.id, listVaultDocs, canReviewIdentity]);
   useEffect(() => {
     setVaultLoading(true);
     void refreshVault();
@@ -1800,7 +1804,7 @@ function DriverDetail({
                 </div>
               </TabsContent>
 
-              <TabsContent value="documents" className="mt-0 space-y-4">
+              {canReviewIdentity && <TabsContent value="documents" className="mt-0 space-y-4">
                 <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
                 <SectionCard
                   title="Documents"
@@ -1822,7 +1826,7 @@ function DriverDetail({
                     />
                   </div>
                 </SectionCard>
-              </TabsContent>
+              </TabsContent>}
 
               <TabsContent value="screening" className="mt-0 space-y-4">
                 <ScreeningPipeline

@@ -1,0 +1,29 @@
+{
+  "mode": "PREPARATION_ONLY",
+  "staging_project": "bhpdppyxnkokzhlkgcsc",
+  "production_sequence": [
+    "0022",
+    "0025",
+    "0030",
+    "0032"
+  ],
+  "transaction_rule": "0030 and 0032 must commit together on a fresh baseline; never expose the unrepaired 0030 RPC",
+  "staging_expected_installed": [
+    "0022",
+    "0025",
+    "0030"
+  ],
+  "staging_pending": [
+    "0032"
+  ],
+  "staging_journal": "private.staging_install_receipts",
+  "staging_preflight": "Revalidate all actual receipts, SQL hashes, installed definitions/ACL and exact target before assigning next stage; do not replay applied SQL",
+  "production_0031": "SEPARATELY CONTROLLED; not in this package",
+  "journal_rule": "Existing journal unchanged; actual execution timestamps monotonically increase; receipt/journal and SQL atomic; exact-match repeat skips only after object/ACL verification",
+  "checksums": {
+    "0025_identity_audit_append_only.sql": "77c43ae57a78e418ece6e4f648088cfb5b93c4e147b4f647ae1d3fbf9b73e026",
+    "0030_coordinator_identity_access.sql": "975a1422c966e5169f65b0fa9f5c7d8af383b83562d81f4d8c70fe552c2f4934",
+    "0032_identity_rpc_fail_closed.sql": "cba69ec3c9eb6159f43760b6fb3a1f4a48d21c4df6164ed2f7794edfbe6e91b6",
+    "0022_application_resume_atomic_security.sql": "173e475c341254ec816624aa2886fd7e1a4d7ec2c57a18c879e02a7924bee69a"
+  }
+}

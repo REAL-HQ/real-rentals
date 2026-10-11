@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "scope": "Actual IdentityReviewCard and useSessionIsolation in isolated browser harness; local JWT-verified PostgREST/RLS; synthetic Auth adapter, not hosted login",
+  "tests": [
+    "owner switch clears prior query cache",
+    "owner status and decision control model",
+    "owner browser direct identity API boundary",
+    "coordinator switch clears prior query cache",
+    "coordinator status and decision control model",
+    "coordinator browser direct identity API boundary",
+    "coordinator direct decision denied and sensitive projection masked",
+    "manager switch clears prior query cache",
+    "manager status and decision control model",
+    "manager browser direct identity API boundary",
+    "driver switch clears prior query cache",
+    "driver staff UI denied",
+    "driver browser direct identity API boundary",
+    "anonymous switch clears prior query cache",
+    "anonymous staff UI denied",
+    "anonymous browser direct identity API boundary"
+  ]
+}

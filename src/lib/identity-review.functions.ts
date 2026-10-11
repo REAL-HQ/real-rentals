@@ -14,7 +14,7 @@ export const listIdentityReviews = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const { data: rows, error } = await context.supabase
-      .from("application_identity_reviews")
+      .from("identity_review_read_projection")
       .select(
         actor.tier === "owner" || actor.tier === "manager"
           ? "id,kind,submitted_full_name,submitted_email,submitted_phone,source,status,resolution,resolution_note,resolved_at,created_at"
