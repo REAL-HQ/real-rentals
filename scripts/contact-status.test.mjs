@@ -346,7 +346,9 @@ ok(/CREATE INDEX IF NOT EXISTS applications_contact_status_idx/.test(sql), "the 
 // =============================================== the UI keeps them apart
 console.log("\nthe Drivers list keeps the two columns separate");
 const PANEL = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
-ok(/>\s*Contact Status\s*</.test(PANEL), "there is a Contact Status column, in Title Case");
+// The column heading is one word — "Contact" — while the popover, tooltip and
+// filter keep spelling out "Contact Status".
+ok(/<th[^>]*>\s*Contact\s*<\/th>/.test(PANEL), "there is a Contact column, one word, in Title Case");
 ok(/>\s*Status\s*</.test(PANEL), "  beside the existing application Status column");
 ok(/contactFilter/.test(PANEL) && /data-contact-filter/.test(PANEL), "and a Contact Status filter of its own");
 ok(/useState<string>\("all"\);\s*\n/.test(PANEL) && PANEL.includes("const [contactFilter"),
