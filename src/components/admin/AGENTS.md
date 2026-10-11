@@ -3,3 +3,4 @@
 
 - Back-office modals: new/updated dialogs use src/components/admin/modal.tsx (ModalShell sizes sm/md/lg/workspace, header/body/footer, UploadDropzone, ReadinessStatus, ConfirmDialog) — one consistent visual behavior (Esc, backdrop, scroll, mobile sheet) instead of hand-styled overlays.
 - Back-office nav: consolidated workspaces live in nav-config WORKSPACE_TABS; each tab keeps its own id, minTier and panel, and old tab ids stay valid — UI grouping must never broaden access or break deep links.
+- Applicant readiness in lists: Drivers and Waitlist both use buildReadinessIndex + requiredDocCounts (src/lib/required-docs.ts) + ui ReadinessCell; Waitlist links only via promoted_application_id — so the two lists never disagree and no identity is guessed.
