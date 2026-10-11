@@ -6,6 +6,7 @@ import {
   Users,
   Car,
   Handshake,
+  CalendarCheck,
   CreditCard,
   Wrench,
   LayoutDashboard,
@@ -36,6 +37,17 @@ export type Group = (typeof GROUP_ORDER)[number];
 export const TABS: readonly TabDef[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
   { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
+  // Bookings sits above Payments under RENTALS: what is out on rent, and what
+  // came back, before the money it generated. Coordinator-visible — the money
+  // columns are withheld by the SERVER for that tier, not by this list.
+  {
+    id: "bookings",
+    label: "Bookings",
+    icon: CalendarCheck,
+    minTier: "coordinator",
+    group: "RENTALS",
+    description: "Active And Completed Rentals, With Their Paperwork",
+  },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
