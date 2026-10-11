@@ -9,6 +9,7 @@ import {
   type MergeData,
 } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
+import { minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
@@ -120,7 +121,14 @@ export type AgreementBlocker = {
 async function buildMergeData(
   admin: any,
   applicationId: string,
-): Promise<{ data: MergeData; app: any; vehicle: any; blockers: AgreementBlocker[] }> {
+): Promise<{
+  data: MergeData;
+  app: any;
+  vehicle: any;
+  blockers: AgreementBlocker[];
+  /** The contract start date as stored: a date-only ISO string, or null. */
+  startIso: string | null;
+}> {
   const { data: app, error } = await admin
     .from("applications")
     .select(
@@ -307,7 +315,10 @@ async function buildMergeData(
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
     today: fmtDate(new Date()),
   };
-  return { data, app, vehicle, blockers };
+  // The rendered start_date above is for the human. Calculations get the real
+  // value: reading the formatted string back is what broke min_term_end and
+  // the additional-driver licence check when the display format changed.
+  return { data, app, vehicle, blockers, startIso: startDate ?? null };
 }
 
 /** Title every rental agreement row carries (agreements.title column default). */
@@ -446,18 +457,19 @@ function insuranceBlockers(data: MergeData, blockers: AgreementBlocker[]) {
  * pickup/return fields are literal "To Be Completed" text in the template, so
  * they never block and are never shown as already completed.
  */
-function templateFieldBlockers(tplBody: string, data: MergeData, blockers: AgreementBlocker[], vehicle: any, app: any) {
+// Exported for scripts/contract-min-term.test.mjs: this is the function the
+// display-format regression actually broke, so the test exercises it rather
+// than only the arithmetic helper underneath it.
+export function templateFieldBlockers(tplBody: string, data: MergeData, blockers: AgreementBlocker[], vehicle: any, app: any, startIso: string | null) {
   const used = new Set([...resolveTerms(tplBody).matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((m) => m[1].toLowerCase()));
   const terms = readTerms(tplBody) ?? {};
   if (used.has("min_term_end")) {
-    const weeks = Number(String(terms.min_term_weeks ?? "").replace(/[^0-9]/g, ""));
-    const sm = String(data.start_date ?? "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
     void app;
-    if (weeks > 0 && sm) {
-      const [m, d, y] = [Number(sm[1]), Number(sm[2]), Number(sm[3])];
-      const dt = new Date(Date.UTC(y, m - 1, d + weeks * 7));
-      data.min_term_end = fmtDate(dt.toISOString().slice(0, 10));
-    }
+    // From the real start date. Null leaves the field blank, which is what
+    // makes the "Minimum-term end date" blocker below fire rather than a
+    // contract printing a date nobody computed.
+    const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));
+    if (endIso) data.min_term_end = fmtDate(endIso);
   }
   const pay = { tab: "payments" as const };
   const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };
@@ -489,8 +501,10 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   let tplBody = tpl.body;
   if (prep) {
     const terms = readTerms(tpl.body);
-    const sm = String(built.data.start_date ?? "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
-    const r = applyPrep(prep, { startIso: sm ? `${sm[3]}-${sm[1]}-${sm[2]}` : null, depositClause: String(terms?.deposit_clause ?? "") });
+    // The real start date, not one recovered from the printed string — this is
+    // what guards "an additional driver's licence must still be valid on the
+    // start date", and it failed open while the display format had moved on.
+    const r = applyPrep(prep, { startIso: built.startIso, depositClause: String(terms?.deposit_clause ?? "") });
     Object.assign(built.data, r.merge);
     // The staff deposit choice replaces the record-based deposit checks.
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
@@ -503,7 +517,14 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
       : r.reservationLine;
     if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
   }
-  templateFieldBlockers(tplBody, built.data, built.blockers, built.vehicle, built.app);
+  templateFieldBlockers(
+    tplBody,
+    built.data,
+    built.blockers,
+    built.vehicle,
+    built.app,
+    built.startIso,
+  );
   if (lib?.insuranceRequired) insuranceBlockers(built.data, built.blockers);
   if (lib) {
     for (const k of missingTerms(readTerms(tplBody) ?? {}, stripTerms(tplBody)))

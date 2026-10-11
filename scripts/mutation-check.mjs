@@ -33,6 +33,8 @@ const INSPFN = "src/lib/inspections.functions.ts";
 const INSPUI = "src/components/admin/InspectionsPanel.tsx";
 const PROFILE = "src/components/admin/VehicleProfile.tsx";
 const ADMIN = "src/routes/admin.tsx";
+const AGFN = "src/lib/agreements.functions.ts";
+const AGDATES = "src/lib/agreement-dates.ts";
 const VEH = "src/lib/vehicles.functions.ts";
 const EDITOR = "src/components/admin/AddVehicleDialog.tsx";
 const LIST = "src/lib/vehicles-list.functions.ts";
@@ -48,6 +50,7 @@ const E2E = "scripts/vehicle-photo-read-e2e.test.mjs";
 const PLATE_E2E = "scripts/vehicle-plate-editing-e2e.test.mjs";
 const PHASE2_E2E = "scripts/vehicle-onboarding-phase2-e2e.test.mjs";
 const READYTEST = "scripts/vehicle-readiness-phase1.test.mjs";
+const MINTERM = "scripts/contract-min-term.test.mjs";
 const PLATETEST = "scripts/vehicle-plate-editing.test.mjs";
 const PHASE2 = "scripts/vehicle-onboarding-phase2.test.mjs";
 
@@ -200,6 +203,24 @@ const MUTATIONS = [
     "", PHASE2],
   ["paperwork is offered after the car is saved", EDITOR,
     '    setCreated({ id, label });\n    setMode("docs");', "    onCreated(id);", PHASE2],
+  // --------------------------------------- the contract minimum-term date
+  ["the minimum term is computed from the real start date", AGFN,
+    "    const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));",
+    '    const endIso = minTermEndIso(data.start_date, minTermWeeks(terms.min_term_weeks));', MINTERM],
+  ["the start date is threaded through, not recovered from the print", AGFN,
+    "  return { data, app, vehicle, blockers, startIso: startDate ?? null };",
+    "  return { data, app, vehicle, blockers, startIso: null };", MINTERM],
+  ["applyPrep gets the real start date, so an expired licence is still caught", AGFN,
+    "    const r = applyPrep(prep, { startIso: built.startIso, depositClause: String(terms?.deposit_clause ?? \"\") });",
+    '    const r = applyPrep(prep, { startIso: null, depositClause: String(terms?.deposit_clause ?? "") });', MINTERM],
+  ["a week is seven days", AGDATES,
+    "  return isoOf(new Date(Date.UTC(p.y, p.m - 1, p.d + Math.floor(weeks) * 7)));",
+    "  return isoOf(new Date(Date.UTC(p.y, p.m - 1, p.d + Math.floor(weeks) * 6)));", MINTERM],
+  ["a day that does not exist is not rolled into the next month", AGDATES,
+    "  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {\n    return null;\n  }",
+    "", MINTERM],
+  ["a zero or missing term computes nothing", AGDATES,
+    "  if (!Number.isFinite(weeks) || weeks <= 0) return null;", "", MINTERM],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -265,7 +286,7 @@ for (const [what, file, from, to, suite] of ALL) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, AGFN, AGDATES]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
