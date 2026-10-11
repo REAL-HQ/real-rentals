@@ -22,6 +22,13 @@ describe("waitlist readiness parity (synthetic)", () => {
     const idx = buildReadinessIndex([app], [], []);
     expect(idx.get("a")).toEqual(computeReadiness(app, null, []));
   });
+  it("ready-to-rent uses the server's rental-start blockers", async () => {
+    const src = (await import("node:fs")).readFileSync("src/lib/waitlist.functions.ts", "utf8");
+    expect(src).toMatch(/vehicle_rental_ready_missing/);
+    expect(src).toMatch(/inspection_type", "pre_delivery"/);
+    expect(src).toMatch(/eq\("status", "active"\)/);
+    expect(src).not.toMatch(/isRentalReady\(/);
+  });
   it("fleet available vs rental ready stay distinct", () => {
     const v = [
       { status: "available", year: 2020, make: "Toyota", model: "Camry", vin: "4T1B11HK5LU000001", weekly_rate: 350 },
