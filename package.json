@@ -44,6 +44,7 @@
     "test:contact": "node scripts/contact-status.test.mjs",
     "test:identity": "node scripts/identity-authorization.test.mjs",
     "test:drivers-list": "node scripts/drivers-list-access.test.mjs",
+    "test:contact-installer": "bash scripts/contact-status-installer.check.sh",
     "test:contact-e2e": "node scripts/contact-status-e2e.test.mjs",
     "test:contact-sql": "bash scripts/contact-status-migration.check.sh",
     "test:mutation": "node scripts/mutation-check.mjs",
