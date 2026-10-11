@@ -14,6 +14,7 @@ import {
   ArrowUpRight,
   AlertTriangle,
   Wrench,
+  Lock,
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
 import { BookingActions } from "@/components/admin/BookingActions";
@@ -433,9 +434,7 @@ function Overview({
                   {"driverResponsible" in i && (
                     <div className="mt-1.5 text-[12px] text-[#55555E]">
                       Estimate {usd(i.estimatedCost)} · Actual {usd(i.actualCost)} ·{" "}
-                      <span className="text-[#111114]">
-                        Driver {usd(i.driverResponsible)}
-                      </span>
+                      <span className="text-[#111114]">Driver {usd(i.driverResponsible)}</span>
                     </div>
                   )}
                 </li>
@@ -624,6 +623,21 @@ function Inspections({ d }: { d: BookingDetail }) {
   );
 }
 
+/**
+ * Agreement status for everyone who may open a booking; the signed PDF only
+ * for a Manager.
+ *
+ * The signed contract carries the applicant's address, licence details, date of
+ * birth, card digits and the rate — far more than a Coordinator needs to know
+ * which rentals are papered. The server decides this: getAgreementPdf refuses a
+ * staff caller who is not a Manager (see the note on the button). So the button
+ * is offered on the same basis, and a Coordinator is told why rather than
+ * hunting for a control that is not there.
+ *
+ * The metadata above it — title, status, sent, signed, voided, whether the PDF
+ * archived — stays visible to a Coordinator, because that is the operational
+ * question: is this booking papered or not.
+ */
 function Agreements({ d }: { d: BookingDetail }) {
   const pdf = useServerFn(getAgreementPdf);
   const [base64, setBase64] = useState<string | null>(null);
@@ -675,15 +689,28 @@ function Agreements({ d }: { d: BookingDetail }) {
                   <span>Signed: {a.signedAt ? fmtDateTime(a.signedAt) : "Not Signed"}</span>
                   <span>{a.voidedAt ? `Voided: ${fmtDateTime(a.voidedAt)}` : ""}</span>
                 </div>
-                {a.status === "signed" && a.archiveStatus === "archived" && (
-                  <button
-                    onClick={() => void open(a.id)}
-                    disabled={busy === a.id}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
-                  >
-                    {busy === a.id && <Loader2 className="w-3 h-3 animate-spin" />} Open Signed PDF
-                  </button>
-                )}
+                {a.status === "signed" &&
+                  a.archiveStatus === "archived" &&
+                  (d.canManage ? (
+                    <button
+                      onClick={() => void open(a.id)}
+                      disabled={busy === a.id}
+                      data-testid="open-agreement-pdf"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
+                    >
+                      {busy === a.id && <Loader2 className="w-3 h-3 animate-spin" />} Open Signed
+                      PDF
+                    </button>
+                  ) : (
+                    <p
+                      className="mt-2 flex items-start gap-1.5 text-[12px] text-[#9A9AA3]"
+                      data-testid="agreement-pdf-withheld"
+                    >
+                      <Lock className="w-3 h-3 mt-0.5 shrink-0" />
+                      Signed and on file. The PDF itself is Manager-and-above — it carries the
+                      renter&apos;s identity and payment details.
+                    </p>
+                  ))}
               </div>
             ))}
           </div>

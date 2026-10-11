@@ -53,6 +53,7 @@ const BOOKDETAIL = "scripts/bookings-details.test.mjs";
 const BOOKE2E = "scripts/bookings-e2e.test.mjs";
 const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
 const INSPPERMS = "scripts/inspection-permissions.test.mjs";
+const AGPDF = "scripts/agreement-pdf-access.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -195,6 +196,11 @@ const MUTATIONS = [
     "", INSPPERMS],
   ["a forged vehicle id cannot start an inspection", INSPFN2,
     '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", INSPPERMS],
+  ["the signed agreement PDF is offered only to a Manager", BOOKDRAWER,
+    "                  (d.canManage ? (", "                  (true ? (", AGPDF],
+  ["the booking read serves agreement metadata, not the contract", BOOKFN,
+    '        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id")',
+    '        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id,body")', AGPDF],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],

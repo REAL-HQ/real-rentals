@@ -396,6 +396,10 @@ async function run(label, viewport) {
   await page.waitForTimeout(1200);
   ok(/Rental Agreement/.test(await page.locator("body").innerText()),
     "the Agreements tab lists the signed agreement already on the rental");
+  ok(await page.locator('[data-testid="open-agreement-pdf"]').count() === 1,
+    "  and a Manager is offered the signed PDF");
+  ok(await page.locator('[data-testid="agreement-pdf-withheld"]').count() === 0,
+    "  with no withheld note for them");
 
   await page.locator('[data-booking-tab="money"]').click();
   await page.waitForTimeout(1200);
@@ -538,6 +542,24 @@ async function runCoordinator(label, viewport) {
   ok(!/Weekly Rate|Deposit|\$350|\$300/.test(drawer), "and no money reaches the drawer under any label");
   ok(/41,000 mi/.test(drawer), "  control: the mileage and paperwork are still theirs to see");
   ok(await page.locator('[data-testid="booking-payments"]').count() === 0, "the payments table does not exist for them");
+
+  // The signed contract carries the renter's identity and card details, so the
+  // PDF is Manager-and-above on the server (Codex's hotfix) and the button is
+  // offered on the same terms. The STATUS stays — that is the operational
+  // question a Coordinator has: is this booking papered?
+  await page.locator('[data-booking-tab="agreements"]').click();
+  await page.waitForTimeout(1200);
+  const agText = await page.locator("body").innerText();
+  ok(/Rental Agreement/.test(agText), "a Coordinator sees the agreement");
+  ok(/Signed:/.test(agText), "  and whether it is signed");
+  ok(await page.locator('[data-testid="open-agreement-pdf"]').count() === 0,
+    "but the Open Signed PDF button is not offered to them");
+  ok(await page.locator('[data-testid="agreement-pdf-withheld"]').count() === 1,
+    "  and they are told why instead of hunting for a missing control");
+  ok(!calls.some((c) => /getAgreementPdf/.test(c)),
+    "and nothing on their path calls getAgreementPdf at all");
+  await page.locator('[data-booking-tab="overview"]').click();
+  await page.waitForTimeout(900);
 
   // R1: a Coordinator gets the operational record and none of the Manager
   // actions. The handoff buttons are Manager+ too, because isStaff() in
