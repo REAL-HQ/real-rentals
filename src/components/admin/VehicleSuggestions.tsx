@@ -120,19 +120,64 @@ export function VehicleSuggestions({ vehicleId, canEdit, onApplied, batchId, inl
       const chosen = sugs.filter((s) => keys.includes(key(s)));
       const byBatch = new Map<string, Map<string, string[]>>();
       for (const s of chosen) {
-        const b = byBatch.get(s.batchId) ?? new Map(); const f = b.get(s.proposalId) ?? [];
-        f.push(s.field); b.set(s.proposalId, f); byBatch.set(s.batchId, b);
+        const b = byBatch.get(s.batchId) ?? new Map();
+        const f = b.get(s.proposalId) ?? [];
+        f.push(s.field);
+        b.set(s.proposalId, f);
+        byBatch.set(s.batchId, b);
       }
-      let applied = 0; const errors: string[] = [];
+      let applied = 0;
+      const errors: string[] = [];
+      // Itemised by the server. This used to read the count back out of the
+      // result SENTENCE with a regular expression, so a reworded message would
+      // have reported every save as "nothing saved".
+      const unchanged: string[] = [];
+      const pending: string[] = [];
+      const refused: Array<{ label: string; reason: string }> = [];
       for (const [batchId, props] of byBatch) {
-        const res = await apply({ data: { batchId, decisions: [...props].map(([proposalId, fields]) => ({
-          proposalId, action: "match" as const, vehicleId, acceptFields: fields, confirmHighRisk: fields, applyFinance: false, partial: true,
-        })) } });
-        for (const r of res.results) { if (r.ok) applied += Number(/(\d+) change/.exec(r.message ?? "")?.[1] ?? 0); else errors.push(r.message); }
+        const res = await apply({
+          data: {
+            batchId,
+            decisions: [...props].map(([proposalId, fields]) => ({
+              proposalId,
+              action: "match" as const,
+              vehicleId,
+              acceptFields: fields,
+              confirmHighRisk: fields,
+              applyFinance: false,
+              partial: true,
+            })),
+          },
+        });
+        for (const r of res.results) {
+          if (!r.ok) {
+            errors.push(r.message);
+            continue;
+          }
+          // The arrays are the contract. A response from a server that predates
+          // them still must not be read as "nothing saved", so the old count in
+          // the sentence is the fallback — never the primary.
+          applied += Array.isArray(r.applied)
+            ? r.applied.length
+            : Number(/(\d+) change/.exec(r.message ?? "")?.[1] ?? 0);
+          unchanged.push(...(r.unchanged ?? []));
+          pending.push(...(r.needsConfirmation ?? []));
+          refused.push(...(r.rejected ?? []));
+        }
       }
-      setMsg(errors.length ? errors.join(" ") : applied ? `Saved ${applied} Detail${applied === 1 ? "" : "s"}.` : "Nothing Saved — Those Fields Already Have Values.");
+      const pretty = (f: string) => titleCase(f);
+      const parts: string[] = [];
+      if (applied) parts.push(`Saved ${applied} Detail${applied === 1 ? "" : "s"}.`);
+      if (unchanged.length)
+        parts.push(`${unchanged.map(pretty).join(", ")} already matched the record.`);
+      if (pending.length)
+        parts.push(`${pending.map(pretty).join(", ")} still needs individual confirmation.`);
+      for (const r of refused) parts.push(`${titleCase(r.label)} was not saved: ${r.reason}`);
+      if (!parts.length) parts.push("Nothing Saved — Those Fields Already Have Values.");
+      setMsg(errors.length ? errors.join(" ") : parts.join(" "));
       setPicked(new Set());
-      await refresh(); onApplied(errors.length ? 0 : applied);
+      await refresh();
+      onApplied(errors.length ? 0 : applied);
     } catch (e: any) { setMsg(e?.message ?? "Could not save."); } finally { setBusy(false); }
   }
 
