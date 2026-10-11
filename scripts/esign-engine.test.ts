@@ -345,11 +345,11 @@ describe("4. Role authorization (real handlers + real RLS)", () => {
     await expect(A.previewAgreement.run({ applicationId: appId }, ctx("driver"))).rejects.toThrow(/Forbidden/);
     await expect(A.previewAgreement.run({ applicationId: appId }, { userId: "00000000-0000-0000-0000-000000000000" })).rejects.toThrow(/Forbidden/);
   });
-  it("RLS: signed-out sees no agreements; Coordinator reads but cannot write; Driver sees only own", async () => {
+  it("RLS: signed-out sees no agreements; Coordinator cannot read agreement bodies or write; Driver sees only own", async () => {
     const anon = await asUser("anon").from("agreements").select("id");
     expect(anon.error || (anon.data ?? []).length === 0).toBeTruthy();
     const c = await asUser("coordinator").from("agreements").select("id");
-    expect((c.data ?? []).length).toBeGreaterThan(0);
+    expect((c.data ?? []).length).toBe(0);
     const cw = await asUser("coordinator").from("agreements").insert({ body: "x", title: "x" }).select("id");
     expect(cw.error).toBeTruthy();
     const d = await asUser("driver").from("agreements").select("id,application_id");
