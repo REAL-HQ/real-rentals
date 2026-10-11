@@ -10,7 +10,8 @@ import {
   type WaitlistEntry,
 } from "@/lib/waitlist.functions";
 import { AdminTableScroll } from "./AdminTableScroll";
-import { EmptyState, MicroLabel, SectionCard, StatusPill } from "./ui";
+import { EmptyState, MicroLabel, ReadinessCell, SectionCard, StatusPill } from "./ui";
+import type { FleetAvailability } from "@/lib/waitlist.functions";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ export function WaitlistPanel({
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
   const [carsAvailable, setCarsAvailableState] = useState<number | null>(null);
+  const [fleet, setFleet] = useState<FleetAvailability | null>(null);
   const [countInput, setCountInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -54,6 +56,7 @@ export function WaitlistPanel({
     const r = await list();
     setEntries(r.entries);
     setCarsAvailableState(r.carsAvailable);
+    setFleet(r.fleet);
     onEntriesChange?.(r.entries.filter((e) => e.status !== "promoted").length);
     return r;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,11 +148,11 @@ export function WaitlistPanel({
     <div className="space-y-4">
       <SectionCard
         title="Cars Available"
-        subtitle="Set how many cars are open right now. Zero turns the site into waitlist mode."
+        subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
         icon={<Car className="w-4 h-4" strokeWidth={1.75} />}
         right={
           carsAvailable === null ? (
-            <StatusPill tone="neutral">Not Set</StatusPill>
+            <StatusPill tone="neutral">Override Not Set</StatusPill>
           ) : carsAvailable === 0 ? (
             <StatusPill tone="amber">Waitlist Mode</StatusPill>
           ) : (
@@ -159,6 +162,24 @@ export function WaitlistPanel({
           )
         }
       >
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-[#EDEDF0] px-4 py-3">
+            <MicroLabel>Fleet Available</MicroLabel>
+            <div className="mt-1 text-xl font-semibold tabular-nums text-[#111114]">{fleet ? fleet.fleetAvailable : "—"}</div>
+            <div className="text-[11px] leading-snug text-[#9A9AA3]">Vehicles with status Available. Same count as Overview.</div>
+          </div>
+          <div className="rounded-xl border border-[#EDEDF0] px-4 py-3">
+            <MicroLabel>Rental Ready</MicroLabel>
+            <div className="mt-1 text-xl font-semibold tabular-nums text-[#111114]">{fleet ? fleet.rentalReady : "—"}</div>
+            <div className="text-[11px] leading-snug text-[#9A9AA3]">Active vehicles with year, make, model, valid VIN and weekly rate. Not the same as status.</div>
+          </div>
+          <div className="rounded-xl border border-[#EDEDF0] px-4 py-3">
+            <MicroLabel>Public Availability Override</MicroLabel>
+            <div className="mt-1 text-xl font-semibold tabular-nums text-[#111114]">{carsAvailable === null ? "Not Set" : carsAvailable}</div>
+            <div className="text-[11px] leading-snug text-[#9A9AA3]">Optional manual number the website uses for scarcity and waitlist mode.</div>
+          </div>
+        </div>
+        <div className="mb-2"><MicroLabel>Set Public Override</MicroLabel></div>
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="number"
@@ -222,6 +243,7 @@ export function WaitlistPanel({
                   <th className="px-5 py-2.5"><MicroLabel>Position</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Driver</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Wants To Start</MicroLabel></th>
+                  <th className="px-5 py-2.5"><MicroLabel>Readiness</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Status</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Joined</MicroLabel></th>
                   <th className="px-5 py-2.5"></th>
@@ -242,6 +264,13 @@ export function WaitlistPanel({
                     </td>
                     <td className="px-5 py-3 text-[13px] text-[#55555E]">
                       {e.pickup_date ? fmtDate(e.pickup_date) : "—"}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <ReadinessCell
+                        notStarted={!e.readiness}
+                        result={e.readiness?.result}
+                        docCount={e.readiness?.docCount ?? 0}
+                      />
                     </td>
                     <td className="px-5 py-3">
                       <StatusPill tone={statusTone(e.status)}>{statusLabel(e.status)}</StatusPill>
