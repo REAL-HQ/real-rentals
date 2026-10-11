@@ -787,3 +787,37 @@ export function buildVehicleTimeline(v: any): TimelineStep[] {
     { label: "Retired", state: states[5] },
   ];
 }
+
+/**
+ * The list readiness cell, shared by Drivers and Waitlist.
+ *
+ * State, then coverage, then document progress. Qualification is deliberately
+ * absent: a bare number in a row is the misreading this model prevents.
+ * `notStarted` is for contacts with no application — never a computed score.
+ */
+export function ReadinessCell({
+  result,
+  docCount,
+  notStarted = false,
+}: {
+  result?: ReadinessResult | null;
+  docCount: number;
+  notStarted?: boolean;
+}) {
+  if (notStarted) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-[#F2F2F4] px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-[#55555E]">
+        Not Started
+      </span>
+    );
+  }
+  if (!result) return <span className="text-[11px] text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <ReadinessStatePill state={result.state} short />
+      <span className="text-[10px] text-muted-foreground tabular-nums">
+        {result.coverage}% Known · {docCount}/4
+      </span>
+    </div>
+  );
+}
