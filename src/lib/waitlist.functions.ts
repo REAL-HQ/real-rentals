@@ -160,7 +160,7 @@ export type WaitlistEntry = {
 /**
  * The three availability numbers, kept separate on purpose:
  *  fleetAvailable  vehicles whose status is Available (same rule as Overview)
- *  rentalReady     active vehicles passing Rental Ready (identity + VIN + rate)
+ *  rentalReady     Available cars that pass every hard rental-start blocker
  *  carsAvailable   the optional manual public override (app_settings)
  */
 export type FleetAvailability = { fleetAvailable: number; rentalReady: number };
@@ -219,24 +219,41 @@ export const listWaitlist = createServerFn({ method: "POST" })
       docCounts = requiredDocCounts((docs.data ?? []) as any);
     }
 
-    // Fleet numbers from the existing rules — status via summarizeFleet (as
-    // on Overview), readiness via isRentalReady (mirror of
-    // vehicle_rental_ready_missing). Nothing here writes or infers status.
-    const { summarizeFleet, INACTIVE_VEHICLE_STATUSES } = await import("@/lib/fleet-summary");
-    const { isRentalReady } = await import("@/lib/vehicle-readiness");
-    const { data: vrows } = await supabaseAdmin
-      .from("vehicles")
-      .select("status,archived_at,year,make,model,vin,weekly_rate");
+    // Fleet numbers from the existing rules — nothing here writes or infers status.
+    //  fleetAvailable: status Available, via summarizeFleet (same as Overview).
+    //  rentalReady ("Ready To Rent Now"): the hard rental-start blockers in
+    //    rentals.functions.ts / activate_rental_tx, applied to cars a human
+    //    already made Available: not archived, no active rental, the DB's own
+    //    vehicle_rental_ready_missing returns nothing, and a passed pre-delivery
+    //    inspection exists. Registration/insurance/plate are warnings at rental
+    //    start today, so they are not counted here.
+    const { summarizeFleet } = await import("@/lib/fleet-summary");
+    const { data: vrows } = await supabaseAdmin.from("vehicles").select("id,status,archived_at");
     const vlist = (vrows ?? []) as any[];
-    const fleet: FleetAvailability = {
-      fleetAvailable: summarizeFleet(vlist).available,
-      rentalReady: vlist.filter(
-        (v) =>
-          !v.archived_at &&
-          !(INACTIVE_VEHICLE_STATUSES as readonly string[]).includes(String(v.status ?? "").toLowerCase()) &&
-          isRentalReady(v),
-      ).length,
-    };
+    const candidates = vlist
+      .filter((v) => !v.archived_at && String(v.status ?? "").toLowerCase() === "available")
+      .map((v) => v.id as string);
+    let rentalReady = 0;
+    if (candidates.length) {
+      const [busyQ, inspQ] = await Promise.all([
+        supabaseAdmin.from("rentals").select("vehicle_id").in("vehicle_id", candidates).eq("status", "active"),
+        supabaseAdmin
+          .from("inspections")
+          .select("vehicle_id")
+          .in("vehicle_id", candidates)
+          .eq("inspection_type", "pre_delivery")
+          .eq("status", "passed"),
+      ]);
+      const busy = new Set(((busyQ.data ?? []) as any[]).map((r) => r.vehicle_id));
+      const inspected = new Set(((inspQ.data ?? []) as any[]).map((r) => r.vehicle_id));
+      const checks = await Promise.all(
+        candidates
+          .filter((id) => !busy.has(id) && inspected.has(id))
+          .map((id) => (supabaseAdmin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: id })),
+      );
+      rentalReady = checks.filter((r: any) => !r.error && Array.isArray(r.data) && r.data.length === 0).length;
+    }
+    const fleet: FleetAvailability = { fleetAvailable: summarizeFleet(vlist).available, rentalReady };
 
     const counters = new Map<string, number>();
     const entries: WaitlistEntry[] = ((rows ?? []) as any[]).map((r) => {

@@ -169,9 +169,9 @@ export function WaitlistPanel({
             <div className="text-[11px] leading-snug text-[#9A9AA3]">Vehicles with status Available. Same count as Overview.</div>
           </div>
           <div className="rounded-xl border border-[#EDEDF0] px-4 py-3">
-            <MicroLabel>Rental Ready</MicroLabel>
+            <MicroLabel>Ready To Rent Now</MicroLabel>
             <div className="mt-1 text-xl font-semibold tabular-nums text-[#111114]">{fleet ? fleet.rentalReady : "—"}</div>
-            <div className="text-[11px] leading-snug text-[#9A9AA3]">Active vehicles with year, make, model, valid VIN and weekly rate. Not the same as status.</div>
+            <div className="text-[11px] leading-snug text-[#9A9AA3]">Available cars with no active rental, a passed pre-delivery inspection, and identity, VIN and rate complete. Registration and insurance expiry are not counted yet.</div>
           </div>
           <div className="rounded-xl border border-[#EDEDF0] px-4 py-3">
             <MicroLabel>Public Availability Override</MicroLabel>
