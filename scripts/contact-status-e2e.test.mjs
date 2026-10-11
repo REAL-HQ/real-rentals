@@ -52,6 +52,10 @@ const row = (id, name, status, contact) => ({
   phone: "8135550142", status, created_at: "2026-10-01T10:00:00Z", deleted_at: null,
   primary_application_id: null, resubmission_count: 0, contacted_at: null,
   city: "Tampa", state: "FL", vehicle_id: null, score: 0,
+  // Sensitive, and present ONLY so the Coordinator run can prove the server
+  // never sent them and the screen never renders them.
+  license_number: "R123-456-78-901-0", dob: "1991-07-02", card_last4: "4242",
+  address: "1200 N Ashley Dr",
   contact_status: "new", contact_status_note: null, contact_follow_up_on: null,
   contact_status_at: null, contact_status_by: null,
   ...contact,
@@ -78,6 +82,15 @@ const APPS_UNMIGRATED = APPS.map((r) => {
 
 let calls;
 let saves;
+/** What the server would send a Coordinator: operational fields only. */
+const OPERATIONAL = ["id", "full_name", "phone", "email", "city", "state", "status",
+  "created_at", "contacted_at", "primary_application_id", "resubmission_count", "deleted_at",
+  "vehicle_id", "gclid", "utm_campaign", "contact_status", "contact_status_note",
+  "contact_follow_up_on", "contact_status_at", "contact_status_by"];
+const operational = (r) => Object.fromEntries(Object.entries(r).filter(([k]) => OPERATIONAL.includes(k)));
+/** Set per run: the rows the server returns, and whether they are complete. */
+let migratedRows = null;
+let serverCanSeeSensitive = true;
 /** Every non-GET PostgREST request the page made, by table. */
 let restWrites;
 
@@ -101,6 +114,14 @@ function serverFn(name, input) {
         { at: "2026-10-10T09:00:00Z", actor: "owner@drivereal.com", from: null, to: "attempted",
           note: null, followUpOn: null },
       ];
+    // The Drivers list is a SERVER read now (0031: a Coordinator has no
+    // direct applications select). The stub answers it the way the real
+    // function does — projected by tier — so the browser exercises the same
+    // shape the server will send.
+    case /listDriverRows/.test(name): {
+      const rows = (migratedRows ?? APPS).map((r) => (serverCanSeeSensitive ? r : operational(r)));
+      return { rows, canSeeSensitive: serverCanSeeSensitive };
+    }
     case /getDriverPayStatuses/.test(name): return {};
     case /listWaitlist/.test(name): return { entries: [], carsAvailable: 2, waitingCount: 0, fleet: {} };
     case /listWaitlistHolds/.test(name): return [];
@@ -112,10 +133,12 @@ function serverFn(name, input) {
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 
-async function open(viewport, { migrated = true, role = "coordinator" } = {}) {
+async function open(viewport, { migrated = true, role = "coordinator", canSeeSensitive = true } = {}) {
   calls = [];
   saves = [];
   restWrites = [];
+  migratedRows = migrated ? APPS : APPS_UNMIGRATED;
+  serverCanSeeSensitive = canSeeSensitive;
   const ctx = await browser.newContext({ viewport });
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
     const u = route.request().url();
@@ -303,6 +326,34 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   }
 
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
+  await ctx.close();
+}
+
+// ============================================ the Coordinator, under 0031
+console.log("\n================= a Coordinator (0031: operational fields only)");
+for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]]) {
+  const { ctx, page, errors } = await open(viewport, { role: "coordinator", canSeeSensitive: false });
+  const body = await page.locator("table").first().innerText().catch(() => "");
+  ok(/Dana Reyes/.test(body), `${label}: the list is NOT empty for a Coordinator`);
+  ok(!/R123-456-78-901-0/.test(body), `${label}: no licence number on the screen`);
+  ok(!/1991-07-02/.test(body) && !/4242/.test(body), `${label}: no date of birth, no card digits`);
+  ok(!/1200 N Ashley/.test(body), `${label}: no home address`);
+  const withheld = await page.locator("[data-readiness-withheld]").count();
+  ok(withheld === 3, `${label}: readiness says Manager Only rather than scoring absent data (${withheld})`);
+  const badges = await page.locator("[data-contact-status]").count();
+  ok(badges === 3, `${label}: every Contact Status badge is still there (${badges})`);
+  // And the save still works for them — a Coordinator may set a contact status.
+  await openBadge(page, A1);
+  await pick(page, "Voicemail");
+  await page.locator("[data-contact-status-form] textarea").fill("Left a message");
+  await page.waitForTimeout(250);
+  await page.locator("[data-contact-status-save]").click();
+  await page.waitForTimeout(1200);
+  ok(saves.length === 1 && saves[0].status === "voicemail",
+    `${label}: a Coordinator can still save a Contact Status (${saves[0]?.status})`);
+  ok(saves[0]?.note === "Left a message", `${label}: with the note`);
+  ok(restWrites.length === 0, `${label}: and the browser still writes nothing directly`);
+  ok(errors.length === 0, `${label}: no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
   await ctx.close();
 }
 

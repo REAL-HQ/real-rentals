@@ -72,6 +72,7 @@ import {
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
   readContactStatus,
@@ -345,6 +346,13 @@ export function DriversPanel({
    * param is claimed.
    */
   const [contactFilter, setContactFilter] = useState<string>("all");
+  /*
+   * False for a Coordinator: the server sent operational fields only, so
+   * anything computed from licence, insurance or document data would be
+   * computed from values this caller was never given. The readiness cell
+   * says so rather than showing a score built on absent data.
+   */
+  const [canSeeSensitive, setCanSeeSensitive] = useState(true);
   // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
   const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
   const setFilter = useCallback(
@@ -494,17 +502,33 @@ export function DriversPanel({
       .catch(() => {});
   }, [open, acknowledge]);
 
+  /*
+   * ONE read of the applications list, and it is a server read.
+   *
+   * This was supabase.from("applications").select("*") in the browser, which
+   * only ever worked because RLS let every staff tier read the whole row.
+   * Security migration 0031 ends a Coordinator's direct read of that table —
+   * and rightly: the row carries the licence number and expiry, the date of
+   * birth, the address and the card digits. listDriverRows reads it through
+   * the service role instead and decides BY TIER what comes back, so a
+   * Coordinator's rows arrive with the sensitive fields absent rather than
+   * blanked or hidden.
+   */
+  const loadDriverRows = useServerFn(listDriverRows);
+  const refreshDrivers = useCallback(
+    () =>
+      void loadDriverRows({ data: undefined })
+        .then((res: DriverListResult) => {
+          setDrivers((res?.rows ?? []) as unknown as Application[]);
+          setCanSeeSensitive(!!res?.canSeeSensitive);
+          setDriversLoaded(true);
+        })
+        .catch(() => setDriversLoaded(true)),
+    [loadDriverRows],
+  );
+
   useEffect(() => {
-    supabase
-      .from("applications")
-      .select("*")
-      .neq("status", "duplicate")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setDrivers(data || []);
-        setDriversLoaded(true);
-      });
+    refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
@@ -546,7 +570,11 @@ export function DriversPanel({
 setDocCounts(requiredDocCounts(rows));
       setDocRows(rows);
     })();
-  }, []);
+    // refreshDrivers is a useCallback over the server function, so this
+    // still runs once on mount — but it is named here rather than silenced,
+    // because a loader missing from the dependency list is how a list stops
+    // refreshing after somebody changes how it loads.
+  }, [refreshDrivers]);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
@@ -672,13 +700,7 @@ setDocCounts(requiredDocCounts(rows));
     try {
       const res = await runMerge();
       toast.success(`Linked ${res.merged} duplicate rows.`);
-      const { data } = await supabase
-        .from("applications")
-        .select("*")
-        .neq("status", "duplicate")
-      .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-      setDrivers(data || []);
+      refreshDrivers();
     } catch (e: any) {
       toast.error(e?.message || "Merge failed");
     } finally {
@@ -787,10 +809,7 @@ setDocCounts(requiredDocCounts(rows));
       {showDeleted && (
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
-          onRestored={() =>
-            void supabase.from("applications").select("*").neq("status", "duplicate").is("deleted_at", null)
-              .order("created_at", { ascending: false }).then(({ data }) => data && setDrivers(data))
-          }
+          onRestored={() => refreshDrivers()}
         />
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
@@ -932,10 +951,20 @@ setDocCounts(requiredDocCounts(rows));
                       )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <ReadinessCell
-                        result={readinessIndex.get(a.id)}
-                        docCount={docCounts[a.id] ?? 0}
-                      />
+                      {canSeeSensitive ? (
+                        <ReadinessCell
+                          result={readinessIndex.get(a.id)}
+                          docCount={docCounts[a.id] ?? 0}
+                        />
+                      ) : (
+                        <span
+                          data-readiness-withheld
+                          title="Readiness is computed from licence, insurance and document data, which this list does not send to a Coordinator."
+                          className="inline-flex items-center rounded-full bg-[#F2F2F4] px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-[#55555E]"
+                        >
+                          Manager Only
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {payCells(payIndex[a.id]).pay}
@@ -1110,15 +1139,7 @@ setDocCounts(requiredDocCounts(rows));
           </div>
           <WaitlistPanel
             onEntriesChange={(n) => setWaitlistCount(n)}
-            onPromoted={() =>
-              void supabase
-                .from("applications")
-                .select("*")
-                .neq("status", "duplicate")
-      .is("deleted_at", null)
-                .order("created_at", { ascending: false })
-                .then(({ data }) => data && setDrivers(data))
-            }
+            onPromoted={() => refreshDrivers()}
           />
         </div>
       )}
