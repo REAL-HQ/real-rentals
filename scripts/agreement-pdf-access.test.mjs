@@ -286,15 +286,34 @@ for (const forbidden of ["body", "merge_data", "token_hash", "signer_ip", "signe
     `and never selects ${forbidden}`);
 }
 
-console.log("\\nthis branch introduces no competing agreement authorization");
+console.log("\\nno competing agreement authorization, and the identity gates are the reviewed ones");
+/*
+ * This block used to read "documents.functions.ts and applications.functions.ts
+ * are untouched on this branch" — the right assertion while the Bookings branch
+ * was carrying a UI-only restriction and the reviewed hotfix owned both files.
+ *
+ * Those gates have since been ported onto main (PR #27), so "untouched" would
+ * now fail on the very branch that installed them, and deleting the check would
+ * lose what it was protecting. It is replaced by the thing it was really
+ * guarding: agreements authorization stays where PR #25 put it, and the six
+ * identity endpoints carry the REVIEWED Manager gates rather than any scheme
+ * invented alongside them. Behaviour is proved in identity-authorization.test.mjs.
+ */
 const ownChanges = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" })
   .split("\n").filter(Boolean);
 ok(!ownChanges.includes("src/lib/agreements.functions.ts"),
   `agreements.functions.ts is untouched on this branch (${ownChanges.length} files changed)`);
-ok(!ownChanges.includes("src/lib/documents.functions.ts"),
-  "documents.functions.ts is untouched too — the hotfix owns both");
-ok(!ownChanges.includes("src/lib/applications.functions.ts"),
-  "and applications.functions.ts");
+const AGFN = readFileSync("src/lib/agreements.functions.ts", "utf8");
+ok(/if \(await getActor\(context\.userId\)\) await requireManager\(context\.userId\);/.test(AGFN),
+  "getAgreementPdf still carries the gate PR #25 installed");
+const DOCFN = readFileSync("src/lib/documents.functions.ts", "utf8");
+const APPFN = readFileSync("src/lib/applications.functions.ts", "utf8");
+ok((DOCFN.match(/requireManager\(context\.userId\)/g) ?? []).length >= 5,
+  "the five document identity endpoints are Manager-and-above");
+ok(!/await requireStaff\(context\.userId\)/.test(DOCFN),
+  "  and none of them settles for requireStaff");
+ok(/const actor = await requireManager\(context\.userId\);[\s\S]{0,400}revokeResumeTokens/.test(APPFN),
+  "reissuing an applicant link is Manager-and-above");
 
 rmSync(OUT, { recursive: true, force: true });
 console.log(fail ? `\\n${fail} blocker(s)` : "\\nall agreement access checks pass");
