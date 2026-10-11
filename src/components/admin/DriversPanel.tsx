@@ -71,6 +71,12 @@ import {
 } from "lucide-react";
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
+import { ContactStatusCell } from "./ContactStatusCell";
+import {
+  CONTACT_STATUSES,
+  readContactStatus,
+  type ContactStatusState,
+} from "@/lib/contact-status";
 import {
   chargeCardOnRental,
   startRentalAutopay,
@@ -327,6 +333,18 @@ export function DriversPanel({
     [navigate],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
+  /*
+   * Contact Status filter — a SECOND, independent filter.
+   *
+   * Deliberately its own piece of state rather than another value in
+   * `filter`: "Approved" is where the paperwork is and "Follow-Up" is where
+   * the conversation is, and staff narrow by both at once ("approved people I
+   * still owe a call"). Folding them into one control would make them
+   * mutually exclusive, which is exactly the confusion the two columns exist
+   * to end. Local state, like the application filter, so no router search
+   * param is claimed.
+   */
+  const [contactFilter, setContactFilter] = useState<string>("all");
   // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
   const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
   const setFilter = useCallback(
@@ -552,7 +570,11 @@ setDocCounts(requiredDocCounts(rows));
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
-    ).filter((a) => {
+    )
+      // readContactStatus already answers New for a row that has no value, so
+      // filtering by New finds the leads nobody has worked yet.
+      .filter((a) => contactFilter === "all" || readContactStatus(a).state.status === contactFilter)
+      .filter((a) => {
       if (!q) return true;
       const hay =
         `${a.full_name ?? ""} ${a.email ?? ""} ${a.phone ?? ""} ${a.city ?? ""} ${a.state ?? ""}`.toLowerCase();
@@ -575,7 +597,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
 
   async function update(id: string, patch: Partial<Application>) {
     // Stamp contacted_at the first time the admin advances status past "new"
@@ -591,6 +613,36 @@ setDocCounts(requiredDocCounts(rows));
     // here is all that is needed — there is no second copy to keep in step.
     setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
     refreshActiveRenters();
+  }
+
+  /*
+   * Fold a saved Contact Status back into the one list.
+   *
+   * `update` above is the application-lifecycle writer and goes straight to
+   * PostgREST from the browser; this does NOT. The write already happened,
+   * server-side and audited, inside setContactStatus — all that is left is to
+   * show it. Separate function, so nobody later adds contact fields to the
+   * lifecycle patch or vice versa.
+   *
+   * The cast is because `Application` comes from the generated database types,
+   * which will not carry the contact_* columns until the migration is applied
+   * and the types are regenerated.
+   */
+  function applyContactStatus(id: string, st: ContactStatusState) {
+    setDrivers((arr) =>
+      arr.map((x) =>
+        x.id === id
+          ? ({
+              ...x,
+              contact_status: st.status,
+              contact_status_note: st.note,
+              contact_follow_up_on: st.followUpOn,
+              contact_status_at: st.changedAt,
+              contact_status_by: st.changedBy,
+            } as unknown as Application)
+          : x,
+      ),
+    );
   }
 
   async function markContacted(id: string) {
@@ -743,6 +795,25 @@ setDocCounts(requiredDocCounts(rows));
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {/*
+         * Contact Status filter. Reads "Contact: All" so it can never be
+         * mistaken for the application-status chips beside it.
+         */}
+        <select
+          aria-label="Contact Status"
+          data-contact-filter
+          value={contactFilter}
+          onChange={(e) => setContactFilter(e.target.value)}
+          className="shrink-0 rounded-md border border-border bg-white px-2 py-1.5 text-xs"
+        >
+          <option value="all">Contact: All ({drivers.length})</option>
+          {CONTACT_STATUSES.map((cs) => (
+            <option key={cs.key} value={cs.key}>
+              Contact: {cs.label} (
+              {drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
+            </option>
+          ))}
+        </select>
         {isOwner && (
           <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
             Recently Deleted
@@ -775,6 +846,9 @@ setDocCounts(requiredDocCounts(rows));
                   Deposit
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
+                  Contact Status
+                </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Created
                 </th>
@@ -913,6 +987,16 @@ setDocCounts(requiredDocCounts(rows));
                         </SelectContent>
                       </Select>
                     </td>
+                    <td
+                      className="px-3 py-2.5 whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ContactStatusCell
+                        applicationId={a.id}
+                        row={a}
+                        onSaved={(st) => applyContactStatus(a.id, st)}
+                      />
+                    </td>
                     <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       <div>{fmtDate(a.created_at!)}</div>
                       <div className="text-[10px] opacity-70">
@@ -985,6 +1069,10 @@ setDocCounts(requiredDocCounts(rows));
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         <td className="px-4 py-2 capitalize">{h.status}</td>
+                        {/* A superseded submission has no conversation of its
+                            own: the contact status belongs to the person, and
+                            it is on their primary row above. */}
+                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">
                           <div>{fmtDate(h.created_at!)}</div>
                           <div className="opacity-70">
@@ -1003,7 +1091,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-4">
+                  <td colSpan={10} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."

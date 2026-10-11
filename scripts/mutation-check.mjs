@@ -48,6 +48,8 @@ const BOOKDRAWER = "src/components/admin/BookingDetails.tsx";
 const PORTALFN = "src/lib/portal.functions.ts";
 const BOOKACT = "src/components/admin/BookingActions.tsx";
 const RENTALFN2 = "src/lib/rentals.functions.ts";
+const CSFN = "src/lib/contact-status.functions.ts";
+const CSRULES = "src/lib/contact-status.ts";
 const INSPFN2 = "src/lib/inspections.functions.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
@@ -67,6 +69,7 @@ const BOOKE2E = "scripts/bookings-e2e.test.mjs";
 const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
 const INSPPERMS = "scripts/inspection-permissions.test.mjs";
 const AGPDF = "scripts/agreement-pdf-access.test.mjs";
+const CONTACT = "scripts/contact-status.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -317,6 +320,33 @@ const MUTATIONS = [
     "", MINTERM],
   ["a zero or missing term computes nothing", AGDATES,
     "  if (!Number.isFinite(weeks) || weeks <= 0) return null;", "", MINTERM],
+  // ------------------------------------------------- Contact Status (1A)
+  // Who may set it, that the server re-checks the popover's rules, and that
+  // the dialling log never reaches the application lifecycle.
+  ["only staff may set a contact status", CSFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { userId: context.userId, email: null, role: "admin", tier: "owner" } as never;', CONTACT],
+  ["the server re-checks the field rules, not just the browser", CSFN,
+    "    if (blockers.length) throw new Error(blockers.map((b) => b.why).join(\" \"));",
+    "", CONTACT],
+  ["the contact write carries no lifecycle column", CSFN,
+    "      .update({\n        ...patch,",
+    "      .update({\n        ...patch,\n        status: data.status,", CONTACT],
+  ["the row records who set it", CSFN,
+    "        contact_status_by: actor.userId,", "        contact_status_by: null,", CONTACT],
+  ["a contact change is audited", CSFN,
+    "    await logAudit(actor, {", "    await Promise.resolve({", CONTACT],
+  ["a missing migration is reported as one, whichever way the server says it", CSFN,
+    '  if (err.code === "42703" || err.code === "PGRST204") return true;', "", CONTACT],
+  ["Follow-Up needs its date", CSRULES,
+    '        followUp: "required",\n        noteLabel: "Note",\n        hint: "Pick the day to call them back.",',
+    '        followUp: "optional",\n        noteLabel: "Note",\n        hint: "Pick the day to call them back.",', CONTACT],
+  ["a status drops the values it has no use for", CSRULES,
+    '    contact_follow_up_on: form.followUp === "off" || !followUp ? null : followUp,',
+    "    contact_follow_up_on: followUp || null,", CONTACT],
+  ["a database without the columns is not reported as supported", CSRULES,
+    '  const supported = Object.prototype.hasOwnProperty.call(r, "contact_status");',
+    "  const supported = true;", CONTACT],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -396,7 +426,7 @@ for (const [what, file, from, to, suite] of ALL) {
 }
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
   INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
-  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES]) {
+  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
