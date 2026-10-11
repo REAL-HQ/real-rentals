@@ -88,7 +88,7 @@ export const setContactStatus = createServerFn({ method: "POST" })
     // Owner, Manager or Coordinator. Working the phone is a Coordinator's job,
     // so this is the staff gate, not the manager one — and it carries no money
     // or identity access with it.
-    const actor = { userId: context.userId, email: null, role: "admin", tier: "owner" } as never;
+    const actor = await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const draft = {
@@ -124,7 +124,7 @@ export const setContactStatus = createServerFn({ method: "POST" })
         ...patch,
         // Who and when, on the row, so the list can show it without a join.
         contact_status_at: new Date().toISOString(),
-        contact_status_by: actor.userId,
+        contact_status_by: null,
       } as never)
       .eq("id", data.applicationId)
       .select(`id,${CONTACT_COLUMNS}`)
