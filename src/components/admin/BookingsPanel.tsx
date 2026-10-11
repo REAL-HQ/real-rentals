@@ -392,6 +392,23 @@ export function BookingsPanel({
           onOpenVehicle={(vehicleId) =>
             void navigate({ to: "/admin", search: { tab: "vehicles", id: vehicleId } as never })
           }
+          // `msg` is not owned by any tab, so the existing overlay opens over
+          // the booking and closing it returns here.
+          onOpenMessages={(applicationId) =>
+            void navigate({
+              to: "/admin",
+              search: { ...listSearch(), id: openId, msg: applicationId } as never,
+            })
+          }
+          // Charges, Incidents and Maintenance keep their own workflows: the
+          // booking shows what is already on this rental and sends you there to
+          // add to it, rather than growing a second copy of each one.
+          //
+          // No vehicle is carried: `id` is owned by the drivers, vehicles,
+          // inspections and bookings tabs, so the router would strip it a tick
+          // later and none of those three panels reads it. Prefilling them is
+          // its own small change, not something to fake from here.
+          onOpenTab={(tab) => void navigate({ to: "/admin", search: { tab } as never })}
         />
       )}
     </div>

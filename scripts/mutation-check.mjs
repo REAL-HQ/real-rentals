@@ -38,6 +38,9 @@ const BOOKRULES = "src/lib/bookings-list.ts";
 const BOOKPANEL = "src/components/admin/BookingsPanel.tsx";
 const BOOKDRAWER = "src/components/admin/BookingDetails.tsx";
 const PORTALFN = "src/lib/portal.functions.ts";
+const BOOKACT = "src/components/admin/BookingActions.tsx";
+const RENTALFN2 = "src/lib/rentals.functions.ts";
+const INSPFN2 = "src/lib/inspections.functions.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
@@ -48,6 +51,7 @@ const READYTEST = "scripts/vehicle-readiness-phase1.test.mjs";
 const BOOKLIST = "scripts/bookings-list.test.mjs";
 const BOOKDETAIL = "scripts/bookings-details.test.mjs";
 const BOOKE2E = "scripts/bookings-e2e.test.mjs";
+const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -148,6 +152,25 @@ const MUTATIONS = [
   ["a driver's history is their own rentals only", PORTALFN,
     '      .eq("driver_id", userId)\n      .order("start_date", { ascending: false, nullsFirst: false })',
     '      .order("start_date", { ascending: false, nullsFirst: false })', BOOKDETAIL],
+  // ------------------------------------------------------- Bookings R1
+  ["an inspection of a car that is OUT is filed against its rental", INSPFN2,
+    '    let rentalId = data.rentalId ?? null;\n    if (!rentalId) {',
+    "    let rentalId = data.rentalId ?? null;\n    if (false) {", BOOKACTTEST],
+  ["the rental back-fill takes only the ACTIVE rental", INSPFN2,
+    '        .eq("vehicle_id", data.vehicleId)\n        .eq("status", "active")\n        .maybeSingle();',
+    '        .eq("vehicle_id", data.vehicleId)\n        .maybeSingle();', BOOKACTTEST],
+  ["a Coordinator's incident carries no cost", BOOKFN,
+    "      if (canSeeMoney) {\n        row.estimatedCost = i.estimated_cost == null ? null : Number(i.estimated_cost);",
+    "      if (true) {\n        row.estimatedCost = i.estimated_cost == null ? null : Number(i.estimated_cost);", BOOKACTTEST],
+  ["a Coordinator's service record carries no bill", BOOKFN,
+    "      if (canSeeMoney) row.totalCost = m.total_cost == null ? null : Number(m.total_cost);",
+    "      row.totalCost = m.total_cost == null ? null : Number(m.total_cost);", BOOKACTTEST],
+  ["incidents and service are scoped to THIS rental", BOOKFN,
+    '        .select(canSeeMoney ? INCIDENT_WITH_MONEY : INCIDENT_OPERATIONAL)\n        .eq("rental_id", data.rentalId)',
+    "        .select(canSeeMoney ? INCIDENT_WITH_MONEY : INCIDENT_OPERATIONAL)", BOOKACTTEST],
+  ["End Rental is a Manager action", RENTALFN2,
+    '  const { requireManager } = await import("@/lib/roles.server");\n  return requireManager(userId);',
+    '  const { requireStaff } = await import("@/lib/roles.server");\n  return requireStaff(userId);', BOOKACTTEST],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -167,6 +190,11 @@ const E2E_MUTATIONS = [
     '                <th className="px-3 py-2 font-medium">Weekly</th>', BOOKE2E],
   ["the Payments and Activity tabs are not offered to a Coordinator", BOOKDRAWER,
     "  const tabs = TABS.filter((t) => !t.money || money);", "  const tabs = TABS;", BOOKE2E],
+  ["End Rental and Settle Deposit are not offered to a Coordinator", BOOKACT,
+    "        {d.canManage && active && (", "        {active && (", BOOKE2E],
+  ["the handoff carries the rental, not just the vehicle", BOOKACT,
+    "        data: { vehicleId, templateId, rentalId, odometer: odo > 0 ? odo : null },",
+    "        data: { vehicleId, templateId, odometer: odo > 0 ? odo : null },", BOOKE2E],
   ["accepting a detail reloads the vehicle profile", PHOTOS,
     "                          window.dispatchEvent(new Event(\"vehicle-profile-refresh\"));\n                        }\n                      }}",
     "                        }\n                      }}", E2E],
@@ -198,7 +226,7 @@ for (const [what, file, from, to, suite] of ALL) {
   }
 }
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN,
-  BOOKFN, BOOKRULES, BOOKPANEL, BOOKDRAWER, PORTALFN]) {
+  BOOKFN, BOOKRULES, BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

@@ -13,8 +13,10 @@ import {
   History,
   ArrowUpRight,
   AlertTriangle,
+  Wrench,
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
+import { BookingActions } from "@/components/admin/BookingActions";
 import { listConditionMedia } from "@/lib/inspections.functions";
 import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
@@ -72,12 +74,18 @@ export function BookingDetails({
   onClose,
   onOpenDriver,
   onOpenVehicle,
+  onOpenMessages,
+  onOpenTab,
 }: {
   rentalId: string;
   onClose: () => void;
   /** Open the applicant's record. Takes applications.id — never rentals.driver_id. */
   onOpenDriver: (applicationId: string) => void;
   onOpenVehicle: (vehicleId: string) => void;
+  /** Open the existing message thread for this applicant. */
+  onOpenMessages: (applicationId: string) => void;
+  /** Hand off to an existing admin tab rather than rebuilding its workflow. */
+  onOpenTab: (tab: "charges" | "incidents" | "maintenance", vehicleId: string | null) => void;
 }) {
   const load = useServerFn(getBooking);
   const [d, setD] = useState<BookingDetail | null>(null);
@@ -199,7 +207,14 @@ export function BookingDetails({
           ) : (
             <>
               {tab === "overview" && (
-                <Overview d={d} onOpenDriver={onOpenDriver} onOpenVehicle={onOpenVehicle} />
+                <Overview
+                  d={d}
+                  onOpenDriver={onOpenDriver}
+                  onOpenVehicle={onOpenVehicle}
+                  onOpenMessages={onOpenMessages}
+                  onOpenTab={onOpenTab}
+                  onRefresh={refresh}
+                />
               )}
               {tab === "inspections" && <Inspections d={d} />}
               {tab === "agreements" && <Agreements d={d} />}
@@ -217,15 +232,32 @@ function Overview({
   d,
   onOpenDriver,
   onOpenVehicle,
+  onOpenMessages,
+  onOpenTab,
+  onRefresh,
 }: {
   d: BookingDetail;
   onOpenDriver: (id: string) => void;
   onOpenVehicle: (id: string) => void;
+  onOpenMessages: (applicationId: string) => void;
+  onOpenTab: (tab: "charges" | "incidents" | "maintenance", vehicleId: string | null) => void;
+  onRefresh: () => void;
 }) {
   const b = d.booking;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
+        <SectionCard
+          title="Actions"
+          icon={<ClipboardCheck className="w-4 h-4" strokeWidth={1.75} />}
+        >
+          <BookingActions
+            d={d}
+            onRefresh={onRefresh}
+            onOpenMessages={onOpenMessages}
+            onOpenTab={onOpenTab}
+          />
+        </SectionCard>
         <SectionCard title="Rental" icon={<CalendarCheck className="w-4 h-4" strokeWidth={1.75} />}>
           <TwoCol>
             <div>
@@ -349,9 +381,113 @@ function Overview({
           <Row label="Condition Photos" value={String(d.counts.conditionPhotos)} />
           <Row label="Agreements" value={String(d.counts.agreements)} />
           <Row label="Incidents" value={String(d.counts.incidents)} />
+          <Row label="Service Records" value={String(d.counts.maintenance)} />
           {d.canSeeMoney && <Row label="Payments" value={String(d.counts.payments)} />}
           {d.canSeeMoney && <Row label="Tolls & Citations" value={String(d.counts.charges)} />}
         </SectionCard>
+
+        {d.incidents.length > 0 && (
+          <SectionCard
+            title="Incidents"
+            icon={<AlertTriangle className="w-4 h-4" strokeWidth={1.75} />}
+            right={
+              <button
+                onClick={() => onOpenTab("incidents", d.vehicle?.id ?? null)}
+                data-testid="open-incidents"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-[#55555E] hover:bg-[#FAFAFB] hover:text-[#D03020]"
+              >
+                Open Incidents <ArrowUpRight className="w-3 h-3" />
+              </button>
+            }
+          >
+            <ul className="space-y-2" data-testid="booking-incidents">
+              {d.incidents.map((i) => (
+                <li
+                  key={i.id}
+                  data-incident={i.id}
+                  className="rounded-xl border border-[#EDEDF0] bg-white p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium text-[#111114]">
+                      {titleCase(i.type) ?? "Incident"}
+                    </span>
+                    <StatusPill status={i.status ?? undefined}>
+                      {titleCase(i.status) ?? "—"}
+                    </StatusPill>
+                    {i.drivable === false && (
+                      <span className="rounded-full bg-[rgba(208,48,32,0.08)] px-2 py-0.5 text-[10px] text-[#D03020]">
+                        Not Drivable
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-[12px] text-[#55555E]">
+                    <span>Occurred: {i.occurredAt ? fmtDate(i.occurredAt) : "Not Recorded"}</span>
+                    <span>Severity: {titleCase(i.severity) ?? "—"}</span>
+                    <span>At Fault: {titleCase(i.atFault) ?? "—"}</span>
+                    <span>Claim: {i.claimNumber ?? "None"}</span>
+                  </div>
+                  {i.description && (
+                    <p className="mt-1.5 text-[12px] text-[#55555E]">{i.description}</p>
+                  )}
+                  {/* Absent for a Coordinator, not blanked — the server did not send it. */}
+                  {"driverResponsible" in i && (
+                    <div className="mt-1.5 text-[12px] text-[#55555E]">
+                      Estimate {usd(i.estimatedCost)} · Actual {usd(i.actualCost)} ·{" "}
+                      <span className="text-[#111114]">
+                        Driver {usd(i.driverResponsible)}
+                      </span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
+
+        {d.maintenance.length > 0 && (
+          <SectionCard
+            title="Service On This Rental"
+            icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}
+            right={
+              <button
+                onClick={() => onOpenTab("maintenance", d.vehicle?.id ?? null)}
+                data-testid="open-maintenance"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-[#55555E] hover:bg-[#FAFAFB] hover:text-[#D03020]"
+              >
+                Open Maintenance <ArrowUpRight className="w-3 h-3" />
+              </button>
+            }
+          >
+            <ul className="space-y-2" data-testid="booking-maintenance">
+              {d.maintenance.map((m) => (
+                <li
+                  key={m.id}
+                  data-service={m.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#55555E]"
+                >
+                  <span className="text-[13px] font-medium text-[#111114]">
+                    {m.item ?? "Service"}
+                  </span>
+                  <StatusPill status={m.status ?? undefined}>
+                    {titleCase(m.status) ?? "—"}
+                  </StatusPill>
+                  <span>
+                    {m.performedOn
+                      ? fmtDate(m.performedOn)
+                      : m.dueDate
+                        ? `Due ${fmtDate(m.dueDate)}`
+                        : "Not Scheduled"}
+                  </span>
+                  {m.odometer != null && <span>{miles(m.odometer)}</span>}
+                  {m.vendorName && <span>{m.vendorName}</span>}
+                  {"totalCost" in m && (
+                    <span className="font-medium text-[#111114]">{usd(m.totalCost)}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
       </div>
     </div>
   );

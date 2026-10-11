@@ -51,6 +51,8 @@ const session = {
 
 /** Every call the screen made, so the test can assert it wrote nothing. */
 let calls;
+/** The same calls with their decoded input, for asserting WHAT was sent. */
+let inputs;
 
 const ROWS = [
   { id: R1, source: "rental", phase: "active", status: "active", startDate: "2026-09-01", endDate: null,
@@ -94,9 +96,16 @@ function detailPayload(rentalId, canSeeMoney) {
     vehicle: { id: row.vehicleId, unitNumber: row.unitNumber, label: row.vehicleLabel, plate: row.plate,
       vin: "1HGCM82633A004352", color: "Blue", status: "rented" },
     mileage: { pickup: 41000, return: row.openEnded ? null : 48000 },
-    inspections: [{ id: "i-1", type: "pre_delivery", status: "passed", startedAt: "2026-09-01T08:30:00Z",
-      completedAt: "2026-09-01T09:00:00Z", odometer: 41000, inspector: "Luis",
-      driverSignedAt: "2026-09-01T09:05:00Z", photoCount: 2 }],
+    inspections: [
+      // The check-in is already done — which is the state you are in when you
+      // reach for End Rental, and where its mileage prefill comes from.
+      { id: "i-2", type: "return", status: "passed", startedAt: "2026-10-11T08:30:00Z",
+        completedAt: "2026-10-11T09:00:00Z", odometer: 48000, inspector: "Luis",
+        driverSignedAt: null, photoCount: 1 },
+      { id: "i-1", type: "pre_delivery", status: "passed", startedAt: "2026-09-01T08:30:00Z",
+        completedAt: "2026-09-01T09:00:00Z", odometer: 41000, inspector: "Luis",
+        driverSignedAt: "2026-09-01T09:05:00Z", photoCount: 2 },
+    ],
     agreements: [{ id: "ag-1", title: "Rental Agreement", status: "signed", sentAt: "2026-09-01T06:00:00Z",
       signedAt: "2026-09-01T07:00:00Z", voidedAt: null, archiveStatus: "archived", documentId: "doc-1" }],
     money: canSeeMoney
@@ -106,11 +115,30 @@ function detailPayload(rentalId, canSeeMoney) {
             status: "rebilled", occurredAt: "2026-09-20T14:00:00Z" }],
           deposit: { amount: 300, held: true, status: "held", refunded: null } }
       : undefined,
-    counts: { inspections: 1, agreements: 1, conditionPhotos: 2,
-      payments: canSeeMoney ? 1 : 0, charges: canSeeMoney ? 1 : 0, incidents: 0 },
+    // Operational for everyone; the amounts only for a Manager, exactly as the
+    // server builds it. A Coordinator's rows have no cost KEYS at all.
+    incidents: [
+      canSeeMoney
+        ? { id: "inc-1", type: "accident", occurredAt: "2026-09-20T14:00:00Z", reportedAt: "2026-09-20T15:00:00Z",
+            severity: "moderate", status: "open", atFault: "renter", drivable: false, claimNumber: "CLM-9",
+            description: "Rear-ended at a light", estimatedCost: 2400, actualCost: 2650, driverResponsible: 1000 }
+        : { id: "inc-1", type: "accident", occurredAt: "2026-09-20T14:00:00Z", reportedAt: "2026-09-20T15:00:00Z",
+            severity: "moderate", status: "open", atFault: "renter", drivable: false, claimNumber: "CLM-9",
+            description: "Rear-ended at a light" },
+    ],
+    maintenance: [
+      canSeeMoney
+        ? { id: "mr-1", item: "Oil change", category: "oil", status: "completed", priority: "routine",
+            dueDate: null, performedOn: "2026-09-15", odometer: 43000, vendorName: "Tampa Lube", totalCost: 89.5 }
+        : { id: "mr-1", item: "Oil change", category: "oil", status: "completed", priority: "routine",
+            dueDate: null, performedOn: "2026-09-15", odometer: 43000, vendorName: "Tampa Lube" },
+    ],
+    counts: { inspections: 2, agreements: 1, conditionPhotos: 3,
+      payments: canSeeMoney ? 1 : 0, charges: canSeeMoney ? 1 : 0, incidents: 1, maintenance: 1 },
     // One honest gap on the open rental: the car has not come back yet.
     unavailable: row.openEnded ? ["Return mileage pending return"] : [],
     canSeeMoney,
+    canManage: canSeeMoney,
   };
 }
 
@@ -132,6 +160,7 @@ const MY_RENTALS = [
 
 function serverFn(name, input, canSeeMoney) {
   calls.push(name);
+  inputs.push({ name, input });
   switch (true) {
     case /getMyRentalHistory/.test(name): return MY_RENTALS;
     // The portal shell renders the applicant home for a moment before the
@@ -160,6 +189,21 @@ function serverFn(name, input, canSeeMoney) {
         media_type: "photo", caption: null, captured_by_role: "staff",
         created_at: "2026-09-01T09:00:00Z", url: "data:image/gif;base64,R0lGODlhAQABAAAAACw=" }];
     case /listAuditLog/.test(name): return { rows: [], total: 0 };
+    // The R1 actions. Recorded, never performed: the point is which endpoint
+    // the button reached and with what, not to run a transaction in a browser.
+    case /endRental/.test(name): return { ok: true, alreadyClosed: false };
+    case /startInspection/.test(name): return { id: "insp-new-1" };
+    case /getInspection/.test(name):
+      return { id: "insp-new-1", vehicle_id: V1, rental_id: R1, inspection_type: "return",
+        status: "in_progress", odometer: 48000, fuel_level: "half", inspector_name: "Probe Staff",
+        started_at: "2026-10-11T09:00:00Z", completed_at: null, driver_signed_at: null,
+        exterior_notes: null, interior_notes: null, notes: null, driver_notes: null,
+        items: [{ id: "it-1", section: "Exterior", label: "Front bumper", result: "pending",
+          notes: null, requires_photo: true, is_critical: false, sort_order: 1 }],
+        media: [] };
+    case /getDepositSummary/.test(name):
+      return { rentalId: R1, depositAmount: 300, deductions: [], withheld: 0, refund: 300,
+        settledAt: null, status: "held", candidates: { tolls: [], incidents: [] } };
     case /getAgreementPdf/.test(name): return null;
     case /listConversations/.test(name): return [];
     case /listVehicles/.test(name): return { rows: [], total: 0, page: 1, pageSize: 25 };
@@ -170,8 +214,9 @@ function serverFn(name, input, canSeeMoney) {
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 
-async function open(viewport, role, url = `${BASE}/admin?tab=bookings`) {
+async function open(viewport, role, url = `${BASE}/admin?tab=bookings`, noTemplates = false) {
   calls = [];
+  inputs = [];
   const canSeeMoney = role === "team" || role === "admin";
   const ctx = await browser.newContext({ viewport });
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
@@ -180,7 +225,17 @@ async function open(viewport, role, url = `${BASE}/admin?tab=bookings`) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) });
     if (u.includes("/storage/v1/"))
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "ok" }) });
-    const rows = u.includes("user_roles") ? [{ role }] : [];
+    // The handoff dialog reads the checklists straight from PostgREST under
+    // RLS, the same way the Inspections panel does. `noTemplates` lets a run
+    // prove the honest empty state instead of only the happy path.
+    const rows = u.includes("user_roles")
+      ? [{ role }]
+      : u.includes("inspection_templates") && !noTemplates
+        ? [
+            { id: "tpl-out", name: "Pre-Delivery", inspection_type: "pre_delivery", is_active: true },
+            { id: "tpl-in", name: "Return", inspection_type: "return", is_active: true },
+          ]
+        : [];
     const isHead = route.request().method() === "HEAD";
     return route.fulfill({
       status: 200, contentType: "application/json", headers: { "content-range": "0-0/0" },
@@ -349,7 +404,88 @@ async function run(label, viewport) {
   ok(/SunPass/.test(moneyTab), "  including the toll rebilled to it");
   ok(/\$300\.00/.test(moneyTab), "  and the deposit as the record holds it");
 
+  // ---------------------------------------------- the actions (R1)
+  await page.locator('[data-booking-tab="overview"]').click();
+  await page.waitForTimeout(900);
+  ok(await page.locator('[data-testid="booking-actions"]').count() === 1, "the Actions card renders");
+  for (const a of ["end-rental", "settle-deposit", "checkout", "checkin", "message", "charges", "incidents", "maintenance"]) {
+    ok(await page.locator(`[data-testid="action-${a}"]`).count() === 1, `  a Manager is offered ${a}`);
+  }
+
+  // End Rental: the existing protected endpoint, with the questions it asks.
+  await page.locator('[data-testid="action-end-rental"]').click();
+  await page.waitForTimeout(900);
+  ok(await page.locator('[data-testid="end-rental-dialog"]').count() === 1, "End Rental opens its own dialog");
+  const endText = await page.locator('[data-testid="end-rental-dialog"]').innerText();
+  ok(/48,000 mi|48000/.test(endText), "the return mileage is prefilled from the completed check-in");
+  ok(/Back To Available/.test(endText) && /Into Maintenance/.test(endText),
+    "and it can send the car to the shop, which the driver-record path never could");
+  await page.locator('[data-testid="end-rental-maintenance"]').click();
+  await page.waitForTimeout(300);
+  ok(await page.locator('[data-testid="end-rental-maintenance"]').getAttribute("aria-pressed") === "true",
+    "  the destination is a real choice");
+  calls.length = 0;
+  await page.locator('[data-testid="end-rental-confirm"]').click();
+  await page.waitForTimeout(1800);
+  ok(calls.some((c) => /endRental/.test(c)),
+    "confirming calls the existing endRental — the only caller of end_rental_tx");
+  ok(!calls.some((c) => /activateRental|swap/i.test(c)), "  and nothing else that moves a rental");
+  ok(await page.locator('[data-testid="booking-payments"], [data-testid="deposit-dialog"], body').count() > 0,
+    "the screen stays usable afterwards");
+  // Settling the deposit opens next; close whatever is on top before moving on.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(700);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(700);
+
+  // Check-In: launched with the rental AND the vehicle, which is what keeps
+  // the photos findable from the booking afterwards.
+  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2200);
+  inputs.length = 0;
+  await page.locator('[data-testid="action-checkin"]').click();
+  await page.waitForTimeout(1200);
+  ok(await page.locator('[data-testid="handoff-dialog"]').count() === 1, "Check-In opens the handoff dialog");
+  await page.locator('[data-testid="handoff-start"]').click();
+  await page.waitForTimeout(1800);
+  const started = inputs.find((i) => /startInspection/.test(i.name));
+  ok(!!started, "starting calls the existing startInspection");
+  ok(started?.input?.rentalId === R1, `  carrying THIS rental (${String(started?.input?.rentalId).slice(0, 8)})`);
+  ok(started?.input?.vehicleId === V1, `  and THIS vehicle (${String(started?.input?.vehicleId).slice(0, 8)})`);
+  ok(started?.input?.templateId === "tpl-in",
+    "and the RETURN checklist, chosen by the handoff rather than whichever sorted first");
+  ok(await page.locator('[data-testid="handoff-runner"]').count() === 1,
+    "and hands straight over to the existing inspection runner — no second checklist");
+  ok(/Front bumper/.test(await page.locator('[data-testid="handoff-runner"]').innerText()),
+    "  with the checklist items it already had");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(800);
+
+  // Message Driver reuses the existing overlay, on this applicant's thread.
+  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2200);
+  await page.locator('[data-testid="action-message"]').click();
+  await page.waitForTimeout(1600);
+  ok(new URL(page.url()).searchParams.get("msg") === A1,
+    "Message Driver opens the existing thread for applications.id");
+  ok(new URL(page.url()).searchParams.get("id") === R1, "  without losing the booking underneath");
+
+  // What is already on the rental, before you navigate anywhere.
+  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2200);
+  const ov = await page.locator("body").innerText();
+  ok(await page.locator('[data-testid="booking-incidents"]').count() === 1, "the rental's incidents are listed");
+  ok(/Rear-ended|CLM-9/.test(ov), "  with what happened");
+  ok(await page.locator('[data-testid="booking-maintenance"]').count() === 1, "and its service records");
+  ok(/Oil change/.test(ov), "  with the work done");
+  await page.locator('[data-testid="open-maintenance"]').click();
+  await page.waitForTimeout(1800);
+  ok(new URL(page.url()).searchParams.get("tab") === "maintenance",
+    "Open Maintenance hands off to the existing panel rather than duplicating it");
+
   // ---------------------------------------------- the two links
+  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2200);
   await page.locator('[data-booking-tab="overview"]').click();
   await page.waitForTimeout(900);
   await page.locator('[data-testid="open-vehicle"]').click();
@@ -402,6 +538,27 @@ async function runCoordinator(label, viewport) {
   ok(!/Weekly Rate|Deposit|\$350|\$300/.test(drawer), "and no money reaches the drawer under any label");
   ok(/41,000 mi/.test(drawer), "  control: the mileage and paperwork are still theirs to see");
   ok(await page.locator('[data-testid="booking-payments"]').count() === 0, "the payments table does not exist for them");
+
+  // R1: a Coordinator gets the operational record and none of the Manager
+  // actions. The handoff buttons are Manager+ too, because isStaff() in
+  // inspections.functions.ts is admin/team only — the button matches the
+  // server rather than offering a call that would be refused.
+  ok(await page.locator('[data-testid="booking-actions"]').count() === 1, "the Actions card still renders");
+  for (const a of ["end-rental", "settle-deposit", "charges", "incidents", "checkout", "checkin"]) {
+    ok(await page.locator(`[data-testid="action-${a}"]`).count() === 0,
+      `  ${a} is not offered to a Coordinator`);
+  }
+  for (const a of ["message", "maintenance"]) {
+    ok(await page.locator(`[data-testid="action-${a}"]`).count() === 1,
+      `  control: ${a} IS offered, so the absences above are the boundary`);
+  }
+  ok(await page.locator('[data-testid="booking-incidents"]').count() === 1,
+    "they can see the car was in an accident — they may be arranging the tow");
+  const crdOv = await page.locator("body").innerText();
+  ok(/Rear-ended/.test(crdOv), "  with what happened");
+  ok(!/2,650|2650|\$2,400|89\.50/.test(crdOv), "and never what it cost");
+  ok(await page.locator('[data-testid="booking-maintenance"]').count() === 1, "service records too");
+  ok(/Oil change/.test(crdOv), "  with the work");
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(overflow <= 1, `no horizontal overflow (${overflow}px)`);

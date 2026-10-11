@@ -332,11 +332,34 @@ export const startInspection = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!template) throw new Error("Template not found");
 
+    // An inspection of a car that is OUT belongs to the rental it is out on.
+    //
+    // rental_id was only ever what the caller passed, and the Start Inspection
+    // form never passed one — so every inspection and every condition photo
+    // taken during a live rental was stored with rental_id NULL. The evidence
+    // existed and could not be found from the rental it was evidence for: the
+    // booking's Inspections tab and listConditionMedia(vehicle, rental) both
+    // came back empty, which is exactly the gap that loses a damage claim.
+    //
+    // So when the caller does not name a rental, ask the car. Only the ACTIVE
+    // rental counts, which is why a pre-delivery inspection before activation
+    // still correctly records no rental at all.
+    let rentalId = data.rentalId ?? null;
+    if (!rentalId) {
+      const { data: live } = await supabaseAdmin
+        .from("rentals")
+        .select("id")
+        .eq("vehicle_id", data.vehicleId)
+        .eq("status", "active")
+        .maybeSingle();
+      rentalId = (live?.id as string | undefined) ?? null;
+    }
+
     const { data: inspection, error } = await supabaseAdmin
       .from("inspections")
       .insert({
         vehicle_id: data.vehicleId,
-        rental_id: data.rentalId ?? null,
+        rental_id: rentalId,
         template_id: template.id,
         inspection_type: template.inspection_type,
         status: "in_progress",

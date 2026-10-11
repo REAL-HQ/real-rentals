@@ -175,6 +175,22 @@ const table = (name) => ({
 
 export const supabaseAdmin = {
   from: table,
+  /**
+   * Database functions, recorded rather than executed.
+   *
+   * The point of a test calling one is not to run PL/pgSQL — it is to prove
+   * which transaction a path reached, how many times, and with what. A caller
+   * that never gets here (because authorization refused it first) leaves no
+   * entry, which is what "fails closed" looks like from the outside.
+   *
+   * Set S.rpcResults[name] to decide what it answers.
+   */
+  rpc: async (name, args) => {
+    (S.rpcs ??= []).push({ name, args });
+    const r = S.rpcResults?.[name];
+    if (typeof r === "function") return r(args);
+    return r ?? { data: null, error: null };
+  },
   storage: {
     from: (bucket) => ({
       download: async (path) => {
@@ -186,6 +202,13 @@ export const supabaseAdmin = {
           error: null,
         };
       },
+      // A signed URL is how private evidence reaches a staff screen. The fake
+      // hands back a recognisable stand-in so a test can tell "signed" from
+      // "served straight out of a public bucket", which is the real risk.
+      createSignedUrl: async (path, seconds) => ({
+        data: { signedUrl: `signed://${bucket}/${path}?exp=${seconds}` },
+        error: null,
+      }),
       remove: async (paths) => { for (const p of paths) delete S.files[`${bucket}/${p}`]; return { data: null, error: null }; },
       upload: async (path, body) => { S.files[`${bucket}/${path}`] = [...(body ?? [])]; return { data: { path }, error: null }; },
     }),

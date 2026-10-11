@@ -48,6 +48,24 @@ const admin = async () => (await import("@/integrations/supabase/client.server")
  * The operational list is what a Coordinator may learn about a rental — no
  * rates, no balances, no deposit.
  */
+/**
+ * What happened, and what it cost, as two separate questions.
+ *
+ * A Coordinator may see that the car was in an accident — they may be the one
+ * arranging the tow. The estimate, the actual bill, the deductible, the
+ * insurance payout and the driver's share are Manager+, so they are not
+ * SELECTed at all for a Coordinator rather than selected and then dropped.
+ */
+const INCIDENT_OPERATIONAL =
+  "id,incident_type,occurred_at,reported_at,severity,status,at_fault,drivable,claim_number,description";
+const INCIDENT_WITH_MONEY =
+  "id,incident_type,occurred_at,reported_at,severity,status,at_fault,drivable,claim_number,description,estimated_cost,actual_cost,driver_responsible_amount";
+/** Service done on this rental's car. The work is operational; the bill is not. */
+const SERVICE_OPERATIONAL =
+  "id,item,category,status,priority,due_date,performed_on,odometer,vendor_name_raw";
+const SERVICE_WITH_MONEY =
+  "id,item,category,status,priority,due_date,performed_on,odometer,vendor_name_raw,total_cost";
+
 const RENTAL_OPERATIONAL =
   "id,status,start_date,end_date,created_at,vehicle_id,driver_id,application_id,pickup_reading_id,return_reading_id";
 const RENTAL_WITH_MONEY =
@@ -296,6 +314,48 @@ export type BookingDetail = {
     archiveStatus: string | null;
     documentId: string | null;
   }>;
+  /**
+   * Incidents already recorded against this rental.
+   *
+   * What happened is operational — a Coordinator arranging a tow needs to know
+   * the car was in an accident. What it COST is not: estimated, actual, the
+   * deductible, the insurance payout and the driver's share are Manager+ and
+   * are absent from a Coordinator's answer, the same way the rate is.
+   */
+  incidents: Array<{
+    id: string;
+    type: string | null;
+    occurredAt: string | null;
+    reportedAt: string | null;
+    severity: string | null;
+    status: string | null;
+    atFault: string | null;
+    drivable: boolean | null;
+    claimNumber: string | null;
+    description: string | null;
+    /** Manager+ only. */
+    estimatedCost?: number | null;
+    actualCost?: number | null;
+    driverResponsible?: number | null;
+  }>;
+  /**
+   * Service on this rental's car, linked to this rental. Operating cost is
+   * Manager's to see (AGENTS.md: Managers keep operating costs), so `totalCost`
+   * is absent for a Coordinator while the work itself is not.
+   */
+  maintenance: Array<{
+    id: string;
+    item: string | null;
+    category: string | null;
+    status: string | null;
+    priority: string | null;
+    dueDate: string | null;
+    performedOn: string | null;
+    odometer: number | null;
+    vendorName: string | null;
+    /** Manager+ only. */
+    totalCost?: number | null;
+  }>;
   /** Manager+ only. */
   money?: {
     payments: Array<{
@@ -331,10 +391,20 @@ export type BookingDetail = {
     payments: number;
     charges: number;
     incidents: number;
+    maintenance: number;
   };
   /** What this record genuinely cannot say yet. */
   unavailable: string[];
   canSeeMoney: boolean;
+  /**
+   * May this caller run the rental actions (end it, settle its deposit)?
+   *
+   * The same Manager boundary as the money today, but a separate answer on
+   * purpose: the screen asks two different questions, and each action is
+   * re-authorised by its own server function regardless of what this says.
+   * Nothing here is a permission — it only decides what is worth offering.
+   */
+  canManage: boolean;
 };
 
 export const getBooking = createServerFn({ method: "POST" })
@@ -358,7 +428,7 @@ export const getBooking = createServerFn({ method: "POST" })
       Boolean,
     ) as string[];
 
-    const [app, veh, insp, agree, readings, media, inc] = await Promise.all([
+    const [app, veh, insp, agree, readings, media, inc, svc] = await Promise.all([
       rental.application_id
         ? sb
             .from("applications")
@@ -392,10 +462,19 @@ export const getBooking = createServerFn({ method: "POST" })
         ? sb.from("odometer_readings").select("id,mileage").in("id", readingIds)
         : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
       sb.from("condition_media").select("id,inspection_id").eq("rental_id", data.rentalId),
+      // Two literal column lists rather than one built from a flag: the typed
+      // client parses the select string at the type level, so a conditional
+      // expression is not something it can read.
       sb
         .from("incidents")
-        .select("id", { count: "exact", head: true })
-        .eq("rental_id", data.rentalId),
+        .select(canSeeMoney ? INCIDENT_WITH_MONEY : INCIDENT_OPERATIONAL)
+        .eq("rental_id", data.rentalId)
+        .order("occurred_at", { ascending: false, nullsFirst: false }),
+      sb
+        .from("maintenance_records")
+        .select(canSeeMoney ? SERVICE_WITH_MONEY : SERVICE_OPERATIONAL)
+        .eq("rental_id", data.rentalId)
+        .order("performed_on", { ascending: false, nullsFirst: false }),
     ]);
 
     const mileageById = new Map(
@@ -431,6 +510,43 @@ export const getBooking = createServerFn({ method: "POST" })
       archiveStatus: (a.archive_status as string | null) ?? null,
       documentId: (a.document_id as string | null) ?? null,
     }));
+
+    const incidents = ((inc.data ?? []) as unknown as Array<Record<string, unknown>>).map((i) => {
+      const row: BookingDetail["incidents"][number] = {
+        id: String(i.id),
+        type: (i.incident_type as string | null) ?? null,
+        occurredAt: (i.occurred_at as string | null) ?? null,
+        reportedAt: (i.reported_at as string | null) ?? null,
+        severity: (i.severity as string | null) ?? null,
+        status: (i.status as string | null) ?? null,
+        atFault: (i.at_fault as string | null) ?? null,
+        drivable: (i.drivable as boolean | null) ?? null,
+        claimNumber: (i.claim_number as string | null) ?? null,
+        description: (i.description as string | null) ?? null,
+      };
+      if (canSeeMoney) {
+        row.estimatedCost = i.estimated_cost == null ? null : Number(i.estimated_cost);
+        row.actualCost = i.actual_cost == null ? null : Number(i.actual_cost);
+        row.driverResponsible =
+          i.driver_responsible_amount == null ? null : Number(i.driver_responsible_amount);
+      }
+      return row;
+    });
+    const maintenance = ((svc.data ?? []) as unknown as Array<Record<string, unknown>>).map((m) => {
+      const row: BookingDetail["maintenance"][number] = {
+        id: String(m.id),
+        item: (m.item as string | null) ?? null,
+        category: (m.category as string | null) ?? null,
+        status: (m.status as string | null) ?? null,
+        priority: (m.priority as string | null) ?? null,
+        dueDate: (m.due_date as string | null) ?? null,
+        performedOn: (m.performed_on as string | null) ?? null,
+        odometer: m.odometer == null ? null : Number(m.odometer),
+        vendorName: (m.vendor_name_raw as string | null) ?? null,
+      };
+      if (canSeeMoney) row.totalCost = m.total_cost == null ? null : Number(m.total_cost);
+      return row;
+    });
 
     let money: BookingDetail["money"];
     let paymentCount = 0;
@@ -541,6 +657,8 @@ export const getBooking = createServerFn({ method: "POST" })
       mileage: { pickup, return: ret },
       inspections,
       agreements,
+      incidents,
+      maintenance,
       money,
       counts: {
         inspections: inspections.length,
@@ -548,8 +666,10 @@ export const getBooking = createServerFn({ method: "POST" })
         conditionPhotos: (media.data ?? []).length,
         payments: paymentCount,
         charges: chargeCount,
-        incidents: inc.count ?? 0,
+        incidents: incidents.length,
+        maintenance: maintenance.length,
       },
+      canManage: canSeeMoney,
       unavailable: bookingUnavailable({
         phase: phaseOf,
         applicationId: (rental.application_id as string | null) ?? null,
