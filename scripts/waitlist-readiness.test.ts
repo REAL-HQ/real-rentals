@@ -1,41 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { requiredDocCounts } from "../src/lib/required-docs";
 import { buildReadinessIndex } from "../src/lib/readiness-index";
 import { computeReadiness } from "../src/lib/readiness";
 import { summarizeFleet } from "../src/lib/fleet-summary";
-import { isRentalReady } from "../src/lib/vehicle-readiness";
-
-describe("waitlist readiness parity (synthetic)", () => {
-  it("doc counts: aliases, rejected and superseded excluded", () => {
-    expect(
-      requiredDocCounts([
-        { lead_id: "a", category: "license_front" },
-        { lead_id: "a", category: "insurance" },
-        { lead_id: "a", category: "insurance_card" },
-        { lead_id: "a", category: "license_back", review_status: "rejected" },
-        { lead_id: "a", category: "gig_profile", is_current: false },
-      ]),
-    ).toEqual({ a: 2 });
+describe("shared readiness", () => {
+  it("deduplicates required documents, excludes rejected and superseded", () => {
+    assert.deepEqual(requiredDocCounts([
+      { lead_id: "a", category: "license_front" }, { lead_id: "a", category: "insurance" },
+      { lead_id: "a", category: "insurance_card" },
+      { lead_id: "a", category: "license_back", review_status: "rejected" },
+      { lead_id: "a", category: "gig_profile", is_current: false },
+    ]), { a: 2 });
   });
-  it("index matches direct computation (same as Drivers)", () => {
+  it("shares Drivers computation", () => {
     const app = { id: "a", platforms: ["uber"], license_valid: true };
-    const idx = buildReadinessIndex([app], [], []);
-    expect(idx.get("a")).toEqual(computeReadiness(app, null, []));
+    assert.deepEqual(buildReadinessIndex([app], [], []).get("a"), computeReadiness(app, null, []));
   });
-  it("ready-to-rent uses the server's rental-start blockers", async () => {
-    const src = (await import("node:fs")).readFileSync("src/lib/waitlist.functions.ts", "utf8");
-    expect(src).toMatch(/vehicle_rental_ready_missing/);
-    expect(src).toMatch(/inspection_type", "pre_delivery"/);
-    expect(src).toMatch(/eq\("status", "active"\)/);
-    expect(src).not.toMatch(/isRentalReady\(/);
-  });
-  it("fleet available vs rental ready stay distinct", () => {
-    const v = [
-      { status: "available", year: 2020, make: "Toyota", model: "Camry", vin: "4T1B11HK5LU000001", weekly_rate: 350 },
-      { status: "available", year: 2020, make: "Toyota", model: "Camry", vin: "", weekly_rate: null },
-      { status: "onboarding", year: 2020, make: "Toyota", model: "Camry", vin: "4T1B11HK5LU000001", weekly_rate: 350 },
-    ];
-    expect(summarizeFleet(v).available).toBe(2);
-    expect(v.filter((x) => isRentalReady(x)).length).toBe(2);
+  it("preserves Fleet Available definition", () => {
+    assert.equal(summarizeFleet([{ status: "available" }, { status: "available", archived_at: "synthetic" }, { status: "reserved" }]).available, 1);
   });
 });

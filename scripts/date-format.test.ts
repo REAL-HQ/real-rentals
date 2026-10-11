@@ -1,18 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { fmtDate, fmtDateTime, fmtDateNumeric } from "../src/lib/date-format";
-
 describe("date-format", () => {
-  it("date-only strings never shift by timezone", () => {
-    expect(fmtDate("2026-10-11")).toBe("Oct 11, 2026");
-    expect(fmtDate("2026-01-01")).toBe("Jan 1, 2026");
-    expect(fmtDateNumeric("2026-10-11")).toBe("10/11/2026");
+  it("preserves date-only calendar dates", () => {
+    assert.equal(fmtDate("2026-10-21"), "Oct 21, 2026");
+    assert.equal(fmtDate("2026-01-01"), "Jan 1, 2026");
+    assert.equal(fmtDateNumeric("2026-10-21"), "10/21/2026");
   });
-  it("date with time", () => {
-    expect(fmtDateTime(new Date(2026, 9, 11, 7, 30))).toBe("Oct 11, 2026, 7:30 AM");
+  it("retains local time formatting for actual instants", () => {
+    assert.equal(fmtDateTime(new Date(2026, 9, 11, 7, 30)), "Oct 11, 2026, 7:30 AM");
   });
-  it("empty/invalid", () => {
-    expect(fmtDate(null)).toBe("");
-    expect(fmtDate("nope")).toBe("");
-    expect(fmtDateNumeric(undefined)).toBe("");
+  it("handles empty and invalid inputs", () => {
+    assert.equal(fmtDate(null), ""); assert.equal(fmtDate("nope"), ""); assert.equal(fmtDateNumeric(undefined), "");
   });
 });

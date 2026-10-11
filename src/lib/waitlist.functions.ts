@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { completeRead, readInBatches } from "@/lib/waitlist-reads.server";
 import type { ReadinessResult } from "@/lib/readiness";
 
 // Cars Available + waitlist.
@@ -154,7 +155,7 @@ export type WaitlistEntry = {
   created_at: string;
   position: number | null;
   /** null = no linked application: the list shows "Not Started". */
-  readiness: { result: ReadinessResult | null; docCount: number } | null;
+  readiness: { result: Pick<ReadinessResult, "state" | "coverage"> | null; docCount: number } | null;
 };
 
 /**
@@ -178,11 +179,12 @@ export const listWaitlist = createServerFn({ method: "POST" })
 
     // Staff-gated, so read the setting directly rather than through the
     // public rpc — one query, no reason to hop through another function.
-    const { data: settingRow } = await supabaseAdmin
+    const { data: settingRow, error: settingError } = await supabaseAdmin
       .from("app_settings")
       .select("value")
       .eq("key", "fleet_availability")
       .maybeSingle();
+    if (settingError) throw new Error("Waitlist data unavailable. Please retry.");
     const rawSetting = (settingRow?.value as any)?.cars_available;
     const carsAvailable =
       typeof rawSetting === "number" && Number.isInteger(rawSetting) && rawSetting >= 0
@@ -191,12 +193,14 @@ export const listWaitlist = createServerFn({ method: "POST" })
 
     // Oldest first: that is the queue. Position is computed on read —
     // renumbering rows on every promotion is state we would only get wrong.
-    const { data: rows } = await supabaseAdmin
+    const { data: rows, error: waitlistError } = await supabaseAdmin
       .from("waitlist")
       .select(
         "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at",
       )
       .order("created_at", { ascending: true });
+
+    if (waitlistError) throw new Error("Waitlist data unavailable. Please retry.");
 
     // Readiness only for entries linked to a real application (promotion
     // writes promoted_application_id). No email/phone matching: that would be
@@ -211,12 +215,12 @@ export const listWaitlist = createServerFn({ method: "POST" })
     let docCounts: Record<string, number> = {};
     if (appIds.length) {
       const [apps, scr, docs] = await Promise.all([
-        supabaseAdmin.from("applications").select(READINESS_APPLICATION_SELECT).in("id", appIds).is("deleted_at", null),
-        supabaseAdmin.from("driver_screenings").select(READINESS_SCREENING_SELECT).in("lead_id", appIds),
-        supabaseAdmin.from("documents").select(READINESS_DOCUMENT_SELECT).in("driver_id", appIds),
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("applications").select(READINESS_APPLICATION_SELECT, { count: "exact" }).in("id", ids).is("deleted_at", null).order("id").range(from, to)),
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("driver_screenings").select(`id,${READINESS_SCREENING_SELECT}`, { count: "exact" }).in("lead_id", ids).order("id").range(from, to)),
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("documents").select(`id,${READINESS_DOCUMENT_SELECT}`, { count: "exact" }).in("driver_id", ids).order("id").range(from, to)),
       ]);
-      readinessIndex = buildReadinessIndex((apps.data ?? []) as any, (scr.data ?? []) as any, (docs.data ?? []) as any);
-      docCounts = requiredDocCounts((docs.data ?? []) as any);
+      readinessIndex = buildReadinessIndex(apps, scr, docs);
+      docCounts = requiredDocCounts(docs);
     }
 
     // Fleet numbers from the existing rules — nothing here writes or infers status.
@@ -228,31 +232,28 @@ export const listWaitlist = createServerFn({ method: "POST" })
     //    inspection exists. Registration/insurance/plate are warnings at rental
     //    start today, so they are not counted here.
     const { summarizeFleet } = await import("@/lib/fleet-summary");
-    const { data: vrows } = await supabaseAdmin.from("vehicles").select("id,status,archived_at");
-    const vlist = (vrows ?? []) as any[];
+    const vlist = await completeRead((from, to) => supabaseAdmin.from("vehicles").select("id,status,archived_at", { count: "exact" }).order("id").range(from, to));
     const candidates = vlist
       .filter((v) => !v.archived_at && String(v.status ?? "").toLowerCase() === "available")
       .map((v) => v.id as string);
     let rentalReady = 0;
     if (candidates.length) {
-      const [busyQ, inspQ] = await Promise.all([
-        supabaseAdmin.from("rentals").select("vehicle_id").in("vehicle_id", candidates).eq("status", "active"),
-        supabaseAdmin
-          .from("inspections")
-          .select("vehicle_id")
-          .in("vehicle_id", candidates)
-          .eq("inspection_type", "pre_delivery")
-          .eq("status", "passed"),
+      const [busyRows, inspectionRows] = await Promise.all([
+        readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("rentals").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("status", "active").order("id").range(from, to)),
+        readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("inspections").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("inspection_type", "pre_delivery").eq("status", "passed").order("id").range(from, to)),
       ]);
-      const busy = new Set(((busyQ.data ?? []) as any[]).map((r) => r.vehicle_id));
-      const inspected = new Set(((inspQ.data ?? []) as any[]).map((r) => r.vehicle_id));
-      const checks = await Promise.all(
-        candidates
-          .filter((id) => !busy.has(id) && inspected.has(id))
-          .map((id) => (supabaseAdmin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: id })),
-      );
-      rentalReady = checks.filter((r: any) => !r.error && Array.isArray(r.data) && r.data.length === 0).length;
+      const busy = new Set(busyRows.map((r) => r.vehicle_id));
+      const inspected = new Set(inspectionRows.map((r) => r.vehicle_id));
+      // Bound RPC concurrency; errors are unavailable, never a zero count.
+      const eligible = candidates.filter((id) => !busy.has(id) && inspected.has(id));
+      for (let i = 0; i < eligible.length; i += 10) {
+        const checks = await Promise.all(eligible.slice(i, i + 10).map((id) =>
+          (supabaseAdmin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: id })));
+        if (checks.some((r: any) => r.error || !Array.isArray(r.data))) throw new Error("Waitlist data unavailable. Please retry.");
+        rentalReady += checks.filter((r: any) => r.data.length === 0).length;
+      }
     }
+
     const fleet: FleetAvailability = { fleetAvailable: summarizeFleet(vlist).available, rentalReady };
 
     const counters = new Map<string, number>();
@@ -282,7 +283,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
         created_at: r.created_at,
         position,
         readiness: r.promoted_application_id && readinessIndex.has(r.promoted_application_id)
-          ? { result: readinessIndex.get(r.promoted_application_id)!, docCount: docCounts[r.promoted_application_id] ?? 0 }
+          ? { result: { state: readinessIndex.get(r.promoted_application_id)!.state, coverage: readinessIndex.get(r.promoted_application_id)!.coverage }, docCount: docCounts[r.promoted_application_id] ?? 0 }
           : null,
       };
     });

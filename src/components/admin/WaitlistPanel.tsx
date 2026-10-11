@@ -53,6 +53,8 @@ export function WaitlistPanel({
   const [promotingId, setPromotingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setFleet(null); // Never leave a previous successful count visible after a failed refresh.
+    setEntries(null); // Unknown readiness is not the last successful screening result.
     const r = await list();
     setEntries(r.entries);
     setCarsAvailableState(r.carsAvailable);

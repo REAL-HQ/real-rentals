@@ -800,7 +800,7 @@ export function ReadinessCell({
   docCount,
   notStarted = false,
 }: {
-  result?: ReadinessResult | null;
+  result?: Pick<ReadinessResult, "state" | "coverage"> | null;
   docCount: number;
   notStarted?: boolean;
 }) {
