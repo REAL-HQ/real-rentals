@@ -52,6 +52,8 @@ const CSFN = "src/lib/contact-status.functions.ts";
 const CSRULES = "src/lib/contact-status.ts";
 const DOCFN = "src/lib/documents.functions.ts";
 const APPFN = "src/lib/applications.functions.ts";
+const DLFN = "src/lib/drivers-list.functions.ts";
+const DLRULES = "src/lib/drivers-list.ts";
 const INSPFN2 = "src/lib/inspections.functions.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
@@ -73,6 +75,7 @@ const INSPPERMS = "scripts/inspection-permissions.test.mjs";
 const AGPDF = "scripts/agreement-pdf-access.test.mjs";
 const CONTACT = "scripts/contact-status.test.mjs";
 const IDENTITY = "scripts/identity-authorization.test.mjs";
+const DLIST = "scripts/drivers-list-access.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -369,6 +372,16 @@ const MUTATIONS = [
   ["reissuing an applicant link is Manager-and-above", APPFN,
     "    const { requireManager } = await import(\"@/lib/roles.server\");\n    const actor = await requireManager(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =",
     "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    const actor = await requireStaff(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =", IDENTITY],
+  // ------------------------------- the Drivers list under 0031
+  ["the Drivers list read is staff-gated on the server", DLFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { tier: "coordinator" } as never;', DLIST],
+  ["a Coordinator's rows carry no identity fields", DLFN,
+    '    const canSeeSensitive = tierAllows(actor.tier, "manager");',
+    "    const canSeeSensitive = true;", DLIST],
+  ["the projection drops the fields, it does not blank them", DLRULES,
+    "  if (canSeeSensitive) return row;\n  const out: DriverListRow = {};",
+    "  if (canSeeSensitive) return row;\n  const out: DriverListRow = { ...row };", DLIST],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -448,7 +461,7 @@ for (const [what, file, from, to, suite] of ALL) {
 }
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
   INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
-  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN]) {
+  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN, DLFN, DLRULES]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
