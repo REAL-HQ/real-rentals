@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { useServerFn } from '@tanstack/react-start';
 import { useEffect, useState } from 'react';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { getStripe, getStripeEnvironment } from '@/lib/stripe';
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/card/$applicationId')({
 });
 
 function CardOnFilePage() {
+  const createSession = useServerFn(createCardOnFileSession);
   const { applicationId } = Route.useParams();
   const [status, setStatus] = useState<'idle' | 'error' | 'done'>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,7 +31,7 @@ function CardOnFilePage() {
 
   const fetchClientSecret = async (): Promise<string> => {
     const returnUrl = `${window.location.origin}/card/${applicationId}?status=success`;
-    const result = await createCardOnFileSession({
+    const result = await createSession({
       data: { applicationId, returnUrl, environment: getStripeEnvironment() },
     });
     if ('error' in result) {

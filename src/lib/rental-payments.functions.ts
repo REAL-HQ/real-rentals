@@ -1,3 +1,4 @@
+import { cancelMappedSubscription, weeklyPriceInput } from '@/lib/payment-safety';
 import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
@@ -221,28 +222,27 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
         ? Math.max(Math.floor(new Date(rental.start_date as string).getTime() / 1000), Math.floor(Date.now() / 1000) + 60)
         : Math.floor(Date.now() / 1000) + 60;
 
+      const priceInput = weeklyPriceInput(data.rentalId, Number(rental.weekly_rate));
+      // Product creation belongs to Prices, not Subscription price_data.
+      const price = await stripe.prices.create(priceInput, {
+        idempotencyKey: `rental-price:${data.rentalId}:${priceInput.unit_amount}`,
+      });
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         default_payment_method: paymentMethodId,
-        items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: { name: `Weekly Rent — Rental ${String(rental.id).slice(0, 8)}` },
-            unit_amount: Math.round(Number(rental.weekly_rate) * 100),
-            recurring: { interval: 'week' },
-          } as any,
-        }],
+        items: [{ price: price.id }],
         billing_cycle_anchor: startTs,
         proration_behavior: 'none',
         collection_method: 'charge_automatically',
         metadata: { rentalId: data.rentalId },
       });
 
-      await supabaseAdmin.from('rentals').update({
+      const saved = await supabaseAdmin.from('rentals').update({
         stripe_subscription_id: sub.id,
         autopay_active: true,
       }).eq('id', data.rentalId);
 
+      if (saved.error) throw new Error('Subscription created but mapping could not be saved. Staff reconciliation required; do not create another subscription.');
       return { ok: true, subscriptionId: sub.id };
     } catch (error) {
       return { error: getStripeErrorMessage(error) };
@@ -256,16 +256,17 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
     try {
       await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      const { data: rental } = await supabaseAdmin
+      const { data: rental, error } = await supabaseAdmin
         .from('rentals').select('stripe_subscription_id').eq('id', data.rentalId).maybeSingle();
-      if (rental?.stripe_subscription_id) {
+      if (error || !rental) throw new Error('Rental unavailable');
+      if (rental.stripe_subscription_id) {
         const stripe = createStripeClient(data.environment);
-        try { await stripe.subscriptions.cancel(rental.stripe_subscription_id as string); } catch { /* ignore */ }
+        await cancelMappedSubscription(rental.stripe_subscription_id, id => stripe.subscriptions.cancel(id), async id => {
+          const saved = await supabaseAdmin.from('rentals').update({ stripe_subscription_id: null, autopay_active: false })
+            .eq('id', data.rentalId).eq('stripe_subscription_id', id).select('id');
+          if (saved.error || saved.data?.length !== 1) throw new Error('Stripe cancellation confirmed; local state requires staff reconciliation.');
+        });
       }
-      await supabaseAdmin.from('rentals').update({
-        stripe_subscription_id: null,
-        autopay_active: false,
-      }).eq('id', data.rentalId);
       return { ok: true };
     } catch (error) {
       return { error: getStripeErrorMessage(error) };

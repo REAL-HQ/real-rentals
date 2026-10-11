@@ -1,3 +1,4 @@
+import { readPaymentReport, collectionSummary, outstanding, weekStart, REVENUE_TYPES } from '@/lib/revenue-report';
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -71,17 +72,6 @@ import {
 import { fmtDate } from "@/lib/date-format";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
-
-/**
- * What counts as revenue.
- *
- * The same rule vehicle_pl() uses: money actually received, excluding
- * deposits. A deposit is the renter's money held against damage — it is on the
- * balance sheet, not the income statement, and counting it made a good week
- * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
- */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
 
 /**
  * What counts as collections.
@@ -160,6 +150,9 @@ export function OverviewPanel() {
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
+  const [financialError, setFinancialError] = useState<string | null>('Loading Collections');
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+  const [collectionDetails, setCollectionDetails] = useState({ refunds: 0, deposits: 0 });
   const [revenue, setRevenue] = useState(0);
   const [priorRevenue, setPriorRevenue] = useState(0);
   const [revenueLoading, setRevenueLoading] = useState(true);
@@ -179,7 +172,7 @@ export function OverviewPanel() {
   useEffect(() => {
     (async () => {
       const now = new Date();
-      const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
+      const d84 = resolveRange('today', new Date(now.getTime() - 84 * 864e5)).to;
 
       const [
         newAppsQ,
@@ -208,17 +201,12 @@ export function OverviewPanel() {
           .is("deleted_at", null),
         // Collections: due and not received. `current` is issued-but-not-yet-due
         // and is deliberately absent.
-        supabase
-          .from("payments")
-          .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
-        supabase
-          .from("payments")
-          .select("net_collected, paid_date")
-          .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        readPaymentReport(supabase, q => q.in('status', OVERDUE_STATUSES).lte('due_date', resolveRange('today', now).to))
+          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
+        readPaymentReport(supabase, q => q.in('status', ['paid','refunded']).in('type', REVENUE_TYPES).gte('paid_date', d84.slice(0,10)))
+          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
+        readPaymentReport(supabase, q => q.in('type', REVENUE_TYPES).not('status', 'in', '(void,waived,cancelled)').gte('due_date', d84.slice(0,10)))
+          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
         supabase
           .from("rentals")
           .select("end_date")
@@ -259,27 +247,21 @@ export function OverviewPanel() {
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
-      const sumAmt = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
+      setFinancialError(overdueQ.error || pay12wQ.error || billed12wQ.error ? "Collections Unavailable — Refresh To Retry" : null);
       const overdueRows = (overdueQ.data ?? []) as any[];
-      setOverdueAmt(sumAmt(overdueRows));
+      setOverdueAmt(overdueRows.reduce((sum, row) => sum + outstanding(row), 0));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
 
 
       // 12-week weekly buckets
-      const bucketStart = (d: Date) => {
-        const c = new Date(d);
-        c.setHours(0, 0, 0, 0);
-        c.setDate(c.getDate() - c.getDay());
-        return c;
-      };
-      const start = bucketStart(new Date(now.getTime() - 11 * 7 * 864e5));
+      const bucketStart = (day: string) => new Date(weekStart(day));
+      const start = bucketStart(resolveRange('today', new Date(now.getTime() - 11 * 7 * 864e5)).to);
       const series: WeekPoint[] = [];
       for (let i = 0; i < 12; i++) {
         const d = new Date(start.getTime() + i * 7 * 864e5);
         series.push({
-          label: fmtDate(d),
+          label: fmtDate(d.toISOString().slice(0,10)),
           iso: d.toISOString(),
           collected: 0,
           billed: 0,
@@ -287,13 +269,13 @@ export function OverviewPanel() {
       }
       for (const p of (pay12wQ.data ?? []) as any[]) {
         if (!p.paid_date) continue;
-        const w = bucketStart(new Date(p.paid_date));
+        const w = bucketStart(p.paid_date);
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
+        if (idx >= 0 && idx < 12) series[idx].collected += collectionSummary([p]).revenue;
       }
       for (const p of (billed12wQ.data ?? []) as any[]) {
         if (!p.due_date) continue;
-        const w = bucketStart(new Date(p.due_date));
+        const w = bucketStart(p.due_date);
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
       }
@@ -305,7 +287,7 @@ export function OverviewPanel() {
       setRecentApps((recentAppsQ.data ?? []) as unknown as ApplicantRow[]);
       setScreenings((screeningsQ.data ?? []) as unknown as ScreeningRow[]);
       setLeadDocs((leadDocsQ.data ?? []) as unknown as { lead_id: string; doc_type: string }[]);
-    })();
+    })().catch(() => setFinancialError('Collections Unavailable — Refresh To Retry'));
   }, []);
 
   const { total, rentable, rented, reserved, needsSetup } = fleet;
@@ -327,21 +309,20 @@ export function OverviewPanel() {
     let live = true;
     setRevenueLoading(true);
     (async () => {
-      const q = (r: DayRange) =>
-        supabase
-          .from("payments")
-          .select("net_collected")
-          .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", r.from)
-          .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
-      if (!live) return;
-      const sum = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
-      setRevenue(sum(cur.data));
-      setPriorRevenue(sum(prev.data));
-      setRevenueLoading(false);
+      try {
+        const q = (r: DayRange) => readPaymentReport(supabase, q => q.in('status', ['paid','refunded']).gte('paid_date', r.from).lte('paid_date', r.to));
+        const [cur, prev] = await Promise.all([q(range), q(compare)]);
+        const current = collectionSummary(cur), previous = collectionSummary(prev);
+        if (!live) return;
+        setRevenue(current.revenue);
+        setPriorRevenue(previous.revenue);
+        setCollectionDetails(current);
+        setRevenueError(null);
+      } catch {
+        if (live) setRevenueError('Revenue Unavailable — Refresh To Retry');
+      } finally {
+        if (live) setRevenueLoading(false);
+      }
     })();
     return () => {
       live = false;
@@ -495,7 +476,7 @@ export function OverviewPanel() {
           control="add"
         />
 
-        <RevenueCard
+        {revenueError ? <div role="alert" className="rounded-2xl border p-5">{revenueError}</div> : <RevenueCard
           amount={revenue}
           delta={revenueDelta}
           loading={revenueLoading}
@@ -505,14 +486,14 @@ export function OverviewPanel() {
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-        />
+        />}
 
         <ActionCard
           icon={overdueAmt > 0 ? CreditCard : CheckCircle2}
           eyebrow="Collections"
-          title={overdueAmt > 0 ? `${usd(overdueAmt)} Due` : "All Current"}
+          title={financialError ?? (overdueAmt > 0 ? `${usd(overdueAmt)} Due` : "All Current")}
           hint={
-            overdueAmt > 0
+            financialError ? "Totals Not Verified" : overdueAmt > 0
               ? `${overdueRenters || overdueCount} ${overdueRenters === 1 ? "renter" : "renters"} past due`
               : "$0 outstanding"
           }
@@ -725,8 +706,13 @@ export function OverviewPanel() {
         </SectionCard>
       </div>
 
+      <p className="text-xs text-muted-foreground">
+        {!revenueLoading && !revenueError && <>Recorded Refunds Against Period Collections: {usd(collectionDetails.refunds)} · Net Deposits Collected (Not Revenue): {usd(collectionDetails.deposits)}. </>}
+        Collections Are Net Of Recorded Refunds, Not Stripe Payouts. Refunds Adjust The Original Collection Period.
+        External Stripe Reconciliation Is Not Connected; Unmatched Payments Are Not Included.
+      </p>
       {/* Billed vs Collected — full width */}
-      {(() => {
+      {financialError ? <div role="alert">{financialError}</div> : (() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
         const collectionRate = totBilled > 0 ? Math.round((totCollected / totBilled) * 100) : null;
