@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
-import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -88,6 +87,7 @@ import {
   LifecycleRail,
   ReadinessSummary,
   ReadinessStatePill,
+  ReadinessCell,
   ReadinessMetrics,
   SectionCard,
   MicroLabel,
@@ -102,11 +102,7 @@ import {
   type Remedy,
 } from "@/lib/readiness";
 
-/** Vault category -> the required-document name the list counts. */
-const VAULT_TO_REQUIRED: Record<string, string> = {
-  insurance: "insurance_card",
-  gig_profile: "driver_profile_screenshot",
-};
+import { requiredDocCounts } from "@/lib/required-docs";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
@@ -247,18 +243,6 @@ const statusBadge: Record<string, string> = {
  * coverage that makes it meaningful, and a bare "100" next to a name is the
  * exact misreading this whole model exists to prevent.
  */
-function ReadinessCell({ result, docCount }: { result?: ReadinessResult; docCount: number }) {
-  if (!result) return <span className="text-[11px] text-muted-foreground">—</span>;
-  return (
-    <div className="flex flex-col items-start gap-0.5">
-      <ReadinessStatePill state={result.state} short />
-      <span className="text-[10px] text-muted-foreground tabular-nums">
-        {result.coverage}% Known · {docCount}/4
-      </span>
-    </div>
-  );
-}
-
 function formatPhone(p?: string | null): string {
   if (!p) return "—";
   const d = p.replace(/\D/g, "");
@@ -541,15 +525,7 @@ export function DriversPanel({
         review_status: d.review_status,
         is_current: d.is_current,
       }));
-      const seen: Record<string, Set<string>> = {};
-      for (const r of rows) {
-        const id = (r as { lead_id?: string }).lead_id;
-        if (!id || r.is_current === false || r.review_status === "rejected") continue;
-        const canonical = VAULT_TO_REQUIRED[(r.category ?? "").trim()] ?? (r.category ?? "").trim();
-        if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) continue;
-        (seen[id] ?? (seen[id] = new Set())).add(canonical);
-      }
-      setDocCounts(Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.size])));
+setDocCounts(requiredDocCounts(rows));
       setDocRows(rows);
     })();
   }, []);

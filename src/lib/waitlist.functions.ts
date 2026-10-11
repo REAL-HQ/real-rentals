@@ -3,6 +3,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { completeRead, readInBatches } from "@/lib/waitlist-reads.server";
+import type { ReadinessResult } from "@/lib/readiness";
 
 // Cars Available + waitlist.
 //
@@ -152,7 +154,17 @@ export type WaitlistEntry = {
   source: string | null;
   created_at: string;
   position: number | null;
+  /** null = no linked application: the list shows "Not Started". */
+  readiness: { result: Pick<ReadinessResult, "state" | "coverage"> | null; docCount: number } | null;
 };
+
+/**
+ * The three availability numbers, kept separate on purpose:
+ *  fleetAvailable  vehicles whose status is Available (same rule as Overview)
+ *  rentalReady     Available cars that pass every hard rental-start blocker
+ *  carsAvailable   the optional manual public override (app_settings)
+ */
+export type FleetAvailability = { fleetAvailable: number; rentalReady: number };
 
 export const listWaitlist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -160,17 +172,19 @@ export const listWaitlist = createServerFn({ method: "POST" })
     entries: WaitlistEntry[];
     carsAvailable: number | null;
     waitingCount: number;
+    fleet: FleetAvailability;
   }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Staff-gated, so read the setting directly rather than through the
     // public rpc — one query, no reason to hop through another function.
-    const { data: settingRow } = await supabaseAdmin
+    const { data: settingRow, error: settingError } = await supabaseAdmin
       .from("app_settings")
       .select("value")
       .eq("key", "fleet_availability")
       .maybeSingle();
+    if (settingError) throw new Error("Waitlist data unavailable. Please retry.");
     const rawSetting = (settingRow?.value as any)?.cars_available;
     const carsAvailable =
       typeof rawSetting === "number" && Number.isInteger(rawSetting) && rawSetting >= 0
@@ -179,12 +193,68 @@ export const listWaitlist = createServerFn({ method: "POST" })
 
     // Oldest first: that is the queue. Position is computed on read —
     // renumbering rows on every promotion is state we would only get wrong.
-    const { data: rows } = await supabaseAdmin
+    const { data: rows, error: waitlistError } = await supabaseAdmin
       .from("waitlist")
       .select(
         "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at",
       )
       .order("created_at", { ascending: true });
+
+    if (waitlistError) throw new Error("Waitlist data unavailable. Please retry.");
+
+    // Readiness only for entries linked to a real application (promotion
+    // writes promoted_application_id). No email/phone matching: that would be
+    // an identity guess. Same three bulk queries and the same module as Drivers.
+    const appIds = Array.from(
+      new Set(((rows ?? []) as any[]).map((r) => r.promoted_application_id).filter(Boolean)),
+    ) as string[];
+    const { buildReadinessIndex, READINESS_APPLICATION_SELECT, READINESS_SCREENING_SELECT, READINESS_DOCUMENT_SELECT } =
+      await import("@/lib/readiness-index");
+    const { requiredDocCounts } = await import("@/lib/required-docs");
+    let readinessIndex = new Map<string, ReadinessResult>();
+    let docCounts: Record<string, number> = {};
+    if (appIds.length) {
+      const [apps, scr, docs] = await Promise.all([
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("applications").select(READINESS_APPLICATION_SELECT, { count: "exact" }).in("id", ids).is("deleted_at", null).order("id").range(from, to)),
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("driver_screenings").select(`id,${READINESS_SCREENING_SELECT}`, { count: "exact" }).in("lead_id", ids).order("id").range(from, to)),
+        readInBatches(appIds, (ids, from, to) => supabaseAdmin.from("documents").select(`id,${READINESS_DOCUMENT_SELECT}`, { count: "exact" }).in("driver_id", ids).order("id").range(from, to)),
+      ]);
+      readinessIndex = buildReadinessIndex(apps, scr, docs);
+      docCounts = requiredDocCounts(docs);
+    }
+
+    // Fleet numbers from the existing rules — nothing here writes or infers status.
+    //  fleetAvailable: status Available, via summarizeFleet (same as Overview).
+    //  rentalReady ("Ready To Rent Now"): the hard rental-start blockers in
+    //    rentals.functions.ts / activate_rental_tx, applied to cars a human
+    //    already made Available: not archived, no active rental, the DB's own
+    //    vehicle_rental_ready_missing returns nothing, and a passed pre-delivery
+    //    inspection exists. Registration/insurance/plate are warnings at rental
+    //    start today, so they are not counted here.
+    const { summarizeFleet } = await import("@/lib/fleet-summary");
+    const vlist = await completeRead((from, to) => supabaseAdmin.from("vehicles").select("id,status,archived_at", { count: "exact" }).order("id").range(from, to));
+    const candidates = vlist
+      .filter((v) => !v.archived_at && String(v.status ?? "").toLowerCase() === "available")
+      .map((v) => v.id as string);
+    let rentalReady = 0;
+    if (candidates.length) {
+      const [busyRows, inspectionRows] = await Promise.all([
+        readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("rentals").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("status", "active").order("id").range(from, to)),
+        readInBatches(candidates, (ids, from, to) => supabaseAdmin.from("inspections").select("id,vehicle_id", { count: "exact" }).in("vehicle_id", ids).eq("inspection_type", "pre_delivery").eq("status", "passed").order("id").range(from, to)),
+      ]);
+      const busy = new Set(busyRows.map((r) => r.vehicle_id));
+      const inspected = new Set(inspectionRows.map((r) => r.vehicle_id));
+      // Bound RPC concurrency; errors are unavailable, never a zero count.
+      const eligible = candidates.filter((id) => !busy.has(id) && inspected.has(id));
+      for (let i = 0; i < eligible.length; i += 10) {
+        const checks = await Promise.all(eligible.slice(i, i + 10).map((id) =>
+          (supabaseAdmin as any).rpc("vehicle_rental_ready_missing", { _vehicle_id: id })));
+        if (checks.some((r: any) => r.error || !Array.isArray(r.data))) throw new Error("Waitlist data unavailable. Please retry.");
+        rentalReady += checks.filter((r: any) => r.data.length === 0).length;
+      }
+    }
+
+    const fleet: FleetAvailability = { fleetAvailable: summarizeFleet(vlist).available, rentalReady };
 
     const counters = new Map<string, number>();
     const entries: WaitlistEntry[] = ((rows ?? []) as any[]).map((r) => {
@@ -212,6 +282,9 @@ export const listWaitlist = createServerFn({ method: "POST" })
         source: r.source,
         created_at: r.created_at,
         position,
+        readiness: r.promoted_application_id && readinessIndex.has(r.promoted_application_id)
+          ? { result: { state: readinessIndex.get(r.promoted_application_id)!.state, coverage: readinessIndex.get(r.promoted_application_id)!.coverage }, docCount: docCounts[r.promoted_application_id] ?? 0 }
+          : null,
       };
     });
 
@@ -219,6 +292,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
       entries,
       carsAvailable,
       waitingCount: entries.filter((e) => e.status === "waiting").length,
+      fleet,
     };
   });
 
