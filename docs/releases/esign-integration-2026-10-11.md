@@ -1,0 +1,11 @@
+# eSign release package — existing implementation, no duplicate system
+
+Verified main: e468156d0587f81031ad595185d17a73c591a0c4. No separate unmerged eSign feature branch was present in the remote branch inventory. Main already contains template library/versioning functions and UI, agreement numbering at send, merge/preview/build/import, typed/drawn signature adoption, PDF rendering, private document storage, signing lifecycle and archive retry. Code presence is not evidence of production publication or hosted success.
+
+Completed source: agreement-library.ts, agreement-builder.ts, agreement-templates.functions.ts, agreements.functions.ts, esign.server.ts, esign-pdf.server.ts, SigningPanel and AgreementBuilder. No runtime implementation is added here. This PR corrects stale migration-order instructions and supplies a reviewable checksum manifest for existing SQL proposals.
+
+Not yet release-ready: assemble and test exact 0023 transaction (versioning + library) and 0024 with actual journal ordering; verify agreement table Coordinator policy; retain reviewed three-handler authorization patch (selective integration in Application Resume draft, not old hotfix wholesale); hosted PDF/storage/sign/void/archive-retry and role tests; company legal details, Service Area, approved template and legal review. Existing legal-review document may describe an older template and must be reconciled with actual approved wording, not treated as proof current terms are approved. Preserve contract minimum-term/date repair on main.
+
+Independent release: eSign can proceed without Bookings, Stripe or Manual Payments. Shared security guards can be integrated separately if Application Resume is not ready; neither feature creates a business dependency on the other. Stop release on unauthorized document access, missing signatures/audit evidence, unverified migration state or unexpected production integration.
+
+Recovery: stop new agreement sends/signing on a specific failure, preserve sent/signed content, numbers, documents and audit records; forward repair rendering/storage. Do not renumber signed agreements, reuse numbers or downgrade authorization. Production publication and SQL execution remain separately approved operations.
