@@ -262,7 +262,7 @@ export function WaitlistPanel({
                         {e.phone ? ` · ${e.phone}` : ""}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-[13px] text-[#55555E]">
+                    <td className="px-5 py-3 whitespace-nowrap text-[13px] text-[#55555E]">
                       {e.pickup_date ? fmtDate(e.pickup_date) : "—"}
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap">
@@ -275,7 +275,7 @@ export function WaitlistPanel({
                     <td className="px-5 py-3">
                       <StatusPill tone={statusTone(e.status)}>{statusLabel(e.status)}</StatusPill>
                     </td>
-                    <td className="px-5 py-3 text-[13px] text-[#55555E]">
+                    <td className="px-5 py-3 whitespace-nowrap text-[13px] text-[#55555E]">
                       {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
