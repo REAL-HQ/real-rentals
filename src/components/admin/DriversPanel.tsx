@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
-import { REQUIRED_DOC_TYPES, type RequiredDocType } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import {
