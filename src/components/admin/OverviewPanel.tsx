@@ -1,4 +1,5 @@
-import { readPaymentReport, collectionSummary, outstanding, weekStart, REVENUE_TYPES } from '@/lib/revenue-report';
+import { getStripeReport } from '@/lib/stripe-reconciliation.functions';
+import { StripeReconciliationPanel } from './StripeReconciliationPanel';
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -80,7 +81,6 @@ type WeekPoint = { label: string; iso: string; collected: number; billed: number
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
 
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
@@ -144,12 +144,12 @@ export function OverviewPanel() {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   const [newApps, setNewApps] = useState(0);
   const [pendingApps, setPendingApps] = useState(0);
-  const [overdueCount, setOverdueCount] = useState(0);
-  const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
+  const loadStripeReport = useServerFn(getStripeReport);
+  const [reconciliationCounts, setReconciliationCounts] = useState({ unmatched: 0, unverified: 0 });
   const [financialError, setFinancialError] = useState<string | null>('Loading Collections');
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [collectionDetails, setCollectionDetails] = useState({ refunds: 0, deposits: 0 });
@@ -172,14 +172,10 @@ export function OverviewPanel() {
   useEffect(() => {
     (async () => {
       const now = new Date();
-      const d84 = resolveRange('today', new Date(now.getTime() - 84 * 864e5)).to;
 
       const [
         newAppsQ,
         pendingAppsQ,
-        overdueQ,
-        pay12wQ,
-        billed12wQ,
         nextReturnQ,
         recentAppsQ,
         screeningsQ,
@@ -199,14 +195,6 @@ export function OverviewPanel() {
           .select("id", { count: "exact", head: true })
           .eq("status", "partial")
           .is("deleted_at", null),
-        // Collections: due and not received. `current` is issued-but-not-yet-due
-        // and is deliberately absent.
-        readPaymentReport(supabase, q => q.in('status', OVERDUE_STATUSES).lte('due_date', resolveRange('today', now).to))
-          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
-        readPaymentReport(supabase, q => q.in('status', ['paid','refunded']).in('type', REVENUE_TYPES).gte('paid_date', d84.slice(0,10)))
-          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
-        readPaymentReport(supabase, q => q.in('type', REVENUE_TYPES).not('status', 'in', '(void,waived,cancelled)').gte('due_date', d84.slice(0,10)))
-          .then(data => ({ data, error: null })).catch(() => ({ data: [], error: true })),
         supabase
           .from("rentals")
           .select("end_date")
@@ -247,39 +235,6 @@ export function OverviewPanel() {
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
       setNewApps(newAppsQ.count ?? 0);
       setPendingApps(pendingAppsQ.count ?? 0);
-      setFinancialError(overdueQ.error || pay12wQ.error || billed12wQ.error ? "Collections Unavailable — Refresh To Retry" : null);
-      const overdueRows = (overdueQ.data ?? []) as any[];
-      setOverdueAmt(overdueRows.reduce((sum, row) => sum + outstanding(row), 0));
-      setOverdueCount(overdueRows.length);
-      setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
-
-
-      // 12-week weekly buckets
-      const bucketStart = (day: string) => new Date(weekStart(day));
-      const start = bucketStart(resolveRange('today', new Date(now.getTime() - 11 * 7 * 864e5)).to);
-      const series: WeekPoint[] = [];
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(start.getTime() + i * 7 * 864e5);
-        series.push({
-          label: fmtDate(d.toISOString().slice(0,10)),
-          iso: d.toISOString(),
-          collected: 0,
-          billed: 0,
-        });
-      }
-      for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
-        const w = bucketStart(p.paid_date);
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += collectionSummary([p]).revenue;
-      }
-      for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
-        const w = bucketStart(p.due_date);
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
-      }
-      setWeekly(series);
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
       // Cast: the generated client cannot type a select built from a shared
       // column list, so the shape is asserted here and guaranteed by
@@ -287,7 +242,7 @@ export function OverviewPanel() {
       setRecentApps((recentAppsQ.data ?? []) as unknown as ApplicantRow[]);
       setScreenings((screeningsQ.data ?? []) as unknown as ScreeningRow[]);
       setLeadDocs((leadDocsQ.data ?? []) as unknown as { lead_id: string; doc_type: string }[]);
-    })().catch(() => setFinancialError('Collections Unavailable — Refresh To Retry'));
+    })().catch(() => { /* Operational cards keep their existing loading state. */ });
   }, []);
 
   const { total, rentable, rented, reserved, needsSetup } = fleet;
@@ -310,16 +265,18 @@ export function OverviewPanel() {
     setRevenueLoading(true);
     (async () => {
       try {
-        const q = (r: DayRange) => readPaymentReport(supabase, q => q.in('status', ['paid','refunded']).gte('paid_date', r.from).lte('paid_date', r.to));
-        const [cur, prev] = await Promise.all([q(range), q(compare)]);
-        const current = collectionSummary(cur), previous = collectionSummary(prev);
+        const report = await loadStripeReport({data:{from:range.from,to:range.to,priorFrom:compare.from,priorTo:compare.to}});
         if (!live) return;
-        setRevenue(current.revenue);
-        setPriorRevenue(previous.revenue);
-        setCollectionDetails(current);
+        setRevenue(Number(report.revenue));
+        setPriorRevenue(Number(report.prior));
+        setCollectionDetails({refunds:Number(report.refunds),deposits:Number(report.deposits)});
+        setReconciliationCounts({unmatched:Number(report.unmatched),unverified:Number(report.unverified)});
+        setOverdueAmt(Number(report.outstanding));
+        setWeekly((report.weekly ?? []).map((w: any) => ({label:fmtDate(w.day),iso:w.day,collected:Number(w.collected),billed:Number(w.billed)})));
+        setFinancialError(null);
         setRevenueError(null);
       } catch {
-        if (live) setRevenueError('Revenue Unavailable — Refresh To Retry');
+        if (live) { setRevenueError('Verified Revenue Unavailable — Refresh To Retry'); setFinancialError('Collections Unavailable'); }
       } finally {
         if (live) setRevenueLoading(false);
       }
@@ -494,14 +451,13 @@ export function OverviewPanel() {
           title={financialError ?? (overdueAmt > 0 ? `${usd(overdueAmt)} Due` : "All Current")}
           hint={
             financialError ? "Totals Not Verified" : overdueAmt > 0
-              ? `${overdueRenters || overdueCount} ${overdueRenters === 1 ? "renter" : "renters"} past due`
+              ? `Outstanding Charges Through Selected Date`
               : "$0 outstanding"
           }
           href="/admin"
           search={{ tab: "payments", filter: "overdue" }}
           control="view"
           tint={overdueAmt > 0 ? "red" : undefined}
-          badge={overdueAmt > 0 ? overdueCount : undefined}
         />
 
         <ActionCard
@@ -709,8 +665,10 @@ export function OverviewPanel() {
       <p className="text-xs text-muted-foreground">
         {!revenueLoading && !revenueError && <>Recorded Refunds Against Period Collections: {usd(collectionDetails.refunds)} · Net Deposits Collected (Not Revenue): {usd(collectionDetails.deposits)}. </>}
         Collections Are Net Of Recorded Refunds, Not Stripe Payouts. Refunds Adjust The Original Collection Period.
-        External Stripe Reconciliation Is Not Connected; Unmatched Payments Are Not Included.
+        {!revenueError && <> {reconciliationCounts.unmatched} Events Require Review; {reconciliationCounts.unverified} Payment Records Await Verification And Are Excluded.</>}
+        Processing Fees And Payouts Are Not Yet Reconciled.
       </p>
+      {!revenueError && !revenueLoading && <StripeReconciliationPanel />}
       {/* Billed vs Collected — full width */}
       {financialError ? <div role="alert">{financialError}</div> : (() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
@@ -952,7 +910,7 @@ function RevenueCard({
       </div>
 
       <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
-        Revenue
+        Verified Stripe Revenue
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {loading ? <span className="text-[#C7C7CC]">—</span> : usd(amount)}

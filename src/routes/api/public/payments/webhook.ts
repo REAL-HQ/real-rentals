@@ -324,6 +324,22 @@ async function handleSubscriptionUpdated(sub: any) {
   }).eq('stripe_subscription_id', sub.id);
 }
 
+// Reuse existing receipt delivery after verified ingestion. Historical backfill
+// does not call this; duplicate live events claim no second notice.
+async function notifyReconciledPayment(snapshot: any) {
+  const db: any = getSupabase();
+  let q = db.from('payments').update({ notified_status: 'paid' }).eq('status', 'paid')
+    .not('stripe_verified_at', 'is', null).or('notified_status.is.null,notified_status.neq.paid');
+  q = snapshot.kind === 'invoice' ? q.eq('stripe_invoice_id', snapshot.id) : q.in('id', snapshot.payment_ids);
+  const claimed = await q.select('rental_id,amount,reason');
+  if (claimed.error) throw new Error('Receipt claim failed');
+  if (!claimed.data?.length) return;
+  const rental = claimed.data[0].rental_id;
+  const amount = claimed.data.reduce((n: number,p: any)=>n+Number(p.amount),0);
+  const driver = await driverForRental(rental);
+  if (driver) await sendPaymentReceiptEmail({to:driver.email,firstName:driver.name,amount,reason:snapshot.kind==='invoice'?'weekly rent':'payment',brand:driver.brand,last4:driver.last4});
+}
+
 export const Route = createFileRoute('/api/public/payments/webhook')({
   server: {
     handlers: {
@@ -335,6 +351,11 @@ export const Route = createFileRoute('/api/public/payments/webhook')({
         const env: StripeEnv = rawEnv;
         try {
           const event = await verifyWebhook(request, env);
+          if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') {
+            const { reconciliationClient, routeReconciliationEvent } = await import('@/lib/stripe-reconciliation.server');
+            const stripe = await reconciliationClient(env);
+            if (await routeReconciliationEvent(getSupabase(), stripe, event, env, notifyReconciledPayment)) return Response.json({ received: true });
+          }
           switch (event.type) {
             case 'checkout.session.completed':
               await handleCheckoutCompleted(event.data.object, env);
@@ -365,7 +386,7 @@ export const Route = createFileRoute('/api/public/payments/webhook')({
           }
           return Response.json({ received: true });
         } catch (e) {
-          console.error('Webhook error:', e);
+          console.error('Webhook processing failed; delivery will retry');
           return new Response('Webhook error', { status: 400 });
         }
       },

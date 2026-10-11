@@ -188,8 +188,12 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
   .inputValidator((data: { rentalId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true; subscriptionId: string } | { error: string }> => {
     try {
-      await assertAdmin(context);
+      if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') { const { requireManager } = await import('@/lib/roles.server'); await requireManager(context.userId); } else await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+      if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') {
+        const { createReservedSubscription } = await import('@/lib/stripe-operations.server');
+        return createReservedSubscription(supabaseAdmin, data.rentalId, data.environment, context.userId);
+      }
       const { data: rental } = await supabaseAdmin
         .from('rentals')
         .select('id, application_id, weekly_rate, start_date, stripe_customer_id, stripe_payment_method_id, stripe_subscription_id')
@@ -254,12 +258,16 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
   .inputValidator((data: { rentalId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
     try {
-      await assertAdmin(context);
+      if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') { const { requireManager } = await import('@/lib/roles.server'); await requireManager(context.userId); } else await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: rental, error } = await supabaseAdmin
         .from('rentals').select('stripe_subscription_id').eq('id', data.rentalId).maybeSingle();
       if (error || !rental) throw new Error('Rental unavailable');
       if (rental.stripe_subscription_id) {
+        if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') {
+          const { cancelDurably } = await import('@/lib/stripe-operations.server');
+          return cancelDurably(supabaseAdmin,data.rentalId,rental.stripe_subscription_id,data.environment,context.userId);
+        }
         const stripe = createStripeClient(data.environment);
         await cancelMappedSubscription(rental.stripe_subscription_id, id => stripe.subscriptions.cancel(id), async id => {
           const saved = await supabaseAdmin.from('rentals').update({ stripe_subscription_id: null, autopay_active: false })

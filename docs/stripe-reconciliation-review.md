@@ -1,3 +1,47 @@
+# Stripe Reconciliation — Local Completion Package
+
+This package extends reviewed PR #22 HEAD d19970e926b8a666a8bb51c42cc3fe1b483bc9be. No hosted changes, live Stripe calls or financial data imports were performed. The earlier slice is retained below as historical evidence, superseded by this section.
+
+## Implementation
+
+Reuses rentals, payments, existing unique invoice/Payment Intent/subscription indexes, apply_payment_refund, the Stripe gateway, webhook signature verification, payment receipt delivery and Overview. Three new tables hold integration mappings, operation reservations and minimized event receipts; none is a competing financial ledger.
+
+Owner/Manager server authorization and database checks protect explicit linking, review, replay and historical import. Matching never uses email. An external customer mismatch requires explicit customer confirmation and does not overwrite the existing rental customer. Historical imports require a fresh hash-matched preview and existing explicit subscription linkage. Unsupported, ambiguous and unmatched events remain review items, not revenue.
+
+Creation reserves a stable operation and immutable provider parameters under a rental lock. Concurrent retries share idempotency keys. Unknown outcomes older than 23 hours require review rather than a fresh charge/subscription attempt. Cancellation failures persist and retain mappings; confirmed cancellation remains terminal. A new billing generation after cancellation requires a separately reviewed workflow.
+
+Overview uses one stable database aggregate snapshot, not multiple client pages. Verified Stripe collections only enter rental revenue; deposits and refunds remain separate. Existing unverified paid records are excluded and counted for reconciliation. This is not a replacement for Manual Payments reporting. Refunds adjust the original collection period, not refund-date cash flow. Processing fees and payouts remain unavailable rather than estimated. Failed reporting displays unavailable, never fabricated zero revenue.
+
+## Proposed database package and order
+
+`0033_stripe_reconciliation.proposed.sql` SHA-256: `105c9b513134808c2dce724f2b9e52e7d1a40ac125d6db4b2ba2573bded8cff1`. It is outside migration autoload. Reservations 0022–0032 and all existing journals remain untouched. 0033 is proposed based on the inspected local/remote inventory, subject to final cross-developer reservation confirmation. No SQL has been applied to shared staging or production.
+
+The migration requires the existing rentals/payments schema, unique provider identifiers, user_roles/private.is_manager and apply_payment_refund. It does not require eSign, Bookings or Manual Payments. Production installation requires full-schema compatibility verification, duplicate/precondition audit and a target-bound runner. Install SQL and the actual journal entry in one transaction, using actual execution-order timestamps, never filename order or backdating. On repeat execution verify recorded checksum and installed objects; skip only a verified match. Raw SQL intentionally refuses duplicate installation. Failure rolls back installation; do not remove existing financial history to retry.
+
+Separate approval is required for installation and application deployment. Production security containment remains a separate release dependency; do not fold this package into the frozen security hotfix.
+
+## Activation and recovery
+
+Runtime pins: STRIPE_RECONCILIATION_ENABLED=true, STRIPE_RECONCILIATION_ENV=sandbox or live, STRIPE_RECONCILIATION_ACCOUNT=the reviewed account ID, STRIPE_REPORT_TIMEZONE=America/New_York (or approved business zone). Account and event livemode checks fail closed. No secrets are stored in this package. Obtain sandbox acceptance through the actual gateway before live activation.
+
+Deploy schema before enabled application code. Do not activate the flag before dependencies are verified. On incident pause affected billing/webhook writes through an approved operational control, retain receipts and mappings, reconcile provider outcomes using their IDs/idempotency keys, then forward-repair and replay. Do not disable the flag as a routine rollback: it selects the legacy webhook path. Do not restore an old database snapshot or erase post-release payments.
+
+Automatic ingestion deliberately holds multi-payment/credit/out-of-band/partial invoices and non-USD or non-weekly subscriptions for review. Payout/fee reconciliation is not implemented. Review UI lists the latest 100 exceptions; large backlogs need further pagination. Historical preview refuses more than 1,000 invoices rather than truncating silently. No claim of a completed production backfill is made.
+
+## Verification and remaining gates
+
+- 30 disposable PostgreSQL 17 tests: concurrent creation, uniqueness, duplicate/out-of-order events, monotonic refunds, durable cancellation, role denial, protected verified fields, snapshot consistency, installation failure and repeat-install rollback.
+- 23 provider/handler tests with network disabled: provider normalization, explicit linkage, account mode, unsupported invoice handling, timezone boundaries, actual Manager authorization, concurrent idempotency and cancellation retry.
+- 46 existing Stripe safety/regression tests passed; contract minimum-term tests passed.
+- TypeScript and production build pass with original dependencies. Local Node 24.21.0/Vite 7.3.2/macOS arm64; this does not certify provider Linux reproducibility.
+- Existing Driver Access baseline failure is unchanged; no related files edited.
+
+Database tests use a focused production-shaped synthetic fixture and the existing refund function, not a complete production schema restore. Complete-schema compatibility, actual gateway contract, hosted browser acceptance and provider-signed sandbox delivery remain release gates. No live Stripe subscription, invoice, refund or identity data was retrieved. No hosted settings changed.
+
+---
+
+## Historical PR #22 slice (superseded implementation status)
+
 # Stripe Reconciliation — Review Package
 
 Base: verified GitHub main 1001d85c165b46b25fe33d57f0ec04b4eebb4148.
