@@ -275,6 +275,62 @@ export type Database = {
           },
         ]
       }
+      application_identity_reviews: {
+        Row: {
+          application_id: string
+          created_at: string
+          id: string
+          kind: string
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          source: string | null
+          status: string
+          submitted_email: string | null
+          submitted_full_name: string | null
+          submitted_phone: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source?: string | null
+          status?: string
+          submitted_email?: string | null
+          submitted_full_name?: string | null
+          submitted_phone?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source?: string | null
+          status?: string
+          submitted_email?: string | null
+          submitted_full_name?: string | null
+          submitted_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_identity_reviews_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_resume_tokens: {
         Row: {
           application_id: string
@@ -313,6 +369,41 @@ export type Database = {
           },
         ]
       }
+      application_waitlist_holds: {
+        Row: {
+          added_at: string
+          added_by: string
+          application_id: string
+          id: string
+          removed_at: string | null
+          removed_by: string | null
+        }
+        Insert: {
+          added_at?: string
+          added_by: string
+          application_id: string
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          application_id?: string
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_waitlist_holds_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           address: string | null
@@ -336,6 +427,9 @@ export type Database = {
           contract_start_date: string | null
           created_at: string | null
           current_step: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_reason: string | null
           deposit_amount: number | null
           deposit_paid: number | null
           deposit_status: string
@@ -361,6 +455,7 @@ export type Database = {
           insurance_rideshare_endorsement: boolean | null
           insurance_status: string
           landing_page: string | null
+          legal_hold: boolean
           license_expiration: string | null
           license_number: string | null
           license_photo_url: string | null
@@ -379,6 +474,7 @@ export type Database = {
           platforms: string[] | null
           primary_application_id: string | null
           profile_screenshot_url: string | null
+          purged_at: string | null
           rating: number | null
           recovery_email_sent_24h: string | null
           recovery_email_sent_72h: string | null
@@ -424,6 +520,8 @@ export type Database = {
           utm_term: string | null
           vehicle_id: string | null
           vehicle_size: string | null
+          waitlist_signed_up_at: string | null
+          waitlist_source: string | null
           weekly_hours: number | null
           weekly_rent: number | null
           years_licensed: number | null
@@ -451,6 +549,9 @@ export type Database = {
           contract_start_date?: string | null
           created_at?: string | null
           current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
@@ -476,6 +577,7 @@ export type Database = {
           insurance_rideshare_endorsement?: boolean | null
           insurance_status?: string
           landing_page?: string | null
+          legal_hold?: boolean
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -494,6 +596,7 @@ export type Database = {
           platforms?: string[] | null
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
+          purged_at?: string | null
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
@@ -539,6 +642,8 @@ export type Database = {
           utm_term?: string | null
           vehicle_id?: string | null
           vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null
@@ -566,6 +671,9 @@ export type Database = {
           contract_start_date?: string | null
           created_at?: string | null
           current_step?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deleted_reason?: string | null
           deposit_amount?: number | null
           deposit_paid?: number | null
           deposit_status?: string
@@ -591,6 +699,7 @@ export type Database = {
           insurance_rideshare_endorsement?: boolean | null
           insurance_status?: string
           landing_page?: string | null
+          legal_hold?: boolean
           license_expiration?: string | null
           license_number?: string | null
           license_photo_url?: string | null
@@ -609,6 +718,7 @@ export type Database = {
           platforms?: string[] | null
           primary_application_id?: string | null
           profile_screenshot_url?: string | null
+          purged_at?: string | null
           rating?: number | null
           recovery_email_sent_24h?: string | null
           recovery_email_sent_72h?: string | null
@@ -654,6 +764,8 @@ export type Database = {
           utm_term?: string | null
           vehicle_id?: string | null
           vehicle_size?: string | null
+          waitlist_signed_up_at?: string | null
+          waitlist_source?: string | null
           weekly_hours?: number | null
           weekly_rent?: number | null
           years_licensed?: number | null
@@ -1021,6 +1133,69 @@ export type Database = {
           message?: string | null
           name?: string
           phone?: string | null
+        }
+        Relationships: []
+      }
+      deletion_events: {
+        Row: {
+          action: string
+          actor: string | null
+          application_id: string
+          created_at: string
+          details: Json
+          id: string
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          application_id: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          application_id?: string
+          created_at?: string
+          details?: Json
+          id?: string
+        }
+        Relationships: []
+      }
+      deletion_file_jobs: {
+        Row: {
+          application_id: string
+          attempts: number
+          bucket: string
+          created_at: string
+          id: string
+          last_error: string | null
+          path: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          application_id: string
+          attempts?: number
+          bucket: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          path: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string
+          attempts?: number
+          bucket?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          path?: string
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1521,6 +1696,374 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "agreements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_settlements: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string
+          id: string
+          idempotency_key: string
+          obligation_id: string
+          payment_txn_id: string
+          reverse_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by: string
+          id?: string
+          idempotency_key: string
+          obligation_id: string
+          payment_txn_id: string
+          reverse_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          idempotency_key?: string
+          obligation_id?: string
+          payment_txn_id?: string
+          reverse_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_settlements_obligation_id_fkey"
+            columns: ["obligation_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_settlements_payment_txn_id_fkey"
+            columns: ["payment_txn_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transaction_events: {
+        Row: {
+          actor: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          event: string
+          from_status: string | null
+          id: number
+          reason: string | null
+          to_status: string | null
+          transaction_id: string
+        }
+        Insert: {
+          actor?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          event: string
+          from_status?: string | null
+          id?: never
+          reason?: string | null
+          to_status?: string | null
+          transaction_id: string
+        }
+        Update: {
+          actor?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          event?: string
+          from_status?: string | null
+          id?: never
+          reason?: string | null
+          to_status?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transaction_events_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transaction_evidence: {
+        Row: {
+          confidence: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          field: string | null
+          id: string
+          import_item_id: string | null
+          page: number | null
+          raw_text: string | null
+          service_transaction_id: string | null
+          transaction_id: string
+        }
+        Insert: {
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          field?: string | null
+          id?: string
+          import_item_id?: string | null
+          page?: number | null
+          raw_text?: string | null
+          service_transaction_id?: string | null
+          transaction_id: string
+        }
+        Update: {
+          confidence?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          field?: string | null
+          id?: string
+          import_item_id?: string | null
+          page?: number | null
+          raw_text?: string | null
+          service_transaction_id?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transaction_evidence_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_import_item_id_fkey"
+            columns: ["import_item_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_import_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_service_transaction_id_fkey"
+            columns: ["service_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transaction_evidence_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_transactions: {
+        Row: {
+          amount: number
+          basis: string
+          cash_date: string | null
+          category: string
+          close_reason: string | null
+          closed_at: string | null
+          closed_by: string | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          corrects_id: string | null
+          created_at: string
+          created_by: string
+          currency: string
+          deposit_source_id: string | null
+          direction: string
+          document_date: string | null
+          due_date: string | null
+          expense_id: string | null
+          id: string
+          idempotency_key: string
+          interest_amount: number | null
+          memo: string | null
+          payee_raw: string | null
+          payment_id: string | null
+          payment_method: string | null
+          posted_at: string | null
+          posted_by: string | null
+          recognition_date: string | null
+          reference_norm: string | null
+          reference_raw: string | null
+          rental_id: string | null
+          reverses_id: string | null
+          sensitivity: string
+          service_date: string | null
+          source_type: string
+          status: string
+          txn_type: string
+          updated_at: string
+          vehicle_hint_id: string | null
+          vendor_id: string | null
+        }
+        Insert: {
+          amount: number
+          basis: string
+          cash_date?: string | null
+          category: string
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          corrects_id?: string | null
+          created_at?: string
+          created_by: string
+          currency?: string
+          deposit_source_id?: string | null
+          direction: string
+          document_date?: string | null
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          idempotency_key: string
+          interest_amount?: number | null
+          memo?: string | null
+          payee_raw?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          posted_at?: string | null
+          posted_by?: string | null
+          recognition_date?: string | null
+          reference_norm?: string | null
+          reference_raw?: string | null
+          rental_id?: string | null
+          reverses_id?: string | null
+          sensitivity?: string
+          service_date?: string | null
+          source_type: string
+          status?: string
+          txn_type: string
+          updated_at?: string
+          vehicle_hint_id?: string | null
+          vendor_id?: string | null
+        }
+        Update: {
+          amount?: number
+          basis?: string
+          cash_date?: string | null
+          category?: string
+          close_reason?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          corrects_id?: string | null
+          created_at?: string
+          created_by?: string
+          currency?: string
+          deposit_source_id?: string | null
+          direction?: string
+          document_date?: string | null
+          due_date?: string | null
+          expense_id?: string | null
+          id?: string
+          idempotency_key?: string
+          interest_amount?: number | null
+          memo?: string | null
+          payee_raw?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
+          posted_at?: string | null
+          posted_by?: string | null
+          recognition_date?: string | null
+          reference_norm?: string | null
+          reference_raw?: string | null
+          rental_id?: string | null
+          reverses_id?: string | null
+          sensitivity?: string
+          service_date?: string | null
+          source_type?: string
+          status?: string
+          txn_type?: string
+          updated_at?: string
+          vehicle_hint_id?: string | null
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_corrects_id_fkey"
+            columns: ["corrects_id"]
+            isOneToOne: true
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_deposit_source_id_fkey"
+            columns: ["deposit_source_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_reverses_id_fkey"
+            columns: ["reverses_id"]
+            isOneToOne: true
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vehicle_hint_id_fkey"
+            columns: ["vehicle_hint_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vehicle_hint_id_fkey"
+            columns: ["vehicle_hint_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -3712,6 +4255,117 @@ export type Database = {
           },
         ]
       }
+      photo_enhance_events: {
+        Row: {
+          actor_id: string | null
+          cost_cents: number
+          created_at: string
+          error: string | null
+          id: string
+          mode: string
+          processing_ms: number | null
+          result_media_id: string | null
+          source_media_id: string | null
+          status: string
+          vehicle_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode: string
+          processing_ms?: number | null
+          result_media_id?: string | null
+          source_media_id?: string | null
+          status: string
+          vehicle_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          mode?: string
+          processing_ms?: number | null
+          result_media_id?: string | null
+          source_media_id?: string | null
+          status?: string
+          vehicle_id?: string
+        }
+        Relationships: []
+      }
+      photo_enhance_settings: {
+        Row: {
+          daily_limit: number
+          enabled: boolean
+          id: boolean
+          monthly_paid_cap_cents: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          daily_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_paid_cap_cents?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          daily_limit?: number
+          enabled?: boolean
+          id?: boolean
+          monthly_paid_cap_cents?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      portal_signin_challenges: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          eligible: boolean
+          email: string
+          expires_at: string
+          id: string
+          ip_hash: string | null
+          link_hash: string
+          send_state: string
+          used_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          eligible?: boolean
+          email: string
+          expires_at: string
+          id?: string
+          ip_hash?: string | null
+          link_hash: string
+          send_state?: string
+          used_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          eligible?: boolean
+          email?: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          link_hash?: string
+          send_state?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       referrals: {
         Row: {
           created_at: string
@@ -4615,8 +5269,13 @@ export type Database = {
           is_primary: boolean
           kind: string
           mime_type: string | null
+          processing_ms: number | null
           provenance: string
           published: boolean
+          quality_flags: Json
+          review_status: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           size_bytes: number | null
           sort_order: number
           storage_bucket: string
@@ -4635,8 +5294,13 @@ export type Database = {
           is_primary?: boolean
           kind: string
           mime_type?: string | null
+          processing_ms?: number | null
           provenance?: string
           published?: boolean
+          quality_flags?: Json
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           size_bytes?: number | null
           sort_order?: number
           storage_bucket?: string
@@ -4655,8 +5319,13 @@ export type Database = {
           is_primary?: boolean
           kind?: string
           mime_type?: string | null
+          processing_ms?: number | null
           provenance?: string
           published?: boolean
+          quality_flags?: Json
+          review_status?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           size_bytes?: number | null
           sort_order?: number
           storage_bucket?: string
@@ -5077,6 +5746,8 @@ export type Database = {
           pickup_date: string | null
           promoted_application_id: string | null
           promoted_at: string | null
+          review_flagged_at: string | null
+          review_reason: string | null
           source: string
           state: string | null
           status: string
@@ -5100,6 +5771,8 @@ export type Database = {
           pickup_date?: string | null
           promoted_application_id?: string | null
           promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
           source?: string
           state?: string | null
           status?: string
@@ -5123,6 +5796,8 @@ export type Database = {
           pickup_date?: string | null
           promoted_application_id?: string | null
           promoted_at?: string | null
+          review_flagged_at?: string | null
+          review_reason?: string | null
           source?: string
           state?: string | null
           status?: string
@@ -5249,6 +5924,7 @@ export type Database = {
         Returns: Json
       }
       cars_available: { Args: never; Returns: number }
+      driver_deletion_blocker: { Args: { _id: string }; Returns: string }
       email_delivery_attach: {
         Args: { _id: string; _resend_id: string }
         Returns: undefined
@@ -5278,6 +5954,63 @@ export type Database = {
         Returns: string
       }
       esign_void: { Args: { _id: string }; Returns: string }
+      fin__basis: { Args: { _type: string }; Returns: string }
+      fin__insert: {
+        Args: {
+          _corrects: string
+          _idem: string
+          _p: Json
+          _reverses: string
+          _status: string
+        }
+        Returns: string
+      }
+      fin__log: {
+        Args: {
+          _after: Json
+          _before: Json
+          _event: string
+          _from: string
+          _id: string
+          _reason: string
+          _to: string
+        }
+        Returns: undefined
+      }
+      fin__require: { Args: { _sensitivity: string }; Returns: undefined }
+      fin__reverse: {
+        Args: { _final: string; _id: string; _idem: string; _reason: string }
+        Returns: string
+      }
+      fin_add_evidence: { Args: { _e: Json; _id: string }; Returns: string }
+      fin_confirm: { Args: { _id: string }; Returns: string }
+      fin_correct: {
+        Args: { _id: string; _idem: string; _p: Json; _reason: string }
+        Returns: string
+      }
+      fin_discard: { Args: { _id: string; _reason: string }; Returns: string }
+      fin_post: {
+        Args: { _cash: string; _id: string; _recognition: string }
+        Returns: string
+      }
+      fin_propose: { Args: { _idem: string; _p: Json }; Returns: string }
+      fin_reverse: {
+        Args: { _id: string; _idem: string; _reason: string }
+        Returns: string
+      }
+      fin_settle: {
+        Args: {
+          _amount: number
+          _idem: string
+          _obligation: string
+          _payment: string
+        }
+        Returns: string
+      }
+      fin_unsettle: {
+        Args: { _reason: string; _settlement: string }
+        Returns: string
+      }
       fleet_inbox_acquire_lease: {
         Args: { _seconds: number }
         Returns: boolean
@@ -5315,9 +6048,17 @@ export type Database = {
       fleet_inbox_wake: { Args: never; Returns: undefined }
       get_cron_token: { Args: { _name: string }; Returns: string }
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
+      promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
+      purge_application: { Args: { _id: string }; Returns: Json }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      restore_application: { Args: { _id: string }; Returns: Json }
+      set_legal_hold: { Args: { _id: string; _on: boolean }; Returns: Json }
+      soft_delete_application: {
+        Args: { _id: string; _reason: string }
+        Returns: Json
       }
       submission_accepts_uploads: {
         Args: { _submission_id: string }
