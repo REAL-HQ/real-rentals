@@ -416,11 +416,9 @@ export const adminListDriverDocuments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<VaultDocument[]> => {
-    // Coordinator and above. Checking an applicant's licence is operational
-    // screening work, not an approval decision — this used to be Owner-only,
-    // which meant a Coordinator could not do the job they are here to do.
-    const { requireStaff } = await import("@/lib/roles.server");
-    await requireStaff(context.userId);
+    // Sensitive identity documents require Owner or Manager authorization.
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
     const owner = await isOwner(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -483,6 +481,8 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const admin = await isAdmin(context.supabase, context.userId);
     // A restricted category may only ever be written by an Owner, whichever
     // door the upload comes through.
@@ -566,6 +566,8 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const admin = await isAdmin(context.supabase, context.userId);
     const restricted = RESTRICTED_CATEGORIES.includes(data.category);
     if (restricted) {
@@ -639,8 +641,8 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { requireStaff } = await import("@/lib/roles.server");
-    await requireStaff(context.userId);
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
     await assertMayTouch(context.userId, data.documentId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const patch: Record<string, any> = {};
@@ -734,9 +736,9 @@ export const setDocumentReview = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { requireStaff } = await import("@/lib/roles.server");
+    const { requireManager } = await import("@/lib/roles.server");
     const { logAudit } = await import("@/lib/audit.server");
-    const actor = await requireStaff(context.userId);
+    const actor = await requireManager(context.userId);
     await assertMayTouch(context.userId, data.documentId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
