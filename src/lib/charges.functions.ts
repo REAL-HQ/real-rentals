@@ -565,7 +565,7 @@ export const getMyCharges = createServerFn({ method: "GET" })
   .handler(async ({ context: rawCtx, data: input }): Promise<TollCharge[]> => {
     const context = await (await import("@/lib/driver-preview.server")).portalScope(rawCtx as any, input, "charges");
     const { data: apps } = await context.supabase
-      .from("applications")
+      .from("application_read_projection" as any)
       .select("id")
       .eq("user_id", context.userId);
     const appIds = (apps ?? []).map((a: any) => a.id as string);

@@ -42,6 +42,7 @@ import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
@@ -49,6 +50,7 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
+import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -82,6 +84,10 @@ type AdminSearch = {
   view?: string;
   /** Fleet-wide readiness filter: listing_ready | rental_ready | not_ready. */
   ready?: string;
+  /** Bookings list: active | completed | cancelled. */
+  phase?: string;
+  /** Bookings list: one vehicle's rentals. */
+  vehicle?: string;
 };
 
 /**
@@ -104,20 +110,27 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  id: ["drivers", "vehicles", "inspections"],
+  // "bookings" is here because a booking IS a record you open — the drawer is
+  // held by the same `id` the drivers and vehicles lists use.
+  id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
-  q: ["vehicles"],
+  // The Bookings list holds its own search, sort and page under the same
+  // names; a parameter not owned by its tab is stripped a moment after the
+  // navigation, which is how a filter silently resets itself.
+  q: ["vehicles", "bookings"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
-  sort: ["vehicles"],
-  page: ["vehicles"],
+  sort: ["vehicles", "bookings"],
+  page: ["vehicles", "bookings"],
   view: ["vehicles"],
   ready: ["vehicles"],
+  phase: ["bookings"],
+  vehicle: ["bookings"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -129,7 +142,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready"] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -164,7 +177,7 @@ export const Route = createFileRoute("/admin")({
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
     if (typeof raw.q === "number") out.q = String(raw.q);
-    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready"] as const) if (str(raw[k])) out[k] = str(raw[k]);
+    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
@@ -229,9 +242,13 @@ function Admin() {
     const set = () => {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
       const header = el.querySelector("header");
-      root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
+      // Fractional heights: offsetHeight rounds to whole px, which leaves the
+      // sticky panel below a sub-pixel off and makes it jitter while scrolling.
+      const chromeH = el.getBoundingClientRect().height;
+      const headerH = header?.getBoundingClientRect().height ?? 0;
+      root.style.setProperty("--admin-sticky-h", `${desktop ? chromeH : headerH}px`);
       const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
-      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
+      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.getBoundingClientRect().height : 0}px`);
     };
     set();
     const ro = new ResizeObserver(set);
@@ -260,6 +277,7 @@ function Admin() {
       status: string | null;
     }>
   >([]);
+  const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
@@ -321,6 +339,7 @@ function Admin() {
   }, [tab, search, navigate, urlTab]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const listConvs = useServerFn(listConversations);
+  const loadNotifications = useServerFn(getAdminNotifications);
   const msgOpen = !!search.msg;
   const msgApp = search.msg && search.msg !== "inbox" ? search.msg : null;
   const setMsg = useCallback(
@@ -393,15 +412,20 @@ function Admin() {
     if (!isAdmin) return;
     let cancelled = false;
     async function load() {
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data } = await supabase
-        .from("applications")
-        .select("id, full_name, email, phone, created_at, status")
-        .is("deleted_at", null)
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(15);
-      if (!cancelled) setNotifs(data || []);
+      // Read on the server: migration 0030 revokes the blanket SELECT on
+      // applications, and this query filters on deleted_at, which its
+      // column allow-list does not carry.
+      try {
+        const r = await loadNotifications({ data: undefined });
+        if (!cancelled) {
+          setNotifs(r?.rows ?? []);
+          setNotifsFailed(false);
+        }
+      } catch {
+        // Say nothing rather than claim an empty pipeline: an unreachable
+        // read is not "No Recent Activity".
+        if (!cancelled) setNotifsFailed(true);
+      }
       try {
         const r = await listConvs();
         if (!cancelled) setUnreadMsgs(r.unread);
@@ -415,7 +439,7 @@ function Admin() {
       cancelled = true;
       clearInterval(t);
     };
-  }, [isAdmin, listConvs]);
+  }, [isAdmin, listConvs, loadNotifications]);
 
   const unreadCount = notifs.filter(
     (n) => new Date(n.created_at ?? 0).getTime() > notifSeenAt,
@@ -479,12 +503,11 @@ function Admin() {
         search={rootSearch(t.href ?? t.id)}
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`relative w-full flex items-center gap-3 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
-          active ? "bg-[#1F1F23] text-white" : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+          active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
         }`}
       >
-        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r bg-[#D03020]" />}
-        <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} />
+        <Icon className="w-4 h-4 shrink-0" />
         <span>{t.label}</span>
       </Link>
     );
@@ -626,7 +649,11 @@ function Admin() {
                     <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifs.length === 0 && <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]">No Recent Activity</div>}
+                    {notifs.length === 0 && (
+                      <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]" data-notifs-state={notifsFailed ? "failed" : "empty"}>
+                        {notifsFailed ? "Could Not Load Activity" : "No Recent Activity"}
+                      </div>
+                    )}
                     {notifs.map((n) => {
                       const created = n.created_at ? new Date(n.created_at) : null;
                       const isNew = created && created.getTime() > notifSeenAt;
@@ -746,6 +773,19 @@ function Admin() {
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "bookings" && (
+              <BookingsPanel
+                externalSearch={globalSearch}
+                openId={urlRecordId}
+                listState={{
+                  q: search?.q,
+                  phase: search?.phase,
+                  sort: search?.sort,
+                  page: search?.page,
+                  vehicle: search?.vehicle,
+                }}
+              />
+            )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}

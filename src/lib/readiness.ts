@@ -248,7 +248,7 @@ export const FACTORS: Factor[] = [
     evaluate: (a, s) => {
       const staff = num(s.trip_count);
       const self = num(a.trips_completed);
-      const shots = Array.isArray(a.trip_screenshots)
+      const shots = a.identity_trips_on_file === true ? 1 : Array.isArray(a.trip_screenshots)
         ? a.trip_screenshots.filter(Boolean).length
         : 0;
       const n = staff ?? self;
@@ -273,7 +273,7 @@ export const FACTORS: Factor[] = [
       const r = staff ?? self;
       // Null is not a bad rating. This is the exact conflation being fixed.
       if (r === null) return unknown("Driver rating not provided");
-      const shot = Boolean(a.profile_screenshot_url) || d.has("driver_profile_screenshot");
+      const shot = (a.identity_profile_on_file === true || Boolean(a.profile_screenshot_url)) || d.has("driver_profile_screenshot");
       const evidence: Evidence =
         staff !== null || d.verified("driver_profile_screenshot")
           ? "staff_verified"
@@ -343,7 +343,7 @@ export const FACTORS: Factor[] = [
     weight: 4,
     evaluate: (a, _s, d) => {
       const onFile =
-        Boolean(a.license_photo_url) || d.has("license_front") || d.has("license_back");
+        (a.identity_license_on_file === true || Boolean(a.license_photo_url)) || d.has("license_front") || d.has("license_back");
       if (!onFile) return unknown("No licence image");
       // A person having checked the image is a better fact than the image
       // existing. It changes the evidence, never the points — see the note on
@@ -387,7 +387,7 @@ export const FACTORS: Factor[] = [
       if (self === true)
         return positive(
           "Full coverage declared",
-          a.insurance_doc_url ? "document" : "self_reported",
+          (a.identity_insurance_on_file === true || a.insurance_doc_url) ? "document" : "self_reported",
         );
       if (self === false) return attention("No full coverage", "self_reported");
       // "Not sure" is an answered question with an unknown answer. It stays
@@ -407,7 +407,7 @@ export const FACTORS: Factor[] = [
     evaluate: (a, s, d) => {
       if (bool(s.insurance_verified) === true || d.verified("insurance_card"))
         return positive("Insurance verified by staff", "staff_verified");
-      if (a.insurance_doc_url || d.has("insurance_card"))
+      if (a.identity_insurance_on_file === true || a.insurance_doc_url || d.has("insurance_card"))
         return positive("Insurance document on file", "document");
       return unknown("No insurance document");
     },

@@ -416,7 +416,12 @@ export const adminListDriverDocuments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<VaultDocument[]> => {
-    // Sensitive identity documents require Owner or Manager authorization.
+    // Manager and above. A driver's vault holds their licence, their
+    // insurance and their identity documents, and the list carries the
+    // storage paths that reach the files themselves — so this is not
+    // operational screening work, whatever the screening workflow needs.
+    // (It was briefly Coordinator-and-above for exactly that reason; the
+    // reviewed security position is Manager.)
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const owner = await isOwner(context.supabase, context.userId);
@@ -490,6 +495,10 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       const { requireOwner } = await import("@/lib/roles.server");
       await requireOwner(context.userId);
     }
+    // "If you are staff at all, you must be a Manager." Deliberately not a
+    // flat requireManager: the applicant branch below uploads against their
+    // OWN application and holds no staff grant at all, and gating this on
+    // the tier alone would lock a driver out of their own paperwork.
     let applicationId = data.applicationId ?? null;
     if (admin) {
       if (!applicationId) throw new Error("Missing driver");
@@ -497,13 +506,13 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
     } else {
-      const { data: app } = await context.supabase
-        .from("applications")
+      const { data: app } = (await context.supabase
+        .from("application_read_projection" as any)
         .select("id")
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()) as { data: { id: string } | null };
       if (!app) throw new Error("No application on file");
       applicationId = app.id as string;
     }
@@ -574,10 +583,13 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
       const { requireOwner } = await import("@/lib/roles.server");
       await requireOwner(context.userId);
     }
+    // Same shape as the upload-url call above: staff must be a Manager, and
+    // a driver confirming their own upload is left to the ownership check
+    // further down.
     const staff = admin || (await isStaffUser(context.userId));
     if (!staff) {
       const { data: app } = await context.supabase
-        .from("applications")
+        .from("application_read_projection" as any)
         .select("id")
         .eq("id", data.applicationId)
         .eq("user_id", context.userId)
@@ -641,6 +653,9 @@ export const updateDocumentMeta = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Retitling a document, changing its expiry or flipping it to
+    // internal-only all change what the driver is shown and what readiness
+    // counts. Manager and above.
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     await assertMayTouch(context.userId, data.documentId);
@@ -684,15 +699,15 @@ export const getMyVault = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(
     async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
-      const { data: app } = await context.supabase
-        .from("applications")
+      const { data: app } = (await context.supabase
+        .from("application_read_projection" as any)
         .select(
           "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
         )
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()) as { data: any };
       if (!app) return { applicationId: null, documents: [] };
 
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -736,6 +751,8 @@ export const setDocumentReview = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Verifying or rejecting an identity document is an authorization
+    // decision about a person, not a clerical one. Manager and above.
     const { requireManager } = await import("@/lib/roles.server");
     const { logAudit } = await import("@/lib/audit.server");
     const actor = await requireManager(context.userId);

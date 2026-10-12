@@ -68,6 +68,121 @@ export type DriverDashboard = {
   }>;
 };
 
+/**
+ * One rental this driver has had, past or present.
+ *
+ * The dashboard answers "what am I driving now?" and deliberately reads only
+ * the newest ACTIVE rental. That left a driver with no way to see a rental
+ * that had ended — their own history was invisible to them while every staff
+ * screen could see it. This is that history, and it is read-only.
+ *
+ * The vehicle columns are the same narrow set the dashboard allows: a renter
+ * learns the car they drove, never the GPS identifiers, key location or
+ * internal notes that live on the same row.
+ */
+export type DriverRentalHistoryItem = {
+  id: string;
+  status: string;
+  /** "Active" | "Completed" | "Cancelled" — the reading of status, not a column. */
+  phase: string;
+  start_date: string | null;
+  end_date: string | null;
+  /** True when the rental runs until somebody ends it: not a missing date. */
+  open_ended: boolean;
+  weekly_rate: number | null;
+  vehicle: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    trim: string | null;
+    color: string | null;
+    plate: string | null;
+    photo: string | null;
+  } | null;
+  /** Their own agreement for this rental, when one exists. */
+  agreement: { id: string; status: string | null; signed_at: string | null } | null;
+};
+
+export const getMyRentalHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<DriverRentalHistoryItem[]> => {
+    const { userId } = await scope(context, input, "rental_history");
+
+    // rentals.driver_id is the AUTH USER id (activate_rental_tx sets it from
+    // applications.user_id) — not an applications row id, which is what
+    // payments.driver_id and documents.driver_id hold. Only this user's own
+    // rentals are ever read, and nothing here writes.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rentals } = await supabaseAdmin
+      .from("rentals")
+      .select("id,status,start_date,end_date,weekly_rate,vehicle_id")
+      .eq("driver_id", userId)
+      .order("start_date", { ascending: false, nullsFirst: false })
+      .limit(50);
+    const rows = (rentals ?? []) as Array<Record<string, unknown>>;
+    if (!rows.length) return [];
+
+    const vehicleIds = [...new Set(rows.map((r) => r.vehicle_id).filter(Boolean))] as string[];
+    const rentalIds = rows.map((r) => String(r.id));
+    const [vehicles, agreements] = await Promise.all([
+      vehicleIds.length
+        ? supabaseAdmin
+            .from("vehicles")
+            .select("id,year,make,model,trim,color,license_plate,photos")
+            .in("id", vehicleIds)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+      supabaseAdmin
+        .from("agreements")
+        .select("id,rental_id,status,signed_at")
+        .in("rental_id", rentalIds)
+        .order("created_at", { ascending: false }),
+    ]);
+    const vehById = new Map(
+      ((vehicles.data ?? []) as Array<Record<string, unknown>>).map((v) => [String(v.id), v]),
+    );
+    const agreementByRental = new Map<string, Record<string, unknown>>();
+    for (const a of (agreements.data ?? []) as Array<Record<string, unknown>>) {
+      const key = String(a.rental_id ?? "");
+      if (key && !agreementByRental.has(key)) agreementByRental.set(key, a);
+    }
+
+    const { bookingPhase, BOOKING_PHASE_LABEL } = await import("@/lib/bookings-list");
+    return rows.map((r) => {
+      const v = r.vehicle_id ? vehById.get(String(r.vehicle_id)) : undefined;
+      const photos = (v?.photos as string[] | null) ?? null;
+      const phase = bookingPhase(r.status as string | null);
+      const a = agreementByRental.get(String(r.id));
+      return {
+        id: String(r.id),
+        status: String(r.status ?? ""),
+        phase: BOOKING_PHASE_LABEL[phase],
+        start_date: (r.start_date as string | null) ?? null,
+        end_date: (r.end_date as string | null) ?? null,
+        open_ended: !r.end_date && phase === "active",
+        weekly_rate: r.weekly_rate == null ? null : Number(r.weekly_rate),
+        vehicle: v
+          ? {
+              year: (v.year as number | null) ?? null,
+              make: (v.make as string | null) ?? null,
+              model: (v.model as string | null) ?? null,
+              trim: (v.trim as string | null) ?? null,
+              color: (v.color as string | null) ?? null,
+              plate: (v.license_plate as string | null) ?? null,
+              photo: (photos && photos[0]) || null,
+            }
+          : null,
+        agreement: a
+          ? {
+              id: String(a.id),
+              status: (a.status as string | null) ?? null,
+              signed_at: (a.signed_at as string | null) ?? null,
+            }
+          : null,
+      };
+    });
+  });
+
 export type DriverDocument = {
   id: string;
   kind: string;
@@ -123,7 +238,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     }
 
     // payments.driver_id references applications.id; resolve via application(s) linked to this user
-    const { data: apps } = await supabase.from("applications").select("id").eq("user_id", userId);
+    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id);
 
     const [paymentsRes, maintRes, notifRes] = await Promise.all([
@@ -169,7 +284,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     // one without this, and guessing "approved" from the absence of a rental
     // tells a rejected person they are approved.
     const { data: statusRow } = await supabase
-      .from("applications")
+      .from("application_read_projection" as any)
       .select("status")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
@@ -211,7 +326,7 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     // documents.driver_id references applications.id (not auth.users.id), so
     // resolve this user's application(s) before querying the vault.
-    const { data: apps } = await supabase.from("applications").select("id").eq("user_id", userId);
+    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id as string);
     if (appIds.length === 0) return [];
 
@@ -357,7 +472,7 @@ export const getDriverProfile = createServerFn({ method: "GET" })
   .handler(async ({ context, data: input }): Promise<DriverProfile> => {
     const sc = await scope(context, input, "profile");
     const { data } = await sc.supabase
-      .from("applications")
+      .from("application_read_projection" as any)
       .select("full_name,email,phone,city,status,created_at,address,state,zip,sms_consent")
       .eq("user_id", sc.userId)
       .order("created_at", { ascending: false })
@@ -437,13 +552,13 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
     await refuseWrite(context.userId);
     const { supabase, userId } = context;
-    const { data: app } = await supabase
-      .from("applications")
+    const { data: app } = (await supabase
+      .from("application_read_projection" as any)
       .select("id,phone")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle()) as { data: { id: string; phone: string | null } | null };
     if (!app) return { error: "No application on file." };
 
     const patch: Record<string, unknown> = { ...data };

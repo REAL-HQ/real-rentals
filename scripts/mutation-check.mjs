@@ -41,6 +41,20 @@ const LIST = "src/lib/vehicles-list.functions.ts";
 const LISTRULES = "src/lib/vehicles-list.ts";
 const PANELUI = "src/components/admin/VehiclesPanel.tsx";
 const INBOXUI = "src/components/admin/FleetInboxPanel.tsx";
+const BOOKFN = "src/lib/bookings.functions.ts";
+const BOOKRULES = "src/lib/bookings-list.ts";
+const BOOKPANEL = "src/components/admin/BookingsPanel.tsx";
+const BOOKDRAWER = "src/components/admin/BookingDetails.tsx";
+const PORTALFN = "src/lib/portal.functions.ts";
+const BOOKACT = "src/components/admin/BookingActions.tsx";
+const RENTALFN2 = "src/lib/rentals.functions.ts";
+const CSFN = "src/lib/contact-status.functions.ts";
+const CSRULES = "src/lib/contact-status.ts";
+const DOCFN = "src/lib/documents.functions.ts";
+const APPFN = "src/lib/applications.functions.ts";
+const DLFN = "src/lib/drivers-list.functions.ts";
+const DLRULES = "src/lib/drivers-list.ts";
+const INSPFN2 = "src/lib/inspections.functions.ts";
 
 const SERVER = "scripts/vehicle-photo-analysis.test.mjs";
 const CHANNEL = "scripts/safe-autofill-channel.test.mjs";
@@ -53,6 +67,19 @@ const READYTEST = "scripts/vehicle-readiness-phase1.test.mjs";
 const MINTERM = "scripts/contract-min-term.test.mjs";
 const PLATETEST = "scripts/vehicle-plate-editing.test.mjs";
 const PHASE2 = "scripts/vehicle-onboarding-phase2.test.mjs";
+const BOOKLIST = "scripts/bookings-list.test.mjs";
+const BOOKDETAIL = "scripts/bookings-details.test.mjs";
+const BOOKE2E = "scripts/bookings-e2e.test.mjs";
+const BOOKACTTEST = "scripts/bookings-actions.test.mjs";
+const INSPPERMS = "scripts/inspection-permissions.test.mjs";
+const AGPDF = "scripts/agreement-pdf-access.test.mjs";
+const CONTACT = "scripts/contact-status.test.mjs";
+const IDENTITY = "scripts/identity-authorization.test.mjs";
+const DLIST = "scripts/drivers-list-access.test.mjs";
+const AOFN = "src/lib/admin-overview.functions.ts";
+const AORULES = "src/lib/admin-overview.ts";
+const AOPANEL = "src/components/admin/OverviewPanel.tsx";
+const AREADS = "scripts/admin-reads-access.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -100,13 +127,14 @@ const MUTATIONS = [
   ["an inspection cannot be started against a vehicle that is not there", INSPFN,
     '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", READYTEST],
   ["an archived vehicle cannot be inspected", INSPFN,
-    '    if (vehicle.archived_at) throw new Error("That vehicle is archived — restore it before inspecting it.");', "", READYTEST],
+    '    if (vehicle.archived_at)\n      throw new Error("That vehicle is archived — restore it before inspecting it.");',
+    "", READYTEST],
   ["the inspection form prefers the vehicle it was sent", INSPUI,
     "useState(initialVehicleId ?? vehicles[0]?.id ?? \"\")", 'useState(vehicles[0]?.id ?? "")', READYTEST],
   ["a readiness Fix carries the vehicle id", PROFILE,
     "search: { tab: f.tab, id: v.id } as never", "search: { tab: f.tab } as never", READYTEST],
   ["the router lets the inspections tab keep the vehicle id", ADMIN,
-    '  id: ["drivers", "vehicles", "inspections"],', '  id: ["drivers", "vehicles"],', READYTEST],
+    '  id: ["drivers", "vehicles", "inspections", "bookings"],', '  id: ["drivers", "vehicles"],', READYTEST],
   ["a title scan counts as a title on file", READY,
     "  if (t) return t.documentOnFile || t.metadataRecorded;", "  if (t) return t.metadataRecorded;", READYTEST],
   ["a missing registration expiry still blocks (no quiet downgrade)", READY,
@@ -203,6 +231,87 @@ const MUTATIONS = [
     "", PHASE2],
   ["paperwork is offered after the car is saved", EDITOR,
     '    setCreated({ id, label });\n    setMode("docs");', "    onCreated(id);", PHASE2],
+  // ---------------------------------------------------------------- Bookings
+  // A booking is a rental, read. The money boundary, the application join and
+  // the driver's own scope are the three things that must never slip.
+  ["a Coordinator's booking list carries no money", BOOKFN,
+    '    const canSeeMoney = tierAllows(actor.tier, "manager");\n    const sb = await admin();\n    const phase = isBookingPhaseFilter(data.phase) ? data.phase : "all";',
+    '    const canSeeMoney = true;\n    const sb = await admin();\n    const phase = isBookingPhaseFilter(data.phase) ? data.phase : "all";', BOOKLIST],
+  ["a Coordinator's booking detail carries no money", BOOKFN,
+    '    const canSeeMoney = tierAllows(actor.tier, "manager");\n    const sb = await admin();\n\n    const { data: r } = await sb',
+    '    const canSeeMoney = true;\n    const sb = await admin();\n\n    const { data: r } = await sb', BOOKDETAIL],
+  ["only staff may list bookings", BOOKFN,
+    "  .handler(async ({ data, context }): Promise<BookingListResult> => {\n    const actor = await requireStaff(context.userId);",
+    '  .handler(async ({ data, context }): Promise<BookingListResult> => {\n    const actor = { tier: "owner" };', BOOKLIST],
+  ["only staff may open a booking", BOOKFN,
+    "  .handler(async ({ data, context }): Promise<BookingDetail | null> => {\n    const actor = await requireStaff(context.userId);",
+    '  .handler(async ({ data, context }): Promise<BookingDetail | null> => {\n    const actor = { tier: "owner" };', BOOKDETAIL],
+  ["the listed driver comes from application_id, not driver_id", BOOKFN,
+    "      const app = r.application_id ? appById.get(String(r.application_id)) : undefined;",
+    "      const app = r.driver_id ? appById.get(String(r.driver_id)) : undefined;", BOOKLIST],
+  ["the opened driver comes from application_id, not driver_id", BOOKFN,
+    '            .eq("id", String(rental.application_id))',
+    '            .eq("id", String(rental.driver_id))', BOOKDETAIL],
+  ["the counts count the filtered scope, not the whole fleet", BOOKFN,
+    '    const { data: statusRows } = await scoped(sb.from("rentals").select("status")).limit(5000);',
+    '    const { data: statusRows } = await sb.from("rentals").select("status").limit(5000);', BOOKLIST],
+  ["a search that matched nobody returns nobody", BOOKFN,
+    "    if (searchRentalIds && !searchRentalIds.length) {", "    if (false) {", BOOKLIST],
+  ["both spellings of cancelled are read as cancelled", BOOKRULES,
+    '  if (s === "cancelled" || s === "canceled" || s === "void" || s === "voided") return "cancelled";',
+    '  if (s === "void" || s === "voided") return "cancelled";', BOOKLIST],
+  ["an active rental's absent end date is open-ended, not a gap", BOOKRULES,
+    '  if (b.phase !== "active" && !b.endDate) out.push("End date not recorded");',
+    '  if (!b.endDate) out.push("End date not recorded");', BOOKDETAIL],
+  ["a driver's history is their own rentals only", PORTALFN,
+    '      .eq("driver_id", userId)\n      .order("start_date", { ascending: false, nullsFirst: false })',
+    '      .order("start_date", { ascending: false, nullsFirst: false })', BOOKDETAIL],
+  // ------------------------------------------------------- Bookings R1
+  ["an inspection of a car that is OUT is filed against its rental", INSPFN2,
+    '    let rentalId = data.rentalId ?? null;\n    if (!rentalId) {',
+    "    let rentalId = data.rentalId ?? null;\n    if (false) {", BOOKACTTEST],
+  ["the rental back-fill takes only the ACTIVE rental", INSPFN2,
+    '        .eq("vehicle_id", data.vehicleId)\n        .eq("status", "active")\n        .maybeSingle();',
+    '        .eq("vehicle_id", data.vehicleId)\n        .maybeSingle();', BOOKACTTEST],
+  ["a Coordinator's incident carries no cost", BOOKFN,
+    "      if (canSeeMoney) {\n        row.estimatedCost = i.estimated_cost == null ? null : Number(i.estimated_cost);",
+    "      if (true) {\n        row.estimatedCost = i.estimated_cost == null ? null : Number(i.estimated_cost);", BOOKACTTEST],
+  ["a Coordinator's service record carries no bill", BOOKFN,
+    "      if (canSeeMoney) row.totalCost = m.total_cost == null ? null : Number(m.total_cost);",
+    "      row.totalCost = m.total_cost == null ? null : Number(m.total_cost);", BOOKACTTEST],
+  ["incidents and service are scoped to THIS rental", BOOKFN,
+    '        .select(canSeeMoney ? INCIDENT_WITH_MONEY : INCIDENT_OPERATIONAL)\n        .eq("rental_id", data.rentalId)',
+    "        .select(canSeeMoney ? INCIDENT_WITH_MONEY : INCIDENT_OPERATIONAL)", BOOKACTTEST],
+  ["End Rental is a Manager action", RENTALFN2,
+    '  const { requireManager } = await import("@/lib/roles.server");\n  return requireManager(userId);',
+    '  const { requireStaff } = await import("@/lib/roles.server");\n  return requireStaff(userId);', BOOKACTTEST],
+  // ------------------------------------ the Coordinator handoff permission
+  ["destroying a condition photo stays Owner-or-Manager", INSPFN2,
+    "async function isStaff(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"manager\");",
+    "async function isStaff(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"coordinator\");", INSPPERMS],
+  ["the handoff permission is Coordinator-and-above, not narrower", INSPFN2,
+    "async function canInspect(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"coordinator\");",
+    "async function canInspect(supabase: unknown, userId: string): Promise<boolean> {\n  return tierAllows(await staffTier(supabase, userId), \"manager\");", INSPPERMS],
+  ["the delete is the one endpoint still asking isStaff", INSPFN2,
+    '    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");',
+    '    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");', INSPPERMS],
+  ["an upload is pinned to one vehicle's folder", INSPFN2,
+    '    if (!data.path.startsWith(`${data.vehicleId}/`)) throw new Error("Invalid upload path");',
+    "", INSPPERMS],
+  ["a driver's upload cannot name another car", INSPFN2,
+    '      if (!rental?.vehicle_id) throw new Error("No active rental on file");\n      vehicleId = rental.vehicle_id as string;',
+    '      if (!rental?.vehicle_id) throw new Error("No active rental on file");',
+    INSPPERMS],
+  ["a driver reads only an inspection on the car they rent", INSPFN2,
+    '      if (!rental || rental.vehicle_id !== inspection.vehicle_id) throw new Error("Forbidden");',
+    "", INSPPERMS],
+  ["a forged vehicle id cannot start an inspection", INSPFN2,
+    '    if (!vehicle) throw new Error("That vehicle no longer exists.");', "", INSPPERMS],
+  ["the signed agreement PDF is offered only to a Manager", BOOKDRAWER,
+    "                  (d.canManage ? (", "                  (true ? (", AGPDF],
+  ["the booking read serves agreement metadata, not the contract", BOOKFN,
+    '        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id")',
+    '        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id,body")', AGPDF],
   // --------------------------------------- the contract minimum-term date
   ["the minimum term is computed from the real start date", AGFN,
     "    const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));",
@@ -221,6 +330,86 @@ const MUTATIONS = [
     "", MINTERM],
   ["a zero or missing term computes nothing", AGDATES,
     "  if (!Number.isFinite(weeks) || weeks <= 0) return null;", "", MINTERM],
+  // ------------------------------------------------- Contact Status (1A)
+  // Who may set it, that the server re-checks the popover's rules, and that
+  // the dialling log never reaches the application lifecycle.
+  ["only staff may set a contact status", CSFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { userId: context.userId, email: null, role: "admin", tier: "owner" } as never;', CONTACT],
+  ["the server re-checks the field rules, not just the browser", CSFN,
+    "    if (blockers.length) throw new Error(blockers.map((b) => b.why).join(\" \"));",
+    "", CONTACT],
+  ["the contact write carries no lifecycle column", CSFN,
+    "      .update({\n        ...patch,",
+    "      .update({\n        ...patch,\n        status: data.status,", CONTACT],
+  ["the row records who set it", CSFN,
+    "        contact_status_by: actor.userId,", "        contact_status_by: null,", CONTACT],
+  ["a contact change is audited", CSFN,
+    "    await logAudit(actor, {", "    await Promise.resolve({", CONTACT],
+  ["a missing migration is reported as one, whichever way the server says it", CSFN,
+    '  if (err.code === "42703" || err.code === "PGRST204") return true;', "", CONTACT],
+  ["Follow-Up needs its date", CSRULES,
+    '        followUp: "required",\n        noteLabel: "Note",\n        hint: "Pick the day to call them back.",',
+    '        followUp: "optional",\n        noteLabel: "Note",\n        hint: "Pick the day to call them back.",', CONTACT],
+  ["a status drops the values it has no use for", CSRULES,
+    '    contact_follow_up_on: form.followUp === "off" || !followUp ? null : followUp,',
+    "    contact_follow_up_on: followUp || null,", CONTACT],
+  ["a database without the columns is not reported as supported", CSRULES,
+    '  const supported = Object.prototype.hasOwnProperty.call(r, "contact_status");',
+    "  const supported = true;", CONTACT],
+  // ------------------------------------- identity documents are Manager+
+  ["a driver's document vault is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);", IDENTITY],
+  ["staff uploading a document must be a Manager", DOCFN,
+    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    let applicationId = data.applicationId ?? null;",
+    "    let applicationId = data.applicationId ?? null;", IDENTITY],
+  ["staff confirming a document must be a Manager", DOCFN,
+    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    const staff = admin || (await isStaffUser(context.userId));",
+    "    const staff = admin || (await isStaffUser(context.userId));", IDENTITY],
+  ["retitling a document is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    await assertMayTouch(context.userId, data.documentId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    await assertMayTouch(context.userId, data.documentId);", IDENTITY],
+  ["verifying an identity document is Manager-and-above", DOCFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    const { logAudit } = await import(\"@/lib/audit.server\");\n    const actor = await requireManager(context.userId);",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    const { logAudit } = await import(\"@/lib/audit.server\");\n    const actor = await requireStaff(context.userId);", IDENTITY],
+  ["reissuing an applicant link is Manager-and-above", APPFN,
+    "    const { requireManager } = await import(\"@/lib/roles.server\");\n    const actor = await requireManager(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =",
+    "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    const actor = await requireStaff(context.userId);\n    const { supabaseAdmin } = await import(\"@/integrations/supabase/client.server\");\n    const { revokeResumeTokens, issueResumeToken, resumeUrl } =", IDENTITY],
+  // ------------------------------- the Drivers list under 0031
+  ["the Drivers list read is staff-gated on the server", DLFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { tier: "coordinator" } as never;', DLIST],
+  ["a Coordinator's rows carry no identity fields", DLFN,
+    '    const canSeeSensitive = tierAllows(actor.tier, "manager");',
+    "    const canSeeSensitive = true;", DLIST],
+  ["the projection drops the fields, it does not blank them", DLRULES,
+    "  if (canSeeSensitive) return row;\n  const out: DriverListRow = {};",
+    "  if (canSeeSensitive) return row;\n  const out: DriverListRow = { ...row };", DLIST],
+  // ------------------------- the admin dashboard reads under 0030
+  ["the Overview applicant read is staff-gated on the server", AOFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { tier: "coordinator" } as never;', AREADS],
+  ["the notification read is staff-gated on the server", AOFN,
+    "    await requireStaff(context.userId);", "", AREADS],
+  ["a Coordinator is sent no readiness verdict", AOFN,
+    '    const canSeeReadiness = tierAllows(actor.tier, "manager");',
+    "    const canSeeReadiness = true;", AREADS],
+  ["the applicant projection drops the readiness evidence", AORULES,
+    "export function projectOverviewApplicant(row: RawRow): OverviewApplicantRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {",
+    "export function projectOverviewApplicant(row: RawRow): OverviewApplicantRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {\n    ...(row as object),", AREADS],
+  ["the notification projection drops everything but the contact details", AORULES,
+    "export function projectNotification(row: RawRow): NotificationRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {",
+    "export function projectNotification(row: RawRow): NotificationRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {\n    ...(row as object),", AREADS],
+  ["a failed applicant read is raised, not rendered as zero", AOFN,
+    "    for (const q of [newAppsQ, pendingAppsQ, appsQ]) {\n      if (q.error) throw new Error(q.error.message);\n    }",
+    "", AREADS],
+  ["a failed screening or document read is raised too", AOFN,
+    "      for (const q of [screeningsQ, leadDocsQ]) {\n        if (q.error) throw new Error(q.error.message);\n        if (!q.data) throw new Error(\"Readiness evidence unavailable\");\n      }",
+    "", AREADS],
+  ["the counts begin unknown rather than zero", AOPANEL,
+    "  const [newApps, setNewApps] = useState<number | null>(null);",
+    "  const [newApps, setNewApps] = useState<number | null>(0);", AREADS],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
@@ -250,6 +439,18 @@ const E2E_MUTATIONS = [
     "values: f, intended: edited }", "values: f, intended: [] }", PHASE2_E2E],
   ["a save with nothing changed does not claim one", PROFILE,
     '        toast.info("No changes to save");', '        toast.success("Saved");', PHASE2_E2E],
+  ["the Bookings phase filter survives the admin router", ADMIN,
+    '  phase: ["bookings"],\n', "", BOOKE2E],
+  ["the money columns are not rendered for a Coordinator", BOOKPANEL,
+    '                {money && <th className="px-3 py-2 font-medium">Weekly</th>}',
+    '                <th className="px-3 py-2 font-medium">Weekly</th>', BOOKE2E],
+  ["the Payments and Activity tabs are not offered to a Coordinator", BOOKDRAWER,
+    "  const tabs = TABS.filter((t) => !t.money || money);", "  const tabs = TABS;", BOOKE2E],
+  ["End Rental and Settle Deposit are not offered to a Coordinator", BOOKACT,
+    "        {d.canManage && active && (", "        {active && (", BOOKE2E],
+  ["the handoff carries the rental, not just the vehicle", BOOKACT,
+    "        data: { vehicleId, templateId, rentalId, odometer: odo > 0 ? odo : null },",
+    "        data: { vehicleId, templateId, odometer: odo > 0 ? odo : null },", BOOKE2E],
   ["accepting a detail reloads the vehicle profile", PHOTOS,
     "                          window.dispatchEvent(new Event(\"vehicle-profile-refresh\"));\n                        }\n                      }}",
     "                        }\n                      }}", E2E],
@@ -286,7 +487,9 @@ for (const [what, file, from, to, suite] of ALL) {
     renameSync(bak, file);
   }
 }
-for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, AGFN, AGDATES]) {
+for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
+  INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
+  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN, DLFN, DLRULES]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

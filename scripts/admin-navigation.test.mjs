@@ -15,6 +15,7 @@
  * Needs a dev server: npm run dev, then npm run test:nav.
  */
 import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
+import { toCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
 const REF = "yuyzdsnrbfhkmfzpvhwx";
@@ -118,6 +119,71 @@ await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
 });
 
 
+/*
+ * The server reads.
+ *
+ * The admin dashboard and the Drivers list no longer query `applications`
+ * from the browser — migration 0030 revokes the grant those queries relied
+ * on, so both moved behind server functions. Stubbing PostgREST is therefore
+ * no longer enough to put an applicant on screen: the stub has to follow the
+ * read to the server, the way contact-status-e2e already does.
+ *
+ * The verdicts below are hand-built rather than computed. This file is about
+ * navigation — whether a link opens the person it names — and the readiness
+ * module has its own suites.
+ */
+const verdict = (qualification, coverage) => ({
+  qualification, coverage, verifiedCoverage: Math.max(0, coverage - 10),
+  state: qualification >= 75 ? "decision_ready" : "more_info_needed",
+  stateLabel: qualification >= 75 ? "Decision Ready" : "More Info Needed",
+  factors: [], positives: [], attention: [], unknowns: [], disqualifiers: [],
+});
+const READINESS = Object.fromEntries(apps.map((a, i) => [a.id, verdict(i < 2 ? 95 : 55, 80)]));
+const display = (a) => ({
+  id: a.id, full_name: a.full_name, status: a.status,
+  current_step: a.current_step ?? null, created_at: a.created_at, reviewed_at: null,
+});
+
+function serverFn(name) {
+  switch (true) {
+    case /getOverviewApplicants/.test(name):
+      return {
+        newApps: apps.length, pendingApps: 0,
+        applicants: apps.map(display), readiness: READINESS, canSeeReadiness: true,
+      };
+    case /getAdminNotifications/.test(name):
+      return { rows: apps.map((a) => ({
+        id: a.id, full_name: a.full_name, email: a.email, phone: a.phone,
+        created_at: a.created_at, status: a.status,
+      })) };
+    // The Drivers list is a server read too (PR #28). Unstubbed, the list
+    // renders empty and every "the detail opened" assertion fails for a
+    // reason that has nothing to do with navigation.
+    case /listDriverRows/.test(name):
+      return { rows: apps, canSeeSensitive: true };
+    case /listConversations/.test(name): return { unread: 0, conversations: [] };
+    case /getFleetMaintenance/.test(name):
+      return { counts: { overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 } };
+    case /listWaitlistHolds/.test(name): return [];
+    case /listWaitlist/.test(name):
+      return { entries: [], carsAvailable: 0, waitingCount: 0, fleet: {} };
+    case /getDriverPayStatuses/.test(name): return {};
+    default: return null;
+  }
+}
+
+await ctx.route("**/_serverFn/**", async (route) => {
+  const id = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+  let name = "";
+  try { name = Buffer.from(id.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(); } catch { /* not ours */ }
+  const result = serverFn(name);
+  if (result === null) return route.continue();
+  return route.fulfill({
+    status: 200, contentType: "application/json", headers: { "x-tss-serialized": "true" },
+    body: JSON.stringify(toCrossJSON({ result, context: {} }, { refs: new Map() })),
+  });
+});
+
 const page = await ctx.newPage();
 const errors = [];
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text().slice(0, 200)); });
@@ -137,7 +203,7 @@ const view = () => page.evaluate(() => {
   const tabs = [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent.trim());
   const drawer = tabs.includes("Documents") && tabs.includes("Screening");
   const activeNav = [...document.querySelectorAll("aside a")]
-    .filter((a) => a.className.includes("bg-[#1F1F23]"))
+    .filter((a) => a.className.includes("bg-real-red"))
     .map((a) => a.textContent.trim());
   return {
     h1: document.querySelector("h1")?.textContent?.trim() ?? "",

@@ -137,6 +137,7 @@ export function CityHeroLeadForm({
         source: "city_lp" as const,
       };
       const data = await saveApplication({ data: payload });
+      if ("maintenance" in data) { toast.error(data.error); return; }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("lead", { detail: { city: site.slug, applicationId: data.id } }));
       }

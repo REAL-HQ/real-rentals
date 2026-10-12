@@ -1,0 +1,66 @@
+{
+  "checks": [
+    {
+      "test": "cadence, identity, pause and unrelated job preserved",
+      "passed": true
+    },
+    {
+      "test": "installation never invokes HTTP",
+      "passed": true
+    },
+    {
+      "test": "existing route and authentication contract invoked through net",
+      "passed": true
+    },
+    {
+      "test": "reapplication fails closed",
+      "passed": true
+    },
+    {
+      "test": "missing HTTP dependency fails visibly",
+      "passed": true
+    },
+    {
+      "test": "failed repair preserves original command",
+      "passed": true
+    },
+    {
+      "test": "active scheduler refused",
+      "passed": true
+    },
+    {
+      "test": "durable reservation before any provider send",
+      "passed": true
+    },
+    {
+      "test": "duplicate issuance denied",
+      "passed": true
+    },
+    {
+      "test": "unknown retains quota",
+      "passed": true
+    },
+    {
+      "test": "unknown token remains valid",
+      "passed": true
+    },
+    {
+      "test": "unknown cannot silently be relabeled sent",
+      "passed": true
+    },
+    {
+      "test": "existing token and audit preserved",
+      "passed": true
+    },
+    {
+      "test": "interrupted transaction preserves cooldown",
+      "passed": true
+    },
+    {
+      "test": "reservation-removal negative control exposes duplicate",
+      "passed": true
+    }
+  ],
+  "database_removed": true,
+  "http": "local SQL contract stub; no HTTP network"
+}
