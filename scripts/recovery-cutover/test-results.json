@@ -1,0 +1,70 @@
+{
+  "checks": [
+    {
+      "test": "pause persists after installing connection closes",
+      "passed": true
+    },
+    {
+      "test": "service-role issuance refused",
+      "passed": true
+    },
+    {
+      "test": "service-role exchange/reissue/trim refused",
+      "passed": true
+    },
+    {
+      "test": "service-role deletion refused",
+      "passed": true
+    },
+    {
+      "test": "service-role truncate refused",
+      "passed": true
+    },
+    {
+      "test": "replica writer refused",
+      "passed": true
+    },
+    {
+      "test": "existing token and audit history unchanged",
+      "passed": true
+    },
+    {
+      "test": "repeat pause fails without opening fence",
+      "passed": true
+    },
+    {
+      "test": "interrupted change retains fence",
+      "passed": true
+    },
+    {
+      "test": "resume refuses drift",
+      "passed": true
+    },
+    {
+      "test": "restart allows new issuance preserving old token",
+      "passed": true
+    },
+    {
+      "test": "guard-removal negative control detected",
+      "passed": true
+    },
+    {
+      "test": "missing queue evidence blocks restart",
+      "passed": true
+    },
+    {
+      "test": "complete synthetic evidence accepted for review",
+      "passed": true
+    },
+    {
+      "test": "ambiguous in-flight send forbids replay/restart",
+      "passed": true
+    },
+    {
+      "test": "false cannot masquerade as zero",
+      "passed": true
+    }
+  ],
+  "scope": "storage fence and offline drain gate; not real provider queue testing",
+  "database_removed": true
+}
