@@ -49,7 +49,9 @@
     "test:mutation": "node scripts/mutation-check.mjs",
     "test:driver": "node scripts/driver-access.test.mjs && node scripts/file-upload-guard.test.mjs",
     "test:session": "node scripts/session-isolation.test.mjs",
-    "test:waitlist": "node scripts/waitlist-security.test.mjs"
+    "test:waitlist": "node scripts/waitlist-security.test.mjs",
+    "test:admin-reads": "node scripts/admin-reads-access.test.mjs",
+    "test:admin-reads-e2e": "node scripts/admin-reads-e2e.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
