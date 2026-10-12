@@ -1101,7 +1101,7 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       document_id: string | null;
     };
     const { data: apps } = await context.supabase
-      .from("application_read_projection")
+      .from("application_read_projection" as any)
       .select("id")
       .eq("user_id", context.userId);
     const ids = (apps ?? []).map((a: any) => a.id);
@@ -1139,7 +1139,7 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
     if (problems.length) throw new Error(problems[0]);
     const { data: mine } = await context.supabase
-      .from("application_read_projection")
+      .from("application_read_projection" as any)
       .select("id")
       .eq("id", own.application_id as string)
       .eq("user_id", context.userId)
