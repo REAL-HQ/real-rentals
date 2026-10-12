@@ -5841,8 +5841,6 @@ export type Database = {
       }
     }
     Views: {
-      application_read_projection: { Row: Database["public"]["Tables"]["applications"]["Row"] & { identity_license_on_file: boolean; identity_insurance_on_file: boolean; identity_profile_on_file: boolean; identity_trips_on_file: boolean }; Relationships: Database["public"]["Tables"]["applications"]["Relationships"] };
-      identity_review_read_projection: { Row: Database["public"]["Tables"]["application_identity_reviews"]["Row"]; Relationships: Database["public"]["Tables"]["application_identity_reviews"]["Relationships"] };
       vehicles_public: {
         Row: {
           badges: string[] | null
@@ -5911,20 +5909,6 @@ export type Database = {
       }
     }
     Functions: {
-      reserve_application_recovery: {
-        Args: { _application_id: string; _token_hash: string };
-        Returns: Json;
-      };
-      finish_application_recovery: {
-        Args: { _attempt_id: string; _status: string; _provider_id?: string | null };
-        Returns: undefined;
-      };
-      resolve_application_identity_review: {
-        Args: { _review_id: string; _resolution: string; _note: string };
-        Returns: Json;
-      };
-
-
       activate_rental_tx: {
         Args: {
           _actor?: string
