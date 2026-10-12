@@ -405,7 +405,7 @@ const MUTATIONS = [
     "    for (const q of [newAppsQ, pendingAppsQ, appsQ]) {\n      if (q.error) throw new Error(q.error.message);\n    }",
     "", AREADS],
   ["a failed screening or document read is raised too", AOFN,
-    "      for (const q of [screeningsQ, leadDocsQ]) {\n        if (q.error) throw new Error(q.error.message);\n      }",
+    "      for (const q of [screeningsQ, leadDocsQ]) {\n        if (q.error) throw new Error(q.error.message);\n        if (!q.data) throw new Error(\"Readiness evidence unavailable\");\n      }",
     "", AREADS],
   ["the counts begin unknown rather than zero", AOPANEL,
     "  const [newApps, setNewApps] = useState<number | null>(null);",

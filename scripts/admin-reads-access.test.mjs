@@ -75,7 +75,7 @@ function table(name) {
       ),
     );
     return head
-      ? { data: null, count: rows.length, error: null }
+      ? { data: null, count: st.missingCount ? null : rows.length, error: null }
       : { data: rows.map((r) => ({ ...r })), count: rows.length, error: null };
   };
   const api = {
@@ -257,6 +257,9 @@ reset({ failWith: { table: "driver_screenings", message: "screenings unavailable
 ok(!!(await refused(() => overview(OWNER))), "a failed screening read throws rather than silently dropping readiness");
 reset({ failWith: { table: "documents", message: "documents unavailable" } });
 ok(!!(await refused(() => overview(OWNER))), "a failed document read throws rather than scoring on partial evidence");
+
+reset({ missingCount: true });
+ok(!!(await refused(() => overview(OWNER))), "missing exact count never becomes a successful zero");
 
 // ================================================= 0030 structural promises
 console.log("\nthe 0030 promises this repair has to keep");
