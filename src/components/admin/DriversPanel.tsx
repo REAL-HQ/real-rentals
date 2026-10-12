@@ -1721,9 +1721,18 @@ function DriverDetail({
 
   return (
     <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
-        {/* Header + record navigation, sticky together */}
-        <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
+      <Tabs
+        value={tab}
+        onValueChange={(v) => {
+          setTab(v);
+          // New tab starts at its top, just under the locked header.
+          if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+        }}
+        className="w-full"
+      >
+        {/* Header + record navigation, locked together directly under the
+            back-office chrome (--admin-sticky-h, published by admin.tsx). */}
+        <div className="md:sticky md:top-[var(--admin-sticky-h,0px)] md:z-[15] bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
           <button
             onClick={onBack}
             className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"

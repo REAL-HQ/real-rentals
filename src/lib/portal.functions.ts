@@ -238,7 +238,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     }
 
     // payments.driver_id references applications.id; resolve via application(s) linked to this user
-    const { data: apps } = await supabase.from("application_read_projection").select("id").eq("user_id", userId);
+    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id);
 
     const [paymentsRes, maintRes, notifRes] = await Promise.all([
@@ -284,7 +284,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     // one without this, and guessing "approved" from the absence of a rental
     // tells a rejected person they are approved.
     const { data: statusRow } = await supabase
-      .from("application_read_projection")
+      .from("application_read_projection" as any)
       .select("status")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
@@ -326,7 +326,7 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     // documents.driver_id references applications.id (not auth.users.id), so
     // resolve this user's application(s) before querying the vault.
-    const { data: apps } = await supabase.from("application_read_projection").select("id").eq("user_id", userId);
+    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
     const appIds = (apps ?? []).map((a: any) => a.id as string);
     if (appIds.length === 0) return [];
 
@@ -472,7 +472,7 @@ export const getDriverProfile = createServerFn({ method: "GET" })
   .handler(async ({ context, data: input }): Promise<DriverProfile> => {
     const sc = await scope(context, input, "profile");
     const { data } = await sc.supabase
-      .from("application_read_projection")
+      .from("application_read_projection" as any)
       .select("full_name,email,phone,city,status,created_at,address,state,zip,sms_consent")
       .eq("user_id", sc.userId)
       .order("created_at", { ascending: false })
@@ -552,13 +552,13 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
     await refuseWrite(context.userId);
     const { supabase, userId } = context;
-    const { data: app } = await supabase
-      .from("application_read_projection")
+    const { data: app } = (await supabase
+      .from("application_read_projection" as any)
       .select("id,phone")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle()) as { data: { id: string; phone: string | null } | null };
     if (!app) return { error: "No application on file." };
 
     const patch: Record<string, unknown> = { ...data };

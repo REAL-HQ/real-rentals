@@ -14,7 +14,7 @@ export const listIdentityReviews = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const actor = await requireStaff(context.userId);
     const { data: rows, error } = await context.supabase
-      .from("identity_review_read_projection")
+      .from("identity_review_read_projection" as any)
       .select(
         actor.tier === "owner" || actor.tier === "manager"
           ? "id,kind,submitted_full_name,submitted_email,submitted_phone,source,status,resolution,resolution_note,resolved_at,created_at"
@@ -39,7 +39,7 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await requireManager(context.userId);
-    const { data: result, error } = await context.supabase.rpc(
+    const { data: result, error } = await (context.supabase as any).rpc(
       "resolve_application_identity_review",
       {
         _review_id: data.id,
