@@ -171,6 +171,7 @@ function ContactStep({
       });
       // The token, not the id. It is minted server-side on this call and this
       // is the only time it exists in plaintext.
+      if ("maintenance" in data) { toast.error(data.error); return; }
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
