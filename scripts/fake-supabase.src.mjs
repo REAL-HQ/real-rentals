@@ -22,6 +22,14 @@ const uuid = () => "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) =
   return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
 });
 
+/** A case-insensitive LIKE, as PostgREST means it: * and % are wildcards. */
+function likeRx(pattern) {
+  return new RegExp(
+    `^${String(pattern).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/[*%]/g, ".*").replace(/_/g, ".")}$`,
+    "i",
+  );
+}
+
 /** Supabase's `.or("a.is.null,a.eq.")` mini-language — only the forms the app uses. */
 function matchOr(row, expr) {
   return String(expr).split(",").some((clause) => {
@@ -30,6 +38,9 @@ function matchOr(row, expr) {
     const v = row[field];
     if (op === "is") return want === "null" ? v == null : v === want;
     if (op === "eq") return want === "" ? v === "" : String(v) === want;
+    // The search box is built as an `or` of ilike patterns, so the fake has to
+    // understand them or a search test proves nothing.
+    if (op === "ilike") return v != null && likeRx(want).test(String(v));
     return false;
   });
 }
@@ -57,14 +68,14 @@ class Query {
    * are validated at all — a plate of "%" matches every car in the fleet.
    */
   ilike(f, pat) {
-    const rx = new RegExp(
-      `^${String(pat).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`,
-      "i",
-    );
+    const rx = likeRx(pat);
     this.filters.push((r) => r[f] != null && rx.test(String(r[f])));
     return this;
   }
-  in(f, vs) { this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
+  // PostgREST cannot parse `col=in.()` — it is a syntax error, not a filter
+  // that matches nothing. Pretending otherwise hid the callers that must
+  // check for an empty candidate list before they ask.
+  in(f, vs) { if (!vs?.length) throw new Error(`PostgREST: empty in() list for ${f}`); this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
   or(expr) { this.filters.push((r) => matchOr(r, expr)); return this; }
   gte(f, v) { this.filters.push((r) => String(r[f]) >= String(v)); return this; }
@@ -164,6 +175,22 @@ const table = (name) => ({
 
 export const supabaseAdmin = {
   from: table,
+  /**
+   * Database functions, recorded rather than executed.
+   *
+   * The point of a test calling one is not to run PL/pgSQL — it is to prove
+   * which transaction a path reached, how many times, and with what. A caller
+   * that never gets here (because authorization refused it first) leaves no
+   * entry, which is what "fails closed" looks like from the outside.
+   *
+   * Set S.rpcResults[name] to decide what it answers.
+   */
+  rpc: async (name, args) => {
+    (S.rpcs ??= []).push({ name, args });
+    const r = S.rpcResults?.[name];
+    if (typeof r === "function") return r(args);
+    return r ?? { data: null, error: null };
+  },
   storage: {
     from: (bucket) => ({
       download: async (path) => {
@@ -175,6 +202,20 @@ export const supabaseAdmin = {
           error: null,
         };
       },
+      // A signed URL is how private evidence reaches a staff screen. The fake
+      // hands back a recognisable stand-in so a test can tell "signed" from
+      // "served straight out of a public bucket", which is the real risk.
+      // A signed UPLOAD url is scoped to one path. Returning the path back is
+      // what lets a test prove the server pinned it to one vehicle's folder
+      // instead of handing out the bucket.
+      createSignedUploadUrl: async (path) => ({
+        data: { path, token: `upload-token:${bucket}/${path}` },
+        error: null,
+      }),
+      createSignedUrl: async (path, seconds) => ({
+        data: { signedUrl: `signed://${bucket}/${path}?exp=${seconds}` },
+        error: null,
+      }),
       remove: async (paths) => { for (const p of paths) delete S.files[`${bucket}/${p}`]; return { data: null, error: null }; },
       upload: async (path, body) => { S.files[`${bucket}/${path}`] = [...(body ?? [])]; return { data: { path }, error: null }; },
     }),

@@ -49,6 +49,7 @@ import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
+import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -82,6 +83,10 @@ type AdminSearch = {
   view?: string;
   /** Fleet-wide readiness filter: listing_ready | rental_ready | not_ready. */
   ready?: string;
+  /** Bookings list: active | completed | cancelled. */
+  phase?: string;
+  /** Bookings list: one vehicle's rentals. */
+  vehicle?: string;
 };
 
 /**
@@ -104,20 +109,27 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  id: ["drivers", "vehicles", "inspections"],
+  // "bookings" is here because a booking IS a record you open — the drawer is
+  // held by the same `id` the drivers and vehicles lists use.
+  id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
-  q: ["vehicles"],
+  // The Bookings list holds its own search, sort and page under the same
+  // names; a parameter not owned by its tab is stripped a moment after the
+  // navigation, which is how a filter silently resets itself.
+  q: ["vehicles", "bookings"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
-  sort: ["vehicles"],
-  page: ["vehicles"],
+  sort: ["vehicles", "bookings"],
+  page: ["vehicles", "bookings"],
   view: ["vehicles"],
   ready: ["vehicles"],
+  phase: ["bookings"],
+  vehicle: ["bookings"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -129,7 +141,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready"] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -164,7 +176,7 @@ export const Route = createFileRoute("/admin")({
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
     if (typeof raw.q === "number") out.q = String(raw.q);
-    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready"] as const) if (str(raw[k])) out[k] = str(raw[k]);
+    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
@@ -746,6 +758,19 @@ function Admin() {
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "bookings" && (
+              <BookingsPanel
+                externalSearch={globalSearch}
+                openId={urlRecordId}
+                listState={{
+                  q: search?.q,
+                  phase: search?.phase,
+                  sort: search?.sort,
+                  page: search?.page,
+                  vehicle: search?.vehicle,
+                }}
+              />
+            )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}

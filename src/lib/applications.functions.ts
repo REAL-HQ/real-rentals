@@ -1042,6 +1042,10 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<{ url: string; revoked: number }> => {
+    // Manager and above. A reissued link opens the applicant's own
+    // application — their licence number, their address, their documents —
+    // to whoever holds it, and this call both revokes the existing links and
+    // mints a fresh one. That is an identity decision, not casework.
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
