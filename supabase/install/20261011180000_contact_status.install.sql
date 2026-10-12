@@ -13,8 +13,27 @@
 -- Pure SQL: no psql meta-commands, so it runs through psql, the Supabase SQL
 -- editor or any other client that can send one script.
 --
+-- TWO RECOGNISED STATES, AND NO GENERAL OVERRIDE.
+--
+-- The installer compares the live schema against a fingerprint — the column
+-- count, the policy inventory and the trigger inventory of public.applications
+-- — and runs only if it matches a state that has been reviewed:
+--
+--   STATE A  the production schema verified read-only on 2026-10-11, before
+--            migration 0031. Defined below.
+--   STATE B  the exact inventory after Codex's 0031. NOT DEFINED: that
+--            package was not available when this installer was prepared, and
+--            an inventory nobody has reviewed is not a state worth accepting.
+--
+-- Anything else stops. There is deliberately no "proceed anyway" switch: an
+-- escape hatch that accepts arbitrary drift is the thing that turns a
+-- preflight into decoration. To add State B, paste Codex's reviewed
+-- post-0031 inventory into c_state_b below — which changes this file, and
+-- therefore its checksum, and therefore needs the same approval everything
+-- else here got.
+--
 -- WHAT IT DOES
---   1. refuses to run if the database is not the one that was verified
+--   1. refuses unless the database is in a recognised, reviewed state
 --   2. snapshots the applicant rows
 --   3. applies the reviewed migration VERBATIM, between the markers below
 --   4. re-checks: five columns, one CHECK, two indexes, same row count,
@@ -25,35 +44,55 @@
 --   no UPDATE or DELETE of applicant data, no DROP, no policy, no trigger,
 --   no grant, no role change, no Auth, no Stripe.
 --
--- INDEPENDENT OF 0031. It touches no policy and no grant, so it neither
--- needs 0031 nor blocks it, and it installs cleanly before or after. 0031 may
--- legitimately change the policy set on public.applications, so a changed
--- policy or trigger inventory is treated as RECORDED DRIFT rather than a
--- stop — see ccs.allow_drift below. Anything that would make THIS migration
--- wrong is always a stop.
+-- INDEPENDENT OF 0031: it touches nothing 0031 governs. Order is a matter of
+-- which state is recognised, not of conflict — see the installation sequence
+-- in supabase/install/README.md.
 -- =============================================================================
 
 BEGIN;
 
--- Set to '1' ONLY to proceed past recorded baseline drift (a changed policy
--- or trigger inventory, or a column count that is no longer 120 — for
--- example because 0031 landed first). It never relaxes the checks that
--- protect this migration itself.
-SET LOCAL ccs.allow_drift = '0';
-
 -- ----------------------------------------------------------------- preflight
 DO $preflight$
 DECLARE
-  v_allow      boolean := coalesce(current_setting('ccs.allow_drift', true), '0') = '1';
+  -- STATE A — verified read-only against yuyzdsnrbfhkmfzpvhwx on 2026-10-11:
+  -- 120 columns, six policies, two triggers, RLS on, 82 applicants, no
+  -- contact columns, and no 20261011180000 in the ledger.
+  --   <column count>|<md5 of every policy DEFINITION>|<trigger:function pairs>
+  --
+  -- The policy part is a hash of the full definition of every policy on the
+  -- table — name, command, permissive, roles, USING and WITH CHECK — not the
+  -- names. A migration that rewrites "Staff view applications" to be
+  -- manager-only keeps the name and changes the rule, which is exactly the
+  -- change this installer must notice, and a name list does not see it.
+  c_state_a  CONSTANT text :=
+    '120|40a44e65dceca27b52195ac5ba665ff1|applications_active_guard:application_active_guard, applications_updated_at:set_updated_at';
+
+  -- STATE B — the reviewed inventory AFTER Codex's 0031.
+  --
+  -- Left NULL on purpose. The 0031 package is not in this repository, not on
+  -- any branch reachable from it, and not in the production ledger (which
+  -- holds 22 drizzle entries, 0000-0021). Writing a guess here would turn a
+  -- safety check into a rubber stamp. Replace NULL with the fingerprint in
+  -- the same shape as State A once the 0031 package has been read:
+  --
+  --     '<column count>|<policy md5>|<trigger:function pairs>'
+  --
+  -- The md5 is what the live database reports for the reviewed post-0031
+  -- state; the query that produces it is at the foot of this file.
+  --
+  c_state_b  CONSTANT text := NULL;
+
   v_cols       int;
   v_contact    int;
   v_check      int;
   v_indexes    int;
   v_rls        boolean;
   v_policies   text;
+  v_polmd5     text;
   v_triggers   text;
   v_ledger     int;
-  v_drift      text[] := ARRAY[]::text[];
+  v_print      text;
+  v_state      text;
 BEGIN
   -- STOP: the table itself.
   IF to_regclass('public.applications') IS NULL THEN
@@ -61,13 +100,12 @@ BEGIN
   END IF;
 
   -- STOP: anything of ours already present. A half-installed state is not
-  -- something to paper over; re-running the reviewed migration by hand is
-  -- safe, but this installer and its receipt must run exactly once.
+  -- something to paper over; this installer and its receipt run exactly once.
   SELECT count(*) INTO v_contact FROM information_schema.columns
    WHERE table_schema='public' AND table_name='applications'
      AND column_name IN ('contact_status','contact_status_note','contact_follow_up_on','contact_status_at','contact_status_by');
   IF v_contact <> 0 THEN
-    RAISE EXCEPTION 'STOP: % of the five contact columns already exist. Contact Status looks already installed — verify with the companion .verify.sql before doing anything else.', v_contact;
+    RAISE EXCEPTION 'STOP: % of the five contact columns already exist. Contact Status looks already installed — run the companion .verify.sql before doing anything else.', v_contact;
   END IF;
 
   SELECT count(*) INTO v_check FROM pg_constraint
@@ -95,40 +133,45 @@ BEGIN
     RAISE EXCEPTION 'STOP: row level security is OFF on public.applications.';
   END IF;
 
-  -- RECORDED DRIFT: the shape verified on 2026-10-11. Different is not
-  -- necessarily wrong — 0031 may have landed first — but it is not what was
-  -- reviewed, so it stops unless ccs.allow_drift is set, and either way it
-  -- is written into the receipt.
+  -- The fingerprint, and the allow-list.
   SELECT count(*) INTO v_cols FROM information_schema.columns
    WHERE table_schema='public' AND table_name='applications';
-  IF v_cols <> 120 THEN
-    v_drift := v_drift || format('applications has %s columns, verified 120', v_cols);
-  END IF;
-
+  -- The whole definition of every policy, hashed. A changed USING clause
+  -- under an unchanged name must not read as "no change".
+  SELECT md5(coalesce(string_agg(
+           policyname || '/' || cmd || '/' || coalesce(permissive,'') || '/' ||
+           coalesce(array_to_string(roles, '+'), '') || '/' ||
+           coalesce(qual,'') || '/' || coalesce(with_check,''), E'\n' ORDER BY policyname), ''))
+    INTO v_polmd5
+    FROM pg_policies WHERE schemaname='public' AND tablename='applications';
+  -- Readable, for the receipt and the refusal message.
   SELECT string_agg(policyname, ', ' ORDER BY policyname) INTO v_policies
-    FROM pg_policies WHERE tablename='applications';
-  IF v_policies IS DISTINCT FROM 'Anyone can submit applications, No direct application deletes, Partners can view their assigned drivers, Staff update applications, Staff view applications, Users can view their own application' THEN
-    v_drift := v_drift || format('policy set is now: %s', coalesce(v_policies, '(none)'));
+    FROM pg_policies WHERE schemaname='public' AND tablename='applications';
+  -- Trigger names AND the functions behind them: a trigger repointed at a
+  -- different function is a different trigger.
+  SELECT string_agg(t.tgname || ':' || p.proname, ', ' ORDER BY t.tgname) INTO v_triggers
+    FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+   WHERE t.tgrelid='public.applications'::regclass AND NOT t.tgisinternal;
+
+  v_print := format('%s|%s|%s', v_cols, v_polmd5, coalesce(v_triggers, '(none)'));
+
+  IF v_print = c_state_a THEN
+    v_state := 'A';
+  ELSIF c_state_b IS NOT NULL AND v_print = c_state_b THEN
+    v_state := 'B';
+  ELSE
+    RAISE EXCEPTION E'STOP: public.applications is not in a recognised state.\n  found    : %\n  STATE A  : %\n  STATE B  : %\n  policies : %\nNothing was changed. If this is the reviewed post-0031 state, put its fingerprint in c_state_b and have the amended installer approved; do not relax this check.',
+      v_print, c_state_a,
+      coalesce(c_state_b, '(not defined — the 0031 package was not available when this installer was prepared)'),
+      coalesce(v_policies, '(none)');
   END IF;
 
-  SELECT string_agg(tgname, ', ' ORDER BY tgname) INTO v_triggers
-    FROM pg_trigger WHERE tgrelid='public.applications'::regclass AND NOT tgisinternal;
-  IF v_triggers IS DISTINCT FROM 'applications_active_guard, applications_updated_at' THEN
-    v_drift := v_drift || format('trigger set is now: %s', coalesce(v_triggers, '(none)'));
-  END IF;
-
-  IF array_length(v_drift, 1) IS NOT NULL THEN
-    IF v_allow THEN
-      RAISE WARNING 'RECORDED DRIFT (proceeding because ccs.allow_drift=1): %', array_to_string(v_drift, ' ; ');
-    ELSE
-      RAISE EXCEPTION 'STOP ON DRIFT: % . Review it. If it is expected (0031 landed first, say), set ccs.allow_drift to 1 at the top of this file and run again — the deviation is written into the receipt either way.', array_to_string(v_drift, ' ; ');
-    END IF;
-  END IF;
-
-  PERFORM set_config('ccs.drift', coalesce(array_to_string(v_drift, ' ; '), ''), true);
+  PERFORM set_config('ccs.state', v_state, true);
+  PERFORM set_config('ccs.fingerprint', v_print, true);
   PERFORM set_config('ccs.cols_before', v_cols::text, true);
   PERFORM set_config('ccs.policies', coalesce(v_policies, ''), true);
   PERFORM set_config('ccs.triggers', coalesce(v_triggers, ''), true);
+  RAISE NOTICE 'Preflight: recognised STATE % (%)', v_state, v_print;
 END
 $preflight$;
 
@@ -269,6 +312,17 @@ BEGIN
     RAISE EXCEPTION 'ROLLBACK: row level security is no longer on.';
   END IF;
 
+  -- The policy and trigger inventory is the one the preflight recognised.
+  -- Nothing here changes it, so a difference would mean something else did.
+  IF (SELECT md5(coalesce(string_agg(
+          policyname || '/' || cmd || '/' || coalesce(permissive,'') || '/' ||
+          coalesce(array_to_string(roles, '+'), '') || '/' ||
+          coalesce(qual,'') || '/' || coalesce(with_check,''), E'\n' ORDER BY policyname), ''))
+        FROM pg_policies WHERE schemaname='public' AND tablename='applications')
+       IS DISTINCT FROM split_part(current_setting('ccs.fingerprint', true), '|', 2) THEN
+    RAISE EXCEPTION 'ROLLBACK: a policy on public.applications changed while this ran.';
+  END IF;
+
   PERFORM set_config('ccs.rows_after', v_after::text, true);
 END
 $postflight$;
@@ -300,12 +354,13 @@ VALUES (
     'file', 'supabase/migrations/20261011180000_contact_status.sql',
     'sha256', '400e1071856e7c4e62fc2a13822afd14ee98b31525b1ebf999f6bf486d6c710e',
     'source_commit', '31ed33055614705c978f638728d06f0931dee3c1',
+    'preflight_state', current_setting('ccs.state', true),
+    'preflight_fingerprint', current_setting('ccs.fingerprint', true),
     'rows_before', current_setting('ccs.rows_before', true),
     'rows_after', current_setting('ccs.rows_after', true),
     'columns_before', current_setting('ccs.cols_before', true),
     'policies_at_install', current_setting('ccs.policies', true),
     'triggers_at_install', current_setting('ccs.triggers', true),
-    'recorded_drift', current_setting('ccs.drift', true),
     'independent_of', '0031'
   )
 );
@@ -314,3 +369,19 @@ COMMIT;
 
 -- Nothing below runs as part of the transaction. Run the companion
 -- 20261011180000_contact_status.verify.sql next; it is SELECT-only.
+
+-- -----------------------------------------------------------------------
+-- The fingerprint query. Run it read-only against the target database to
+-- read the current state — that is what goes into c_state_a or c_state_b.
+--
+--   SELECT format('%s|%s|%s',
+--     (SELECT count(*) FROM information_schema.columns
+--       WHERE table_schema='public' AND table_name='applications'),
+--     md5(coalesce((SELECT string_agg(policyname || '/' || cmd || '/' ||
+--            coalesce(permissive,'') || '/' || coalesce(array_to_string(roles,'+'),'') || '/' ||
+--            coalesce(qual,'') || '/' || coalesce(with_check,''), E'\n' ORDER BY policyname)
+--          FROM pg_policies WHERE schemaname='public' AND tablename='applications'), '')),
+--     (SELECT string_agg(t.tgname || ':' || p.proname, ', ' ORDER BY t.tgname)
+--        FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+--       WHERE t.tgrelid='public.applications'::regclass AND NOT t.tgisinternal));
+-- -----------------------------------------------------------------------
