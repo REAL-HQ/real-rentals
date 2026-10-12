@@ -491,12 +491,11 @@ function Admin() {
         search={rootSearch(t.href ?? t.id)}
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`relative w-full flex items-center gap-3 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
-          active ? "bg-[#1F1F23] text-white" : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+          active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
         }`}
       >
-        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r bg-[#D03020]" />}
-        <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} />
+        <Icon className="w-4 h-4 shrink-0" />
         <span>{t.label}</span>
       </Link>
     );

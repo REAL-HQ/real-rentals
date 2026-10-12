@@ -137,7 +137,7 @@ const view = () => page.evaluate(() => {
   const tabs = [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent.trim());
   const drawer = tabs.includes("Documents") && tabs.includes("Screening");
   const activeNav = [...document.querySelectorAll("aside a")]
-    .filter((a) => a.className.includes("bg-[#1F1F23]"))
+    .filter((a) => a.className.includes("bg-real-red"))
     .map((a) => a.textContent.trim());
   return {
     h1: document.querySelector("h1")?.textContent?.trim() ?? "",
