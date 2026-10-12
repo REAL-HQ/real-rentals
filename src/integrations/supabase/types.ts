@@ -422,6 +422,11 @@ export type Database = {
           consent_gps: boolean | null
           consent_prepay: boolean | null
           consent_terms: boolean | null
+          contact_follow_up_on: string | null
+          contact_status: string
+          contact_status_at: string | null
+          contact_status_by: string | null
+          contact_status_note: string | null
           contacted_at: string | null
           contract_end_date: string | null
           contract_start_date: string | null
@@ -544,6 +549,11 @@ export type Database = {
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
           contacted_at?: string | null
           contract_end_date?: string | null
           contract_start_date?: string | null
@@ -666,6 +676,11 @@ export type Database = {
           consent_gps?: boolean | null
           consent_prepay?: boolean | null
           consent_terms?: boolean | null
+          contact_follow_up_on?: string | null
+          contact_status?: string
+          contact_status_at?: string | null
+          contact_status_by?: string | null
+          contact_status_note?: string | null
           contacted_at?: string | null
           contract_end_date?: string | null
           contract_start_date?: string | null
