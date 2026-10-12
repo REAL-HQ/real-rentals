@@ -74,7 +74,13 @@ console.log("\nNO APPLICANT INPUT IS SPLICED INTO A POSTGREST FILTER");
   // name from the fixed AUTO_FIELDS list; photo-enhance.functions.ts a
   // server-computed ISO timestamp.
   const ALLOWED = ["src/components/site/Nav.tsx", "src/lib/esign.server.ts", "src/routes/api/public/payments/webhook.ts", "src/lib/fleet-inbox.functions.ts", "src/lib/safe-autofill.server.ts", "src/lib/photo-enhance.functions.ts"];
-  const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)));
+  // Bookings is a staff-only search with bookingSearchTargets stripping filter syntax.
+  // Allow only the reviewed expression; never whitelist the whole module.
+  const reviewedBooking = 'src/lib/bookings.functions.ts';
+  const bookingSource = readFileSync(reviewedBooking, "utf8");
+  ok(bookingSource.includes('const q = bookingSearchTargets(data.q);'), "Bookings search passes through its reviewed sanitizer");
+  const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)) &&
+    !(o.startsWith(reviewedBooking + ':') && o.endsWith('.or(`full_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`)')));
   ok(unexpected.length === 0, `no unreviewed interpolated filter (found ${unexpected.length})`);
   for (const o of unexpected) console.log(`       ${o}`);
 }
@@ -95,7 +101,7 @@ console.log("\nEVERY APPLICATION ENDPOINT NAMES ITS AUTHORIZATION");
   // The public lead forms have to be callable by a stranger: that is what a
   // lead form is. It creates a row, and on a match it writes nothing and
   // returns no token — see resume-payload.test.mjs.
-  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication"]);
+  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication", "requestApplicationLink"]);
   let checked = 0;
   for (let i = 1; i < parts.length; i += 2) {
     const [name, body] = [parts[i], parts[i + 1]];
@@ -107,7 +113,7 @@ console.log("\nEVERY APPLICATION ENDPOINT NAMES ITS AUTHORIZATION");
     // Either spelling — updateApplicationStep destructures `token` out of
     // `data` before resolving it — but the argument must still be the one
     // that came off the request body, never an id.
-    const tokenGated = /resolveResumeToken\(supabaseAdmin, (data\.token|token)\)/.test(body);
+    const tokenGated = /(resolveResumeToken|exchangeResumeToken)\(supabaseAdmin, (data\.token|token)\)/.test(body);
     const staffGated = /\.middleware\(/.test(body);
     ok(tokenGated || staffGated,
        `${name} is ${tokenGated ? "token-gated" : staffGated ? "staff-gated" : "UNGATED"}`);

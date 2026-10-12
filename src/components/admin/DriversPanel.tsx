@@ -772,6 +772,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        canReviewIdentity={canManageWaitlist}
       />
       {deleteDialog}
       </>
@@ -1156,6 +1157,7 @@ function DriverDetail({
   onDelete,
   onScreeningChange,
   onVaultChange,
+  canReviewIdentity,
   isOwner,
   hasActiveRental,
   onRentalStarted,
@@ -1169,6 +1171,7 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  canReviewIdentity: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -1233,6 +1236,7 @@ function DriverDetail({
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [vaultLoading, setVaultLoading] = useState(true);
   const refreshVault = useCallback(async () => {
+    if (!canReviewIdentity) { setVaultDocs([]); setVaultLoading(false); return; }
     try {
       setVaultDocs(await listVaultDocs({ data: { applicationId: driver.id } }));
     } catch (e) {
@@ -1240,7 +1244,7 @@ function DriverDetail({
     } finally {
       setVaultLoading(false);
     }
-  }, [driver.id, listVaultDocs]);
+  }, [driver.id, listVaultDocs, canReviewIdentity]);
   useEffect(() => {
     setVaultLoading(true);
     void refreshVault();
@@ -1911,7 +1915,7 @@ function DriverDetail({
                 </div>
               </TabsContent>
 
-              <TabsContent value="documents" className="mt-0 space-y-4">
+              {canReviewIdentity && <TabsContent value="documents" className="mt-0 space-y-4">
                 <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
                 <SectionCard
                   title="Documents"
@@ -1933,7 +1937,7 @@ function DriverDetail({
                     />
                   </div>
                 </SectionCard>
-              </TabsContent>
+              </TabsContent>}
 
               <TabsContent value="screening" className="mt-0 space-y-4">
                 <ScreeningPipeline

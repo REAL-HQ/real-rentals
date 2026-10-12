@@ -50,7 +50,8 @@ function table(name) {
   const filters = [];
   let payload = null, kind = "select", cap;
   const rows = () => {
-    const all = (S().db[name] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
+    // The production projection is enforced by database tests; this fixture models its owned row.
+    const all = (S().db[name === "application_read_projection" ? "applications" : name] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
     return cap == null ? all : all.slice(0, cap);
   };
   const result = () => {

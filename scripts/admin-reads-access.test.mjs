@@ -289,19 +289,17 @@ ok(/Counts Unavailable/.test(panel), "and a failed read says the counts are unav
 ok(/canSeeReadiness && <option value="readiness">/.test(panel),
   "the Readiness sort is hidden from a tier that has no readiness");
 
-// ================================================= untouched neighbours
+// ================================================= unaffected integration neighbours
+// Resume intentionally changes drivers-list, documents, applications, agreements
+// and readiness. Their authorization/recovery suites cover those changes; the
+// original PR-only byte-equality assertions must not reject accepted integration.
 console.log("\nnothing else on this branch moved");
 const base = (f) => execFileSync("git", ["show", `origin/main:${f}`], { encoding: "utf8" });
 for (const f of [
   "src/lib/contact-status.ts",
   "src/lib/contact-status.functions.ts",
-  "src/lib/drivers-list.ts",
   "src/lib/drivers-list.functions.ts",
   "src/lib/bookings.functions.ts",
-  "src/lib/documents.functions.ts",
-  "src/lib/applications.functions.ts",
-  "src/lib/agreements.functions.ts",
-  "src/lib/readiness.ts",
   "src/lib/readiness-index.ts",
 ]) {
   ok(base(f) === readFileSync(f, "utf8"), `  ${f.replace("src/lib/", "")} is untouched`);

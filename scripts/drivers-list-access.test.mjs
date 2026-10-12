@@ -101,7 +101,7 @@ const A1 = "55555555-5555-4555-8555-555555555555";
 /** A complete applications row, sensitive fields and all. */
 const ROW = {
   id: A1, full_name: "Dana Reyes", phone: "8135550142", email: "dana@example.com",
-  city: "Tampa", state: "FL", status: "reviewing", created_at: "2026-10-01T10:00:00Z",
+  pickup_date: "2026-10-21", city: "Tampa", state: "FL", status: "reviewing", created_at: "2026-10-01T10:00:00Z",
   contacted_at: null, primary_application_id: null, resubmission_count: 0, deleted_at: null,
   vehicle_id: null, gclid: null, utm_campaign: "tampa-gig",
   contact_status: "follow_up", contact_status_note: "Wants the Camry",
@@ -163,7 +163,7 @@ const co = await list(COORD);
 ok(co.canSeeSensitive === false, "the answer says plainly that it is the operational slice");
 ok(co.rows.length === 1, `the list is NOT empty under 0031 (${co.rows.length} row)`);
 const row = co.rows[0];
-for (const f of ["id", "full_name", "phone", "email", "city", "state", "status", "created_at"]) {
+for (const f of ["id", "full_name", "phone", "email", "city", "state", "status", "created_at", "pickup_date"]) {
   ok(Object.prototype.hasOwnProperty.call(row, f), `  ${f} is present`);
 }
 console.log("\n  and Contact Status comes with it");
@@ -222,12 +222,12 @@ ok(!/contact_statuses|driver_contacts|CREATE TABLE/i.test(RULES + FNSRC),
   "no parallel table, no duplicate contact-status store");
 ok(!/\.update\(|\.insert\(|\.upsert\(|\.delete\(/.test(FNSRC), "and the read writes nothing");
 
-console.log("\nthe lifecycle and Bookings are untouched by this change");
+// Resume changes identity handlers; their behavioral suites assert the guards.
+console.log("\nthe lifecycle, Contact Status and Bookings are untouched by this change");
 const changed = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" })
   .split("\n").filter(Boolean);
 for (const f of ["src/lib/rentals.functions.ts", "src/lib/bookings.functions.ts",
-  "src/lib/agreements.functions.ts", "src/lib/contact-status.functions.ts",
-  "src/lib/documents.functions.ts", "src/lib/applications.functions.ts"]) {
+  "src/lib/contact-status.functions.ts"]) {
   ok(!changed.includes(f), `  ${f.split("/").pop()} is untouched`);
 }
 
