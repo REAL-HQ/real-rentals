@@ -8,7 +8,7 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtDate } from "@/lib/date-format";
+import { fmtContractDate } from "@/lib/agreement-dates";
 import { minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
@@ -294,14 +294,14 @@ async function buildMergeData(
     vehicle_vin: vehicle?.vin ? String(vehicle.vin).toUpperCase() : "",
     weekly_rate: money(weekly),
     deposit_amount: deposit != null && Number(deposit) === 0 ? "$0" : money(deposit),
-    start_date: startDate ? fmtDate(startDate) : "",
-    return_date: endDate ? fmtDate(endDate) : "",
+    start_date: startDate ? fmtContractDate(startDate) : "",
+    return_date: endDate ? fmtContractDate(endDate) : "",
     // v1.6 fields — real records only; empty values block a template that uses them.
     // RRA-000001 numbers are assigned only when the agreement record is created
     // (pending migration); previews print this placeholder so regenerating a
     // preview never consumes a number.
     agreement_number: AGREEMENT_NUMBER_PLACEHOLDER,
-    driver_dob: app.dob ? fmtDate(app.dob) : "",
+    driver_dob: app.dob ? fmtContractDate(app.dob) : "",
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
       : "",
@@ -313,7 +313,7 @@ async function buildMergeData(
     insurance_policy: String(app.insurance_policy_number ?? "").trim() || "None on file",
     min_term_end: "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: fmtDate(new Date()),
+    today: fmtContractDate(new Date()),
   };
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
@@ -469,7 +469,7 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     // makes the "Minimum-term end date" blocker below fire rather than a
     // contract printing a date nobody computed.
     const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));
-    if (endIso) data.min_term_end = fmtDate(endIso);
+    if (endIso) data.min_term_end = fmtContractDate(endIso);
   }
   const pay = { tab: "payments" as const };
   const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };

@@ -5,7 +5,7 @@
 // them, renders the agreement from the Owner's template, and includes them in
 // the preview fingerprint, so Send refuses if anything changed after review.
 import { z } from "zod";
-import { fmtDate } from "@/lib/date-format";
+import { fmtContractDate } from "@/lib/agreement-dates";
 
 const name = z.string().trim().max(120);
 export const AdditionalDriverSchema = z.object({
@@ -63,10 +63,10 @@ export function applyPrep(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d.licenseExpiration))
         blockers.push({ field: "additional_drivers", label: `${n}: license expiration`, why: "Needed to show the license is valid for the rental." });
       else if (ctx.startIso && d.licenseExpiration < ctx.startIso)
-        blockers.push({ field: "additional_drivers", label: `${n}: a license valid on the start date`, why: `The license expires ${fmtDate(d.licenseExpiration)}, before the rental starts.` });
+        blockers.push({ field: "additional_drivers", label: `${n}: a license valid on the start date`, why: `The license expires ${fmtContractDate(d.licenseExpiration)}, before the rental starts.` });
       if (!d.verified)
         blockers.push({ field: "additional_drivers", label: `${n}: license verification`, why: "Staff must confirm they checked this driver's license before the driver is added to a signed agreement." });
-      parts.push(`${d.name} (${d.licenseState.toUpperCase()} DL ${d.licenseNumber.toUpperCase()}, exp. ${fmtDate(d.licenseExpiration)})`);
+      parts.push(`${d.name} (${d.licenseState.toUpperCase()} DL ${d.licenseNumber.toUpperCase()}, exp. ${fmtContractDate(d.licenseExpiration)})`);
     });
     merge.additional_drivers = parts.join("; ");
   }

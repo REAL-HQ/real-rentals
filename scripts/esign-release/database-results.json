@@ -1,0 +1,67 @@
+{
+  "syntheticOnly": true,
+  "network": "Unix socket only; server outbound denied",
+  "disposableClusterRemoved": true,
+  "tests": [
+    {
+      "test": "failed journal rolls back 0023 installation",
+      "passed": true
+    },
+    {
+      "test": "signed history preserved",
+      "passed": true
+    },
+    {
+      "test": "legacy agreement numbers remain NULL",
+      "passed": true
+    },
+    {
+      "test": "signed content edit refused",
+      "passed": true
+    },
+    {
+      "test": "signed template_key immutable",
+      "passed": true
+    },
+    {
+      "test": "signed insurance_snapshot immutable",
+      "passed": true
+    },
+    {
+      "test": "signed preview_fingerprint immutable",
+      "passed": true
+    },
+    {
+      "test": "template wording immutable",
+      "passed": true
+    },
+    {
+      "test": "unattributed verified insurance refused",
+      "passed": true
+    },
+    {
+      "test": "issued number immutable",
+      "passed": true
+    },
+    {
+      "test": "24 concurrent numbers unique",
+      "passed": true
+    },
+    {
+      "test": "raw repeat install refuses safely",
+      "passed": true
+    },
+    {
+      "test": "repeat failure preserves signed history",
+      "passed": true
+    },
+    {
+      "test": "agreements restrictive boundary installed",
+      "passed": true
+    },
+    {
+      "test": "journal reflects execution order",
+      "passed": true
+    }
+  ]
+}
