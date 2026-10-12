@@ -205,6 +205,8 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ email: z.string().trim().email().max(160) }).parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { recoveryEntryPaused, recoveryMaintenanceResponse } = await import("@/lib/recovery-maintenance.server");
+    if (await recoveryEntryPaused(supabaseAdmin)) return recoveryMaintenanceResponse;
     const emailLower = data.email.trim().toLowerCase();
     const variants = Array.from(new Set([data.email.trim(), emailLower]));
     const results = await Promise.all(
@@ -276,6 +278,8 @@ export const savePartialApplication = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { recoveryEntryPaused, recoveryMaintenanceResponse } = await import("@/lib/recovery-maintenance.server");
+    if (await recoveryEntryPaused(supabaseAdmin)) return recoveryMaintenanceResponse;
     // ---- Duplicate detection: same phone OR email within the last 30 days ----
     //
     // Two queries, not one `.or()`.
