@@ -39,7 +39,7 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await requireManager(context.userId);
-    const { data: result, error } = await (context.supabase.rpc as any)(
+    const { data: result, error } = await (context.supabase as any).rpc(
       "resolve_application_identity_review",
       {
         _review_id: data.id,
