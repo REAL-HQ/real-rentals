@@ -552,13 +552,13 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
     await refuseWrite(context.userId);
     const { supabase, userId } = context;
-    const { data: app } = await supabase
+    const { data: app } = (await supabase
       .from("application_read_projection" as any)
       .select("id,phone")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle();
+      .maybeSingle()) as { data: { id: string; phone: string | null } | null };
     if (!app) return { error: "No application on file." };
 
     const patch: Record<string, unknown> = { ...data };

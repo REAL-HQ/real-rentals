@@ -506,13 +506,13 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
     } else {
-      const { data: app } = await context.supabase
+      const { data: app } = (await context.supabase
         .from("application_read_projection" as any)
         .select("id")
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()) as { data: { id: string } | null };
       if (!app) throw new Error("No application on file");
       applicationId = app.id as string;
     }
@@ -699,7 +699,7 @@ export const getMyVault = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(
     async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
-      const { data: app } = await context.supabase
+      const { data: app } = (await context.supabase
         .from("application_read_projection" as any)
         .select(
           "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
@@ -707,7 +707,7 @@ export const getMyVault = createServerFn({ method: "GET" })
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()) as { data: any };
       if (!app) return { applicationId: null, documents: [] };
 
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

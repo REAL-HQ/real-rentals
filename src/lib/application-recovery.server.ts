@@ -21,7 +21,7 @@ export async function deliverApplicationRecovery(
   applicationId: string,
 ): Promise<RecoveryOutcome> {
   const token = newRawToken();
-  const { data, error } = await admin.rpc("reserve_application_recovery", {
+  const { data, error } = await (admin.rpc as any)("reserve_application_recovery", {
     _application_id: applicationId,
     _token_hash: await hashResumeToken(token),
   });
@@ -42,7 +42,7 @@ export async function deliverApplicationRecovery(
   }
   let finishError: unknown;
   try {
-    ({ error: finishError } = await admin.rpc("finish_application_recovery", {
+    ({ error: finishError } = await (admin.rpc as any)("finish_application_recovery", {
       _attempt_id: attempt.attempt_id,
       _status: result.ok ? "sent" : result.uncertain ? "unknown" : "failed",
       _provider_id: result.id ?? null,
