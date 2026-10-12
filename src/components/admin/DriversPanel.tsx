@@ -1,3 +1,4 @@
+import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -226,8 +227,8 @@ const DRIVER_STATUSES = [
   "closed",
 ] as const;
 // "active" is set only by activate_rental_tx when a rental really starts;
-// staff can no longer pick it by hand.
-const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active");
+// approval goes through approveApplication; neither is a generic status edit.
+const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active" && s !== "approved");
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
@@ -627,27 +628,26 @@ setDocCounts(requiredDocCounts(rows));
     });
   }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
 
-  async function update(id: string, patch: Partial<Application>) {
-    // Stamp contacted_at the first time the admin advances status past "new"
-    // or edits the record while it is still "new" without an existing stamp.
-    const target = drivers.find((x) => x.id === id);
-    const patchWithStamp: Partial<Application> = { ...patch };
-    if (target && !target.contacted_at && patch.status && patch.status !== "new") {
-      patchWithStamp.contacted_at = new Date().toISOString();
-    }
-    const { error } = await supabase.from("applications").update(patchWithStamp).eq("id", id);
-    if (error) return toast.error(error.message);
-    // One list, one update. `open` is derived from this list, so patching it
-    // here is all that is needed — there is no second copy to keep in step.
-    setDrivers((a) => a.map((x) => (x.id === id ? { ...x, ...patchWithStamp } : x)));
+  const saveLifecycle = useServerFn(updateApplicationLifecycle);
+  function applySaved(id: string, patch: Partial<Application>) {
+    setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
     refreshActiveRenters();
+  }
+  async function update(id: string, patch: Partial<Application>): Promise<boolean> {
+    try {
+      const saved = await saveLifecycle({ data: { id, patch: patch as LifecyclePatch } });
+      applySaved(id, saved as Partial<Application>);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Application update failed");
+      return false;
+    }
   }
 
   /*
    * Fold a saved Contact Status back into the one list.
    *
-   * `update` above is the application-lifecycle writer and goes straight to
-   * PostgREST from the browser; this does NOT. The write already happened,
+   * `update` above is the separate server-authorized lifecycle writer. The write already happened,
    * server-side and audited, inside setContactStatus — all that is left is to
    * show it. Separate function, so nobody later adds contact fields to the
    * lifecycle patch or vice versa.
@@ -676,8 +676,7 @@ setDocCounts(requiredDocCounts(rows));
   async function markContacted(id: string) {
     const target = drivers.find((x) => x.id === id);
     if (target?.contacted_at) return;
-    await update(id, { contacted_at: new Date().toISOString() });
-    toast.success("Marked contacted");
+    if (await update(id, { contacted_at: new Date().toISOString() })) toast.success("Marked contacted");
   }
 
   // Owner-only, through the Owner-checked deletion functions (driver-deletion.functions.ts).
@@ -763,6 +762,7 @@ setDocCounts(requiredDocCounts(rows));
         vehicles={vehicles}
         onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
+        onSaved={(p) => applySaved(open.id, p)}
         hasActiveRental={activeRenters.has(open.id)}
         onRentalStarted={() => {
           setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
@@ -1152,6 +1152,7 @@ function DriverDetail({
   vehicles,
   onBack,
   onUpdate,
+  onSaved,
   onDelete,
   onScreeningChange,
   onVaultChange,
@@ -1163,6 +1164,7 @@ function DriverDetail({
   vehicles: Vehicle[];
   onBack: () => void;
   onUpdate: (patch: Partial<Application>) => void;
+  onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
@@ -1372,7 +1374,7 @@ function DriverDetail({
       if (res && res.ok === false) { toast.error(res.error ?? "Could not end the rental"); return; }
       toast.success("Rental ended — settle the deposit next");
       setDepositRentalId(activeRentalId);
-      onUpdate({ status: "closed" });
+      onSaved({ status: "closed" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not end the rental");
     }
@@ -1405,7 +1407,7 @@ function DriverDetail({
           `Approved. Agreement not sent: ${res.agreementSkippedReason ?? "unknown"}.${portal}`,
         );
       }
-      onUpdate({ status: "approved" });
+      onSaved({ status: "approved" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not approve this driver");
     } finally {
@@ -1838,9 +1840,9 @@ function DriverDetail({
                   <DropdownMenuItem title="Edit Interview" aria-label="Edit Interview" onClick={() => setInterviewOpen(true)}>
                     <ClipboardList className="w-4 h-4 mr-2" /> Interview
                   </DropdownMenuItem>
-                  <RequestDocumentsAction driver={driver} onUpdate={onUpdate} />
+                  <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />
-                  <CardOnFileActions driver={driver} onUpdate={onUpdate} />
+                  <CardOnFileActions driver={driver} onUpdate={onSaved} />
 {isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
@@ -1982,8 +1984,8 @@ function DriverDetail({
                     <SelField
                       label="Driver Status"
                       value={driver.status}
-                      options={driver.status === "active" ? [...DRIVER_STATUSES] : [...SELECTABLE_STATUSES]}
-                      onChange={(v) => { if (v !== "active") onUpdate({ status: v }); }}
+                      options={[...new Set([driver.status, ...SELECTABLE_STATUSES])]}
+                      onChange={(v) => { if (v !== "active" && v !== "approved") onUpdate({ status: v }); }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
@@ -2162,7 +2164,7 @@ function DriverDetail({
                     Must match the address on their licence. Never fill this in from a guess.
                   </p>
                 </Card>
-                <CardOnFileCard driver={driver} onUpdate={onUpdate} />
+                <CardOnFileCard driver={driver} onUpdate={onSaved} />
               </TabsContent>
 
               <TabsContent value="notes" className="mt-0">
