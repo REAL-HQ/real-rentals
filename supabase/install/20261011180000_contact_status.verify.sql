@@ -9,7 +9,7 @@
 -- =============================================================================
 
 WITH checks AS (
-  SELECT 'columns' AS check,
+  SELECT 'columns' AS check_name,
          (SELECT count(*) FROM information_schema.columns
            WHERE table_schema='public' AND table_name='applications'
              AND column_name IN ('contact_status','contact_status_note','contact_follow_up_on','contact_status_at','contact_status_by'))::text AS actual,
@@ -119,12 +119,12 @@ WITH checks AS (
 )
 SELECT
   CASE WHEN actual IS NOT DISTINCT FROM expected THEN 'PASS' ELSE 'FAIL' END AS result,
-  check,
+  check_name,
   what,
   expected,
   coalesce(actual, '(null)') AS actual
 FROM checks
-ORDER BY (CASE WHEN actual IS NOT DISTINCT FROM expected THEN 1 ELSE 0 END), check;
+ORDER BY (CASE WHEN actual IS NOT DISTINCT FROM expected THEN 1 ELSE 0 END), check_name;
 
 -- A separate, deliberate smoke test of the constraint. Read-only: the UPDATE
 -- is rolled back by the surrounding transaction, so run it on its own.

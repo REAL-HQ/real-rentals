@@ -155,8 +155,21 @@ chk "  naming the file it installed" "$(q "select metadata->>'sha256' from publi
 chk "  and the state it recognised" "$(q "select metadata->>'preflight_state' from public.audit_log where action='migration.applied' and entity_id='20261011180000'")" "A"
 chk "  with the applicant count unchanged across the install" "$(q "select (metadata->>'rows_before') = (metadata->>'rows_after') from public.audit_log where action='migration.applied' and entity_id='20261011180000'")" "t"
 chk "no applicant row was altered" "$(q "select string_agg(full_name || ':' || status, ', ' order by full_name) from public.applications")" "Dana Reyes:reviewing, Marcus Hall:approved"
-VERFAIL=$(psql "$U" -Atc "$(cat $VER)" 2>/dev/null | grep -c '^FAIL')
-chk "the verification script reports no FAIL" "$VERFAIL" "0"
+# Counting FAIL lines alone is not a check: a verify script that ERRORS
+# prints no lines at all and reads as "no FAIL". Production found exactly
+# that — `check` is a reserved word and the outer SELECT would not parse —
+# so the run must produce PASS lines before their absence means anything.
+VEROUT=$(psql "$U" -Atc "$(cat $VER)" 2>&1)
+VERPASS=$(printf '%s\n' "$VEROUT" | grep -c '^PASS')
+VERFAIL=$(printf '%s\n' "$VEROUT" | grep -c '^FAIL')
+if [ "$VERPASS" -lt 15 ]; then
+  echo "BLOCKER  the verification script produced only $VERPASS PASS lines — it did not run:"
+  printf '%s\n' "$VEROUT" | head -3 | sed 's/^/           /'
+  fail=$((fail+1))
+else
+  echo "PASS     the verification script ran, with $VERPASS checks"
+fi
+chk "  and reports no FAIL" "$VERFAIL" "0"
 
 echo
 echo "2. running it twice"
