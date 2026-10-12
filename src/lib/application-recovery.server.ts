@@ -13,7 +13,7 @@ const reservation = z.discriminatedUnion("reserved", [
     full_name: z.string().nullable(),
   }),
 ]);
-export type RecoveryOutcome = { outcome: "sent" | "recent" | "failed"; wait: number };
+export type RecoveryOutcome = { outcome: "sent" | "recent" | "failed" | "unknown"; wait: number };
 
 /** PostgreSQL owns quota and token creation; never fall back to an unreserved send. */
 export async function deliverApplicationRecovery(
@@ -40,13 +40,20 @@ export async function deliverApplicationRecovery(
   } catch {
     result = { ok: false, uncertain: true };
   }
-  const { error: finishError } = await admin.rpc("finish_application_recovery", {
-    _attempt_id: attempt.attempt_id,
-    _status: result.ok ? "sent" : result.uncertain ? "unknown" : "failed",
-    _provider_id: result.id ?? null,
-  });
+  let finishError: unknown;
+  try {
+    ({ error: finishError } = await admin.rpc("finish_application_recovery", {
+      _attempt_id: attempt.attempt_id,
+      _status: result.ok ? "sent" : result.uncertain ? "unknown" : "failed",
+      _provider_id: result.id ?? null,
+    }));
+  } catch (error) {
+    finishError = error;
+  }
   // A failed acknowledgement never releases quota or triggers another send.
-  if (finishError)
-    console.error("[resume-link] could not finalize reserved attempt", attempt.attempt_id);
-  return { outcome: result.ok ? "sent" : "failed", wait: attempt.retry_after_seconds };
+  if (finishError) {
+    console.error("[resume-link] finalization unknown; reservation retained", attempt.attempt_id);
+    return { outcome: "unknown", wait: attempt.retry_after_seconds };
+  }
+  return { outcome: result.ok ? "sent" : result.uncertain ? "unknown" : "failed", wait: attempt.retry_after_seconds };
 }

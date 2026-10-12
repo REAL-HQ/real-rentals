@@ -187,11 +187,13 @@ async function sendRecoveryLink(
       ...entry,
       link_sent: result.outcome === "sent",
       link_failed: result.outcome === "failed",
+      link_unknown: result.outcome === "unknown",
     });
-    await supabaseAdmin
+    const { error: historyError } = await supabaseAdmin
       .from("applications")
       .update({ resubmission_history: boundedRecoveryHistory(history), ...extra })
       .eq("id", primaryId);
+    if (historyError) console.error("[resume-link] display history unavailable; durable reservation retained");
   }
   return result;
 }
@@ -451,8 +453,8 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         id: null as string | null,
         token: null as string | null,
         existing: true as const,
-        linkStatus: outcome as "sent" | "recent" | "failed" | "review",
-        linkOk: outcome !== "failed",
+        linkStatus: (outcome === "unknown" ? "failed" : outcome) as "sent" | "recent" | "failed" | "review",
+        linkOk: outcome === "sent" || outcome === "recent",
         retryAfterSeconds: wait,
       };
     }
