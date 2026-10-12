@@ -42,6 +42,7 @@ import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
@@ -272,6 +273,7 @@ function Admin() {
       status: string | null;
     }>
   >([]);
+  const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
@@ -333,6 +335,7 @@ function Admin() {
   }, [tab, search, navigate, urlTab]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const listConvs = useServerFn(listConversations);
+  const loadNotifications = useServerFn(getAdminNotifications);
   const msgOpen = !!search.msg;
   const msgApp = search.msg && search.msg !== "inbox" ? search.msg : null;
   const setMsg = useCallback(
@@ -405,15 +408,20 @@ function Admin() {
     if (!isAdmin) return;
     let cancelled = false;
     async function load() {
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data } = await supabase
-        .from("application_read_projection")
-        .select("id, full_name, email, phone, created_at, status")
-        .is("deleted_at", null)
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(15);
-      if (!cancelled) setNotifs(data || []);
+      // Read on the server: migration 0030 revokes the blanket SELECT on
+      // applications, and this query filters on deleted_at, which its
+      // column allow-list does not carry.
+      try {
+        const r = await loadNotifications({ data: undefined });
+        if (!cancelled) {
+          setNotifs(r?.rows ?? []);
+          setNotifsFailed(false);
+        }
+      } catch {
+        // Say nothing rather than claim an empty pipeline: an unreachable
+        // read is not "No Recent Activity".
+        if (!cancelled) setNotifsFailed(true);
+      }
       try {
         const r = await listConvs();
         if (!cancelled) setUnreadMsgs(r.unread);
@@ -427,7 +435,7 @@ function Admin() {
       cancelled = true;
       clearInterval(t);
     };
-  }, [isAdmin, listConvs]);
+  }, [isAdmin, listConvs, loadNotifications]);
 
   const unreadCount = notifs.filter(
     (n) => new Date(n.created_at ?? 0).getTime() > notifSeenAt,
@@ -491,12 +499,11 @@ function Admin() {
         search={rootSearch(t.href ?? t.id)}
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        className={`relative w-full flex items-center gap-3 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 rounded-lg text-[13px] font-medium transition-colors duration-150 ${
-          active ? "bg-[#1F1F23] text-white" : "text-[#8E8E96] hover:bg-[#1A1A1E] hover:text-white"
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+          active ? "bg-real-red text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
         }`}
       >
-        {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-r bg-[#D03020]" />}
-        <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} />
+        <Icon className="w-4 h-4 shrink-0" />
         <span>{t.label}</span>
       </Link>
     );
@@ -638,7 +645,11 @@ function Admin() {
                     <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifs.length === 0 && <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]">No Recent Activity</div>}
+                    {notifs.length === 0 && (
+                      <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]" data-notifs-state={notifsFailed ? "failed" : "empty"}>
+                        {notifsFailed ? "Could Not Load Activity" : "No Recent Activity"}
+                      </div>
+                    )}
                     {notifs.map((n) => {
                       const created = n.created_at ? new Date(n.created_at) : null;
                       const isNew = created && created.getTime() > notifSeenAt;
