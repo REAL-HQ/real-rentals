@@ -14,7 +14,7 @@
  * Needs the dev server: npx vite dev --host 127.0.0.1 --port 5199 --strictPort
  * Run: node scripts/admin-reads-e2e.test.mjs   (npm run test:admin-reads-e2e)
  */
-import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs");
 import { toCrossJSON, fromCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
@@ -80,12 +80,15 @@ function serverFn(name) {
   }
 }
 
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE || "/opt/pw-browsers/chromium" });
 
 async function open(runMode) {
   mode = runMode;
   restReads = [];
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // Synthetic-only test: fail closed on every unmocked external destination.
+  await ctx.route("**/*", route => new URL(route.request().url()).origin === new URL(BASE).origin
+    ? route.continue() : route.abort());
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
     const u = route.request().url();
     if (u.includes("/auth/v1/"))

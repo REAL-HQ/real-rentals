@@ -59,6 +59,7 @@ export const getAdminNotifications = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(15);
     if (error) throw new Error(error.message);
+    if (!data) throw new Error("Notification data unavailable");
 
     return {
       rows: ((data ?? []) as unknown as RawRow[])
@@ -93,7 +94,7 @@ export const getOverviewApplicants = createServerFn({ method: "POST" })
         .is("deleted_at", null),
       supabaseAdmin
         .from("applications")
-        .select(`${OVERVIEW_APPLICANT_SELECT},${READINESS_APPLICATION_SELECT}`)
+        .select(canSeeReadiness ? `${OVERVIEW_APPLICANT_SELECT},${READINESS_APPLICATION_SELECT}` : OVERVIEW_APPLICANT_SELECT)
         .neq("status", "duplicate")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
@@ -101,6 +102,11 @@ export const getOverviewApplicants = createServerFn({ method: "POST" })
     ]);
     for (const q of [newAppsQ, pendingAppsQ, appsQ]) {
       if (q.error) throw new Error(q.error.message);
+    }
+
+    if (!Number.isSafeInteger(newAppsQ.count) || newAppsQ.count! < 0 ||
+        !Number.isSafeInteger(pendingAppsQ.count) || pendingAppsQ.count! < 0 || !appsQ.data) {
+      throw new Error("Application counts or data unavailable");
     }
 
     // Cast: the generated client cannot type a select built from a shared
@@ -124,6 +130,7 @@ export const getOverviewApplicants = createServerFn({ method: "POST" })
       ]);
       for (const q of [screeningsQ, leadDocsQ]) {
         if (q.error) throw new Error(q.error.message);
+        if (!q.data) throw new Error("Readiness evidence unavailable");
       }
       const index = buildReadinessIndex(
         rows as never,
@@ -134,8 +141,8 @@ export const getOverviewApplicants = createServerFn({ method: "POST" })
     }
 
     return {
-      newApps: newAppsQ.count ?? 0,
-      pendingApps: pendingAppsQ.count ?? 0,
+      newApps: newAppsQ.count!,
+      pendingApps: pendingAppsQ.count!,
       applicants,
       readiness,
       canSeeReadiness,
