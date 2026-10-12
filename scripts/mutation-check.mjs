@@ -76,6 +76,10 @@ const AGPDF = "scripts/agreement-pdf-access.test.mjs";
 const CONTACT = "scripts/contact-status.test.mjs";
 const IDENTITY = "scripts/identity-authorization.test.mjs";
 const DLIST = "scripts/drivers-list-access.test.mjs";
+const AOFN = "src/lib/admin-overview.functions.ts";
+const AORULES = "src/lib/admin-overview.ts";
+const AOPANEL = "src/components/admin/OverviewPanel.tsx";
+const AREADS = "scripts/admin-reads-access.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -382,6 +386,30 @@ const MUTATIONS = [
   ["the projection drops the fields, it does not blank them", DLRULES,
     "  if (canSeeSensitive) return row;\n  const out: DriverListRow = {};",
     "  if (canSeeSensitive) return row;\n  const out: DriverListRow = { ...row };", DLIST],
+  // ------------------------- the admin dashboard reads under 0030
+  ["the Overview applicant read is staff-gated on the server", AOFN,
+    "    const actor = await requireStaff(context.userId);",
+    '    const actor = { tier: "coordinator" } as never;', AREADS],
+  ["the notification read is staff-gated on the server", AOFN,
+    "    await requireStaff(context.userId);", "", AREADS],
+  ["a Coordinator is sent no readiness verdict", AOFN,
+    '    const canSeeReadiness = tierAllows(actor.tier, "manager");',
+    "    const canSeeReadiness = true;", AREADS],
+  ["the applicant projection drops the readiness evidence", AORULES,
+    "export function projectOverviewApplicant(row: RawRow): OverviewApplicantRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {",
+    "export function projectOverviewApplicant(row: RawRow): OverviewApplicantRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {\n    ...(row as object),", AREADS],
+  ["the notification projection drops everything but the contact details", AORULES,
+    "export function projectNotification(row: RawRow): NotificationRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {",
+    "export function projectNotification(row: RawRow): NotificationRow | null {\n  const id = str(row.id);\n  if (!id) return null;\n  return {\n    ...(row as object),", AREADS],
+  ["a failed applicant read is raised, not rendered as zero", AOFN,
+    "    for (const q of [newAppsQ, pendingAppsQ, appsQ]) {\n      if (q.error) throw new Error(q.error.message);\n    }",
+    "", AREADS],
+  ["a failed screening or document read is raised too", AOFN,
+    "      for (const q of [screeningsQ, leadDocsQ]) {\n        if (q.error) throw new Error(q.error.message);\n        if (!q.data) throw new Error(\"Readiness evidence unavailable\");\n      }",
+    "", AREADS],
+  ["the counts begin unknown rather than zero", AOPANEL,
+    "  const [newApps, setNewApps] = useState<number | null>(null);",
+    "  const [newApps, setNewApps] = useState<number | null>(0);", AREADS],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
