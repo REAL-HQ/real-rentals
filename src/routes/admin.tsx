@@ -242,7 +242,11 @@ function Admin() {
     const set = () => {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
       const header = el.querySelector("header");
-      root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
+      // Fractional heights: offsetHeight rounds to whole px, which leaves the
+      // sticky panel below a sub-pixel off and makes it jitter while scrolling.
+      const chromeH = el.getBoundingClientRect().height;
+      const headerH = header?.getBoundingClientRect().height ?? 0;
+      root.style.setProperty("--admin-sticky-h", `${desktop ? chromeH : headerH}px`);
       const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
       root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
     };
