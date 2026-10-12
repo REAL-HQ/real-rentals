@@ -81,3 +81,44 @@ export function minTermWeeks(raw: unknown): number {
   const n = Number(String(raw ?? "").replace(/[^0-9]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
+
+/**
+ * A date as it is PRINTED INSIDE A RENTAL AGREEMENT: MM-DD-YYYY.
+ *
+ * This exists because of the other half of the bug this module's header
+ * describes. The calculation half was fixed by threading the real date
+ * through instead of parsing a rendered string. The printing half was not:
+ * `buildMergeData` and `applyPrep` still formatted contract fields with
+ * `fmtDate` from @/lib/date-format — the APPLICATION-WIDE display helper.
+ *
+ * When that helper changed from MM-DD-YYYY to "Oct 11, 2026", the wording of
+ * the agreement changed with it. Six contract fields moved — the start and
+ * return dates, the renter's date of birth, the execution date, the
+ * minimum-term end and an additional driver's licence expiry — with no
+ * template edit, no new version and no Owner approval. The rendered body
+ * feeds the preview SHA-256, so the fingerprint moved too.
+ *
+ * Contract wording changes only through an Owner-approved template version.
+ * A CSS-adjacent decision about how the dashboard shows a date must never be
+ * able to do it. So contract text formats dates HERE, and nothing in here
+ * imports the UI formatter.
+ *
+ * A date-only value (a start date, a licence expiry) is printed from its own
+ * three fields and never goes near a timezone: the 11th of October is the
+ * 11th wherever the reader is sitting. An INSTANT — the execution date is
+ * `new Date()` — is printed from its local calendar day, because the day a
+ * contract was executed is the day it was where it was signed, and because
+ * reading it in UTC would print tomorrow's date on a Tampa evening.
+ *
+ * An unparseable value returns "" rather than a guess. A blank field makes
+ * the existing readiness blockers fire, which is the honest outcome; an
+ * invented date would print into a signed contract.
+ */
+export function fmtContractDate(v: unknown): string {
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const p = parseDateOnly(v);
+  if (p) return `${p2(p.m)}-${p2(p.d)}-${p.y}`;
+  const d = v instanceof Date ? v : typeof v === "string" ? new Date(v) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${d.getFullYear()}`;
+}

@@ -80,6 +80,9 @@ const AOFN = "src/lib/admin-overview.functions.ts";
 const AORULES = "src/lib/admin-overview.ts";
 const AOPANEL = "src/components/admin/OverviewPanel.tsx";
 const AREADS = "scripts/admin-reads-access.test.mjs";
+const APREP = "src/lib/agreement-prep.ts";
+const ADATES = "src/lib/agreement-dates.ts";
+const CDATES = "scripts/contract-date-format.test.mjs";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -361,12 +364,19 @@ const MUTATIONS = [
   ["a driver's document vault is Manager-and-above", DOCFN,
     "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);",
     "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    const owner = await isOwner(context.supabase, context.userId);", IDENTITY],
+  // The two tiered gates. Both read "if you are staff at all you must be a
+  // Manager", which is deliberately not a flat requireManager: the applicant
+  // branch below each one uploads against their OWN application and holds no
+  // staff grant, so a flat check would lock a driver out of their own
+  // paperwork. The anchors are the gate lines themselves rather than the gate
+  // plus its neighbour, so moving the surrounding code cannot silently
+  // un-guard them again.
   ["staff uploading a document must be a Manager", DOCFN,
-    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    let applicationId = data.applicationId ?? null;",
-    "    let applicationId = data.applicationId ?? null;", IDENTITY],
+    "    const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n    if (await getActor(context.userId)) await requireManager(context.userId);\n    const admin = await isAdmin(context.supabase, context.userId);\n    // A restricted category may only ever be written by an Owner, whichever",
+    "    const admin = await isAdmin(context.supabase, context.userId);\n    // A restricted category may only ever be written by an Owner, whichever", IDENTITY],
   ["staff confirming a document must be a Manager", DOCFN,
-    "    {\n      const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n      if (await getActor(context.userId)) await requireManager(context.userId);\n    }\n    const staff = admin || (await isStaffUser(context.userId));",
-    "    const staff = admin || (await isStaffUser(context.userId));", IDENTITY],
+    "    const { getActor, requireManager } = await import(\"@/lib/roles.server\");\n    if (await getActor(context.userId)) await requireManager(context.userId);\n    const admin = await isAdmin(context.supabase, context.userId);\n    const restricted = RESTRICTED_CATEGORIES.includes(data.category);",
+    "    const admin = await isAdmin(context.supabase, context.userId);\n    const restricted = RESTRICTED_CATEGORIES.includes(data.category);", IDENTITY],
   ["retitling a document is Manager-and-above", DOCFN,
     "    const { requireManager } = await import(\"@/lib/roles.server\");\n    await requireManager(context.userId);\n    await assertMayTouch(context.userId, data.documentId);",
     "    const { requireStaff } = await import(\"@/lib/roles.server\");\n    await requireStaff(context.userId);\n    await assertMayTouch(context.userId, data.documentId);", IDENTITY],
@@ -410,6 +420,22 @@ const MUTATIONS = [
   ["the counts begin unknown rather than zero", AOPANEL,
     "  const [newApps, setNewApps] = useState<number | null>(null);",
     "  const [newApps, setNewApps] = useState<number | null>(0);", AREADS],
+  // -------------------- contract dates are not UI dates
+  ["the contract start date uses the contract formatter", AGFN,
+    'start_date: startDate ? fmtContractDate(startDate) : "",',
+    'start_date: startDate ? new Date(String(startDate)).toDateString() : "",', CDATES],
+  ["so does the renter's date of birth", AGFN,
+    'driver_dob: app.dob ? fmtContractDate(app.dob) : "",',
+    'driver_dob: app.dob ? new Date(String(app.dob)).toDateString() : "",', CDATES],
+  ["so does an additional driver's licence expiry", APREP,
+    "exp. ${fmtContractDate(d.licenseExpiration)}",
+    "exp. ${new Date(String(d.licenseExpiration)).toDateString()}", CDATES],
+  ["a contract date is month-day-year", ADATES,
+    "  if (p) return `${p2(p.m)}-${p2(p.d)}-${p.y}`;",
+    "  if (p) return `${p.y}-${p2(p.m)}-${p2(p.d)}`;", CDATES],
+  ["an unparseable date prints nothing rather than a guess", ADATES,
+    "  if (!d || Number.isNaN(d.getTime())) return \"\";",
+    "  if (!d || Number.isNaN(d.getTime())) return \"01-01-1970\";", CDATES],
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],

@@ -161,7 +161,10 @@ const BODY = "Minimum term ends {{min_term_end}}.\n%%BUILDER_TERMS " +
 
 function run(startIso, body = BODY) {
   // start_date carries the RENDERED value, as buildMergeData leaves it — the
-  // point being that nothing reads it any more.
+  // point being that nothing reads it any more. Deliberately rendered here
+  // with the UI formatter, the one buildMergeData no longer uses: if the
+  // calculation ever starts reading this field again, it will be reading a
+  // format the contract does not even print, and these tests will say so.
   const data = { start_date: startIso ? F0.fmtDate(startIso) : "", min_term_end: "" };
   const blockers = [];
   AGMOD.templateFieldBlockers(body, data, blockers, null, null, startIso);
@@ -169,17 +172,17 @@ function run(startIso, body = BODY) {
 }
 
 let r = run("2026-10-11");
-ok(r.data.min_term_end === "Nov 8, 2026",
-  `a 4-week term from Oct 11 ends Nov 8, 2026 (got ${JSON.stringify(r.data.min_term_end)})`);
+ok(r.data.min_term_end === "11-08-2026",
+  `a 4-week term from Oct 11 ends 11-08-2026 (got ${JSON.stringify(r.data.min_term_end)})`);
 ok(!r.blockers.some((b) => b.field === "min_term_end"),
   "and no Minimum-term end date blocker fires, so the agreement can be sent");
 ok(r.data.start_date === "Oct 11, 2026",
-  "while start_date still carries the app-wide display format, unread by the calculation");
+  "while this start_date carries the app-wide display format, unread by the calculation");
 
 r = run("2026-12-31");
-ok(r.data.min_term_end === "Jan 28, 2027", `across a year boundary (${r.data.min_term_end})`);
+ok(r.data.min_term_end === "01-28-2027", `across a year boundary (${r.data.min_term_end})`);
 r = run("2028-02-22");
-ok(r.data.min_term_end === "Mar 21, 2028", `across a leap February (${r.data.min_term_end})`);
+ok(r.data.min_term_end === "03-21-2028", `across a leap February (${r.data.min_term_end})`);
 
 console.log("\\nand with nothing to compute from, it blocks rather than guessing");
 r = run(null);
@@ -337,7 +340,18 @@ for (const forbidden of ["fmtDate", "toLocaleDateString", "match(", "supabase"])
 }
 
 // ================================================= display is untouched
-console.log("\\nwhat the contract PRINTS is unchanged by this fix");
+//
+// This block used to assert the opposite: that contract fields printed with
+// fmtDate, "the same formatter as everything else". That was the other half
+// of this file's bug, and it bit. When fmtDate became "Oct 11, 2026" the
+// agreement's own wording moved with it — six fields, no template edit, no
+// new version, no Owner approval, and a different preview fingerprint.
+//
+// Contract wording changes only through an Owner-approved template version.
+// So the rule is now the reverse: the UI formatter keeps its format, and
+// contract text does not use it. contract-date-format.test.mjs drives the
+// behaviour; these four lines pin the wiring.
+console.log("\\nthe app-wide format is intact, and contract text does not use it");
 execFileSync("npx", ["esbuild", "src/lib/date-format.ts", "--bundle", "--platform=node",
   "--format=esm", `--outfile=${OUT}/fmt.mjs`, "--alias:@=./src"],
   { stdio: ["ignore", "ignore", "inherit"] });
@@ -346,11 +360,12 @@ ok(F.fmtDate("2026-10-11") === "Oct 11, 2026",
   `the app-wide month-day-year format is intact (${F.fmtDate("2026-10-11")})`);
 ok(F.fmtDateTime("2026-10-11T12:30:00Z").startsWith("Oct 11, 2026,"),
   "and so is the date-and-time one");
-ok(/start_date: startDate \? fmtDate\(startDate\) : ""/.test(AG),
-  "the contract still prints its start date with the same formatter as everything else");
-ok(/return_date: endDate \? fmtDate\(endDate\) : ""/.test(AG), "  and its return date");
-ok(/driver_dob: app\.dob \? fmtDate\(app\.dob\) : ""/.test(AG), "  and the driver's date of birth");
-ok(/min_term_end = fmtDate\(/.test(AG), "  and the minimum-term end date it now computes correctly");
+ok(/start_date: startDate \? fmtContractDate\(startDate\) : ""/.test(AG),
+  "the contract prints its start date with the CONTRACT formatter");
+ok(/return_date: endDate \? fmtContractDate\(endDate\) : ""/.test(AG), "  and its return date");
+ok(/driver_dob: app\.dob \? fmtContractDate\(app\.dob\) : ""/.test(AG), "  and the driver's date of birth");
+ok(/min_term_end = fmtContractDate\(/.test(AG), "  and the minimum-term end date it now computes correctly");
+ok(!/\bfmtDate\(/.test(AG), "  and no contract field is left on the UI formatter");
 
 rmSync(OUT, { recursive: true, force: true });
 console.log(fail ? `\\n${fail} blocker(s)` : "\\nall contract minimum-term checks pass");
