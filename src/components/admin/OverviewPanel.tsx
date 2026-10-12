@@ -196,13 +196,13 @@ export function OverviewPanel() {
         // New = finished the wizard AND nobody has opened it. Status alone
         // would keep counting work somebody already read and left alone.
         supabase
-          .from("applications")
+          .from("application_read_projection")
           .select("id", { count: "exact", head: true })
           .eq("status", "new")
           .is("reviewed_at", null)
           .is("deleted_at", null),
         supabase
-          .from("applications")
+          .from("application_read_projection")
           .select("id", { count: "exact", head: true })
           .eq("status", "partial")
           .is("deleted_at", null),
@@ -239,9 +239,9 @@ export function OverviewPanel() {
         // from the same module, not a cached column that goes stale the moment
         // somebody uploads a document.
         supabase
-          .from("applications")
+          .from("application_read_projection")
           .select(
-            `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}`,
+            `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}, identity_license_on_file, identity_insurance_on_file, identity_profile_on_file, identity_trips_on_file`,
           )
           .neq("status", "duplicate")
           .is("deleted_at", null)

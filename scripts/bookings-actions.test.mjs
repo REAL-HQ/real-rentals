@@ -305,14 +305,14 @@ ok((RENTALFN.match(/end_rental_tx/g) ?? []).length >= 1, "end_rental_tx is still
 let callers = [];
 try {
   callers = execFileSync("grep", ["-rlE", 'rpc\\("end_rental_tx"', "src/"], { encoding: "utf8" })
-    .split("\n").filter(Boolean);
+    .split("\n").filter(Boolean).map(p => p.replaceAll("//", "/"));
 } catch { /* grep exits 1 when nothing matches */ }
 ok(callers.length === 1 && callers[0] === "src/lib/rentals.functions.ts",
   `exactly one module in src/ CALLS end_rental_tx (${callers.join(", ") || "none"})`);
 let activators = [];
 try {
   activators = execFileSync("grep", ["-rlE", 'rpc\\("activate_rental_tx"', "src/"], { encoding: "utf8" })
-    .split("\n").filter(Boolean);
+    .split("\n").filter(Boolean).map(p => p.replaceAll("//", "/"));
 } catch { /* nothing matched */ }
 ok(activators.length === 1 && activators[0] === "src/lib/rentals.functions.ts",
   `and exactly one calls activate_rental_tx (${activators.join(", ") || "none"})`);

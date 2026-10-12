@@ -486,6 +486,8 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const admin = await isAdmin(context.supabase, context.userId);
     // A restricted category may only ever be written by an Owner, whichever
     // door the upload comes through.
@@ -497,10 +499,6 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
     // flat requireManager: the applicant branch below uploads against their
     // OWN application and holds no staff grant at all, and gating this on
     // the tier alone would lock a driver out of their own paperwork.
-    {
-      const { getActor, requireManager } = await import("@/lib/roles.server");
-      if (await getActor(context.userId)) await requireManager(context.userId);
-    }
     let applicationId = data.applicationId ?? null;
     if (admin) {
       if (!applicationId) throw new Error("Missing driver");
@@ -509,7 +507,7 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       if (!applicationId) throw new Error("Missing driver");
     } else {
       const { data: app } = await context.supabase
-        .from("applications")
+        .from("application_read_projection")
         .select("id")
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
@@ -577,6 +575,8 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const admin = await isAdmin(context.supabase, context.userId);
     const restricted = RESTRICTED_CATEGORIES.includes(data.category);
     if (restricted) {
@@ -586,14 +586,10 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // Same shape as the upload-url call above: staff must be a Manager, and
     // a driver confirming their own upload is left to the ownership check
     // further down.
-    {
-      const { getActor, requireManager } = await import("@/lib/roles.server");
-      if (await getActor(context.userId)) await requireManager(context.userId);
-    }
     const staff = admin || (await isStaffUser(context.userId));
     if (!staff) {
       const { data: app } = await context.supabase
-        .from("applications")
+        .from("application_read_projection")
         .select("id")
         .eq("id", data.applicationId)
         .eq("user_id", context.userId)
@@ -704,7 +700,7 @@ export const getMyVault = createServerFn({ method: "GET" })
   .handler(
     async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
       const { data: app } = await context.supabase
-        .from("applications")
+        .from("application_read_projection")
         .select(
           "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
         )

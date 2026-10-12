@@ -37,6 +37,8 @@ export const COORDINATOR_LIST_FIELDS = [
   "status",
   // When it arrived, and whether anybody has reached them yet.
   "created_at",
+  // Requested pickup is permitted operational scheduling data, not a contract term.
+  "pickup_date",
   "contacted_at",
   // Grouping: the duplicate badge and the collapsed history rows.
   "primary_application_id",

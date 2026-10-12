@@ -98,15 +98,32 @@ const save = src.slice(src.indexOf("export const savePartialApplication"), src.i
 const dedupe = save.slice(save.indexOf("if (existing) {"), save.indexOf("const { data: row, error }"));
 ok(!/issueResumeToken/.test(dedupe), "the dedupe branch never mints a token");
 ok(/token: null/.test(dedupe), "  it returns a null token");
-ok(/sendApplicationResumeEmail/.test(dedupe), "  and mails the link instead");
-ok(/\.select\("email, full_name"\)[\s\S]{0,200}sendApplicationResumeEmail/.test(dedupe),
-   "  to the address on the matched record, not the submitted one");
+const recovery = readFileSync("src/lib/application-recovery.server.ts", "utf8");
+const recoverySql = readFileSync(
+  "scripts/app-resume-integration/0022_application_resume_atomic_security.sql",
+  "utf8",
+);
+ok(
+  /sendRecoveryLink\(/.test(dedupe) && /sendApplicationResumeEmail/.test(recovery),
+  "  and mails the link through the recovery helper instead",
+);
+ok(
+  /to: attempt.email/.test(recovery) &&
+    /SELECT \* INTO a FROM public.applications WHERE id = _application_id FOR UPDATE/.test(
+      recoverySql,
+    ) &&
+    /'email', a.email/.test(recoverySql),
+  "  to the address on the locked matched record, not the submitted one",
+);
 // Stronger than excluding the identity fields, which is what this used to
 // check: nothing the caller submitted is applied to a record they merely
 // matched. sms_consent was the one that mattered — an anonymous POST could
 // flip a stranger's recorded consent — but city, state, pickup date, market
 // and the attribution set all went the same way.
-const patch = dedupe.slice(dedupe.indexOf(".update({"), dedupe.indexOf('.eq("id", primaryId)'));
+const patch = dedupe.slice(
+  dedupe.indexOf(".update({"),
+  dedupe.indexOf('.eq("id", primaryId)', dedupe.indexOf(".update({")),
+);
 const written = [...patch.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]).sort();
 ok(String(written) === "resubmission_count,resubmission_history,updated_at",
    `the patch writes only the counter and the history (writes: ${written.join(", ") || "nothing"})`);

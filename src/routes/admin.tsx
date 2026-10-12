@@ -407,7 +407,7 @@ function Admin() {
     async function load() {
       const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data } = await supabase
-        .from("applications")
+        .from("application_read_projection")
         .select("id, full_name, email, phone, created_at, status")
         .is("deleted_at", null)
         .gte("created_at", since)

@@ -78,7 +78,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
       .select("*")
       .then(({ data }) => setPayments(data || []));
     supabase
-      .from("applications")
+      .from("application_read_projection")
       .select("id,full_name,vehicle_id,weekly_rent")
       .then(({ data }) => setDrivers((data as any) || []));
     supabase
