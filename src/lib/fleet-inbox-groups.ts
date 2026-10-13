@@ -96,8 +96,7 @@ export function groupInboxVehicles(input: {
       if (raw || p.kind === "unidentified") uncertain.push({ itemId: it.id, proposalId: p.id, raw, reason: !vin ? "No VIN read" : lowConf ? "VIN read with low confidence — staff must verify" : "VIN is not valid" });
       continue;
     }
-    if (p.kind !== "new" && !input.fleetByVin[vin]) continue; // match/conflict proposals keep their own flow
-    if (p.kind !== "new") continue;
+    if (p.kind !== "new") continue; // match/conflict proposals keep their own review flow
     const g = groupFor(vin);
     addMember(g, it, p.id);
     for (const [k, f] of Object.entries(p.fields ?? {})) {
