@@ -666,7 +666,8 @@ function NewVehicleGroups({ groups, uncertain, isManager, vehLabel, itemById, at
     <section className="space-y-3">
       {groups.map((g) => {
         const existing = g.existingVehicleId ?? (attachRetry?.vin === g.vin ? attachRetry.vehicleId : null);
-        const title = [g.fields.year?.value, g.fields.make?.value, g.fields.model?.value].filter(Boolean).join(" ") || "Vehicle";
+        const pf = newVehiclePrefill(g);
+        const title = [pf.year, pf.make, pf.model].filter(Boolean).join(" ") || "Vehicle";
         const receipts = g.members.filter((m) => m.expenseCandidate);
         return (
           <div key={g.vin} className="rounded-xl border border-[#EDEDF0] bg-white p-4">
@@ -683,7 +684,7 @@ function NewVehicleGroups({ groups, uncertain, isManager, vehLabel, itemById, at
                 <li key={m.itemId}>• {m.fileName} — {docClassLabel(m.docClass)} · Uploaded {fmtDateTime(m.uploadedAt)}</li>
               ))}
             </ul>
-            {!g.fields.model?.value && !existing && <p className="mt-2 text-xs text-[#B45309]">Model is not printed on these documents — enter it from the vehicle; it is never guessed.</p>}
+            {!newVehiclePrefill(g).model && !existing && <p className="mt-2 text-xs text-[#B45309]">Model is not printed on these documents — enter it from the vehicle; it is never guessed.</p>}
             {g.ownershipSuggestion && !existing && <p className="mt-1 text-xs text-[#55555E]">Suggested Ownership: Company (registered owner {g.ownerText}). Staff confirm before saving.</p>}
             {receipts.map((m) => (
               <p key={m.itemId} className="mt-1 text-xs text-[#55555E]">

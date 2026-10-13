@@ -41,6 +41,7 @@ export type VehicleGroup = {
 };
 export type UncertainVin = { itemId: string; proposalId: string; raw: string | null; reason: string };
 
+const BODY_CODE = /^\s*(\d\s?D(R|OOR)?|SW|WG|CV|CP|HB|SD|SUV|VAN|PK|PU|MV)\s*$/i;
 const COMPANY = /\bREAL\s+RENTALS\b/i;
 /** Suggest Company ownership only when the printed owner is the company. Staff still confirm. */
 export function suggestOwnership(ownerText: string | null | undefined): "owned" | null {
@@ -135,8 +136,11 @@ export function newVehiclePrefill(g: VehicleGroup): Record<string, string> {
   const v = (k: string) => g.fields[k]?.value?.trim() || "";
   if (/^\d{4}$/.test(v("year"))) out.year = v("year");
   if (v("make")) out.make = String(normalizeDisplayField("make", v("make")));
-  if (v("model")) out.model = String(normalizeDisplayField("model", v("model")));
-  if (v("trim")) out.trim = v("trim");
+  // Body/door codes printed in a title's BODY column ("4D", "2DR", "SW") are not
+  // models; neither is a low-confidence read. Model/trim stay blank for staff.
+  const realName = (k: string) => v(k) && g.fields[k]?.confidence !== "low" && !BODY_CODE.test(v(k));
+  if (realName("model")) out.model = String(normalizeDisplayField("model", v("model")));
+  if (realName("trim")) out.trim = v("trim");
   if (v("color")) {
     const c = String(normalizeDisplayField("color", v("color")));
     if (isStorableColor(c)) out.color = c;

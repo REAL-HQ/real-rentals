@@ -64,6 +64,14 @@ ok(r.groups.length === 0, "Applied proposals are not offered again");
 // Server attach check
 ok(memberVinMatches(VIN.toLowerCase(), VIN) && !memberVinMatches("1FAHP3F28CL148530", VIN) && !memberVinMatches(null, VIN), "Attach re-check: only a document carrying the vehicle's VIN joins it");
 
+// Regression: the reader put the title's BODY code "4D" into model
+const g4d = { ...g, fields: { ...g.fields, model: { value: "4D", confidence: "medium" as const } } };
+ok(!("model" in newVehiclePrefill(g4d)), "Door/body code '4D' is never pre-filled as a model");
+const gLow = { ...g, fields: { ...g.fields, model: { value: "Fusion", confidence: "low" as const } } };
+ok(!("model" in newVehiclePrefill(gLow)), "Low-confidence model is not pre-filled");
+const gOk = { ...g, fields: { ...g.fields, model: { value: "FUSION", confidence: "high" as const } } };
+ok(/^fusion$/i.test(newVehiclePrefill(gOk).model ?? ""), "A clearly printed model is still pre-filled");
+
 // Title issue date → Document Date, separate from upload time
 ok(documentDateOf({ issue_date: { value: "2026-10-12", confidence: "high" } }) === "2026-10-12", "Title issue date becomes the Document Date");
 ok(documentDateOf({ issue_date: { value: "2026-10-12", confidence: "low" } }) === null, "Low-confidence issue date is not shown");
