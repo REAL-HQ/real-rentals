@@ -93,7 +93,7 @@ export function groupInboxVehicles(input: {
     const vin = raw ? normalizeVin(raw) : "";
     const lowConf = p.fields?.vin?.confidence === "low";
     if (!vin || !checkVin(vin).formatValid || lowConf) {
-      if (raw || p.kind === "unidentified") uncertain.push({ itemId: it.id, proposalId: p.id, raw, reason: !vin ? "No VIN read" : lowConf ? "VIN read with low confidence — staff must verify" : "VIN is not valid" });
+      if (raw) uncertain.push({ itemId: it.id, proposalId: p.id, raw, reason: !vin ? "No VIN read" : lowConf ? "VIN read with low confidence — staff must verify" : "VIN is not valid" });
       continue;
     }
     if (p.kind !== "new") continue; // match/conflict proposals keep their own review flow
