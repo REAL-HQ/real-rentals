@@ -512,7 +512,40 @@ echo "================= the sealing validator refuses what must not be sealed"
 # the ways a human fills it in wrongly are checked offline, with no database.
 SEAL="$PKG/seal-manifest.sh"
 bash "$SEAL" validate "$PKG/baseline-receipts.json" >/dev/null 2>&1
-[ $? -ne 0 ]; ok $? "the shipped UNPOPULATED manifest is refused"
+[ $? = 0 ]; ok $? "the reviewed nine-receipt manifest is accepted"
+[ "$(sha256sum "$PKG/baseline-receipts.json" | cut -d" " -f1)" = "c08378e5dbebf49501cf589f81163a915528519b8207bbf3d2b9bbe123f6bff3" ]
+ok $? "the shipped manifest is byte-identical to the approved live-ledger capture"
+node - "$PKG/baseline-receipts.json" <<'NODE'
+const fs=require("fs"), assert=require("assert/strict");
+const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+assert.deepEqual(m.receipts.map(r=>[r.ordinal,r.stage]),
+  Array.from({length:9},(_,i)=>[i+1,String(i+1).padStart(2,"0")]));
+NODE
+ok $? "the approved stages are exactly 01–09 in their captured order"
+# Syntax validation is not attestation: a fabricated but well-formed digest
+# must still fail the REAL preflight comparison. Mutate only local copies of
+# this disposable database's manifest, never the approved staging capture.
+for mutation in fabricated missing duplicate order invalid_checksum stage10 stage11 stage12; do
+  node - "$MANIFEST" "$D/drift-manifest.json" "$mutation" <<'NODE'
+const fs=require("fs");
+const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8")), k=process.argv[4];
+if(k==="fabricated") m.receipts[0].sha256="b".repeat(64);
+if(k==="missing") m.receipts.pop();
+if(k==="duplicate") m.receipts[1]={...m.receipts[0],ordinal:2};
+if(k==="order") [m.receipts[0].ordinal,m.receipts[1].ordinal]=[2,1];
+if(k==="invalid_checksum") m.receipts[0].sha256="invalid-checksum";
+if(/^stage1[012]$/.test(k)) m.receipts[8].stage=k+"_unexpected";
+fs.writeFileSync(process.argv[3],JSON.stringify(m));
+NODE
+  DIGEST_OVERRIDE="$(MANIFEST="$D/drift-manifest.json" jread digest)"
+  OUT="$(stage stage14_drift_probe 12 "deadbeef" "$PKG/01_agreements_baseline.sql" 2>&1)"
+  RC=$?
+  [ "$RC" -ne 0 ] && echo "$OUT" | grep -qi "not the nine that were verified"
+  ok $? "exact ledger comparison rejects $mutation receipts before installation"
+  DIGEST_OVERRIDE=""
+done
+[ "$(Q "select count(*) from private.staging_install_receipts")" = "12" ]
+ok $? "rejected manifests leave the disposable ledger unchanged"
 # The test's OWN manifest is refused too: its nine names are this fixture's,
 # not staging's, and copying them into the real file would seal a lie.
 bash "$SEAL" validate "$MANIFEST" >/dev/null 2>&1
@@ -570,8 +603,17 @@ OUT="$(bash "$PKG/install.sh" "postgresql://u@db.yuyzdsnrbfhkmfzpvhwx.supabase.c
 [ $? -ne 0 ] && echo "$OUT" | grep -qi "does not name the verified staging project"
 ok $? "a non-staging connection string is refused"
 OUT="$(bash "$PKG/install.sh" "postgresql://u@db.bhpdppyxnkokzhlkgcsc.supabase.co/postgres" --dry-run 2>&1)"
+[ $? = 0 ] && echo "$OUT" | grep -qi "nothing executed"
+ok $? "the sealed shipped manifest reaches the no-SQL dry run"
+# Retain the unsealed refusal using a deliberately unsealed test copy.
+node - "$PKG/baseline-receipts.json" "$D/unpopulated.json" <<'NODE'
+const fs=require("fs");
+const m=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));m.status="UNPOPULATED";
+fs.writeFileSync(process.argv[3],JSON.stringify(m));
+NODE
+OUT="$(ESIGN_STAGING_MANIFEST="$D/unpopulated.json" bash "$PKG/install.sh" "postgresql://u@db.bhpdppyxnkokzhlkgcsc.supabase.co/postgres" --dry-run 2>&1)"
 [ $? -ne 0 ] && echo "$OUT" | grep -qi "not VERIFIED"
-ok $? "the shipped UNPOPULATED manifest stops the installer"
+ok $? "an explicitly UNPOPULATED test manifest still stops the installer"
 OUT="$(ESIGN_STAGING_MANIFEST="$MANIFEST" bash "$PKG/install.sh" "postgresql://u@db.bhpdppyxnkokzhlkgcsc.supabase.co/postgres" --dry-run 2>&1)"
 [ $? = 0 ] && echo "$OUT" | grep -qi "nothing executed"
 ok $? "a populated manifest reaches the dry run${OUT:+}"
