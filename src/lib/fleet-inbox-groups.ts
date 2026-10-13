@@ -149,6 +149,25 @@ export function newVehiclePrefill(g: VehicleGroup): Record<string, string> {
   return out;
 }
 
+/**
+ * Document Date: the issue date printed on the paper (title/registration), or a
+ * receipt's own date. Kept apart from the server's upload timestamp. A value
+ * read with low confidence, or not a real calendar date, is not shown.
+ */
+export function documentDateOf(fields: Record<string, { value: string; confidence: Conf } | undefined> | null | undefined, financialDate?: string | null): string | null {
+  const ok = (v?: string | null) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v ?? "").trim());
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? m[0] : null;
+  };
+  for (const k of ["issue_date", "service_date"]) {
+    const f = fields?.[k];
+    if (f && f.confidence !== "low" && ok(f.value)) return ok(f.value);
+  }
+  return ok(financialDate);
+}
+
 /** Server re-check: a document may join a vehicle only if its own VIN is that vehicle's VIN. */
 export function memberVinMatches(docVin: string | null | undefined, vehicleVin: string | null | undefined): boolean {
   const a = normalizeVin(docVin ?? ""), b = normalizeVin(vehicleVin ?? "");

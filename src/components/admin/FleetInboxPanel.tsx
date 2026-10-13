@@ -10,7 +10,7 @@ import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
   applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile, attachInboxGroup,
 } from "@/lib/fleet-inbox.functions";
-import { groupInboxVehicles, newVehiclePrefill, type VehicleGroup } from "@/lib/fleet-inbox-groups";
+import { documentDateOf, groupInboxVehicles, newVehiclePrefill, type VehicleGroup } from "@/lib/fleet-inbox-groups";
 import { AddVehicleDialog } from "@/components/admin/AddVehicleDialog";
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
@@ -643,7 +643,7 @@ function ServiceSummary({ fields }: { fields: any }) {
 /** Upload time is the server's original timestamp; document dates come from the paper itself. */
 function ItemDates({ it, proposals }: { it: any; proposals: any[] }) {
   const fv = (k: string) => proposals.map((p) => p.fields?.[k]?.value).find(Boolean) as string | undefined;
-  const docDate = it.extraction?.financial?.date?.value ?? fv("document_date") ?? fv("issue_date") ?? fv("service_date");
+  const docDate = documentDateOf(proposals.map((p) => p.fields).find((f) => f?.issue_date || f?.service_date), it.extraction?.financial?.date?.value);
   const exp = fv("registration_expires_on") ?? fv("insurance_expires_on");
   const fmt = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? fmtDate(v) : v);
   return (
