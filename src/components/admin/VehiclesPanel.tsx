@@ -336,7 +336,7 @@ export function VehiclesPanel({
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search unit, VIN, plate, year, make, model…"
             aria-label="Search vehicles"
-            className="h-9 w-full min-w-0 border border-border rounded-md px-3 text-sm bg-white sm:col-span-2 lg:col-span-1"
+            className="h-9 w-full min-w-0 border border-border rounded-md px-3 text-sm bg-white sm:col-span-3 lg:col-span-1"
           />
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
             <SelectTrigger className="h-9 w-full bg-white text-foreground text-sm" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
