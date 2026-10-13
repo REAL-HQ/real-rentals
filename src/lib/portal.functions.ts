@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertProjectionOk, isApplicationReadUnavailable } from "@/lib/application-projection";
 
 /** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -16,6 +17,18 @@ const refuseWrite = async (userId: string) =>
 export type DriverDashboard = {
   /** The newest linked application's status, or null if there is none. */
   applicationStatus: string | null;
+  /**
+   * The sections whose read FAILED, with the reason.
+   *
+   * Set instead of letting the failure stand as `payments: []` or
+   * `applicationStatus: null`. The dashboard renders these as "could not be
+   * read", so an unreadable section is never shown as an empty one — and a
+   * driver who cannot be confirmed approved is not told either way. The
+   * failure is scoped to the section on purpose: Support and Referrals stay
+   * reachable, because a stranded driver needs them most when something is
+   * broken.
+   */
+  unavailable: { payments?: string; applicationStatus?: string };
   rental: {
     id: string;
     weekly_rate: number;
@@ -238,8 +251,21 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     }
 
     // payments.driver_id references applications.id; resolve via application(s) linked to this user
-    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
-    const appIds = (apps ?? []).map((a: any) => a.id);
+    const unavailable: DriverDashboard["unavailable"] = {};
+    const { data: apps, error: appsErr } = await supabase
+      .from("application_read_projection" as any)
+      .select("id")
+      .eq("user_id", userId);
+    // Not swallowed: a failed read here skipped the payments query and showed
+    // the renter an empty Payments tab as though it were the truth. Recorded
+    // rather than thrown, so one unreadable card does not take the portal down.
+    try {
+      assertProjectionOk(appsErr, "your payments");
+    } catch (e) {
+      if (!isApplicationReadUnavailable(e)) throw e;
+      unavailable.payments = e.message;
+    }
+    const appIds = unavailable.payments ? [] : (apps ?? []).map((a: any) => a.id);
 
     const [paymentsRes, maintRes, notifRes] = await Promise.all([
       appIds.length
@@ -283,16 +309,29 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
     // The pre-rental panel cannot tell an approved applicant from a rejected
     // one without this, and guessing "approved" from the absence of a rental
     // tells a rejected person they are approved.
-    const { data: statusRow } = await supabase
+    const { data: statusRow, error: statusErr } = await supabase
       .from("application_read_projection" as any)
       .select("status")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    // Null here is "no application on file". It must never also mean "the
+    // read failed", because the panel downstream treats the absence of a
+    // rejection as approval — so the failure is reported to the panel instead
+    // of collapsing into the same null.
+    try {
+      assertProjectionOk(statusErr, "your application status");
+    } catch (e) {
+      if (!isApplicationReadUnavailable(e)) throw e;
+      unavailable.applicationStatus = e.message;
+    }
 
     return {
-      applicationStatus: (statusRow?.status as string | null) ?? null,
+      applicationStatus: unavailable.applicationStatus
+        ? null
+        : ((statusRow?.status as string | null) ?? null),
+      unavailable,
       rental: rental
         ? {
             id: rental.id,
@@ -326,7 +365,11 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     // documents.driver_id references applications.id (not auth.users.id), so
     // resolve this user's application(s) before querying the vault.
-    const { data: apps } = await supabase.from("application_read_projection" as any).select("id").eq("user_id", userId);
+    const { data: apps, error: appsErr } = await supabase
+      .from("application_read_projection" as any)
+      .select("id")
+      .eq("user_id", userId);
+    assertProjectionOk(appsErr, "your documents");
     const appIds = (apps ?? []).map((a: any) => a.id as string);
     if (appIds.length === 0) return [];
 
@@ -471,13 +514,16 @@ export const getDriverProfile = createServerFn({ method: "GET" })
   .inputValidator(previewInput)
   .handler(async ({ context, data: input }): Promise<DriverProfile> => {
     const sc = await scope(context, input, "profile");
-    const { data } = await sc.supabase
+    const { data, error: profileErr } = await sc.supabase
       .from("application_read_projection" as any)
       .select("full_name,email,phone,city,status,created_at,address,state,zip,sms_consent")
       .eq("user_id", sc.userId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    // Every field below falls back to null, so a failed read would render an
+    // entirely blank profile that looks like a driver who filled nothing in.
+    assertProjectionOk(profileErr, "your profile");
     return {
       full_name: data?.full_name ?? null,
       email: data?.email ?? null,
@@ -552,13 +598,15 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
   .handler(async ({ context, data }): Promise<{ ok: true } | { error: string }> => {
     await refuseWrite(context.userId);
     const { supabase, userId } = context;
-    const { data: app } = (await supabase
+    const { data: app, error: appErr } = (await supabase
       .from("application_read_projection" as any)
       .select("id,phone")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
-      .maybeSingle()) as { data: { id: string; phone: string | null } | null };
+      .maybeSingle()) as { data: { id: string; phone: string | null } | null; error: unknown };
+    // "No application on file" is a real answer; a failed read is not.
+    assertProjectionOk(appErr as any, "your profile");
     if (!app) return { error: "No application on file." };
 
     const patch: Record<string, unknown> = { ...data };

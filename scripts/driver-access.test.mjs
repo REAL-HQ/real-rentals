@@ -241,12 +241,29 @@ ok(
   "the dashboard returns the application status",
 );
 ok(
-  /const approved = status === "approved" \|\| status === "active"/.test(portal),
+  /const approved = !statusUnavailable && \(status === "approved" \|\| status === "active"\)/.test(portal),
   "the panel decides from that status, not from the absence of a rental",
 );
 ok(
-  /\{approved \? "You're Approved" : "Your Application"\}/.test(portal),
+  /\{statusUnavailable \? "Your Application" : approved \? "You're Approved" : "Your Application"\}/.test(portal),
   "a rejected or finished applicant is not told they are approved",
+);
+// The third state. getDriverDashboard can now report that the status read
+// FAILED rather than collapsing it into the same null an applicant with no
+// record has — and "approved" must not be inferred from an unreadable status
+// any more than from a missing rental.
+ok(
+  /statusUnavailable\?: string;/.test(portal) &&
+    /statusUnavailable=\{data\.unavailable\?\.applicationStatus\}/.test(portal),
+  "an unreadable status reaches the panel as its own state",
+);
+ok(
+  /We Could Not Load Your Status\./.test(portal),
+  "and the panel says so instead of picking one of the two headlines",
+);
+ok(
+  /unavailable\.applicationStatus\s*\n?\s*\? null/.test(portalFnsSrc),
+  "the server never sends a status it could not read",
 );
 
 /* --------------------------------------- nothing driver-facing needs a car */

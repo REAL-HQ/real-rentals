@@ -14,6 +14,7 @@ import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { assertProjectionOk } from "@/lib/application-projection";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -1100,10 +1101,14 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       body: string;
       document_id: string | null;
     };
-    const { data: apps } = await context.supabase
+    const { data: apps, error: appsErr } = await context.supabase
       .from("application_read_projection" as any)
       .select("id")
       .eq("user_id", context.userId);
+    // Not swallowed: a failed read here returned [] and the driver saw a
+    // portal with no agreements at all — including one they had been sent and
+    // were waiting to sign.
+    assertProjectionOk(appsErr as any, "your agreements");
     const ids = (apps ?? []).map((a: any) => a.id);
     if (!ids.length) return [] as Mine[];
     const { data } = await context.supabase
@@ -1138,12 +1143,17 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     if (!own) throw new Error("Agreement not found");
     const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
     if (problems.length) throw new Error(problems[0]);
-    const { data: mine } = await context.supabase
+    const { data: mine, error: mineErr } = await context.supabase
       .from("application_read_projection" as any)
       .select("id")
       .eq("id", own.application_id as string)
       .eq("user_id", context.userId)
       .maybeSingle();
+    // This read IS the ownership check on a signing write, and it already
+    // failed closed. The assert opens nothing; it replaces "Agreement not
+    // found" with the true reason when the cause was an unavailable
+    // projection rather than somebody else's agreement.
+    assertProjectionOk(mineErr as any, "this agreement");
     if (!mine) throw new Error("Agreement not found");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");

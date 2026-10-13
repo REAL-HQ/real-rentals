@@ -9,6 +9,9 @@
  * would hand the test one object and the bundled code another, and refusals
  * that had simply found nothing would pass as if they had been refused.
  *
+ * A test can make one relation refuse reads with S.failSelect, keyed by
+ * table name, with the PostgREST error to return.
+ *
  * Supported: select / insert / update / delete / upsert, chained with
  * eq, neq, ilike, in, is, or, gte, lte, order, limit, range, single,
  * maybeSingle, and select(..., { count, head }). Plus storage.from().download().
@@ -110,6 +113,14 @@ class Query {
   _run() {
     const t = this.table;
     if (this.kind === "select") {
+      // Lets a test make ONE relation refuse reads, which a fake that can
+      // only ever succeed cannot express. A missing view, a revoked grant and
+      // an empty table are three different answers from PostgREST, and code
+      // that treats the first two as the third tells the user a falsehood —
+      // so the error has to be reachable in a test. Set
+      // S.failSelect = { application_read_projection: { code: "42P01", message: "..." } }.
+      const refusal = S.failSelect?.[t];
+      if (refusal) return { data: null, error: refusal, count: null };
       const m = this._matching();
       return { data: this.head ? null : m.map(clone), error: null, count: this.total ?? m.length };
     }
@@ -160,8 +171,11 @@ class Query {
   async _gate() {
     if (S.gateTable === this.table && S.gate) await S.gate;
   }
-  async single() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: d ? null : { message: "no rows" }, count: r.count }; }
-  async maybeSingle() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: null, count: r.count }; }
+  async single() { await this._gate(); const r = this._run(); if (r.error) return { data: null, error: r.error, count: null }; const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: d ? null : { message: "no rows" }, count: r.count }; }
+  // A refusal survives maybeSingle. It used to flatten to { data: null,
+  // error: null } — indistinguishable from "no such row", which is exactly
+  // the confusion these tests exist to catch.
+  async maybeSingle() { await this._gate(); const r = this._run(); if (r.error) return { data: null, error: r.error, count: null }; const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: null, count: r.count }; }
   then(res, rej) { return this._gate().then(() => this._run()).then(res, rej); }
 }
 

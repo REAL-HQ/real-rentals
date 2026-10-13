@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { assertProjectionOk } from "@/lib/application-projection";
 
 type VettingStatus = "pending" | "passed" | "failed";
 
@@ -72,7 +73,7 @@ export const getMyPartner = createServerFn({ method: "GET" })
     if (vErr) throw new Error(vErr.message);
 
     const ids = (vehicles ?? []).map((v: any) => v.id);
-    const [{ data: drivers }, { data: docs }] = await Promise.all([
+    const [driversQ, docsQ] = await Promise.all([
       ids.length
         ? supabase
             .from("application_read_projection" as any)
@@ -81,14 +82,23 @@ export const getMyPartner = createServerFn({ method: "GET" })
             )
             .in("vehicle_id", ids)
             .in("status", ["approved", "active"])
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             .from("documents")
             .select("id,kind,vehicle_id")
             .in("vehicle_id", ids)
-        : Promise.resolve({ data: [] as any[] }),
+        : Promise.resolve({ data: [] as any[], error: null }),
     ]);
+    // Not swallowed: a failed read here left every car showing "no renter",
+    // which reads to a partner as an idle vehicle earning them nothing. The
+    // projection is the partner's supported path — 0030's view admits them via
+    // private.partner_owns_vehicle and hands back the masked allowlist these
+    // columns come from — so an error here is a real fault, not a boundary.
+    assertProjectionOk(driversQ.error as any, "your renters");
+    if (docsQ.error) throw new Error(docsQ.error.message);
+    const drivers = driversQ.data as any[] | null;
+    const docs = docsQ.data as any[] | null;
 
     const byVehicleDriver = new Map<string, any>();
     for (const d of drivers ?? []) byVehicleDriver.set(d.vehicle_id, d);
