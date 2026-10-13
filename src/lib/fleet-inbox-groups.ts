@@ -41,6 +41,7 @@ export type VehicleGroup = {
 };
 export type UncertainVin = { itemId: string; proposalId: string; raw: string | null; reason: string };
 
+const BODY_CODE = /^\s*(\d\s?D(R|OOR)?|SW|WG|CV|CP|HB|SD|SUV|VAN|PK|PU|MV)\s*$/i;
 const COMPANY = /\bREAL\s+RENTALS\b/i;
 /** Suggest Company ownership only when the printed owner is the company. Staff still confirm. */
 export function suggestOwnership(ownerText: string | null | undefined): "owned" | null {
@@ -135,8 +136,11 @@ export function newVehiclePrefill(g: VehicleGroup): Record<string, string> {
   const v = (k: string) => g.fields[k]?.value?.trim() || "";
   if (/^\d{4}$/.test(v("year"))) out.year = v("year");
   if (v("make")) out.make = String(normalizeDisplayField("make", v("make")));
-  if (v("model")) out.model = String(normalizeDisplayField("model", v("model")));
-  if (v("trim")) out.trim = v("trim");
+  // Body/door codes printed in a title's BODY column ("4D", "2DR", "SW") are not
+  // models; neither is a low-confidence read. Model/trim stay blank for staff.
+  const realName = (k: string) => v(k) && g.fields[k]?.confidence !== "low" && !BODY_CODE.test(v(k));
+  if (realName("model")) out.model = String(normalizeDisplayField("model", v("model")));
+  if (realName("trim")) out.trim = v("trim");
   if (v("color")) {
     const c = String(normalizeDisplayField("color", v("color")));
     if (isStorableColor(c)) out.color = c;
@@ -147,6 +151,25 @@ export function newVehiclePrefill(g: VehicleGroup): Record<string, string> {
   if (odo) out.current_odometer = odo;
   if (g.ownershipSuggestion) out.ownership_type = g.ownershipSuggestion;
   return out;
+}
+
+/**
+ * Document Date: the issue date printed on the paper (title/registration), or a
+ * receipt's own date. Kept apart from the server's upload timestamp. A value
+ * read with low confidence, or not a real calendar date, is not shown.
+ */
+export function documentDateOf(fields: Record<string, { value: string; confidence: Conf } | undefined> | null | undefined, financialDate?: string | null): string | null {
+  const ok = (v?: string | null) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v ?? "").trim());
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? m[0] : null;
+  };
+  for (const k of ["issue_date", "service_date"]) {
+    const f = fields?.[k];
+    if (f && f.confidence !== "low" && ok(f.value)) return ok(f.value);
+  }
+  return ok(financialDate);
 }
 
 /** Server re-check: a document may join a vehicle only if its own VIN is that vehicle's VIN. */

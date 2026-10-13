@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useVehicleDefaultPrefill } from "./useVehicleDefaults";
 import { bodyTypeLabel, DEFAULT_FIELD_LABELS } from "@/lib/vehicle-defaults";
 import { useServerFn } from "@tanstack/react-start";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   X, Keyboard, ScanLine, FileText, Upload, Loader2, Check, AlertTriangle, ArrowLeft, Sparkles,
@@ -244,13 +245,13 @@ function Option({
 type Form = {
   unit_number: string; vin: string; year: string; make: string; model: string;
   trim: string; color: string; body_type: string; weekly_rate: string; monthly_rate: string; deposit: string; current_odometer: string;
-  license_plate: string; plate_state: string; status: string; ownership_type: string;
+  license_plate: string; plate_state: string; status: string; ownership_type: string; partner_id: string;
 };
 
 const EMPTY: Form = {
   unit_number: "", vin: "", year: "", make: "", model: "", trim: "", color: "",
   body_type: "", weekly_rate: "", monthly_rate: "", deposit: "", current_odometer: "", license_plate: "", plate_state: "",
-  status: "available", ownership_type: "",
+  status: "available", ownership_type: "", partner_id: "",
 };
 
 function ManualForm({
@@ -303,6 +304,12 @@ function ManualForm({
   // Ownership suggested from a document's printed owner is only a suggestion.
   const ownershipSuggested = !!prefill?.ownership_type;
   const [ownershipConfirmed, setOwnershipConfirmed] = useState(false);
+  // Existing active partners only; a partner car is linked at creation, never guessed.
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (f.ownership_type !== "partner" || partners.length) return;
+    supabase.from("partners").select("id,name").eq("status", "active").order("name").then(({ data }) => setPartners(data || []));
+  }, [f.ownership_type, partners.length]);
 
   const runDecode = useCallback(async () => {
     if (!f.vin.trim()) return toast.error("Enter a VIN first");
@@ -350,6 +357,7 @@ function ManualForm({
     const year = Number(f.year);
     if (!Number.isFinite(year)) return toast.error("Year must be a number");
     if (ownershipSuggested && !ownershipConfirmed) return toast.error("Confirm the ownership before saving");
+    if (f.ownership_type === "partner" && !f.partner_id) return toast.error("Choose the partner for this vehicle");
 
     setSaving(true);
     try {
@@ -372,6 +380,7 @@ function ManualForm({
           plate_state: f.plate_state.trim() || null,
           status: f.status || "available",
           ownership_type: (f.ownership_type || null) as any,
+          partner_id: f.ownership_type === "partner" ? f.partner_id || null : null,
         },
       });
       if (!res.ok) {
@@ -526,6 +535,16 @@ function ManualForm({
             </select>
           </Field>
         </div>
+        {f.ownership_type === "partner" && (
+          <div className="mt-3">
+            <Field label="Partner" bad={badField === "partner_id"} hint={partners.length ? undefined : "No active partners yet — add one under Partners first."}>
+              <select value={f.partner_id} onChange={(e) => set("partner_id", e.target.value)} className={inputCls(badField === "partner_id")} aria-label="Partner">
+                <option value="">Choose Partner</option>
+                {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
         {ownershipSuggested && (
           <label className="mt-2 flex items-start gap-2 text-[12px] text-[#8A6410]">
             <input type="checkbox" checked={ownershipConfirmed} onChange={(e) => setOwnershipConfirmed(e.target.checked)} aria-label="Confirm Ownership" className="mt-0.5" />

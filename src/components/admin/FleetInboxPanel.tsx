@@ -10,7 +10,7 @@ import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
   applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile, attachInboxGroup,
 } from "@/lib/fleet-inbox.functions";
-import { groupInboxVehicles, newVehiclePrefill, type VehicleGroup } from "@/lib/fleet-inbox-groups";
+import { documentDateOf, groupInboxVehicles, newVehiclePrefill, type VehicleGroup } from "@/lib/fleet-inbox-groups";
 import { AddVehicleDialog } from "@/components/admin/AddVehicleDialog";
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
@@ -643,7 +643,7 @@ function ServiceSummary({ fields }: { fields: any }) {
 /** Upload time is the server's original timestamp; document dates come from the paper itself. */
 function ItemDates({ it, proposals }: { it: any; proposals: any[] }) {
   const fv = (k: string) => proposals.map((p) => p.fields?.[k]?.value).find(Boolean) as string | undefined;
-  const docDate = it.extraction?.financial?.date?.value ?? fv("document_date") ?? fv("issue_date") ?? fv("service_date");
+  const docDate = documentDateOf(proposals.map((p) => p.fields).find((f) => f?.issue_date || f?.service_date), it.extraction?.financial?.date?.value);
   const exp = fv("registration_expires_on") ?? fv("insurance_expires_on");
   const fmt = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? fmtDate(v) : v);
   return (
@@ -666,7 +666,8 @@ function NewVehicleGroups({ groups, uncertain, isManager, vehLabel, itemById, at
     <section className="space-y-3">
       {groups.map((g) => {
         const existing = g.existingVehicleId ?? (attachRetry?.vin === g.vin ? attachRetry.vehicleId : null);
-        const title = [g.fields.year?.value, g.fields.make?.value, g.fields.model?.value].filter(Boolean).join(" ") || "Vehicle";
+        const pf = newVehiclePrefill(g);
+        const title = [pf.year, pf.make, pf.model].filter(Boolean).join(" ") || "Vehicle";
         const receipts = g.members.filter((m) => m.expenseCandidate);
         return (
           <div key={g.vin} className="rounded-xl border border-[#EDEDF0] bg-white p-4">
@@ -683,7 +684,7 @@ function NewVehicleGroups({ groups, uncertain, isManager, vehLabel, itemById, at
                 <li key={m.itemId}>• {m.fileName} — {docClassLabel(m.docClass)} · Uploaded {fmtDateTime(m.uploadedAt)}</li>
               ))}
             </ul>
-            {!g.fields.model?.value && !existing && <p className="mt-2 text-xs text-[#B45309]">Model is not printed on these documents — enter it from the vehicle; it is never guessed.</p>}
+            {!newVehiclePrefill(g).model && !existing && <p className="mt-2 text-xs text-[#B45309]">Model is not printed on these documents — enter it from the vehicle; it is never guessed.</p>}
             {g.ownershipSuggestion && !existing && <p className="mt-1 text-xs text-[#55555E]">Suggested Ownership: Company (registered owner {g.ownerText}). Staff confirm before saving.</p>}
             {receipts.map((m) => (
               <p key={m.itemId} className="mt-1 text-xs text-[#55555E]">

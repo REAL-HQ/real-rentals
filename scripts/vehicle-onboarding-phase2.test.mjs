@@ -545,7 +545,7 @@ ok(/\{isManager && selected\.length > 0 && \(/.test(FI), "the Apply bar is Manag
 ok(/\{isManager \? \(\s*\n\s*<button\s*\n\s*onClick=\{selectAllSafe\}/.test(FI), "so is Select All Safe");
 ok(/Ready for Manager review/.test(FI), "  with a line saying so instead of a blank space");
 ok(/\{p\.kind !== "new" && !done && isManager && \(/.test(FI), "the accept checkboxes are Manager-only");
-ok(/\{isManager && p\.kind === "new" && \(/.test(FI), "Create Vehicle is Manager-only");
+ok(/\{isManager && p\.kind === "new"( && !grouped)? && \(/.test(FI), "Create Vehicle is Manager-only");
 ok(/\{isManager && p\.kind !== "new" && changes\.some\(\(c\) => c\.safe\)/.test(FI), "so is Accept Safe Changes");
 const ignoreBtn = FI.split('active={dec.action === "ignore"}')[0].split("\n").slice(-3).join(" ");
 ok(!/isManager/.test(ignoreBtn), "Ignore is NOT gated — dismissing is preparation");
