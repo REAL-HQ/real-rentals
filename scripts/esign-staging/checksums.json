@@ -45,7 +45,9 @@
     "file": "baseline-receipts.json",
     "status": "UNPOPULATED",
     "blocks": "install.sh stops before opening a transaction",
-    "reason": "the nine verified receipt names and checksums were not supplied; they are not guessed"
+    "reason": "the nine verified receipt names and checksums were not supplied; they are not guessed",
+    "sealing_helper": "seal-manifest.sh (capture | validate)",
+    "blocker": "staging ledger unreachable from this environment: network policy denied bhpdppyxnkokzhlkgcsc.supabase.co:443 (403 CONNECT)"
   },
   "reviewed_checksums_preserved": {
     "0023": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",
@@ -77,10 +79,11 @@
     "postflight.sql": "b308d0b6cfa840e6c1936b3bff6336045c4e88f49efd24e780e3ac20d0be47c4",
     "verify.sql": "7e71749e873075bebab4f7448183d7f5a70cbee526549e303e412538954993f3",
     "manifest.sh": "9711b9c7b0ba4e7236c221e151c9260dcbe25efd36eb06ddeb6de966f641b685",
+    "seal-manifest.sh": "0fe713581d9bcf014097f65a44fd15e3e1eefd30d6c9b9440cf07d193f340887",
     "install.sh": "04b5c941ff0cda7ae1b2e408afc06f73f5ea13a0d1203d56fe26e7c4914edce8",
     "verify-artifact.sh": "7a80b70e31a2eb4a49759999e5de1b3eb03a3ee02540e7111ee5f3e91968f514",
-    "baseline-receipts.json": "97967131f5d12ace70d9ef8b1e061e0f87cc979e409b204d001074631d66c967",
-    "README.md": "7ea4d0290c2ea30491cf0bf8d73dc8b02889eb939d0cbebf5504751591db2f68",
+    "baseline-receipts.json": "711a806ad9f2e3af430d0c6b3375680b768e730f828cbe9144dfdaf7c55c6b97",
+    "README.md": "6428bc3205748ab10010ab4e4007379e8750519fed494e092c4a9c703876457b",
     "worker/wrangler.staging.jsonc": "a9b6e83c16c2959e70f1cb128e8fd5adef9853ea2f670153e2657077f6008e75",
     "worker/README.md": "0d45333020425c0d6ba834f9cdf073f51d51e5ca4fac3a9274b6d3fc91063fc8",
     "../esign-release/0023_esign_template_versioning_library.sql": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",

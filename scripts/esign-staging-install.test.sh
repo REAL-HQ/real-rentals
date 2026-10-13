@@ -484,8 +484,8 @@ echo "================= the pins match the files they pin"
 # agree with what is on disk, including preflight and postflight — those two
 # ARE the safety checks, so an edited preflight is a disarmed installer.
 for f in 01_agreements_baseline.sql 02_private_storage.sql 03_storage_policy.privileged.sql \
-         preflight.sql postflight.sql verify.sql manifest.sh install.sh README.md \
-         baseline-receipts.json; do
+         preflight.sql postflight.sql verify.sql manifest.sh seal-manifest.sh install.sh \
+         README.md baseline-receipts.json; do
   WANT="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(m.checksums[process.argv[2]]||"")' "$PKG/checksums.json" "$f")"
   GOT="$(sha256sum "$PKG/$f" | cut -d" " -f1)"
   [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]
@@ -505,6 +505,63 @@ done
 ok $? "0023 is byte-for-byte the reviewed file"
 [ "$(sha256sum "$REL/0024_esign_agreement_numbering.sql" | cut -d' ' -f1)" = "199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8" ]
 ok $? "0024 is byte-for-byte the reviewed file"
+
+echo
+echo "================= the sealing validator refuses what must not be sealed"
+# The manifest is the one thing in this package a human fills in by hand, so
+# the ways a human fills it in wrongly are checked offline, with no database.
+SEAL="$PKG/seal-manifest.sh"
+bash "$SEAL" validate "$PKG/baseline-receipts.json" >/dev/null 2>&1
+[ $? -ne 0 ]; ok $? "the shipped UNPOPULATED manifest is refused"
+# The test's OWN manifest is refused too: its nine names are this fixture's,
+# not staging's, and copying them into the real file would seal a lie.
+bash "$SEAL" validate "$MANIFEST" >/dev/null 2>&1
+[ $? -ne 0 ]; ok $? "the test fixture's synthetic manifest is refused"
+# Captured first, not piped: `set -o pipefail` plus `grep -q` closing the
+# pipe early makes the producer die of SIGPIPE, and the pipeline reports
+# failure even on a match.
+SEALOUT="$(bash "$SEAL" validate "$MANIFEST" 2>&1 || true)"
+echo "$SEALOUT" | grep -qi "_synthetic"
+ok $? "  and the refusal says why"
+
+# A realistic one, built here, must pass — a validator that refused
+# everything would be indistinguishable from one that worked.
+GOODMF="$D/good-manifest.json"
+node -e '
+const c=require("crypto"), fs=require("fs");
+const st=["0001_init","0002_roles","0003_vehicles","0004_rentals","0005_payments",
+          "0006_docs","0007_esign_prep","0008_identity","0009_audit"];
+fs.writeFileSync(process.argv[1], JSON.stringify({status:"VERIFIED",database:"postgres",
+  captured_at:"2026-10-13T09:00:00Z",
+  receipts:st.map((s,i)=>({ordinal:i+1,stage:s,sha256:c.createHash("sha256").update(s).digest("hex")}))},null,2));
+' "$GOODMF"
+bash "$SEAL" validate "$GOODMF" >/dev/null 2>&1
+[ $? = 0 ]; ok $? "a well-formed manifest passes"
+
+# One mutation per rule, because each of these is a real way to get it wrong.
+mutate() { node -e '
+const fs=require("fs");
+const m=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+const k=process.argv[2];
+if(k==="placeholder") m.receipts[3].sha256="a".repeat(64);
+if(k==="uppercase")   m.receipts[0].sha256=m.receipts[0].sha256.toUpperCase();
+if(k==="gap")         m.receipts[5].ordinal=99;
+if(k==="dup")         m.receipts[5].ordinal=m.receipts[4].ordinal;
+if(k==="short")       m.receipts.pop();
+if(k==="unpopulated") m.status="UNPOPULATED";
+if(k==="nodb")        m.database="";
+if(k==="installstage")m.receipts[8].stage="stage10_agreements_baseline";
+fs.writeFileSync(process.argv[3], JSON.stringify(m,null,2));
+' "$GOODMF" "$1" "$D/bad.json"; }
+for k in placeholder uppercase gap dup short unpopulated nodb installstage; do
+  mutate "$k"
+  bash "$SEAL" validate "$D/bad.json" >/dev/null 2>&1
+  [ $? -ne 0 ]; ok $? "  refused: $k"
+done
+# capture is bound to the staging project, like install.sh.
+OUT="$(bash "$SEAL" capture "postgresql://u@db.yuyzdsnrbfhkmfzpvhwx.supabase.co/postgres" 2>&1)"
+[ $? -ne 0 ] && echo "$OUT" | grep -qi "does not name the verified staging project"
+ok $? "capture refuses a connection that is not the staging project"
 
 echo
 echo "================= the installer refuses before it connects"

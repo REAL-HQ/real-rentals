@@ -45,6 +45,14 @@ Then `verify.sql` for acceptance. Every row must read PASS.
 
 ## Before it will run: pin the nine existing receipts
 
+> **Status: BLOCKED.** The nine values could not be read from this
+> environment. The network policy denies
+> `bhpdppyxnkokzhlkgcsc.supabase.co:443` (403 CONNECT at the egress proxy),
+> the only Supabase credentials present are production's, and the one
+> reachable database has no `private.staging_install_receipts` at all. So the
+> manifest is still UNPOPULATED, and it was not filled in with anything.
+
+
 `private.staging_install_receipts` (`stage`, `sha256`, `installed_at`) holds
 nine rows through Stage 09. `baseline-receipts.json` **ships UNPOPULATED** and
 the installer stops before opening a transaction while it is.
@@ -53,7 +61,23 @@ The nine values were read during verification and were not included in the
 correction brief, so they are not known to this package. They are deliberately
 not guessed: a made-up stage name or checksum would make the comparison pass
 against a ledger nobody checked, which is worse than no comparison. The
-read-only query that captures them is in that file's own header.
+read-only query that captures them is in that file's own header, and
+`seal-manifest.sh` runs it:
+
+```
+bash scripts/esign-staging/seal-manifest.sh capture "<staging connection>"
+bash scripts/esign-staging/seal-manifest.sh validate
+```
+
+`capture` issues one SELECT, writes the file and then validates its own
+output. It is bound to the staging project, like the installer.
+
+`validate` needs no database, so a reviewer holding only the file can run it.
+It refuses an unpopulated manifest, a count that is not nine, ordinals with a
+gap or a duplicate, a checksum that is not 64 lowercase hex, a checksum that
+is one repeated character (a placeholder, not a hash), a stage name ending in
+`_synthetic` (the test fixture's, not staging's), and any of the nine named
+`stage10/11/12`.
 
 Once populated, the comparison does two jobs:
 
