@@ -120,13 +120,16 @@ function Availability({ v }: { v: VehicleListRow }) {
  * find out. Colour alone never carries the meaning — the words are there.
  */
 const READINESS_TONE: Record<ReadinessBand, string> = {
-  listing_ready: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
-  rental_ready: "bg-[rgba(240,192,64,0.14)] text-[#8A6410]",
+  listing_ready: "bg-[rgba(32,160,96,0.16)] text-[#13613B]",
+  // Both "ready" bands are green — amber is for things that need attention,
+  // and a car that can be rented is not one of them. Listing Ready sits a step
+  // deeper so the two still read as different levels at a glance.
+  rental_ready: "bg-[rgba(32,160,96,0.10)] text-[#1E7B3C]",
   not_ready: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
 };
 const READINESS_DOT: Record<ReadinessBand, string> = {
   listing_ready: "bg-[#1C8F57]",
-  rental_ready: "bg-[#C68A12]",
+  rental_ready: "bg-[#50C060]",
   not_ready: "bg-[#D03020]",
 };
 
