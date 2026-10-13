@@ -41,13 +41,19 @@ const DECODED_LABELS: Record<string, string> = {
 export function AddVehicleDialog({
   onClose,
   onCreated,
+  initialPrefill,
+  skipDocs,
 }: {
   onClose: () => void;
   onCreated: (id: string) => void;
+  /** Values read from documents elsewhere (Fleet Inbox): opens the detailed form for confirmation. */
+  initialPrefill?: Record<string, string> | null;
+  /** Caller attaches its own documents after creation (Fleet Inbox). */
+  skipDocs?: boolean;
 }) {
-  const [mode, setMode] = useState<Mode>("quick");
+  const [mode, setMode] = useState<Mode>(initialPrefill ? "manual" : "quick");
   // Fields read off a scanned title, carried into the form for confirmation.
-  const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
+  const [prefill, setPrefill] = useState<Record<string, string> | null>(initialPrefill ?? null);
   // The car that was just saved, so its paperwork can be added before the
   // dialog closes. It EXISTS from this point on: the step below is an offer,
   // and leaving it loses nothing.
@@ -68,6 +74,7 @@ export function AddVehicleDialog({
    * already in the fleet, so Skip is a complete answer.
    */
   function afterCreate(id: string, label: string) {
+    if (skipDocs) return onCreated(id);
     setCreated({ id, label });
     setMode("docs");
   }
@@ -293,6 +300,9 @@ function ManualForm({
   }, [suggest]);
 
   const vinState = f.vin.trim() ? checkVin(f.vin) : null;
+  // Ownership suggested from a document's printed owner is only a suggestion.
+  const ownershipSuggested = !!prefill?.ownership_type;
+  const [ownershipConfirmed, setOwnershipConfirmed] = useState(false);
 
   const runDecode = useCallback(async () => {
     if (!f.vin.trim()) return toast.error("Enter a VIN first");
@@ -339,6 +349,7 @@ function ManualForm({
     }
     const year = Number(f.year);
     if (!Number.isFinite(year)) return toast.error("Year must be a number");
+    if (ownershipSuggested && !ownershipConfirmed) return toast.error("Confirm the ownership before saving");
 
     setSaving(true);
     try {
@@ -515,6 +526,12 @@ function ManualForm({
             </select>
           </Field>
         </div>
+        {ownershipSuggested && (
+          <label className="mt-2 flex items-start gap-2 text-[12px] text-[#8A6410]">
+            <input type="checkbox" checked={ownershipConfirmed} onChange={(e) => setOwnershipConfirmed(e.target.checked)} aria-label="Confirm Ownership" className="mt-0.5" />
+            <span>Suggested from the registered owner printed on the document. I confirm this ownership (choose Partner and link the partner on the vehicle page if it is a partner car).</span>
+          </label>
+        )}
       </section>
 
       <p className="text-xs text-muted-foreground">
