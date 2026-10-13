@@ -1,29 +1,86 @@
 {
   "package": "esign-staging",
   "mode": "PREPARATION_ONLY",
-  "sequence": [
-    "stage10_agreements_baseline",
-    "stage11_esign_0023",
-    "stage12_esign_0024"
-  ],
   "staging_project": "bhpdppyxnkokzhlkgcsc",
+  "receipt_ledger": {
+    "relation": "private.staging_install_receipts",
+    "columns": [
+      "stage",
+      "sha256",
+      "installed_at"
+    ],
+    "existing_receipts": 9
+  },
+  "sequence": [
+    {
+      "step": "privileged",
+      "file": "03_storage_policy.privileged.sql",
+      "run_by": "privileged execution path — NOT install.sh",
+      "status": "BLOCKED: path not yet identified or reviewed"
+    },
+    {
+      "step": "stage10_agreements_baseline",
+      "files": [
+        "01_agreements_baseline.sql",
+        "02_private_storage.sql"
+      ],
+      "run_by": "install.sh"
+    },
+    {
+      "step": "stage11_esign_0023",
+      "files": [
+        "../esign-release/0023_esign_template_versioning_library.sql"
+      ],
+      "run_by": "install.sh"
+    },
+    {
+      "step": "stage12_esign_0024",
+      "files": [
+        "../esign-release/0024_esign_agreement_numbering.sql"
+      ],
+      "run_by": "install.sh"
+    }
+  ],
+  "baseline_receipts": {
+    "file": "baseline-receipts.json",
+    "status": "UNPOPULATED",
+    "blocks": "install.sh stops before opening a transaction",
+    "reason": "the nine verified receipt names and checksums were not supplied; they are not guessed"
+  },
   "reviewed_checksums_preserved": {
     "0023": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",
     "0024": "199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8"
   },
+  "pinned_in_install_sh": [
+    "01_agreements_baseline.sql",
+    "02_private_storage.sql",
+    "03_storage_policy.privileged.sql",
+    "preflight.sql",
+    "postflight.sql",
+    "../esign-release/0023_esign_template_versioning_library.sql",
+    "../esign-release/0024_esign_agreement_numbering.sql"
+  ],
   "worker_artifact": {
-    "status": "NOT VALID FOR DEPLOY \u2014 must be rebuilt with staging VITE_* values",
+    "status": "NOT VALID FOR DEPLOY — must be rebuilt with staging VITE_* values",
     "reason": "import.meta.env.VITE_SUPABASE_URL is inlined at build time; a build made with the production .env bakes the production project ref into the browser bundle",
     "verifier": "scripts/esign-staging/verify-artifact.sh"
   },
+  "verification": {
+    "suite": "scripts/esign-staging-install.test.sh",
+    "database": "disposable PostgreSQL, destroyed at exit"
+  },
   "checksums": {
     "01_agreements_baseline.sql": "c1c875fb616707bf04082272a70e54d29d78aca21d38524fc08bb6e8bd656ed6",
-    "02_private_storage.sql": "10826ce2046f966625f415ca4771bd73fe73b6b3436b15b62fe2fe58a230f531",
-    "preflight.sql": "66dc511a616e3d801d7c42e9ae82c96d6a4c8922fe77291c92d22bad572565bf",
-    "postflight.sql": "b3f2bec2aa3dcb8fadc605b84c034a9730706918d7ca71a23ab728d77750bd42",
-    "verify.sql": "506ce572975c198754d7d16f4851f8aab0b479e59bb719031c942e86088d6dd2",
-    "install.sh": "fe5f411bf8b4c959e8917c262ff3341e706ecad4feb46023e799fe3422d871f5",
+    "02_private_storage.sql": "3b80aa229cb4f8b275207b4f4b1a789e2c18c181660335e2f685009bb2d641fb",
+    "03_storage_policy.privileged.sql": "b2dc593ce214ef78f07c8f127087dddc30149960f3456c3e429a7e7cd7bdeb68",
+    "preflight.sql": "bd2c6e207f711fdf89c4a4f3e4e44327d77e78fe50a8226edcf8258ce06dfd32",
+    "postflight.sql": "b308d0b6cfa840e6c1936b3bff6336045c4e88f49efd24e780e3ac20d0be47c4",
+    "verify.sql": "7e71749e873075bebab4f7448183d7f5a70cbee526549e303e412538954993f3",
+    "manifest.sh": "9711b9c7b0ba4e7236c221e151c9260dcbe25efd36eb06ddeb6de966f641b685",
+    "install.sh": "04b5c941ff0cda7ae1b2e408afc06f73f5ea13a0d1203d56fe26e7c4914edce8",
     "verify-artifact.sh": "7a80b70e31a2eb4a49759999e5de1b3eb03a3ee02540e7111ee5f3e91968f514",
+    "baseline-receipts.json": "97967131f5d12ace70d9ef8b1e061e0f87cc979e409b204d001074631d66c967",
+    "README.md": "7ea4d0290c2ea30491cf0bf8d73dc8b02889eb939d0cbebf5504751591db2f68",
     "worker/wrangler.staging.jsonc": "a9b6e83c16c2959e70f1cb128e8fd5adef9853ea2f670153e2657077f6008e75",
     "worker/README.md": "0d45333020425c0d6ba834f9cdf073f51d51e5ca4fac3a9274b6d3fc91063fc8",
     "../esign-release/0023_esign_template_versioning_library.sql": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",

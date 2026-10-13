@@ -7,10 +7,13 @@
 -- psql variables the runner sets:
 --   :stage_name           the stage just applied
 --   :expect_receipt_after what the ledger must hold now (one more than before)
+--   :baseline_digest      the nine pinned receipts, as in preflight
 -- ===========================================================================
 
-SELECT set_config('install.stage_name', :'stage_name', true),
-       set_config('install.expect_receipt_after', :'expect_receipt_after', true);
+SELECT set_config('install.stage_name', :'stage_name', true) AS _p1,
+       set_config('install.expect_receipt_after', :'expect_receipt_after', true) AS _p2,
+       set_config('install.baseline_digest', :'baseline_digest', true) AS _p3
+\gset
 
 -- The receipt landed, exactly once, and nothing else moved in the ledger.
 DO $$
@@ -23,6 +26,38 @@ BEGIN
   SELECT count(*) INTO mine FROM private.staging_install_receipts WHERE stage = current_setting('install.stage_name');
   IF mine <> 1 THEN
     RAISE EXCEPTION 'STOP: % receipt row(s) for this stage, expected exactly 1. Rolling back.', mine;
+  END IF;
+END $$;
+
+-- The nine are still the nine. Preflight proved it before the payload ran;
+-- this proves the payload did not touch them on its way past. A migration
+-- that rewrote a historical receipt would otherwise commit silently, and the
+-- ledger is the only record of what staging has had installed.
+DO $$
+DECLARE want text; got text;
+BEGIN
+  want := current_setting('install.baseline_digest');
+  SELECT string_agg(ord || ':' || stage || ':' || sha256, '|' ORDER BY ord) INTO got
+    FROM (SELECT row_number() OVER (ORDER BY installed_at, stage) AS ord, stage, sha256
+            FROM private.staging_install_receipts
+           WHERE stage NOT IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024')) r;
+  IF got IS DISTINCT FROM want THEN
+    RAISE EXCEPTION E'STOP: this stage altered the nine pre-existing receipts. Rolling back.\npinned: %\nnow:    %', want, got;
+  END IF;
+END $$;
+
+-- Time only moves forward in the journal. A receipt dated before the nine it
+-- follows would make the install order unreadable, and the install order is
+-- what the baseline comparison keys on.
+DO $$
+DECLARE newest timestamptz; mine timestamptz;
+BEGIN
+  SELECT max(installed_at) INTO newest FROM private.staging_install_receipts
+   WHERE stage <> current_setting('install.stage_name');
+  SELECT installed_at INTO mine FROM private.staging_install_receipts
+   WHERE stage = current_setting('install.stage_name');
+  IF newest IS NOT NULL AND mine < newest THEN
+    RAISE EXCEPTION 'STOP: this receipt is dated % but the ledger already holds one at %. Receipts are never backdated. Rolling back.', mine, newest;
   END IF;
 END $$;
 
@@ -79,6 +114,13 @@ BEGIN
   -- granted a direct browser read of a signed contract.
   IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id='rental-agreements') THEN
     RAISE EXCEPTION 'STOP: the rental-agreements bucket was not created.';
+  END IF;
+  -- The privileged step ran before this stage and must still be in place.
+  -- Required, not optional: a bucket without it is a partial installation of
+  -- the reviewed design.
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+                  AND policyname='Partners read their driver documents') THEN
+    RAISE EXCEPTION 'STOP: the partner storage policy is gone. It is applied by the privileged path before this stage and must survive it.';
   END IF;
   IF EXISTS (SELECT 1 FROM storage.buckets WHERE id='rental-agreements' AND public IS TRUE) THEN
     RAISE EXCEPTION 'STOP: the rental-agreements bucket is public.';

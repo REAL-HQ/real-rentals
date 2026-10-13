@@ -24,6 +24,17 @@
 -- over a bucket that answers nobody directly.
 --
 -- public = false. Signed PDFs are never publicly readable.
+--
+-- SCOPE: THIS FILE CREATES THE BUCKET ONLY.
+--
+-- The partner read policy that production carries for this bucket lives in
+-- 03_storage_policy.privileged.sql and is applied BEFORE this stage, through
+-- a privileged path. CREATE POLICY on storage.objects requires superuser or
+-- ownership of the table, and the staging connection this installer uses has
+-- neither — storage.objects is owned by supabase_storage_admin. Splitting the
+-- two keeps that honest: the bucket INSERT is something this connection can
+-- genuinely do, the policy is not, and the stage refuses to run until the
+-- policy is already there.
 -- ===========================================================================
 
 -- NO BEGIN/COMMIT HERE. The runner owns the transaction: install.sh wraps
@@ -46,80 +57,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- ---------------------------------------------------------------------------
--- PRIVILEGE GATE — read this before running the stage.
---
--- storage.objects and storage.buckets are owned by supabase_storage_admin.
--- The role the ordinary SQL path runs as (postgres) is NOT a superuser and
--- NOT a member of that role — verified against the production catalogue on
--- 2026-10-13:
---
---   storage.objects owner             supabase_storage_admin
---   member of supabase_storage_admin  false
---   is_superuser                      false
---   can INSERT storage.buckets        true
---
--- CREATE POLICY requires table ownership, so the bucket INSERT above
--- succeeds on the plain SQL path and the policy below DOES NOT. The ten
--- historical migrations in supabase/migrations that create storage policies
--- were applied through the provider's own privileged migration pipeline, not
--- through a SQL console session.
---
--- So this block checks first and stops with the supported path named,
--- instead of failing the stage on a raw "must be owner of table objects".
--- The rule is Postgres's own, not a Supabase one: CREATE POLICY requires
--- superuser or ownership of the table. Stated that way it is also correct on
--- a plain cluster, where supabase_storage_admin does not exist at all.
-DO $$
-DECLARE may_create boolean;
-BEGIN
-  SELECT coalesce((SELECT usesuper FROM pg_user WHERE usename = current_user), false)
-      OR pg_has_role(current_user,
-           (SELECT tableowner FROM pg_tables WHERE schemaname='storage' AND tablename='objects'),
-           'MEMBER')
-    INTO may_create;
-  IF NOT may_create
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_policies
-        WHERE schemaname='storage' AND tablename='objects'
-          AND policyname='Partners read their driver documents')
-  THEN
-    RAISE EXCEPTION
-      'STOP: % cannot CREATE POLICY on storage.objects (owner is %). The bucket is created by this stage; the partner read policy must be applied through the provider-assisted path — the Supabase Dashboard Storage policy editor, or the provider migration pipeline that applied the ten existing storage policies. Apply it, then re-run this stage.',
-      current_user,
-      (SELECT tableowner FROM pg_tables WHERE schemaname='storage' AND tablename='objects');
-  END IF;
-END $$;
-
--- The one policy production carries for this bucket: a partner reads a
--- document only when a documents row says it is theirs and marks it
--- partner-visible. Not a blanket bucket grant — every condition is checked
--- against the vault row, so an object with no row is unreachable.
-DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-     WHERE schemaname='storage' AND tablename='objects'
-       AND policyname='Partners read their driver documents'
-  ) THEN
-    CREATE POLICY "Partners read their driver documents" ON storage.objects
-      FOR SELECT TO authenticated
-      USING (
-        (bucket_id = ANY (ARRAY['rental-agreements'::text, 'license-uploads'::text]))
-        AND EXISTS (
-          SELECT 1 FROM public.documents d
-           WHERE d.storage_bucket = objects.bucket_id
-             AND d.storage_path = objects.name
-             AND 'partner'::text = ANY (d.visibility)
-             AND d.partner_id IS NOT NULL
-             AND private.is_partner_owner(d.partner_id)
-        )
-      );
-  END IF;
-END $$;
-
--- Deliberately NOT created here, and asserted absent by the verification
--- script: any policy granting authenticated/anon a direct read of
--- rental-agreements objects. If one appears later, the server-side Manager
--- gate on getAgreementPdf has been bypassed and signed contracts are
--- readable from the browser.
-
+-- The policy is NOT created here; preflight has already refused the stage if
+-- 03_storage_policy.privileged.sql has not been applied. Deliberately absent,
+-- and asserted absent by the verification script: any policy granting
+-- authenticated/anon a direct read of rental-agreements objects. If one
+-- appears later, the server-side Manager gate on getAgreementPdf has been
+-- bypassed and signed contracts are readable from the browser.

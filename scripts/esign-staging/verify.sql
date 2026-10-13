@@ -105,6 +105,45 @@ WITH checks AS (
            WHERE (stage='stage11_esign_0023' AND sha256='675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7')
               OR (stage='stage12_esign_0024' AND sha256='199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8')) = 2,
          (SELECT coalesce(string_agg(stage||'='||left(sha256,12), ', ' ORDER BY stage),'none') FROM private.staging_install_receipts WHERE stage LIKE 'stage1%')
+  UNION ALL SELECT 26, 'the ledger has the verified column shape (stage, sha256, installed_at)',
+         (SELECT count(*) FROM information_schema.columns
+           WHERE table_schema='private' AND table_name='staging_install_receipts'
+             AND column_name IN ('stage','sha256','installed_at')) = 3,
+         (SELECT coalesce(string_agg(column_name, ', ' ORDER BY ordinal_position),'none')
+            FROM information_schema.columns
+           WHERE table_schema='private' AND table_name='staging_install_receipts')
+  UNION ALL SELECT 27, 'the nine pre-existing receipts are still nine, and still first',
+         (SELECT count(*) FROM private.staging_install_receipts
+           WHERE stage NOT IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024')) = 9
+         AND (SELECT max(installed_at) FROM private.staging_install_receipts
+               WHERE stage NOT IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024'))
+             <= (SELECT min(installed_at) FROM private.staging_install_receipts
+                  WHERE stage IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024')),
+         (SELECT count(*)::text||' pre-existing; newest '||coalesce(max(installed_at)::text,'none')
+            FROM private.staging_install_receipts
+           WHERE stage NOT IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024'))
+  UNION ALL SELECT 28, 'the three eSign stages went in in order',
+         (SELECT count(*) = 3 FROM (
+            SELECT stage, row_number() OVER (ORDER BY installed_at, stage) AS got,
+                   CASE stage WHEN 'stage10_agreements_baseline' THEN 1
+                              WHEN 'stage11_esign_0023' THEN 2
+                              WHEN 'stage12_esign_0024' THEN 3 END AS want
+              FROM private.staging_install_receipts
+             WHERE stage IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024')) o
+           WHERE got = want),
+         (SELECT coalesce(string_agg(stage, ' -> ' ORDER BY installed_at, stage),'none')
+            FROM private.staging_install_receipts
+           WHERE stage IN ('stage10_agreements_baseline','stage11_esign_0023','stage12_esign_0024'))
+  UNION ALL SELECT 29, 'the partner storage policy (privileged path) is present, and is the only one reaching the bucket',
+         EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+                  AND policyname='Partners read their driver documents')
+         AND NOT EXISTS (SELECT 1 FROM pg_policies
+                          WHERE schemaname='storage' AND tablename='objects'
+                            AND policyname <> 'Partners read their driver documents'
+                            AND (coalesce(qual,'')||coalesce(with_check,'')) LIKE '%rental-agreements%'),
+         (SELECT coalesce(string_agg(policyname, ', ' ORDER BY policyname),'none')
+            FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+             AND (coalesce(qual,'')||coalesce(with_check,'')) LIKE '%rental-agreements%')
 
   -- --------------------------------------------- signed history untouched
   UNION ALL SELECT 25, 'no signed agreement lost its body or hash',
