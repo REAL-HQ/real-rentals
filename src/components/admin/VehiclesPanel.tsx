@@ -201,6 +201,9 @@ export function VehiclesPanel({
   );
 
   const [adding, setAddingLocal] = useState(autoOpenAdd);
+  // Add Vehicle sits in the shared page header (admin.tsx slot), found after mount.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => { setHeaderSlot(document.getElementById("admin-page-header-actions")); }, []);
   const setAdding = useCallback(
     (next: boolean) => {
       setAddingLocal(next);
