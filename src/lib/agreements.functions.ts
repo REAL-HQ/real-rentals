@@ -480,6 +480,15 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
+    // v1.13 prints three payment fields that no record holds yet. Nothing
+    // here guesses: a rental has autopay_active and a card, but no weekly /
+    // monthly election, no per-period amount and no choice between card and
+    // a payment app. Each is a blocker until it has a real source, which
+    // keeps the gap visible in the preview instead of printing a plausible
+    // default into a contract.
+    payment_schedule: { label: "Payment schedule (weekly or monthly)", why: "v1.13 prints the payment schedule. No record holds the renter's weekly-or-monthly election yet, and it is not assumed.", fix: pay },
+    payment_amount_each: { label: "Amount due each payment", why: "v1.13 prints the amount due each payment period. It follows from the schedule above, which has no source yet, so it is not computed.", fix: pay },
+    payment_method: { label: "Payment method (card autopay or approved app)", why: "v1.13 prints the payment method. The rental records a card on file and whether autopay is on, but not the renter's elected rent-payment method, and it is not assumed.", fix: pay },
   };
   for (const [k, b] of Object.entries(need)) {
     if (used.has(k) && !String(data[k] ?? "").trim() && !blockers.some((x) => x.field === k)) blockers.push({ field: k, ...b });
@@ -516,7 +525,11 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
           ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : "None")
       : r.reservationLine;
-    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
+    // The staff overrides (minimum term) and the reservation line go into the
+    // body's own terms. Everything downstream then reads ONE value: Section 1,
+    // the Key Rental Terms band, the Fee Schedule row, the acknowledgment and
+    // the min_term_end calculation in templateFieldBlockers below.
+    if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, ...r.termOverrides, reservation_line: line });
   }
   templateFieldBlockers(
     tplBody,

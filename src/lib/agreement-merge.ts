@@ -34,6 +34,11 @@ export const MERGE_FIELDS = [
   { key: "additional_drivers", label: "Approved additional drivers" },
   { key: "insurance_carrier", label: "Renter insurance carrier" },
   { key: "insurance_policy", label: "Policy # / carrier phone" },
+  // v1.13 fields. No authoritative source yet, so a template using one
+  // blocks sending rather than printing a guess — see templateFieldBlockers.
+  { key: "payment_schedule", label: "Payment schedule (weekly / monthly)" },
+  { key: "payment_amount_each", label: "Amount due each payment" },
+  { key: "payment_method", label: "Payment method" },
 ] as const;
 
 export type MergeData = Record<string, string>;

@@ -378,6 +378,35 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
   };
   const cellLines = (t: string, f: PDFFont, size: number, w: number) => (t ? wrap(t, f, size, w) : [""]);
 
+  /**
+   * The Key Rental Terms band: equal columns, a small muted label over a bold
+   * value, divided by hairlines.
+   *
+   * It is one block, so it never splits across a page — a start date on one
+   * page and its end date on the next would be worse than a page break above
+   * the whole band.
+   */
+  const drawSummary = (b: Extract<Block, { k: "summary" }>) => {
+    const n = b.cols.length;
+    if (!n) return;
+    const colW = CW / n, pad = 5, lblS = 6.6, valS = 10.5;
+    // Values wrap, so the band is as tall as its longest column needs.
+    const wrapped = b.cols.map((c) => wrap(clean(c.value) || "—", bold, valS, colW - pad * 2));
+    const rows = Math.max(1, ...wrapped.map((w) => w.length));
+    const h = pad + lblS * 1.5 + rows * valS * 1.3 + pad;
+    ensure(h + 6);
+    page.drawRectangle({ x: SM, y: y - h, width: CW, height: h, color: shade, borderColor: grid, borderWidth: 0.6 });
+    b.cols.forEach((c, i) => {
+      const x = SM + i * colW;
+      if (i) page.drawLine({ start: { x, y: y - h }, end: { x, y }, color: grid, thickness: 0.6 });
+      page.drawText(clean(c.label).toUpperCase(), { x: x + pad, y: y - pad - lblS, size: lblS, font, color: muted });
+      wrapped[i].forEach((line, li) => {
+        page.drawText(line, { x: x + pad, y: y - pad - lblS * 1.5 - (li + 1) * valS * 1.2, size: valS, font: bold, color: ink });
+      });
+    });
+    y -= h + 6;
+  };
+
   const drawTable = (b: Extract<Block, { k: "table" }>) => {
     const c1 = Math.round(CW * b.frac), c2 = CW - c1, pad = 3.5, size = 8.5, lh = size * 1.32;
     const ack = b.rows.some((r) => r.initial);
@@ -491,6 +520,7 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
       }
       case "p": rich(b.lead, b.t, SM, CW, BS, font); y -= 2; break;
       case "table": drawTable(b); break;
+      case "summary": drawSummary(b); break;
       case "sig": drawSig(b.agreementNumber); sigDone = true; break;
     }
   }

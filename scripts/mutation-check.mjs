@@ -83,6 +83,9 @@ const AREADS = "scripts/admin-reads-access.test.mjs";
 const APREP = "src/lib/agreement-prep.ts";
 const ADATES = "src/lib/agreement-dates.ts";
 const CDATES = "scripts/contract-date-format.test.mjs";
+const ALIB = "src/lib/agreement-library.ts";
+const ALAY = "src/lib/agreement-layout.ts";
+const V113 = "scripts/agreement-v113.test.mjs";
 const CHARGEFN = "src/lib/charges.functions.ts";
 const PARTFN = "src/lib/partner.functions.ts";
 const PROJREADS = "scripts/projection-read-safety.test.mjs";
@@ -464,6 +467,31 @@ const MUTATIONS = [
     '    assertProjectionOk(driversQ.error as any, "your renters");', "", PROJREADS],
   ["a missing view is never classified as a successful read", PROJECTION,
     '  if (!err) return null;', "  if (!err) return null;\n  return null;", PROJREADS],
+  // ------------------------------------- agreement v1.13, Phase A
+  // Each restores a way v1.13 could go wrong: a term stated six times that
+  // stops moving together, a marketing claim back inside a signed contract,
+  // an unsourced payment field printed as a plausible default, or v1.10
+  // edited underneath the version that replaced it.
+  ["the chosen minimum term reaches the rendered agreement", AGFN,
+    "{ ...terms, ...r.termOverrides, reservation_line: line }",
+    "{ ...terms, reservation_line: line }", V113],
+  ["the term's words are derived from its number, never pinned", APREP,
+    "      termOverrides.min_term_words = minTermWords(w);",
+    '      termOverrides.min_term_words = "four (4)";', V113],
+  ["an unusable minimum term is refused, not rounded", APREP,
+    "    if (!Number.isInteger(w) || w < 1 || w > 52) {",
+    "    if (false) {", V113],
+  ["the marketing panel stays out of the agreement", ALIB,
+    "## 12. General",
+    "## Drive for Any Platform\nUber, Lyft, DoorDash, Instacart.\n\n## 12. General", V113],
+  ["v1.10 is preserved under the version that replaced it", ALIB,
+    's = sub(s, "| Reservation Fee (if marked required) |", "| Reservation Fee (if entered above) |");',
+    "", V113],
+  ["the summary band is not parsed as a table row", ALAY,
+    '    if (t.startsWith("|=")) {', "    if (false) {", V113],
+  ["an unsourced payment field blocks instead of defaulting", AGFN,
+    'payment_schedule: { label: "Payment schedule (weekly or monthly)"',
+    'payment_schedule_off: { label: "Payment schedule (weekly or monthly)"', V113],
 ];
 
 // Browser-level safeguards. These need `npm run dev` running and take about
@@ -541,7 +569,7 @@ for (const [what, file, from, to, suite] of ALL) {
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
   INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
   BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN, DLFN, DLRULES,
-  CHARGEFN, PARTFN, PROJECTION]) {
+  CHARGEFN, PARTFN, PROJECTION, ALIB, ALAY]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");

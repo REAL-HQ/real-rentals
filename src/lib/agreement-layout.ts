@@ -8,6 +8,7 @@
 //   # Title            #- Subtitle         ## Section heading (red accent)
 //   ### Sub-heading    ~ Italic note       > Indented quotation
 //   - Bullet           **Lead.** Paragraph with a bold lead-in
+//   |= L1 | V1 | L2 | V2 ...  summary band: equal columns, label over value
 //   |#45 Head A | Head B   table header; 45 = first column width in percent
 //   | Label | Value        table row (label column shaded when no header)
 //   |i Text                acknowledgment row: Initial cell + text
@@ -21,10 +22,13 @@ export function isStructured(body: string): boolean {
 }
 
 export type Row = { cells: [string, string]; initial?: boolean };
+/** One cell of a summary band: a small-caps label above a bold value. */
+export type SummaryCol = { label: string; value: string };
 export type Block =
   | { k: "title" | "subtitle" | "h2" | "h3" | "note" | "quote" | "bullet"; t: string }
   | { k: "p"; t: string; lead?: string }
   | { k: "table"; frac: number; header?: [string, string]; rows: Row[] }
+  | { k: "summary"; cols: SummaryCol[] }
   | { k: "sig"; agreementNumber: string }
   | { k: "page" }
   | { k: "gap" };
@@ -49,6 +53,23 @@ export function parseLayout(body: string): Block[] {
     if (t === "%%PAGE%%") { out.push({ k: "page" }); continue; }
     const sig = t.match(/^%%SIGNATURES\s*(.*?)%%$/);
     if (sig) { out.push({ k: "sig", agreementNumber: sig[1].trim() }); continue; }
+    // A summary band, before the table branch: it starts with "|" too, and a
+    // table that swallowed it would print the whole band as one two-cell row.
+    // Pairs are label|value|label|value…; an odd trailing label gets an empty
+    // value rather than being dropped, so a malformed line is visible in the
+    // preview instead of silently losing a column.
+    if (t.startsWith("|=")) {
+      table = null;
+      const parts = t.slice(2).split("|").map((x) => x.trim());
+      const cols: SummaryCol[] = [];
+      for (let i = 0; i < parts.length; i += 2) {
+        const label = parts[i] ?? "";
+        if (!label) continue;
+        cols.push({ label, value: parts[i + 1] ?? "" });
+      }
+      if (cols.length) out.push({ k: "summary", cols });
+      continue;
+    }
     if (isRow) {
       const head = t.match(/^\|#(\d{1,2})?\s*(.*)$/);
       if (head) {
@@ -96,6 +117,11 @@ export function layoutToText(body: string): string {
       case "table":
         if (b.header) out.push(`${b.header[0]} — ${b.header[1]}`);
         for (const r of b.rows) out.push(r.initial ? `[Initial] ${r.cells[1]}` : `${r.cells[0]}: ${r.cells[1] || "—"}`);
+        break;
+      // The signing page reads the agreement as text, so the band has to say
+      // the same thing there as it does in the PDF.
+      case "summary":
+        out.push(b.cols.map((c) => `${c.label}: ${c.value || "—"}`).join("   ·   "));
         break;
       case "sig":
         out.push("Renter and REAL RENTALS representative signatures, printed names, title, agreement number and date and time are applied in this section when you sign.");

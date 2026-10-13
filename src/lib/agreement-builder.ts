@@ -91,6 +91,7 @@ export const EXTRA_TERM_FIELDS: TermField[] = [
   { key: "fee_citation_admin", label: "Ticket / Citation Administrative Fee", group: "Pricing & Deposit" },
   { key: "insurance_notice_hours", label: "Insurance Change Notice (Hours)", group: "Rental Terms" },
   { key: "mileage_allowance", label: "Mileage Allowance", group: "Restrictions" },
+  { key: "service_miles", label: "Scheduled Service Interval (Miles)", group: "Rental Terms" },
   { key: "service_area_config", label: "Service Area Selection (Not Printed)", group: "Restrictions" },
   { key: "excess_mileage_fee", label: "Excess-Mileage Fee (Not Printed — Needs Approved Clause)", group: "Restrictions" },
 ];

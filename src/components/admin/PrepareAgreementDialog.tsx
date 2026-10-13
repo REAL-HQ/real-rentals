@@ -5,7 +5,7 @@ import { ArrowLeft, ChevronDown, Plus, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
-import { EMPTY_PREP, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { EMPTY_PREP, MIN_TERM_WEEKS_DEFAULT, minTermWords, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
@@ -165,6 +165,29 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         {prep.drivers.mode === "listed" && prep.drivers.list.length < 4 && (
           <Button size="sm" variant="outline" onClick={() => setPrep((p) => ({ ...p, drivers: { ...p.drivers, list: [...p.drivers.list, { name: "", licenseNumber: "", licenseState: "", licenseExpiration: "", verified: false }] } }))}><Plus className="h-3.5 w-3.5" /> Add Driver</Button>
         )}
+      </Section>
+
+      <Section title="Minimum Rental Term" badge={byField("min_term_weeks")}>
+        <label className="block">Minimum Term (Weeks)
+          <input
+            type="number" min={1} max={52} step={1} className={input}
+            value={prep.minTerm?.weeks ?? MIN_TERM_WEEKS_DEFAULT}
+            onChange={(e) => {
+              const n = Math.round(Number(e.target.value));
+              setPrep((p) => ({ ...p, minTerm: { weeks: Number.isFinite(n) ? n : MIN_TERM_WEEKS_DEFAULT } }));
+            }}
+          />
+        </label>
+        <p className="text-[11px] text-muted-foreground">
+          Default {MIN_TERM_WEEKS_DEFAULT} weeks. The agreement prints this in the Key Rental Terms summary, the
+          Rental &amp; Vehicle Information, Section 1, the Fee Schedule and an acknowledgment, and the
+          minimum-term end date is calculated from it
+          {prep.minTerm?.weeks ? ` — ${minTermWords(prep.minTerm.weeks)} consecutive weeks` : ""}.
+          Changing it regenerates the preview, so a Send approved against the old term is refused.
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          This is the minimum term, not the payment period. Monthly billing stays a four-week (28-day) period.
+        </p>
       </Section>
 
       <Section title="Reservation Fee" badge={byField("reservation_fee")}>
