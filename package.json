@@ -54,7 +54,8 @@
     "test:admin-reads-e2e": "node scripts/admin-reads-e2e.test.mjs",
     "test:contract-dates": "node scripts/contract-date-format.test.mjs",
     "test:esign-staging": "bash scripts/esign-staging-install.test.sh",
-    "test:esign-staging-worker": "node scripts/esign-staging-worker.test.mjs"
+    "test:esign-staging-worker": "node scripts/esign-staging-worker.test.mjs",
+    "verify:esign-artifact": "bash scripts/esign-staging/verify-artifact.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

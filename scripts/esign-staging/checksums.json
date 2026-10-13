@@ -11,15 +11,21 @@
     "0023": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",
     "0024": "199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8"
   },
+  "worker_artifact": {
+    "status": "NOT VALID FOR DEPLOY \u2014 must be rebuilt with staging VITE_* values",
+    "reason": "import.meta.env.VITE_SUPABASE_URL is inlined at build time; a build made with the production .env bakes the production project ref into the browser bundle",
+    "verifier": "scripts/esign-staging/verify-artifact.sh"
+  },
   "checksums": {
     "01_agreements_baseline.sql": "c1c875fb616707bf04082272a70e54d29d78aca21d38524fc08bb6e8bd656ed6",
-    "02_private_storage.sql": "4860c30700831884feff8735586f6ca30b785bb1e6806737468cf9a62ef1de63",
+    "02_private_storage.sql": "10826ce2046f966625f415ca4771bd73fe73b6b3436b15b62fe2fe58a230f531",
     "preflight.sql": "66dc511a616e3d801d7c42e9ae82c96d6a4c8922fe77291c92d22bad572565bf",
     "postflight.sql": "b3f2bec2aa3dcb8fadc605b84c034a9730706918d7ca71a23ab728d77750bd42",
     "verify.sql": "506ce572975c198754d7d16f4851f8aab0b479e59bb719031c942e86088d6dd2",
     "install.sh": "fe5f411bf8b4c959e8917c262ff3341e706ecad4feb46023e799fe3422d871f5",
+    "verify-artifact.sh": "7a80b70e31a2eb4a49759999e5de1b3eb03a3ee02540e7111ee5f3e91968f514",
     "worker/wrangler.staging.jsonc": "a9b6e83c16c2959e70f1cb128e8fd5adef9853ea2f670153e2657077f6008e75",
-    "worker/README.md": "76a293a788fed6dc55bcc402776d1f9ddce0dc7d196a2f7fe4e4388d9787271d",
+    "worker/README.md": "0d45333020425c0d6ba834f9cdf073f51d51e5ca4fac3a9274b6d3fc91063fc8",
     "../esign-release/0023_esign_template_versioning_library.sql": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",
     "../esign-release/0024_esign_agreement_numbering.sql": "199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8"
   }

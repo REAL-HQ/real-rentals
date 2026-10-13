@@ -12,11 +12,37 @@ staging build that differs from the production build proves nothing about the
 production build, so the only differences are this config and the secret
 values.
 
+### The build is where the backend is chosen — not the config
+
+`src/integrations/supabase/client.ts` reads
+`import.meta.env.VITE_SUPABASE_URL`, and **`import.meta.env.*` is a
+build-time replacement**. Vite substitutes the literal value while
+compiling, so the browser client's backend is fixed when `vite build` runs
+and is NOT read from the Worker's environment afterwards.
+
+The `VITE_*` entries in `wrangler.staging.jsonc` therefore do nothing for the
+browser. Build this repo with the ordinary `.env` in place and the staging
+Worker serves a client that talks to **production** Supabase while the server
+half talks to staging — the worst possible split, because the browser would
+be reading and writing real customer records.
+
+So the artifact must be built with the staging values in the environment:
+
 ```
-npx vite build
+VITE_SUPABASE_URL=https://bhpdppyxnkokzhlkgcsc.supabase.co \
+VITE_SUPABASE_PROJECT_ID=bhpdppyxnkokzhlkgcsc \
+VITE_SUPABASE_PUBLISHABLE_KEY=<staging publishable key> \
+  npx vite build
+
 cp scripts/esign-staging/worker/wrangler.staging.jsonc .output/server/wrangler.json
+bash scripts/esign-staging/verify-artifact.sh .output          # must pass
 npx wrangler deploy --config .output/server/wrangler.json      # after approval
 ```
+
+`verify-artifact.sh` fails if the production project ref appears anywhere in
+the built output, so a build made against the wrong environment cannot be
+deployed by mistake. Run it on the exact directory being deployed, every
+time.
 
 ## Private by construction
 
@@ -44,8 +70,12 @@ file or the repository.
 | Secret | Staging value | Why |
 |---|---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | staging `bhpdppyxnkokzhlkgcsc` key | server reads/writes, and the only path to a signed PDF |
-| `SUPABASE_PUBLISHABLE_KEY` | staging publishable key | browser client |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | staging publishable key | build-time browser client |
+| `SUPABASE_PUBLISHABLE_KEY` | staging publishable key | server-side client |
+
+`VITE_SUPABASE_PUBLISHABLE_KEY` is **not** a Worker secret — it is inlined at
+build time (see above) and must be present in the build environment instead.
+The staging publishable key is a prerequisite that has to be supplied before
+the artifact can be built at all.
 
 **Deliberately not set, so the code path fails closed rather than reaching a
 real provider:**
