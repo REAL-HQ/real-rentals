@@ -1356,7 +1356,7 @@ function PreRentalPanel({
   return (
     <div className="rounded-2xl border border-border bg-white p-6 md:p-8">
       <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">
-        {statusUnavailable ? "Your Application" : approved ? "You're Approved" : "Your Application"}
+        {approved ? "You're Approved" : "Your Application"}
       </div>
       <h2 className="mt-3 text-2xl font-semibold">
         {statusUnavailable

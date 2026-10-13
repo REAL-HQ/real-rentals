@@ -245,7 +245,7 @@ ok(
   "the panel decides from that status, not from the absence of a rental",
 );
 ok(
-  /\{statusUnavailable \? "Your Application" : approved \? "You're Approved" : "Your Application"\}/.test(portal),
+  /\{approved \? "You're Approved" : "Your Application"\}/.test(portal),
   "a rejected or finished applicant is not told they are approved",
 );
 // The third state. getDriverDashboard can now report that the status read

@@ -83,6 +83,10 @@ const AREADS = "scripts/admin-reads-access.test.mjs";
 const APREP = "src/lib/agreement-prep.ts";
 const ADATES = "src/lib/agreement-dates.ts";
 const CDATES = "scripts/contract-date-format.test.mjs";
+const CHARGEFN = "src/lib/charges.functions.ts";
+const PARTFN = "src/lib/partner.functions.ts";
+const PROJREADS = "scripts/projection-read-safety.test.mjs";
+const PROJECTION = "src/lib/application-projection.ts";
 
 /** [what it protects, file, exact line to remove or change, replacement, suite] */
 const MUTATIONS = [
@@ -439,6 +443,27 @@ const MUTATIONS = [
   ["the evidence thumbnail uses the staff storage download", PANEL,
     "    void loadStaffPhoto(path).then((u) => { if (live) setUrl(u); });",
     "    void Promise.resolve(null).then((u) => { if (live) setUrl(u); });", UI],
+  // ------------------------------- the projection read is never read as empty
+  // Each of these restores the ORIGINAL bug: drop the error check and the
+  // read's failure becomes an empty answer the renter is shown as fact.
+  ["an unreadable payments list is not sent as an empty one", PORTALFN,
+    '    try {\n      assertProjectionOk(appsErr, "your payments");\n    } catch (e) {\n      if (!isApplicationReadUnavailable(e)) throw e;\n      unavailable.payments = e.message;\n    }\n    const appIds = unavailable.payments ? [] : (apps ?? []).map((a: any) => a.id);',
+    "    const appIds = (apps ?? []).map((a: any) => a.id);", PROJREADS],
+  ["an unreadable application status is not sent as no application", PORTALFN,
+    '    try {\n      assertProjectionOk(statusErr, "your application status");\n    } catch (e) {\n      if (!isApplicationReadUnavailable(e)) throw e;\n      unavailable.applicationStatus = e.message;\n    }',
+    "", PROJREADS],
+  ["an unreadable profile is not rendered as a blank one", PORTALFN,
+    '    assertProjectionOk(profileErr, "your profile");', "", PROJREADS],
+  ["an unreadable document list is not rendered as no documents", PORTALFN,
+    '    assertProjectionOk(appsErr, "your documents");', "", PROJREADS],
+  ["unreadable tolls are not reported as nothing owed", CHARGEFN,
+    '    assertProjectionOk(appsErr as any, "your charges");', "", PROJREADS],
+  ["an unreadable agreement list is not rendered as nothing to sign", AGFN,
+    '    assertProjectionOk(appsErr as any, "your agreements");', "", PROJREADS],
+  ["a partner's unreadable renters are not rendered as idle cars", PARTFN,
+    '    assertProjectionOk(driversQ.error as any, "your renters");', "", PROJREADS],
+  ["a missing view is never classified as a successful read", PROJECTION,
+    '  if (!err) return null;', "  if (!err) return null;\n  return null;", PROJREADS],
 ];
 
 // Browser-level safeguards. These need `npm run dev` running and take about
@@ -515,7 +540,8 @@ for (const [what, file, from, to, suite] of ALL) {
 }
 for (const f of [RULES, CORE, INBOX, DOORWAY, PHOTOS, PANEL, CAP, RULES2, READY, INSPFN, 
   INSPUI, PROFILE, ADMIN, VEH, EDITOR, LIST, LISTRULES, PANELUI, INBOXUI, BOOKFN, BOOKRULES, 
-  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN, DLFN, DLRULES]) {
+  BOOKPANEL, BOOKDRAWER, PORTALFN, BOOKACT, INSPFN2, RENTALFN2, AGFN, AGDATES, CSFN, CSRULES, DOCFN, APPFN, DLFN, DLRULES,
+  CHARGEFN, PARTFN, PROJECTION]) {
   if (existsSync(`${f}.mutbak`)) { console.log(`  BLOCKER  ${f} was left mutated`); blockers++; }
 }
 console.log(blockers ? `\n${blockers} guard(s) not covered by a failing test` : "\nevery guard has a test that fails without it");
