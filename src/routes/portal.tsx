@@ -75,13 +75,13 @@ export const Route = createFileRoute("/portal")({
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "vehicle", label: "My Vehicle", icon: Car },
+  { id: "vehicle", label: "Vehicle", icon: Car },
   { id: "documents", label: "Documents", icon: FileText },
-  { id: "pictures", label: "Pictures", icon: ImageIcon },
+  { id: "pictures", label: "Photos", icon: ImageIcon },
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "deposit", label: "Deposit", icon: Wallet },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
-  { id: "issue", label: "Report Issue", icon: AlertTriangle },
+  { id: "issue", label: "Support", icon: AlertTriangle },
   { id: "referrals", label: "Referrals", icon: Users },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -1638,7 +1638,7 @@ function MetricTile({
 }
 
 function VehicleView({ data }: { data: DriverDashboard }) {
-  if (!data.vehicle) return <Stub label="My Vehicle" />;
+  if (!data.vehicle) return <Stub label="Vehicle" />;
   const v = data.vehicle;
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">

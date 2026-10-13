@@ -52,7 +52,8 @@
     "test:waitlist": "node scripts/waitlist-security.test.mjs",
     "test:admin-reads": "node scripts/admin-reads-access.test.mjs",
     "test:admin-reads-e2e": "node scripts/admin-reads-e2e.test.mjs",
-    "test:contract-dates": "node scripts/contract-date-format.test.mjs"
+    "test:contract-dates": "node scripts/contract-date-format.test.mjs",
+    "test:nav-naming": "node scripts/nav-naming-standard.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
