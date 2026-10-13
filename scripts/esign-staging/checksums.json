@@ -15,7 +15,7 @@
     {
       "step": "privileged",
       "file": "03_storage_policy.privileged.sql",
-      "run_by": "privileged execution path — NOT install.sh",
+      "run_by": "privileged execution path \u2014 NOT install.sh",
       "status": "BLOCKED: path not yet identified or reviewed"
     },
     {
@@ -43,11 +43,10 @@
   ],
   "baseline_receipts": {
     "file": "baseline-receipts.json",
-    "status": "UNPOPULATED",
-    "blocks": "install.sh stops before opening a transaction",
-    "reason": "the nine verified receipt names and checksums were not supplied; they are not guessed",
+    "status": "VERIFIED",
     "sealing_helper": "seal-manifest.sh (capture | validate)",
-    "blocker": "staging ledger unreachable from this environment: network policy denied bhpdppyxnkokzhlkgcsc.supabase.co:443 (403 CONNECT)"
+    "captured_at": "2026-10-13T09:44:21.525741+00:00",
+    "verification": "Nine exact receipt names and checksums independently matched the read-only staging ledger in installed_at, stage order."
   },
   "reviewed_checksums_preserved": {
     "0023": "675bff0e8cba301581209c6c2a4f4cd7d485676c47a9e3920de87622c129acc7",
@@ -63,7 +62,7 @@
     "../esign-release/0024_esign_agreement_numbering.sql"
   ],
   "worker_artifact": {
-    "status": "NOT VALID FOR DEPLOY — must be rebuilt with staging VITE_* values",
+    "status": "NOT VALID FOR DEPLOY \u2014 must be rebuilt with staging VITE_* values",
     "reason": "import.meta.env.VITE_SUPABASE_URL is inlined at build time; a build made with the production .env bakes the production project ref into the browser bundle",
     "verifier": "scripts/esign-staging/verify-artifact.sh"
   },
@@ -82,7 +81,7 @@
     "seal-manifest.sh": "0fe713581d9bcf014097f65a44fd15e3e1eefd30d6c9b9440cf07d193f340887",
     "install.sh": "04b5c941ff0cda7ae1b2e408afc06f73f5ea13a0d1203d56fe26e7c4914edce8",
     "verify-artifact.sh": "7a80b70e31a2eb4a49759999e5de1b3eb03a3ee02540e7111ee5f3e91968f514",
-    "baseline-receipts.json": "711a806ad9f2e3af430d0c6b3375680b768e730f828cbe9144dfdaf7c55c6b97",
+    "baseline-receipts.json": "c08378e5dbebf49501cf589f81163a915528519b8207bbf3d2b9bbe123f6bff3",
     "README.md": "6428bc3205748ab10010ab4e4007379e8750519fed494e092c4a9c703876457b",
     "worker/wrangler.staging.jsonc": "a9b6e83c16c2959e70f1cb128e8fd5adef9853ea2f670153e2657077f6008e75",
     "worker/README.md": "0d45333020425c0d6ba834f9cdf073f51d51e5ca4fac3a9274b6d3fc91063fc8",

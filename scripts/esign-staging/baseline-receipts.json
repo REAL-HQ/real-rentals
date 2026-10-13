@@ -1,57 +1,52 @@
 {
-  "_comment": [
-    "THE NINE EXISTING STAGING RECEIPTS, PINNED.",
-    "",
-    "private.staging_install_receipts on the verified staging backend holds nine",
-    "rows through Stage 09. The installer compares the live ledger against this",
-    "file EXACTLY — every stage name, every sha256, and the order they were",
-    "installed in — and refuses the whole stage on any difference.",
-    "",
-    "That comparison is also what binds the installation to the right database.",
-    "A hostname proves nothing (a tunnel or a copied connection string looks",
-    "identical); nine matching receipts are an identity the wrong database",
-    "cannot produce.",
-    "",
-    "THIS FILE SHIPS UNPOPULATED ON PURPOSE. The nine values were read by Codex",
-    "during verification and were NOT included in the correction brief, so they",
-    "are not known here. They are not guessed: inventing a stage name or a",
-    "checksum would make the comparison pass against a ledger nobody checked,",
-    "which is worse than having no comparison at all.",
-    "",
-    "TO POPULATE — one read-only query against staging, then paste the result:",
-    "",
-    "  SELECT jsonb_pretty(jsonb_build_object(",
-    "    'status','VERIFIED',",
-    "    'database', current_database(),",
-    "    'captured_at', now(),",
-    "    'receipts', (SELECT jsonb_agg(jsonb_build_object(",
-    "         'ordinal', ord, 'stage', stage, 'sha256', sha256)",
-    "         ORDER BY ord)",
-    "       FROM (SELECT row_number() OVER (ORDER BY installed_at, stage) AS ord,",
-    "                    stage, sha256",
-    "               FROM private.staging_install_receipts) r)));",
-    "",
-    "Or let seal-manifest.sh do it, which runs exactly that query and then",
-    "validates its own output:",
-    "",
-    "  bash scripts/esign-staging/seal-manifest.sh capture \"<staging connection>\"",
-    "  bash scripts/esign-staging/seal-manifest.sh validate",
-    "",
-    "Paste the three fields into this file, keep the ordinals as the query",
-    "returned them, and have the result reviewed before the installer is run.",
-    "While status is UNPOPULATED the installer stops before it opens a",
-    "transaction."
-  ],
-  "status": "UNPOPULATED",
-  "staging_project": "bhpdppyxnkokzhlkgcsc",
-  "ledger": "private.staging_install_receipts",
-  "columns": [
-    "stage",
-    "sha256",
-    "installed_at"
-  ],
-  "expected_count": 9,
-  "database": null,
-  "captured_at": null,
-  "receipts": []
+    "status": "VERIFIED",
+    "database": "postgres",
+    "receipts": [
+        {
+            "stage": "01",
+            "sha256": "e9c275053f7efac8ce6dcdb4e21aad75e789ff9209ff1b6128b6fad9588bb10f",
+            "ordinal": 1
+        },
+        {
+            "stage": "02",
+            "sha256": "2954701ba306dd30bd0e4c98feb59c56c87391de86109d0ec25906c80b7debf7",
+            "ordinal": 2
+        },
+        {
+            "stage": "03",
+            "sha256": "25893e4ecbfe463aba9cd114d4b5bb02eb182c32d5d1bc247b35c9816e036c28",
+            "ordinal": 3
+        },
+        {
+            "stage": "04",
+            "sha256": "173e475c341254ec816624aa2886fd7e1a4d7ec2c57a18c879e02a7924bee69a",
+            "ordinal": 4
+        },
+        {
+            "stage": "05",
+            "sha256": "cac09368337f60e70982e44e26a0e7d67562e2f11b65d170b468cf425517723b",
+            "ordinal": 5
+        },
+        {
+            "stage": "06",
+            "sha256": "3470f6b7cd7f569400e14251d2ff33aa670064cb237a6742a3cbe6c20bdd8289",
+            "ordinal": 6
+        },
+        {
+            "stage": "07",
+            "sha256": "77c43ae57a78e418ece6e4f648088cfb5b93c4e147b4f647ae1d3fbf9b73e026",
+            "ordinal": 7
+        },
+        {
+            "stage": "08",
+            "sha256": "975a1422c966e5169f65b0fa9f5c7d8af383b83562d81f4d8c70fe552c2f4934",
+            "ordinal": 8
+        },
+        {
+            "stage": "09",
+            "sha256": "cba69ec3c9eb6159f43760b6fb3a1f4a48d21c4df6164ed2f7794edfbe6e91b6",
+            "ordinal": 9
+        }
+    ],
+    "captured_at": "2026-10-13T09:44:21.525741+00:00"
 }
