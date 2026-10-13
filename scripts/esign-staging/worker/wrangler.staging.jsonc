@@ -1,0 +1,69 @@
+// ===========================================================================
+// eSign STAGING Worker. PROPOSED — not deployed.
+//
+// The smallest change to the existing build that points it at the staging
+// backend and keeps it private. The application code is the ordinary
+// production build (`npx vite build` -> .output/server); only this config and
+// the secret values differ. Nothing in src/ is forked for staging, because a
+// staging build that differs from the production build proves nothing about
+// the production build.
+//
+// WHAT THIS CONFIG DELIBERATELY DOES NOT CONTAIN
+//
+//   no "triggers"/"crons" block — the six cron routes
+//   (esign-archive-retry, automations, fleet-inbox, late-fees,
+//   ops-reminders, wizard-recovery) exist in the bundle but nothing
+//   schedules them here. Archive retry is exercised by calling the route
+//   directly during acceptance, never on a timer.
+//
+//   no "routes"/"route" block and no workers.dev subdomain — the Worker has
+//   NO public ingress. It is reachable only behind the Cloudflare Access
+//   application described in README.md, which gates it on the Google
+//   identity provider and an explicit staff allow-list.
+//
+//   no production destination of any kind. See README.md for the secret
+//   manifest; every outbound integration is capture-only.
+// ===========================================================================
+{
+  "name": "real-hq-real-rentals-esign-staging",
+  "main": "index.mjs",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] }],
+  "assets": { "binding": "ASSETS", "directory": "../public" },
+
+  // Disabled public ingress, stated three ways so a careless `wrangler
+  // deploy` cannot publish this to the internet.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+
+  // Non-secret bindings. Every secret (SUPABASE_SERVICE_ROLE_KEY and the
+  // capture-only integration keys) is set with `wrangler secret put` against
+  // this Worker and never written into this file or the repository.
+  "vars": {
+    // The staging backend, and only the staging backend.
+    "SUPABASE_URL": "https://bhpdppyxnkokzhlkgcsc.supabase.co",
+    "VITE_SUPABASE_URL": "https://bhpdppyxnkokzhlkgcsc.supabase.co",
+    "SUPABASE_PROJECT_ID": "bhpdppyxnkokzhlkgcsc",
+    "VITE_SUPABASE_PROJECT_ID": "bhpdppyxnkokzhlkgcsc",
+
+    // Self-referential: links minted during acceptance point back at this
+    // gated Worker, never at the live site. A signing link that escaped to a
+    // real renter would otherwise be a real contract.
+    "PUBLIC_SITE_URL": "https://real-hq-real-rentals-esign-staging.internal.invalid",
+    "SITE_URL": "https://real-hq-real-rentals-esign-staging.internal.invalid",
+
+    // Capture-only communications. The delivery code paths run in full and
+    // record their outcome on the agreement row (email_status, sms_status);
+    // nothing leaves the Worker. These are read by the guard test as the
+    // declaration that no live provider is configured here.
+    "ESIGN_DELIVERY_MODE": "capture_only",
+    "EMAIL_CAPTURE_ONLY": "1",
+    "SMS_CAPTURE_ONLY": "1",
+
+    "NODE_ENV": "production",
+    "STAGING": "1"
+  }
+}

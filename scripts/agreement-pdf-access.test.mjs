@@ -300,26 +300,22 @@ console.log("\\nno competing agreement authorization, and the identity gates are
  * invented alongside them. Behaviour is proved in identity-authorization.test.mjs.
  */
 /*
- * Permitted, named integration changes — nothing else may differ:
+ * The only permitted difference is the masked owned-application read.
  *
- *   1. the masked owned-application read; and
- *   2. the approved contract-date change, which moves the five contract
- *      fields off the application-wide display helper and onto
- *      fmtContractDate in agreement-dates.ts. Contract wording changes only
- *      through an Owner-approved template version, and a dashboard date
- *      format must not be able to make one. Driven in
- *      contract-date-format.test.mjs.
- *
- * Both are undone before the comparison, so the check still fails on any
- * OTHER edit to this file.
+ * This briefly also undid the contract-date change (fmtDate ->
+ * fmtContractDate) while that work was on a branch. Once it merged, the
+ * exception inverted: the baseline IS main, main now carries
+ * fmtContractDate, and normalising the working copy back to fmtDate made it
+ * differ from the baseline it was being compared against. An allowance for a
+ * change has a life exactly as long as the change is unmerged, so it is gone
+ * — the file must now match main byte for byte but for the masked read, and
+ * contract-date behaviour is owned by contract-date-format.test.mjs.
  */
 const baselineAgreement = execFileSync("git", ["show", "origin/main:src/lib/agreements.functions.ts"], { encoding: "utf8" });
 const normalised = readFileSync("src/lib/agreements.functions.ts", "utf8")
-  .replaceAll('.from("application_read_projection")', '.from("applications")')
-  .replaceAll('import { fmtContractDate } from "@/lib/agreement-dates";', 'import { fmtDate } from "@/lib/date-format";')
-  .replaceAll("fmtContractDate(", "fmtDate(");
+  .replaceAll('.from("application_read_projection")', '.from("applications")');
 ok(normalised === baselineAgreement,
-  "agreement behavior is byte-preserved apart from the masked application read and the approved contract-date change");
+  "agreement behavior is byte-preserved apart from masked application read compatibility");
 const AGFN = readFileSync("src/lib/agreements.functions.ts", "utf8");
 ok(/if \(await getActor\(context\.userId\)\) await requireManager\(context\.userId\);/.test(AGFN),
   "getAgreementPdf still carries the gate PR #25 installed");
