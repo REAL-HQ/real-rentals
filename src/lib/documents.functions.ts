@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertProjectionOk } from "@/lib/application-projection";
 import { z } from "zod";
 
 export const DOC_BUCKET = "driver-docs";
@@ -506,13 +507,14 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
     } else {
-      const { data: app } = (await context.supabase
+      const { data: app, error: appErr } = (await context.supabase
         .from("application_read_projection" as any)
         .select("id")
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle()) as { data: { id: string } | null };
+        .maybeSingle()) as { data: { id: string } | null; error: unknown };
+      assertProjectionOk(appErr as any, "your documents");
       if (!app) throw new Error("No application on file");
       applicationId = app.id as string;
     }
@@ -588,12 +590,17 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // further down.
     const staff = admin || (await isStaffUser(context.userId));
     if (!staff) {
-      const { data: app } = await context.supabase
+      const { data: app, error: ownErr } = await context.supabase
         .from("application_read_projection" as any)
         .select("id")
         .eq("id", data.applicationId)
         .eq("user_id", context.userId)
         .maybeSingle();
+      // This read IS the ownership check. It already failed closed — a failed
+      // read left `app` null and raised Forbidden — so the assert does not
+      // open anything; it replaces "Forbidden" with the true reason when the
+      // cause was an unavailable projection rather than a wrong owner.
+      assertProjectionOk(ownErr, "this document");
       if (!app) throw new Error("Forbidden");
     }
     if (!data.path.startsWith(`${data.applicationId}/`)) throw new Error("Invalid upload path");
@@ -699,7 +706,7 @@ export const getMyVault = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(
     async ({ context }): Promise<{ applicationId: string | null; documents: VaultDocument[] }> => {
-      const { data: app } = (await context.supabase
+      const { data: app, error: vaultErr } = (await context.supabase
         .from("application_read_projection" as any)
         .select(
           "id,user_id,license_photo_url,insurance_doc_url,profile_screenshot_url,trip_screenshots,license_expiration",
@@ -707,7 +714,9 @@ export const getMyVault = createServerFn({ method: "GET" })
         .eq("user_id", context.userId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle()) as { data: any };
+        .maybeSingle()) as { data: any; error: unknown };
+      // An empty vault and an unreadable one must not render identically.
+      assertProjectionOk(vaultErr as any, "your documents");
       if (!app) return { applicationId: null, documents: [] };
 
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

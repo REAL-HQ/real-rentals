@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { parseTollStatement, normalizePlate } from "@/lib/toll-import";
 import { fmtDate } from "@/lib/date-format";
+import { assertProjectionOk } from "@/lib/application-projection";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -564,10 +565,13 @@ export const getMyCharges = createServerFn({ method: "GET" })
   .inputValidator(previewInput)
   .handler(async ({ context: rawCtx, data: input }): Promise<TollCharge[]> => {
     const context = await (await import("@/lib/driver-preview.server")).portalScope(rawCtx as any, input, "charges");
-    const { data: apps } = await context.supabase
+    const { data: apps, error: appsErr } = await context.supabase
       .from("application_read_projection" as any)
       .select("id")
       .eq("user_id", context.userId);
+    // Not swallowed: a failed read here returned [] and told the renter they
+    // owed nothing, while rebilled tolls kept accruing against them.
+    assertProjectionOk(appsErr as any, "your charges");
     const appIds = (apps ?? []).map((a: any) => a.id as string);
     if (!appIds.length) return [];
 

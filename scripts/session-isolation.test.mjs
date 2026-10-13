@@ -1,34 +1,42 @@
 /**
- * One person's data must never reach the next person on the same browser.
- *
- * READ THIS BEFORE TRUSTING A GREEN RUN: this is a property guard, not a bug
- * reproduction. It passes with useSessionIsolation removed, because two other
- * things also enforce the property today — getRouter() builds a new
- * QueryClient per router instance, and the portal's signed-out gate unmounts
- * every query consumer when the session drops. That was measured, not
- * assumed: with the hook disabled and every response held, signing back in as
- * a different driver, across the staff boundary, and even as the same person,
- * nothing cached ever rendered.
- *
- * What it does catch is the day either of those changes — a QueryClient
- * hoisted to a module singleton, or a shell that renders before the role
- * check resolves. Both are ordinary refactors, and both would make a shared
- * phone leak. The mechanism itself is pinned separately, by the static
- * assertions in driver-access.test.mjs.
- *
- * The incoming user's data is deliberately held for HOLD_MS, and the tabs
- * that actually show personal data are opened inside that window, so a stale
- * value would have nowhere to hide.
- *
- * Run: npm run dev, then npm run test:session
+ * Synthetic browser property test for account switching, not a unit test of
+ * QueryClient clearing. Driver sign-out reloads /portal; the non-driver portal reloads /login.
+ * No hosted sessions: external traffic is refused and auth/server reads mocked.
+ * Run a local dev server, then npm run test:session. Install Playwright in the
+ * test environment (or set SESSION_PLAYWRIGHT_MODULE to its module path).
+ * SESSION_NEGATIVE_CONTROL=identity|rental|payment|document deliberately leaks
+ * previous-driver data through a mocked read; each must exit nonzero.
+ * Run all four with: npm run test:session -- --negative-controls
  */
-import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
-import { toCrossJSON } from "/home/user/real-rentals/node_modules/seroval/dist/index.js";
+const { chromium } = await import(process.env.SESSION_PLAYWRIGHT_MODULE ?? "playwright");
+import { toCrossJSON } from "seroval";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// A timeout/crash is NOT a successful negative control: require the precise
+// leak assertion from the same end-to-end path used by the passing run.
+if (process.argv.includes("--negative-controls")) {
+  for (const category of ["identity", "rental", "payment", "document"]) {
+    const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+      env: { ...process.env, SESSION_NEGATIVE_CONTROL: category }, encoding: "utf8", timeout: 180000,
+    });
+    const expected = `FAIL driver A → driver B: no prior ${category} leaks`;
+    if (run.status !== 1 || !run.stdout.includes(expected) || /Timeout|Error:/.test(run.stderr)) {
+      console.error(`Negative control did not reach the intended assertion: ${category}\n${run.stdout}\n${run.stderr}`);
+      process.exit(1);
+    }
+    console.log(`PASS negative control: ${category} leak rejected`);
+  }
+  process.exit(0);
+}
 
 const BASE = process.env.SESSION_E2E_BASE ?? "http://127.0.0.1:5199";
 const PROJECT = "yuyzdsnrbfhkmfzpvhwx";
 const STORAGE_KEY = `sb-${PROJECT}-auth-token`;
 const HOLD_MS = 2500;
+const negative = process.env.SESSION_NEGATIVE_CONTROL;
+if (negative && !["identity", "rental", "payment", "document"].includes(negative)) throw new Error("Unknown negative control");
+if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(BASE).hostname)) throw new Error("Local synthetic server required");
 
 let fail = 0;
 const ok = (c, l) => {
@@ -57,7 +65,7 @@ const PEOPLE = {
     email: "staff@example.com",
     name: "Staff Person",
     doc: "staff-only-DOSSIER.pdf",
-    role: "staff",
+    role: "manager",
   },
 };
 
@@ -79,7 +87,7 @@ const session = (p) => ({
 });
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium",
+  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
 });
 
 async function makePage() {
@@ -87,7 +95,13 @@ async function makePage() {
   // `current` is flipped from the test body; every stub answers for whoever
   // is current, so a cached response from the previous identity is the only
   // way their data can appear.
-  const state = { current: PEOPLE.A, hold: 0 };
+  const state = { current: PEOPLE.A, previous: null, hold: 0, errors: [], calls: new Set() };
+  page.setDefaultTimeout(15000);
+  page.on("pageerror", (e) => state.errors.push(e.message));
+  // Last registered matching route wins; the explicit synthetic routes below
+  // override this deny-by-default boundary. Never contact a hosted backend.
+  await page.route("**/*", (route) => new URL(route.request().url()).origin === new URL(BASE).origin
+    ? route.continue() : route.abort());
 
   await page.route(`**/${PROJECT}.supabase.co/auth/v1/**`, async (route) => {
     const url = route.request().url();
@@ -115,11 +129,11 @@ async function makePage() {
     const url = route.request().url();
     const p = state.current;
     if (url.includes("user_roles")) {
-      // The portal asks with .maybeSingle(); staff get no driver row.
+      // Current portal reads a role array; never an object or null.
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: p.role === "driver" ? JSON.stringify({ role: "driver" }) : "null",
+        body: JSON.stringify([{ role: p.role }]),
       });
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
@@ -135,6 +149,8 @@ async function makePage() {
     } catch {
       /* not one of ours */
     }
+    state.calls.add(fn.split('"').filter(Boolean).join(" "));
+    const source = (category) => negative === category && state.previous ? state.previous : p;
     const send = (v) =>
       route.fulfill({
         status: 200,
@@ -145,23 +161,27 @@ async function makePage() {
     if (/getDriverDashboard/.test(fn))
       return send({
         applicationStatus: "approved",
-        rental: null,
-        vehicle: null,
-        payments: [],
+        unavailable: {},
+        rental: { id: `rental-${p.id}`, weekly_rate: 350, deposit_amount: 200, deposit_held: true,
+          next_payment_due: "2026-11-07", start_date: "2026-11-01", status: "active", weeks_rented: 1 },
+        vehicle: { id: `vehicle-${p.id}`, year: 2026, make: "Synthetic", model: `${source("rental").name}-rental`,
+          trim: null, color: null, photo: null, plate: null, status: "rented" },
+        payments: [{ id: `payment-${p.id}`, paid_date: "2026-11-01", amount: source("payment").id === PEOPLE.A.id ? 731.25 : source("payment").id === PEOPLE.B.id ? 842.50 : 953.75,
+          type: "rental", status: "paid" }],
         maintenance: [],
         notifications: [],
         shops: [],
       });
     if (/getDriverProfile/.test(fn))
-      return send({ full_name: p.name, email: p.email, phone: "8135550100", status: "approved" });
+      return send({ full_name: source("identity").name, email: source("identity").email, phone: "8135550100", status: "approved" });
     if (/getMyVault/.test(fn))
       return send({
         applicationId: `app-${p.id}`,
         documents: [
           {
             id: `doc-${p.id}`,
-            category: "license",
-            file_name: p.doc,
+            category: "license_front",
+            file_name: source("document").doc,
             url: `https://example.test/${p.doc}`,
             created_at: new Date().toISOString(),
             is_current: true,
@@ -172,7 +192,12 @@ async function makePage() {
       });
     if (/getDriverDocuments|getMyAgreements|getMyCharges|getDriverIssues|getDriverReferrals/.test(fn))
       return send([]);
-    return send(null);
+    if (/getMyPortalAccess/.test(fn)) return send({ stage: "none", email: p.email, application: null, waitlist: null, review: false });
+    if (/getPublicBusinessPhone/.test(fn)) return send({ tel: "tel:+15555550100", display: "555-555-0100" });
+    if (/getMyRentalHistory|getDriverPictures/.test(fn)) return send([]);
+    if (/getRentalBilling|getMyApplication/.test(fn)) return send(null);
+    state.errors.push(`Unmocked server function: ${fn}`);
+    return route.abort();
   });
 
   page.state = state;
@@ -185,147 +210,110 @@ async function makePage() {
  * /login, making the whole exercise meaningless.
  */
 async function seedSession(page, person) {
-  await page.goto(`${BASE}/faq`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/faq`, { waitUntil: "networkidle" });
   await page.evaluate(
     ([key, value]) => {
-      try {
-        localStorage.setItem(key, value);
-      } catch {
-        /* private mode */
-      }
+      localStorage.setItem(key, value);
     },
     [STORAGE_KEY, JSON.stringify(session(person))],
   );
 }
 
-/**
- * Everything a person could actually see: rendered text plus the value of every
- * form field. A leaked name sits in an <input value>, which innerText misses.
- */
-const SURFACE = () => {
-  const text = document.body?.innerText ?? "";
-  const values = [...document.querySelectorAll("input, textarea")]
-    .map((el) => el.value ?? "")
-    .join("\n");
-  return `${text}\n${values}`;
-};
-
-async function surface(page) {
-  return page.evaluate(SURFACE).catch(() => "");
+const tab = (page, name) => page.locator("aside nav").getByRole("button", { name, exact: true });
+const markers = (p) => ({ identity: p.email, name: p.name, rental: `${p.name}-rental`, payment: p.id === PEOPLE.A.id ? "$731.25" : p.id === PEOPLE.B.id ? "$842.50" : "$953.75", document: p.doc });
+async function assertVisible(page, needle) {
+  await page.waitForFunction((n) => (document.body.innerText + [...document.querySelectorAll("input,textarea")].map(e => e.value).join("\n")).includes(n), needle);
 }
-
-/** Poll throughout a window and report whether a needle ever appeared. */
-async function everShows(page, needle, windowMs) {
-  const deadline = Date.now() + windowMs;
-  while (Date.now() < deadline) {
-    const seen = await page
-      .evaluate((n) => {
-        const text = document.body?.innerText ?? "";
-        const values = [...document.querySelectorAll("input, textarea")]
-          .map((el) => el.value ?? "")
-          .join("\n");
-        return `${text}\n${values}`.includes(n);
-      }, needle)
-      .catch(() => false);
-    if (seen) return true;
-    await sleep(60);
-  }
-  return false;
+async function startMonitor(page, person) {
+  await page.evaluate((needles) => {
+    window.__isolationHits = [];
+    const scan = () => {
+      const content = document.body.innerText + [...document.querySelectorAll("input,textarea")].map(e => e.value).join("\n");
+      for (const [category, needle] of Object.entries(needles)) {
+        if (content.includes(needle) && !window.__isolationHits.includes(category)) window.__isolationHits.push(category);
+      }
+    };
+    new MutationObserver(scan).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    window.__isolationTimer = setInterval(scan, 20); // input.value changes need polling too
+    scan();
+  }, markers(person));
 }
-
 async function run(from, to, label) {
   console.log(`\n── ${label}`);
   const page = await makePage();
-  page.state.current = from;
-  await seedSession(page, from);
-
-  // 1. The first person uses the portal, so their data lands in the cache.
-  await page.goto(`${BASE}/portal`, { waitUntil: "domcontentloaded" });
-  if (from.role === "driver") {
-    await page.locator("aside nav button").first().waitFor({ timeout: 60000 }).catch(() => {});
-    for (const tab of ["Documents", "Settings"]) {
-      await page.locator(`aside nav button:has-text("${tab}")`).click().catch(() => {});
-      await sleep(1200);
+  try {
+    page.state.current = from;
+    await seedSession(page, from);
+    await page.goto(`${BASE}/portal`, { waitUntil: "networkidle" });
+    if (from.role === "driver") {
+      // Prove all four categories were actually rendered/cached before signout.
+      for (const [name, needle] of [["Vehicle", markers(from).rental], ["Payments", markers(from).payment], ["Documents", from.doc], ["Settings", from.email]]) {
+        await tab(page, name).click();
+        await assertVisible(page, needle);
+        ok(true, `${label}: seeded ${name}`);
+      }
+    } else {
+      await assertVisible(page, from.email);
+      ok(true, `${label}: seeded staff portal identity`);
     }
-    const body = await surface(page);
-    ok(
-      body.includes(from.email) || body.includes(from.name) || body.includes(from.doc),
-      `${label}: first user's data is on screen and cached`,
-    );
-  } else {
-    await sleep(2500);
+    await Promise.all([
+      page.waitForURL(`${BASE}/${from.role === "driver" ? "portal" : "login"}`, { waitUntil: "load" }),
+      page.getByRole("button", { name: /sign out/i }).click(),
+    ]);
+    if (from.role === "driver") await page.getByRole("link", { name: "Sign In", exact: true }).waitFor();
+    ok(await page.evaluate((key) => localStorage.getItem(key) === null, STORAGE_KEY), `${label}: signout clears session`);
+    page.state.previous = from;
+    page.state.current = to;
+    page.state.hold = HOLD_MS;
+    if (from.role === "driver") await page.getByRole("link", { name: "Sign In", exact: true }).click();
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /use my password instead/i }).click();
+    await page.locator('input[type="email"]').fill(to.email);
+    await page.locator('input[type="password"]').fill("synthetic-password-only");
+    // Starts BEFORE login and remains active while every personal-data tab loads.
+    await startMonitor(page, from);
+    await page.getByRole("button", { name: "Sign In", exact: true }).click();
+    if (to.role === "driver") {
+      for (const [name, needle] of [["Vehicle", markers(to).rental], ["Payments", markers(to).payment], ["Documents", to.doc], ["Settings", to.email]]) {
+        await tab(page, name).click();
+        // Negative controls must fail the SAME leak assertion, not a timeout
+        // waiting for intentionally replaced data.
+        const category = { Vehicle: "rental", Payments: "payment", Documents: "document", Settings: "identity" }[name];
+        await assertVisible(page, negative === category ? markers(from)[category] : needle);
+        await sleep(HOLD_MS + 100);
+      }
+    } else {
+      await page.getByRole("button", { name: /sign out/i }).waitFor();
+      await sleep(HOLD_MS + 300);
+    }
+    const hits = await page.evaluate(() => {
+      if (!window.__isolationHits) throw new Error("Isolation monitor lost during navigation");
+      clearInterval(window.__isolationTimer);
+      return window.__isolationHits;
+    });
+    for (const category of Object.keys(markers(from))) ok(!hits.includes(category), `${label}: no prior ${category} leaks`);
+    ok(page.state.errors.length === 0, `${label}: no page errors or unknown server mocks (${page.state.errors.join("; ")})`);
+    if (to.role === "driver") {
+      for (const fn of ["getDriverDashboard", "getDriverProfile", "getMyVault", "getRentalBilling"])
+        ok([...page.state.calls].some(call => call.includes(fn)), `${label}: exercised ${fn}`);
+    }
+  } finally {
+    // Finish intentionally delayed mock responses before disposing their page.
+    page.state.hold = 0;
+    await sleep(HOLD_MS + 100);
+    await page.close();
+    console.log(`  closed synthetic page: ${label}`);
   }
-
-  /*
-   * Everything from here is clicks. No page.goto.
-   *
-   * A full navigation throws away the in-memory QueryClient, which would hide
-   * the very bug this test exists for — the first version of this test passed
-   * with the isolation disabled for exactly that reason. The real journey
-   * never leaves the JS context: sign-out re-renders the gate in place, the
-   * Sign In link is a client-side route change, and signing in navigates the
-   * router. One context, one QueryClient, all the way through.
-   */
-  await page.evaluate(() => {
-    const btn = [...document.querySelectorAll("button")].find((b) =>
-      /sign out/i.test(b.textContent ?? ""),
-    );
-    btn?.click();
-  });
-  await sleep(1500);
-
-  // 3. The next person signs in on the same browser, in the same context.
-  //    Their data is held, so any gap is filled by whatever is still cached.
-  page.state.current = to;
-  page.state.hold = HOLD_MS;
-  await page.locator('a[href="/login"]').first().click();
-  await sleep(900);
-  await page.locator('input[type="email"]').fill(to.email);
-  await page.locator('input[type="password"]').fill("correct-horse");
-  await page.locator('button:has-text("Sign In")').click();
-
-  /*
-   * 4. Open the tabs that actually show personal data, while the incoming
-   *    user's own data is still held.
-   *
-   *    Landing on Dashboard is not enough: it shows no PII, so an earlier
-   *    version of this test watched a screen that could not have leaked and
-   *    passed with the isolation switched off. The leak is what the next
-   *    person sees when they open their own profile or documents before the
-   *    refetch lands — so that is what we do here, deliberately inside the
-   *    hold window.
-   */
-  await page.locator("aside nav button").first().waitFor({ timeout: 20000 }).catch(() => {});
-  for (const tab of ["Settings", "Documents"]) {
-    await page.locator(`aside nav button:has-text("${tab}")`).click().catch(() => {});
-    await sleep(150);
-  }
-
-  const leakedEmail = await everShows(page, from.email, HOLD_MS + 1500);
-  const leakedDoc = await everShows(page, from.doc, 400);
-  const leakedName = await everShows(page, from.name, 400);
-  ok(!leakedEmail, `${label}: the previous user's email never renders`);
-  ok(!leakedDoc, `${label}: their document name never renders`);
-  ok(!leakedName, `${label}: their name never renders`);
-
-  // 5. And the incoming user does eventually get their own data.
-  page.state.hold = 0;
-  if (to.role === "driver") {
-    await page.locator("aside nav button").first().waitFor({ timeout: 60000 }).catch(() => {});
-    await page.locator('aside nav button:has-text("Settings")').click().catch(() => {});
-    await sleep(2200);
-    const body = await surface(page);
-    ok(body.includes(to.email), `${label}: the new user sees their own details`);
-    ok(!body.includes(from.email), `${label}: and none of the previous user's`);
-    ok(!body.includes(from.doc) && !body.includes(from.name), `${label}: nothing of theirs at all`);
-  }
-  await page.close();
 }
-
-await run(PEOPLE.A, PEOPLE.B, "driver A → driver B");
-await run(PEOPLE.S, PEOPLE.B, "staff → driver");
-await run(PEOPLE.A, PEOPLE.S, "driver → staff");
-
-await browser.close();
+try {
+  await run(PEOPLE.A, PEOPLE.B, "driver A → driver B");
+  if (!negative) {
+    await run(PEOPLE.S, PEOPLE.B, "staff → driver");
+    await run(PEOPLE.A, PEOPLE.S, "driver → staff");
+  }
+} finally {
+  await browser.close();
+  console.log("Closed isolated browser");
+}
 console.log(`\n${fail === 0 ? "PASS" : `FAIL — ${fail} assertion(s)`}`);
 process.exit(fail === 0 ? 0 : 1);
