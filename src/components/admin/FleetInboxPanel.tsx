@@ -494,7 +494,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
             <tbody>
               {changes.map((c) => (
                 <tr key={c.field} className="border-t border-[#F2F2F4]">
-                  {p.kind !== "new" && !done && isManager && (
+                  {p.kind !== "new" && !done && (
                     <td className="py-1.5">
                       <input type="checkbox" aria-label={`Accept ${c.label}`} checked={dec.accept.has(c.field)}
                         onChange={() => setOne({ accept: toggle(dec.accept, c.field), action: dec.action ?? "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id })} />
