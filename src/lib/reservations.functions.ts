@@ -18,6 +18,16 @@ function failure(error: { code?: string; message?: string }) {
   if (["PGRST202", "42P01", "42883", "42501"].includes(error.code ?? "")) return unavailable;
   const m = error.message ?? "";
   const reasons: Record<string, string> = {
+    reservation_not_found: "Reservation no longer exists.",
+    not_ready_for_conversion:
+      "Conversion blocked: reservation must be Confirmed and pickup time reached. Expired or cancelled reservations cannot convert.",
+    verified_driver_identity_required:
+      "Required information missing: verify the existing Driver account linkage before conversion.",
+    reservation_allocation_conflict:
+      "Vehicle unavailable: another reservation conflicts with this rental.",
+    invalid_terms: "Enter a positive weekly rate and valid deposit amount.",
+    vehicle_busy: "Vehicle already has an active rental.",
+    already_active: "Driver already has an active rental.",
     Forbidden: "You do not have permission for this action.",
     stale_version: "This reservation changed. Reload it before trying again.",
     hold_expired: "The temporary hold expired. Expire or cancel it before creating another hold.",
@@ -213,6 +223,76 @@ export const changeReservation = createServerFn({ method: "POST" })
           z.array(z.object({ id: z.string().uuid() })).length(1),
         ])
         .transform((value) => (Array.isArray(value) ? value[0] : value)),
+      true,
+    );
+  });
+
+const ConversionPreview = z.object({
+  id: z.string().uuid(),
+  version: z.union([z.number(), z.string()]),
+  rentalId: z.string().uuid().nullable(),
+  state: z.enum(["draft", "reserved", "confirmed", "cancelled", "expired", "converted"]),
+  blockers: z.array(z.string()),
+  agreement: z.string(),
+  payment: z.string(),
+});
+export const getReservationConversion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await requireManager(context.userId);
+    if (!enabled()) return unavailable;
+    return rpc(
+      context.supabase,
+      "reservation_conversion_preview",
+      { _id: data.id },
+      ConversionPreview,
+      true,
+    );
+  });
+export const convertReservation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        version: z.union([z.number().int().positive(), z.string().regex(/^[1-9]\d*$/)]),
+        weeklyRate: z.number().positive().max(100000),
+        deposit: z.number().min(0).max(100000),
+        depositHeld: z.boolean(),
+        pickupMileage: z.number().int().min(0).max(2000000).nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await requireManager(context.userId);
+    if (!enabled()) return unavailable;
+    // Require the supplemental schema, even if the older base conversion RPC exists.
+    const preview = await rpc(
+      context.supabase,
+      "reservation_conversion_preview",
+      { _id: data.id },
+      ConversionPreview,
+      true,
+    );
+    if (!preview.available) return preview;
+    if (String(preview.value.version) !== String(data.version))
+      return failure({ message: "stale_version" });
+    // Already-converted calls go through the authoritative RPC to verify the version and recorded rental.
+    if (preview.value.state !== "converted" && preview.value.blockers.length)
+      return { available: false as const, message: preview.value.blockers.join(" ") };
+    return rpc(
+      context.supabase,
+      "reservation_convert",
+      {
+        _id: data.id,
+        _version: data.version,
+        _weekly_rate: data.weeklyRate,
+        _deposit: data.deposit,
+        _deposit_held: data.depositHeld,
+        _pickup_miles: data.pickupMileage,
+      },
+      z.string().uuid(),
       true,
     );
   });

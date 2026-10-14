@@ -26,7 +26,7 @@ const bundle = await build({
         b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({
           contents: a.path.includes("react-start")
             ? "export const useServerFn=f=>f"
-            : `export const listReservations=x=>window.api('list',x.data);export const getReservationOptions=x=>window.api('options',x.data);export const getReservationHistory=x=>window.api('history',x.data);export const changeReservation=x=>window.api('change',x.data);`,
+            : `export const getReservationConversion=x=>window.api('conversionPreview',x.data);export const convertReservation=x=>window.api('convert',x.data);export const listReservations=x=>window.api('list',x.data);export const getReservationOptions=x=>window.api('options',x.data);export const getReservationHistory=x=>window.api('history',x.data);export const changeReservation=x=>window.api('change',x.data);`,
           loader: "js",
         }));
       },
@@ -92,6 +92,25 @@ try {
                 available: false,
                 message: "Reservations are unavailable. Feature disabled or schema unavailable.",
               };
+            if (kind === "conversionPreview")
+              return window.previewMissing
+                ? { available: false, message: "Conversion unavailable: migration required." }
+                : {
+                    available: true,
+                    value: {
+                      id,
+                      version: 2,
+                      state: window.converted ? "converted" : "confirmed",
+                      rentalId: window.converted ? id : null,
+                      blockers: window.blocked ? ["Scheduled pickup has not arrived."] : [],
+                      agreement: "No signed agreement recorded.",
+                      payment: "Payment and deposit receipt not verified.",
+                    },
+                  };
+            if (kind === "convert") {
+              if (window.convertFailure) throw Error("Synthetic transport failure");
+              return { available: true, value: id };
+            }
             if (kind === "change") {
               if (window.fail)
                 return { available: false, message: "Allocation conflict. Reload availability." };
@@ -242,6 +261,87 @@ try {
           });
         }
       }
+      await page.evaluate(() => {
+        window.record.state = "confirmed";
+        window.previewMissing = true;
+      });
+      await page.getByRole("button", { name: "Reload", exact: true }).click();
+      await page.getByRole("button", { name: /Synthetic Applicant/ }).click();
+      if (role === "coordinator") {
+        assert.equal(
+          await page.getByRole("button", { name: "Convert to Rental", exact: true }).count(),
+          0,
+        );
+        assert.equal(
+          (await page.evaluate(() => window.calls)).some(
+            (c) => c.kind === "conversionPreview" || c.kind === "convert",
+          ),
+          false,
+        );
+      } else {
+        await page.getByRole("button", { name: "Convert to Rental", exact: true }).click();
+        await page
+          .getByText("Conversion unavailable: migration required.", { exact: true })
+          .waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Confirm Conversion", exact: true }).count(),
+          0,
+        );
+        await page.evaluate(() => {
+          window.previewMissing = false;
+          window.blocked = true;
+        });
+        await page.getByRole("button", { name: "Reload Evidence", exact: true }).click();
+        await page.getByText("Scheduled pickup has not arrived.", { exact: true }).waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Confirm Conversion", exact: true }).count(),
+          0,
+        );
+        await page.evaluate(() => {
+          window.blocked = false;
+          window.convertFailure = true;
+        });
+        await page.getByRole("button", { name: "Reload Evidence", exact: true }).click();
+        await page.getByLabel("Weekly rate", { exact: true }).fill("350");
+        await page
+          .getByText("Payment and deposit receipt not verified.", { exact: true })
+          .waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Confirm Conversion", exact: true }).isDisabled(),
+          true,
+        );
+        await page.getByLabel("I reviewed the terms and evidence above.").check();
+        await page.getByRole("button", { name: "Confirm Conversion", exact: true }).click();
+        await page.getByText(/Conversion outcome could not be verified/).waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Confirm Conversion", exact: true }).isDisabled(),
+          true,
+        );
+        assert.equal(
+          (await page.evaluate(() => window.calls.filter((c) => c.kind === "convert"))).length,
+          1,
+        );
+        await page.evaluate(() => {
+          window.converted = true;
+        });
+        await page.getByRole("button", { name: "Reload Evidence", exact: true }).click();
+        await page.getByRole("link", { name: "Open Rental", exact: true }).waitFor();
+        assert.match(
+          await page.getByRole("link", { name: "Open Rental", exact: true }).getAttribute("href"),
+          /tab=bookings&id=1111/,
+        );
+        assert.equal(
+          await page.getByRole("button", { name: "Confirm Conversion", exact: true }).count(),
+          0,
+        );
+        if (width === 1440 && role === "manager") {
+          mkdirSync("/private/tmp/rr-conversion-evidence", { recursive: true });
+          await page.screenshot({
+            path: "/private/tmp/rr-conversion-evidence/manager.png",
+            fullPage: true,
+          });
+        }
+      }
       await page.evaluate(() => (window.disabled = true));
       await page.getByRole("button", { name: "Reload", exact: true }).click();
       await page
@@ -263,6 +363,26 @@ try {
         assert.ok(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2),
         );
+      if (role !== "coordinator") {
+        await page.evaluate(() => {
+          window.disabled = false;
+          window.converted = false;
+          window.convertFailure = false;
+        });
+        await page.getByRole("button", { name: "Reload", exact: true }).click();
+        await page.getByRole("button", { name: /Synthetic Applicant/ }).click();
+        await page.getByRole("button", { name: "Convert to Rental", exact: true }).click();
+        await page.getByRole("button", { name: "Reload Evidence", exact: true }).click();
+        await page.getByLabel("Weekly rate", { exact: true }).fill("350");
+        await page.getByLabel("I reviewed the terms and evidence above.").check();
+        if (width === 1440 && role === "manager")
+          await page.screenshot({
+            path: "/private/tmp/rr-conversion-evidence/review.png",
+            fullPage: true,
+          });
+        await page.getByRole("button", { name: "Confirm Conversion", exact: true }).click();
+        await page.waitForURL(/tab=bookings&id=11111111/);
+      }
       await page.close();
       n++;
     }
