@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
 import { Phone, MessageSquare, ArrowUpRight } from "lucide-react";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
-import type { LeadPrioritiesResult } from "@/lib/lead-priorities";
+import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
 
@@ -126,6 +126,8 @@ export default function LeadPriorities() {
                       {lead.contact_follow_up_on && (
                         <span className="text-xs text-muted-foreground">
                           Due {fmtDate(lead.contact_follow_up_on)}
+                          {lead.bucket === "overdue" &&
+                            ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
                         </span>
                       )}
                     </div>

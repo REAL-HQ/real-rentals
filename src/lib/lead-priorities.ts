@@ -34,6 +34,13 @@ export function leadToday(now = new Date()): string {
   }).formatToParts(now);
   return ["year", "month", "day"].map((k) => p.find((v) => v.type === k)!.value).join("-");
 }
+/** Calendar-day age; inputs are date-only values in the dashboard's Eastern calendar. */
+export function overdueAge(due: string, today: string): string | null {
+  const days = (Date.parse(today + "T00:00:00Z") - Date.parse(due + "T00:00:00Z")) / 86400000;
+  return Number.isInteger(days) && days > 0
+    ? `${days} ${days === 1 ? "day" : "days"} overdue`
+    : null;
+}
 export function leadBucket(row: LeadRow, today: string): LeadBucket | null {
   if (!ACTIVE_LEAD_STATUSES.includes(row.status) || row.contact_status === "unqualified")
     return null;

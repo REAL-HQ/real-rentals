@@ -64,7 +64,7 @@ const pure = await build({
   platform: "node",
   format: "esm",
 });
-const { leadToday, leadBucket, projectLead } = await import(
+const { leadToday, leadBucket, projectLead, overdueAge } = await import(
   "data:text/javascript;base64," + Buffer.from(pure.outputFiles[0].text).toString("base64")
 );
 let checks = 0;
@@ -75,6 +75,12 @@ const check = (v, m) => {
 check(leadToday(new Date("2026-10-14T03:59:59Z")) === "2026-10-13", "Eastern midnight before");
 check(leadToday(new Date("2026-10-14T04:00:00Z")) === "2026-10-14", "Eastern midnight after");
 check(leadToday(new Date("2026-03-08T06:59:00Z")) === "2026-03-08", "DST date stable");
+check(overdueAge("2026-10-13", "2026-10-14") === "1 day overdue", "singular overdue age");
+check(overdueAge("2026-03-07", "2026-03-09") === "2 days overdue", "spring DST calendar age");
+check(overdueAge("2026-10-31", "2026-11-02") === "2 days overdue", "fall DST calendar age");
+check(overdueAge("2026-10-14", "2026-10-14") === null, "today is not overdue");
+check(overdueAge("2026-10-15", "2026-10-14") === null, "future is not overdue");
+check(overdueAge("bad", "2026-10-14") === null, "invalid age not displayed");
 const today = leadToday();
 const row = (id, contact, date = null, status = "new") => ({
   id,

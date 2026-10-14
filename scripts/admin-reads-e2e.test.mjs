@@ -400,6 +400,18 @@ for (const role of ["owner", "manager", "coordinator"]) {
     ),
     `${role}: recommendation grounded in quoted note`,
   );
+  ok(
+    (await section.locator("[data-lead-priority]").first().innerText()).includes("1 day overdue"),
+    `${role}: overdue first with explicit calendar-day age`,
+  );
+  await section.locator("[data-contact-status]").first().click();
+  const contactMenu = page.locator("[data-contact-status-list]");
+  await contactMenu.waitFor();
+  ok(
+    (await contactMenu.innerText()).includes("Please follow up in Spanish"),
+    `${role}: existing contact editor exposes the stored note`,
+  );
+  await page.keyboard.press("Escape");
   const target = section.getByRole("link", { name: "View Applicant" }).first();
   ok(
     (await target.getAttribute("href")).includes("44444444-0000-4000-8000-000000000001"),
