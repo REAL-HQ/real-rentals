@@ -219,6 +219,50 @@ export const attachInboxItem = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/**
+ * After staff create a vehicle through Add Vehicle (or one already exists),
+ * link a grouped set of inbox documents to it. Every document is re-checked:
+ * it joins only if its OWN extracted VIN equals the vehicle's VIN. Links are
+ * idempotent (unique document_id,vehicle_id), originals and their upload
+ * timestamps are untouched, and no field, finance or expense is written.
+ */
+export const attachInboxGroup = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    batchId: z.string().uuid(), vehicleId: z.string().uuid(),
+    itemIds: z.array(z.string().uuid()).min(1).max(50),
+    proposalIds: z.array(z.string().uuid()).max(50).default([]),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireStaff(context.userId);
+    if (!tierAllows(actor.tier, "manager")) throw new Error("Forbidden: attaching documents to a new vehicle is Manager-only.");
+    const sb = await admin();
+    const { memberVinMatches } = await import("@/lib/fleet-inbox-groups");
+    const { data: v } = await sb.from("vehicles").select("id,vin").eq("id", data.vehicleId).maybeSingle();
+    if (!v?.vin) return { ok: false as const, error: "Vehicle not found or has no VIN." };
+    const { data: items } = await sb.from("fleet_import_items").select("id,document_id,extraction,status").eq("batch_id", data.batchId).in("id", data.itemIds);
+    const { data: props } = await sb.from("fleet_import_proposals").select("id,item_id,vin,status").eq("batch_id", data.batchId).in("item_id", data.itemIds);
+    const linked: string[] = [], refused: string[] = [];
+    for (const it of items ?? []) {
+      const pv = (props ?? []).filter((p: any) => p.item_id === it.id).map((p: any) => p.vin);
+      const hint = (it as any).extraction?.financial?.vehicleHints?.vin;
+      if (!it.document_id || ![...pv, hint].some((x) => memberVinMatches(x, v.vin))) { refused.push(it.id); continue; }
+      const { error } = await sb.from("document_vehicle_links").upsert({ document_id: it.document_id, vehicle_id: v.id, created_by: actor.userId }, { onConflict: "document_id,vehicle_id", ignoreDuplicates: true });
+      if (error) refused.push(it.id); else linked.push(it.id);
+    }
+    // Close only the grouped "new" proposals whose VIN is this vehicle's; claim atomically.
+    const closeIds = (props ?? []).filter((p: any) => data.proposalIds.includes(p.id) && memberVinMatches(p.vin, v.vin) && linked.includes(p.item_id)).map((p: any) => p.id);
+    if (closeIds.length) {
+      await sb.from("fleet_import_proposals").update({
+        status: "applied", applied_vehicle_id: v.id, applied_by: actor.userId, applied_at: new Date().toISOString(),
+        result: { ok: true, vehicleId: v.id, message: "Document attached to the staff-created vehicle." },
+      }).in("id", closeIds).in("status", ["pending", "failed"]);
+    }
+    await logAudit(actor, { action: "fleet_inbox.group_attached", summary: `Attached ${linked.length} Fleet Inbox document(s) to vehicle (VIN …${v.vin.slice(-6)})`, entityType: "vehicle", entityId: v.id, metadata: { batch_id: data.batchId, item_ids: linked, refused } });
+    await refreshBatchStatus(data.batchId);
+    return { ok: true as const, linked: linked.length, refused: refused.length };
+  });
+
 // ---------------------------------------------------------------- read batch
 const SERVICE_COST_FIELDS = new Set(["parts_total", "labor_total", "tax_total", "total", "payment_method"]);
 const isOwnerOnlyField = (k: string) => isFinanceField(k) || k === "title_number" || k === "title_status";
@@ -269,6 +313,18 @@ export const getImportBatch = createServerFn({ method: "POST" })
         ? await vehicleQuery.in("id", referenced).order("created_at")
         : { data: [] as any[] }
       : await vehicleQuery.order("created_at");
+    // Exact-VIN fleet lookup (archived included) so a "new" proposal whose VIN
+    // has since been added is offered as Attach, never as a second Create.
+    const { normalizeVin: nv } = await import("@/lib/vin");
+    const groupVins = [...new Set([
+      ...(proposals ?? []).map((p: any) => p.vin),
+      ...(items ?? []).map((i: any) => i.extraction?.financial?.vehicleHints?.vin),
+    ].filter(Boolean).map((v: string) => nv(v)).filter((v: string) => v.length === 17))];
+    const fleetByVin: Record<string, string> = {};
+    if (groupVins.length) {
+      const { data: hits } = await sb.from("vehicles").select("id,vin").in("vin", groupVins);
+      for (const h of hits ?? []) if (h.vin) fleetByVin[nv(h.vin)] = h.id;
+    }
     // Strip finance facts from shared extraction for non-managers.
     const safeItems = (items ?? []).map((i: any) => {
       const ex = i.extraction ?? null;
@@ -302,7 +358,7 @@ export const getImportBatch = createServerFn({ method: "POST" })
     for (const j of jobRows ?? []) if (!jobs[j.item_id]) jobs[j.item_id] = { state: j.state, attempts: j.attempts, maxAttempts: j.max_attempts, nextRunAt: j.next_run_at };
     const { data: ws } = await sb.from("fleet_inbox_worker_state").select("paused_reason,paused_at").eq("id", 1).maybeSingle();
     const queue = { pausedReason: ws?.paused_reason ?? null, pausedAt: ws?.paused_at ?? null };
-    return { batch, items: itemsOut.map((i: any) => ({ ...i, job: jobs[i.id] ?? null })), proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email, queue };
+    return { batch, items: itemsOut.map((i: any) => ({ ...i, job: jobs[i.id] ?? null })), proposals: safeProposals, transactions, finance, vehicles: vehicles ?? [], canFinance, email, queue, fleetByVin };
   });
 
 // ---------------------------------------------------------------- apply

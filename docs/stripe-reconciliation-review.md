@@ -2,9 +2,21 @@
 
 This package extends reviewed PR #22 HEAD d19970e926b8a666a8bb51c42cc3fe1b483bc9be. No hosted changes, live Stripe calls or financial data imports were performed. The earlier slice is retained below as historical evidence, superseded by this section.
 
+## Final corrections and integration (2026-10-14)
+
+Merged development main `f3b9d363f7aec1ca676d4122e90a22463db60008` into the existing PR history. The Overview conflict retains current `getOverviewApplicants`, protected readiness, Lead Priorities and navigation while using the reconciliation aggregate for billing. Closeout Readiness, BookingActions, end_rental_tx, Contact Status and lifecycle enforcement are unchanged relative to main.
+
+Cancellation records Requested before provider access. Only a canceled subscription response with the matching ID confirms cancellation. A cancellation HTTP 400 StripeInvalidRequestError is a definitive Failed result; transport errors, retrieval failures and ambiguous responses are Unknown. Retries retrieve current Stripe state first and skip cancellation if already canceled. Mapping/provider IDs remain intact. Failed bookkeeping returns an error, never success; a requested attempt without an outcome remains visibly unconfirmed for reconciliation. A process crash can leave Requested, not Confirmed.
+
+Each request and outcome appends to `stripe_cancellation_history`: initiating current Manager/Owner identity, operation and attempt IDs, retry parent, request/record times, outcome, fixed provider evidence/error category and subscription reference. Prior events cannot be updated/deleted/truncated through application roles. Service role has no direct history INSERT grant; the manager-checked definer function appends atomically with the summary. Audit-insert failure rolls back the summary. Identity/rental deletion is restricted by history FKs rather than cascading away evidence. No raw provider error, credentials or payment details are stored. Existing historical attempts are not invented or backfilled.
+
+The staff view distinguishes all four states and displays timestamps and the latest 100 history events. History and operations are bounded; this is not a complete-history export or a large-backlog pagination implementation. No new billing actions or closeout blockers were added.
+
+Fresh integration checks: 44 PostgreSQL checks, 29 mocked provider/authorization checks, 46 Stripe safety checks, 30 closeout rules checks, 10 closeout browser checks, 129 Lead Priorities checks plus stale-offset rejection, admin-read access and minimum-term suites, 4 Overview assertions and 2 reconciliation browser scenarios (390/1440px), TypeScript and production build. No live provider calls. Disposable test database removed after tests.
+
 ## Implementation
 
-Reuses rentals, payments, existing unique invoice/Payment Intent/subscription indexes, apply_payment_refund, the Stripe gateway, webhook signature verification, payment receipt delivery and Overview. Three new tables hold integration mappings, operation reservations and minimized event receipts; none is a competing financial ledger.
+Reuses rentals, payments, existing unique invoice/Payment Intent/subscription indexes, apply_payment_refund, the Stripe gateway, webhook signature verification, payment receipt delivery and Overview. Four new tables hold integration mappings, operation reservations, minimized event receipts and append-only cancellation history; none is a competing financial ledger.
 
 Owner/Manager server authorization and database checks protect explicit linking, review, replay and historical import. Matching never uses email. An external customer mismatch requires explicit customer confirmation and does not overwrite the existing rental customer. Historical imports require a fresh hash-matched preview and existing explicit subscription linkage. Unsupported, ambiguous and unmatched events remain review items, not revenue.
 
@@ -14,9 +26,9 @@ Overview uses one stable database aggregate snapshot, not multiple client pages.
 
 ## Proposed database package and order
 
-`0033_stripe_reconciliation.proposed.sql` SHA-256: `105c9b513134808c2dce724f2b9e52e7d1a40ac125d6db4b2ba2573bded8cff1`. It is outside migration autoload. Reservations 0022–0032 and all existing journals remain untouched. 0033 is proposed based on the inspected local/remote inventory, subject to final cross-developer reservation confirmation. No SQL has been applied to shared staging or production.
+`0033_stripe_reconciliation.proposed.sql` SHA-256: `67d6cb663a775a632977106d0007982b1046fcd9154f728d8013b04f4121516a`. It is outside migration autoload. Reservations 0022–0032 and all existing journals remain untouched. 0033 is proposed based on the inspected local/remote inventory, subject to final cross-developer reservation confirmation. No SQL has been applied to shared staging or production.
 
-The migration requires the existing rentals/payments schema, unique provider identifiers, user_roles/private.is_manager and apply_payment_refund. It does not require eSign, Bookings or Manual Payments. Production installation requires full-schema compatibility verification, duplicate/precondition audit and a target-bound runner. Install SQL and the actual journal entry in one transaction, using actual execution-order timestamps, never filename order or backdating. On repeat execution verify recorded checksum and installed objects; skip only a verified match. Raw SQL intentionally refuses duplicate installation. Failure rolls back installation; do not remove existing financial history to retry.
+The migration requires the existing rentals/payments schema, unique provider identifiers, user_roles/private.is_manager and apply_payment_refund. It does not require eSign, Bookings or Manual Payments. Production installation requires full-schema compatibility verification, duplicate/precondition audit and a target-bound runner. The supported runner must atomically apply SQL and its single automatic receipt. Reconcile its journal timestamp/hash contract and actual pending set before installation; never backdate, skip pending entries, or insert a duplicate receipt. On repeat execution verify recorded checksum and installed objects; skip only a verified match. Raw SQL intentionally refuses duplicate installation. Failure rolls back installation; do not remove existing financial history to retry.
 
 Separate approval is required for installation and application deployment. Production security containment remains a separate release dependency; do not fold this package into the frozen security hotfix.
 
@@ -30,8 +42,8 @@ Automatic ingestion deliberately holds multi-payment/credit/out-of-band/partial 
 
 ## Verification and remaining gates
 
-- 30 disposable PostgreSQL 17 tests: concurrent creation, uniqueness, duplicate/out-of-order events, monotonic refunds, durable cancellation, role denial, protected verified fields, snapshot consistency, installation failure and repeat-install rollback.
-- 23 provider/handler tests with network disabled: provider normalization, explicit linkage, account mode, unsupported invoice handling, timezone boundaries, actual Manager authorization, concurrent idempotency and cancellation retry.
+- 44 disposable PostgreSQL 17 tests: concurrent creation, uniqueness, duplicate/out-of-order events, monotonic refunds, durable cancellation, role denial, protected verified fields, snapshot consistency, installation failure and repeat-install rollback.
+- 29 provider/handler tests with network disabled: provider normalization, explicit linkage, account mode, unsupported invoice handling, timezone boundaries, actual Manager authorization, concurrent idempotency and cancellation retry.
 - 46 existing Stripe safety/regression tests passed; contract minimum-term tests passed.
 - TypeScript and production build pass with original dependencies. Local Node 24.21.0/Vite 7.3.2/macOS arm64; this does not certify provider Linux reproducibility.
 - Existing Driver Access baseline failure is unchanged; no related files edited.

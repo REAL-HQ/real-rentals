@@ -28,7 +28,7 @@ export function WelcomeBack({
 }) {
   const requestLink = useServerFn(requestApplicationLink);
   const [value, setValue] = useState(email ?? "");
-  const [state, setState] = useState<"idle" | "sending" | LinkStatus>(initial?.status ?? "idle");
+  const [state, setState] = useState<"idle" | "sending" | "maintenance" | LinkStatus>(initial?.status ?? "idle");
   const [wait, setWait] = useState(initial?.retryAfterSeconds ?? 0);
   const muted = dark ? "text-white/75" : "text-muted-foreground";
 
@@ -43,6 +43,7 @@ export function WelcomeBack({
     setState("sending");
     try {
       const r = await requestLink({ data: { email: value } });
+      if ("maintenance" in r) { setState("maintenance"); setWait(0); return; }
       setState(r.ok ? "requested" : "failed");
       // r.ok never distinguishes matched from unmatched addresses.
       setWait(r.retryAfterSeconds);
@@ -76,8 +77,8 @@ export function WelcomeBack({
       )}
       {state === "requested" && (
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
-          If that email matches an application, a secure link is on its way (or was sent recently). It works once and
-          expires in 30 minutes. Please check your inbox, Spam or Promotions folder.
+          Your request was received. If the email matches an application and a link can be sent, it will arrive in
+          your inbox. Check Spam or Promotions too. If nothing arrives, retry when the button is ready or contact us.
         </p>
       )}
       {state === "review" && (
@@ -85,6 +86,9 @@ export function WelcomeBack({
           Thanks — we've received your details. For your security, a team member will review them and follow up. You can
           also request a secure link using the email you applied with.
         </p>
+      )}
+      {state === "maintenance" && (
+        <p role="alert" className="mt-3 text-sm font-medium">Application recovery is temporarily unavailable for maintenance. Your information is preserved. Please try again after maintenance; no email was requested.</p>
       )}
       {state === "failed" && (
         <p className="mt-3 text-sm leading-relaxed text-real-red font-medium">

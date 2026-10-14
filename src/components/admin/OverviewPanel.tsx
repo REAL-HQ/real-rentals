@@ -1,5 +1,6 @@
 import { getStripeReport } from '@/lib/stripe-reconciliation.functions';
 import { StripeReconciliationPanel } from './StripeReconciliationPanel';
+import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -31,12 +32,12 @@ import {
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
+import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
-  buildReadinessIndex,
-  READINESS_APPLICATION_SELECT,
-  READINESS_DOCUMENT_SELECT,
-  READINESS_SCREENING_SELECT,
-} from "@/lib/readiness-index";
+  APPLICANT_WINDOW,
+  type OverviewApplicantRow,
+  type ReadinessByApplicant,
+} from "@/lib/admin-overview";
 import { useServerFn } from "@tanstack/react-start";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
 import { applicationStage, wizardProgress } from "@/lib/application-stage";
@@ -50,18 +51,8 @@ import { applicationStage, wizardProgress } from "@/lib/application-stage";
  * not add a cached column, which is how the old score came to disagree with
  * the data it was derived from.
  */
-const APPLICANT_WINDOW = 500;
 
-type ApplicantRow = {
-  id: string;
-  full_name: string | null;
-  status: string | null;
-  current_step: string | null;
-  created_at: string | null;
-  reviewed_at: string | null;
-  [key: string]: unknown;
-};
-type ScreeningRow = { lead_id: string; [key: string]: unknown };
+type ApplicantRow = OverviewApplicantRow;
 import {
   RANGE_LABELS,
   resolveRange,
@@ -73,14 +64,6 @@ import {
 import { fmtDate } from "@/lib/date-format";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
-
-/**
- * What counts as collections.
- *
- * Money that was due and did not arrive. Not the same as "unpaid": the old
- * figure summed every row whose status was not 'paid', which swept in
- * invoices that are simply not due yet and showed them as outstanding debt.
- */
 
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
@@ -142,8 +125,12 @@ function appliedLine(iso?: string | null) {
 
 export function OverviewPanel() {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
-  const [newApps, setNewApps] = useState(0);
-  const [pendingApps, setPendingApps] = useState(0);
+  // Null, not 0, until the read lands. A rendered 0 reads as "nobody
+  // applied"; the truth before the answer arrives is "we do not know yet",
+  // and after a failure it is "we could not find out".
+  const [newApps, setNewApps] = useState<number | null>(null);
+  const [pendingApps, setPendingApps] = useState<number | null>(null);
+  const [appsFailed, setAppsFailed] = useState(false);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
@@ -159,8 +146,11 @@ export function OverviewPanel() {
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
-  const [screenings, setScreenings] = useState<ScreeningRow[]>([]);
-  const [leadDocs, setLeadDocs] = useState<{ lead_id: string; doc_type: string }[]>([]);
+  // Readiness arrives already computed. The licence, insurance, screening
+  // and document evidence it is derived from stays on the server.
+  const [readiness, setReadiness] = useState<ReadinessByApplicant>({});
+  const [canSeeReadiness, setCanSeeReadiness] = useState(true);
+  const loadApplicants = useServerFn(getOverviewApplicants);
   const fleetMaint = useServerFn(getFleetMaintenance);
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
   useEffect(() => {
@@ -171,30 +161,20 @@ export function OverviewPanel() {
 
   useEffect(() => {
     (async () => {
-      const now = new Date();
+
+      // The applicant reads happen on the server now. Migration 0030
+      // revokes the blanket SELECT on applications and its column
+      // allow-list carries no deleted_at, which all three of these
+      // filtered on — so in the browser they would fail for every tier.
+      // The server also decides whether readiness comes back at all.
+      const applicantsP = loadApplicants({ data: undefined })
+        .then((r) => ({ ok: true as const, r }))
+        .catch(() => ({ ok: false as const, r: null }));
 
       const [
-        newAppsQ,
-        pendingAppsQ,
         nextReturnQ,
-        recentAppsQ,
-        screeningsQ,
-        leadDocsQ,
         allVehiclesQ,
       ] = await Promise.all([
-        // New = finished the wizard AND nobody has opened it. Status alone
-        // would keep counting work somebody already read and left alone.
-        supabase
-          .from("applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "new")
-          .is("reviewed_at", null)
-          .is("deleted_at", null),
-        supabase
-          .from("applications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "partial")
-          .is("deleted_at", null),
         supabase
           .from("rentals")
           .select("end_date")
@@ -203,28 +183,6 @@ export function OverviewPanel() {
           .gte("end_date", new Date().toISOString().slice(0, 10))
           .order("end_date", { ascending: true })
           .limit(1),
-        // One applicant query feeds both the recent list and the priority
-        // strip. Hot Prospect is no longer a column you can filter on — it is
-        // derived from the application, the screening and the documents — so
-        // the strip cannot be a `.gte("score", 80)` any more.
-        //
-        // The window is bounded (APPLICANT_WINDOW) rather than unbounded: the
-        // cost of computing readiness on read is that the rows have to come
-        // back. At the current pipeline size this is every applicant several
-        // times over. When it stops being, the answer is a projection built
-        // from the same module, not a cached column that goes stale the moment
-        // somebody uploads a document.
-        supabase
-          .from("applications")
-          .select(
-            `id, full_name, status, current_step, created_at, reviewed_at, ${READINESS_APPLICATION_SELECT}`,
-          )
-          .neq("status", "duplicate")
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(APPLICANT_WINDOW),
-        supabase.from("driver_screenings").select(READINESS_SCREENING_SELECT),
-        supabase.from("documents").select(READINESS_DOCUMENT_SELECT).not("driver_id", "is", null),
         supabase
           .from("vehicles")
           .select(
@@ -233,16 +191,29 @@ export function OverviewPanel() {
       ]);
 
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
-      setNewApps(newAppsQ.count ?? 0);
-      setPendingApps(pendingAppsQ.count ?? 0);
+
+      // Hot Prospect is not a column you can filter on — it is derived from
+      // the application, the screening and the documents. That derivation
+      // now happens on the server, which returns the verdict and keeps the
+      // evidence. The window is bounded (APPLICANT_WINDOW) because readiness
+      // is computed on read, so the rows have to come back.
+      const applicants = await applicantsP;
+      if (applicants.ok && applicants.r) {
+        setNewApps(applicants.r.newApps);
+        setPendingApps(applicants.r.pendingApps);
+        setRecentApps(applicants.r.applicants);
+        setReadiness(applicants.r.readiness ?? {});
+        setCanSeeReadiness(!!applicants.r.canSeeReadiness);
+        setAppsFailed(false);
+      } else {
+        // Leave the counts null. A dashboard that renders 0 because the read
+        // failed is a confident lie about the pipeline, and somebody acts on
+        // it.
+        setAppsFailed(true);
+      }
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
-      // Cast: the generated client cannot type a select built from a shared
-      // column list, so the shape is asserted here and guaranteed by
-      // READINESS_*_SELECT rather than by inference.
-      setRecentApps((recentAppsQ.data ?? []) as unknown as ApplicantRow[]);
-      setScreenings((screeningsQ.data ?? []) as unknown as ScreeningRow[]);
-      setLeadDocs((leadDocsQ.data ?? []) as unknown as { lead_id: string; doc_type: string }[]);
-    })().catch(() => { /* Operational cards keep their existing loading state. */ });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { total, rentable, rented, reserved, needsSetup } = fleet;
@@ -295,12 +266,13 @@ export function OverviewPanel() {
 
   const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
-  // Readiness for every applicant in the window, from the three result sets
-  // already fetched. Both the priority strip and the recent list read this
-  // map, so they cannot disagree about the same person.
+  // Readiness for every applicant in the window, computed on the server and
+  // keyed by applicant id. Both the priority strip and the recent list read
+  // this map, so they cannot disagree about the same person. Empty for a
+  // Coordinator, who is not sent the evidence it summarises.
   const readinessIndex = useMemo(
-    () => buildReadinessIndex(recentApps, screenings, leadDocs),
-    [recentApps, screenings, leadDocs],
+    () => new Map<string, ReadinessResult>(Object.entries(readiness)),
+    [readiness],
   );
 
   /**
@@ -310,6 +282,7 @@ export function OverviewPanel() {
    * only renders what it returns.
    */
   const hot = useMemo(() => {
+    if (!canSeeReadiness) return [];
     return recentApps
       .flatMap((a) => {
         const r = readinessIndex.get(a.id);
@@ -317,7 +290,7 @@ export function OverviewPanel() {
       })
       .sort((x, y) => compareReadiness(x.readiness, y.readiness))
       .slice(0, 5);
-  }, [recentApps, readinessIndex]);
+  }, [recentApps, readinessIndex, canSeeReadiness]);
 
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
@@ -352,6 +325,8 @@ export function OverviewPanel() {
         <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Overview</h1>
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
+
+      <LeadPriorities />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
@@ -568,7 +543,7 @@ export function OverviewPanel() {
           title={
             <span className="inline-flex items-center gap-2">
               Recent Applications
-              {newApps > 0 && (
+              {newApps !== null && newApps > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
                   {newApps}
                 </span>
@@ -576,12 +551,14 @@ export function OverviewPanel() {
             </span>
           }
           subtitle={
-            [
-              newApps > 0 ? `${newApps} New` : null,
-              pendingApps > 0 ? `${pendingApps} Pending` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Newest first"
+            appsFailed
+              ? "Counts Unavailable"
+              : [
+                  newApps !== null && newApps > 0 ? `${newApps} New` : null,
+                  pendingApps !== null && pendingApps > 0 ? `${pendingApps} Pending` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Newest first"
           }
           padded={false}
           right={
@@ -594,7 +571,7 @@ export function OverviewPanel() {
               >
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
-                <option value="readiness">Readiness</option>
+                {canSeeReadiness && <option value="readiness">Readiness</option>}
                 <option value="attention">Needs Attention</option>
               </select>
               <Link
@@ -608,8 +585,11 @@ export function OverviewPanel() {
           }
         >
           {recentApps.length === 0 ? (
-            <div className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]">
-              No Applications Yet.
+            <div
+              className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]"
+              data-applicants-state={appsFailed ? "failed" : "empty"}
+            >
+              {appsFailed ? "Could Not Load Applications." : "No Applications Yet."}
             </div>
           ) : (
             <ul>

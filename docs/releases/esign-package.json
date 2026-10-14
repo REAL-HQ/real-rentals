@@ -1,0 +1,18 @@
+{
+  "source": "e468156d0587f81031ad595185d17a73c591a0c4",
+  "execution_authorized": false,
+  "reservations": {
+    "0023": [
+      "scripts/esign-template-versioning.proposed.sql",
+      "scripts/agreement-template-library.proposed.sql"
+    ],
+    "0024": [
+      "scripts/agreement-number.proposed.sql"
+    ]
+  },
+  "sha256": {
+    "scripts/esign-template-versioning.proposed.sql": "f8349c00ddffda73f244218adae0d49683f3357407a464de52b260d9c8791f2b",
+    "scripts/agreement-template-library.proposed.sql": "1bc7fb85a60eacbdae825d59765a1d1d741a08cd221ae257c1e7e72423e5f2f7",
+    "scripts/agreement-number.proposed.sql": "199f57eda905ef73f9d531f813abc8b2f16759a8b0e89b6920f2985ba55d9aa8"
+  }
+}

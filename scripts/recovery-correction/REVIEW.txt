@@ -1,0 +1,64 @@
+RECOVERY SCHEDULER / COOLDOWN CORRECTION — PREPARED, NOT ACTIVATED
+Base: 498b1953b21131087c2fb8299fe4ffc76ee80bf7
+Branch: codex/recovery-scheduler-cooldown
+
+Scheduler cause: migration 20260722235657 replaced net.http_post with
+extensions.http_post after reinstalling pg_net. The live evidence showed the
+latter is absent and job 2 failed 24/24 runs. pg_net's supported API is net.http_post:
+https://supabase.com/docs/guides/database/extensions/pg_net
+Ops-reminders job 3's source migration has the same obsolete reference. Its
+current failure count has not been inspected; this patch deliberately leaves it alone.
+
+scheduler.prepared.sql changes only job 2's command namespace using cron.alter_job.
+Requires exact original MD5 1c830e7409ddcb0275cea04ffcca74c9, job identity, cadence,
+paused state, existing net function and existing nonempty cron token. No secret
+is returned. No jobs scheduled, enabled, disabled or invoked by this installer.
+Repeated execution refuses drift; transactional failures preserve prior state.
+New command MD5: 478d975efc9c11c5ad5e6c1fe7769ece.
+The execution CONNECTION must independently prove yuyzdsnrbfhkmfzpvhwx; this
+SQL does not invent an internal project-ref setting or claim target attestation.
+
+Cooldown cause: the published legacy path sends before a best-effort JSON history
+update and ignores that update's error; concurrent read/replace writes can also
+lose history. The delivered 2026-10-11 19:12 UTC event has no sent marker. Metadata
+cannot establish whether its particular cause was interruption, failed write,
+concurrent overwrite or another historical implementation. It WAS delivered.
+Do not classify it as failed or replay it. No historical backfill is included.
+
+Current main already fixes the ordering via reviewed migration 0022: durable
+attempt/quota and token commit before provider send; failed/unknown/reserved
+attempts retain quota; an attempt-specific provider idempotency key is reused.
+Reuse that implementation rather than introduce new token storage or ledger.
+This patch exposes finalization errors/throws as UNKNOWN, preserves provider
+uncertainty, records link_unknown in display history, and makes display-history
+errors visible. Unknown is not represented as successful delivery to clients.
+Reservation errors prevent sending. No automatic retries or quota deletion.
+
+Dependencies: requires 0022 and its existing RPCs; it cannot be deployed alone
+against today's pre-Resume production schema. Approved 0022/0025/0030/0032 and
+0031 SQL are unchanged. No new schema migration or reservation is introduced.
+Scheduler repair is a separately approved operational transaction, not a new
+Drizzle migration or replacement journal.
+
+Sequence after separate approval: close writer admission across serving revisions;
+pause/drain using existing controls; preserve/reconcile 24h history; install the
+already-reviewed missing migration package during the controlled cutover;
+publish reviewed Resume+this correction; repair scheduler while it stays paused;
+verify effective command and end-to-end completion; separately approve restart.
+Existing pause/resume wrappers fingerprint the OLD cron command. Run accepted
+migration preflight before this repair and prepare/review a new restart fingerprint
+before execution. Do not silently update old accepted packages. On failure retain
+maintenance/fence/pause and forward-repair; never release quota or replay unknowns.
+
+Tests: synthetic handler provider boundary, actual PostgreSQL reservation RPCs from
+0022, and SQL scheduler contract stub. No live cron/HTTP/provider test was performed.
+Disposable database is Unix-socket-only, network denied, then removed.
+Provider blockers unchanged: all-serving-revision quiescence/request lifetime,
+SMTP retry/in-flight completeness, historical missing cooldown accounting.
+A verified 24h writer-quiet lookback can age quota evidence, but does not prove
+provider delivery drain. Historical mutation requires separate explicit approval.
+
+Next approvals: push/open this isolated branch for review; separately approve any
+historical cooldown repair after deterministic attribution; separately approve
+production cutover/publication and the exact scheduler SQL after provider gates.
+No production queries or writes, communications, Auth/Stripe changes were made.

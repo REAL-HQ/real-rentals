@@ -1,0 +1,166 @@
+{
+  "syntheticOnly": true,
+  "network": "Unix socket only; server outbound denied",
+  "disposableClusterRemoved": true,
+  "tests": [
+    {
+      "test": "original NULL ownership bug reproduced",
+      "passed": true
+    },
+    {
+      "test": "owner verified RPC access",
+      "passed": true
+    },
+    {
+      "test": "manager verified RPC access",
+      "passed": true
+    },
+    {
+      "test": "driver verified RPC access",
+      "passed": true
+    },
+    {
+      "test": "NULL ownership fails closed",
+      "passed": true
+    },
+    {
+      "test": "missing application fails closed",
+      "passed": true
+    },
+    {
+      "test": "NULL argument fails closed",
+      "passed": true
+    },
+    {
+      "test": "wrong Driver or forged other application id denied",
+      "passed": true
+    },
+    {
+      "test": "Coordinator RPC denied",
+      "passed": true
+    },
+    {
+      "test": "anonymous RPC denied",
+      "passed": true
+    },
+    {
+      "test": "unverified session denied",
+      "passed": true
+    },
+    {
+      "test": "expired claims denied",
+      "passed": true
+    },
+    {
+      "test": "unconfirmed identity denied",
+      "passed": true
+    },
+    {
+      "test": "banned identity denied",
+      "passed": true
+    },
+    {
+      "test": "expired server session denied",
+      "passed": true
+    },
+    {
+      "test": "mismatched session denied",
+      "passed": true
+    },
+    {
+      "test": "revoked session denied",
+      "passed": true
+    },
+    {
+      "test": "mutation control detects lost guard",
+      "passed": true
+    },
+    {
+      "test": "repaired guard rejects mutant attack",
+      "passed": true
+    },
+    {
+      "test": "security-preserving RPC pause denies access",
+      "passed": true
+    },
+    {
+      "test": "reviewed forward repair resumes verified access",
+      "passed": true
+    },
+    {
+      "test": "journal failure preserves data",
+      "passed": true
+    },
+    {
+      "test": "journal write failure reported",
+      "passed": true
+    },
+    {
+      "test": "0025 service mutation denied",
+      "passed": true
+    },
+    {
+      "test": "0025 truncate denied",
+      "passed": true
+    },
+    {
+      "test": "HTTP owner verified RPC",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "test": "HTTP manager verified RPC",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "test": "HTTP driver verified RPC",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "test": "HTTP driver NULL-owner RPC denial",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "test": "HTTP coordinator NULL-owner RPC denial",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "test": "HTTP missing application denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "test": "HTTP anonymous denied",
+      "passed": true,
+      "status": 401
+    },
+    {
+      "test": "HTTP Coordinator safe base projection",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "test": "HTTP Coordinator document denied",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "test": "HTTP Coordinator number denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "test": "HTTP revoked signed token denied",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "test": "browser role isolation and direct API",
+      "passed": true
+    }
+  ]
+}

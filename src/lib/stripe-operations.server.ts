@@ -17,18 +17,29 @@ export async function createReservedSubscription(db:any,rentalId:string,env:Stri
  throw new Error('Creation Failed — Retry Same Operation Or Request Staff Review.');
  }
 }
+// Provider errors are deliberately reduced to a fixed taxonomy; never persist raw SDK errors.
 export async function cancelDurably(db:any,rentalId:string,subId:string,env:StripeEnv,actor:string){
  const stripe=await reconciliationClient(env);
  const args={_rental:rentalId,_env:env,_sub:subId,_actor:actor};
- await rpc(db,'stripe_cancel_state',{...args,_state:'requested'});
+ const request=await rpc(db,'stripe_cancel_state',{...args,_state:'requested'});
+ if(!request || typeof request.attempt_id!=='string' || !request.attempt_id)throw new Error('Cancellation request not recorded; staff reconciliation required');
+ let cancelInvoked=false;
  try{
- const current=await stripe.subscriptions.retrieve(subId);
- const canceled=current.status==='canceled'?current:await stripe.subscriptions.cancel(subId);
- if(canceled.status!=='canceled')throw new Error('Unconfirmed');
- }catch{
- await rpc(db,'stripe_cancel_state',{...args,_state:'failed'});
- throw new Error('Cancellation Failed — Retry Required. Mapping Retained.');
+  const current=await stripe.subscriptions.retrieve(subId);
+  if(current.id!==subId || typeof current.status!=='string')throw new Error('Unverified response');
+  if(current.status!=='canceled'){
+   cancelInvoked=true;
+   const canceled=await stripe.subscriptions.cancel(subId);
+   if(canceled.id!==subId || canceled.status!=='canceled')throw new Error('Unverified response');
+  }
+ }catch(error){
+  const e=error as {type?:string;statusCode?:number};
+  const definitive=cancelInvoked && e.type==='StripeInvalidRequestError' && e.statusCode===400;
+  const state=definitive?'failed':'unknown';
+  const code=definitive?'provider_rejected':'provider_unverified';
+  await rpc(db,'stripe_cancel_state',{...args,_attempt:request.attempt_id,_state:state,_evidence:code,_error:code});
+  throw new Error(definitive?'Cancellation Failed — Provider Rejected The Request. Mapping Retained.':'Cancellation Unknown — Verify Provider State Before Retrying. Mapping Retained.');
  }
- await rpc(db,'stripe_cancel_state',{...args,_state:'confirmed'});
+ await rpc(db,'stripe_cancel_state',{...args,_attempt:request.attempt_id,_state:'confirmed',_evidence:'provider_canceled'});
  return {ok:true as const};
 }

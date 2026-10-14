@@ -321,7 +321,12 @@ function StartForm({
   );
 }
 
-function InspectionRunner({
+/**
+ * Exported so a booking can run a handoff inspection without a second copy of
+ * the checklist. Same component, same server functions — Bookings only brings
+ * the rental and the vehicle with it.
+ */
+export function InspectionRunner({
   id,
   vehicleLabel,
   onBack,

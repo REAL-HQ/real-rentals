@@ -9,9 +9,10 @@ import { fmtDateTime } from "@/lib/date-format";
 export function IdentityReviewCard({ applicationId }: { applicationId: string }) {
   const load = useServerFn(listIdentityReviews);
   const resolve = useServerFn(resolveIdentityReview);
+  const [canResolve, setCanResolve] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const refresh = () => load({ data: { applicationId } }).then((r) => setRows(r.rows)).catch(() => {});
+  const refresh = () => load({ data: { applicationId } }).then((r) => { setRows(r.rows); setCanResolve(r.canResolve); }).catch(() => {});
   useEffect(() => { refresh(); }, [applicationId]);
   const open = rows.filter((r) => r.status === "open");
   if (!open.length) return null;
@@ -37,6 +38,7 @@ export function IdentityReviewCard({ applicationId }: { applicationId: string })
           <p className="text-muted-foreground">
             Submitted: {r.submitted_full_name ?? "—"} · {r.submitted_email ?? "—"} · {r.submitted_phone ?? "—"}
           </p>
+          {canResolve && <>
           <input
             className="w-full rounded-md border border-input bg-background px-2 py-1"
             placeholder="Resolution note"
@@ -48,6 +50,7 @@ export function IdentityReviewCard({ applicationId }: { applicationId: string })
             <Button size="sm" variant="outline" onClick={() => act(r.id, "different_person")}>Different Person</Button>
             <Button size="sm" variant="ghost" onClick={() => act(r.id, "dismissed")}>Dismiss</Button>
           </div>
+          </>}
         </div>
       ))}
     </div>

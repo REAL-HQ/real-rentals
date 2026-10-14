@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { classifyProjectionError } from "@/lib/application-projection";
 
 const STATUSES = [
   "upcoming",
@@ -71,6 +72,10 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
   const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
+  // A failed driver read is said out loud rather than rendered as blank
+  // names, because a payment row with no renter on it is a collections
+  // decision made on missing information.
+  const [driversUnavailable, setDriversUnavailable] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -78,9 +83,24 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
       .select("*")
       .then(({ data }) => setPayments(data || []));
     supabase
-      .from("applications")
+      .from("application_read_projection" as any)
       .select("id,full_name,vehicle_id,weekly_rent")
-      .then(({ data }) => setDrivers((data as any) || []));
+      .then(({ data, error }) => {
+        const kind = classifyProjectionError(error);
+        if (kind) {
+          const why =
+            kind === "missing_view"
+              ? "the application projection is not installed on this environment"
+              : kind === "denied"
+                ? "this account is not permitted to read it"
+                : (error?.message ?? "the read failed");
+          setDriversUnavailable(`Renter names could not be loaded — ${why}.`);
+          toast.error("Renter names could not be loaded");
+          return;
+        }
+        setDriversUnavailable(null);
+        setDrivers((data as any) || []);
+      });
     supabase
       .from("vehicles")
       .select("*")
@@ -181,6 +201,12 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           + Add Payment
         </button>
       </div>
+
+      {driversUnavailable && (
+        <div className="mb-3 rounded-xl border border-[#F0C6C0] bg-[#FDF3F1] px-3 py-2 text-sm text-[#8A2A1C]">
+          {driversUnavailable} Amounts and statuses below are real; the Driver column is not.
+        </div>
+      )}
 
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">

@@ -45,7 +45,17 @@ try{
   const db={rpc:async name=>({data:name==='stripe_claim_creation'?{operation_id:'op_test',created_at:'2026-10-11T12:00:00Z',parameters:{cents:35000,customer:'cus_test',payment_method:'pm_test'}}:{},error:null})};
   await Promise.all(Array.from({length:8},()=>ops.createReservedSubscription(db,'r','sandbox','owner')));assert.equal(creations,1);
  });
- await test('provider cancellation failure persists retry state',async()=>{const states=[];globalThis.provider={subscriptions:{retrieve:async()=>({status:'active'}),cancel:async()=>{throw Error('synthetic timeout')}}};await assert.rejects(()=>ops.cancelDurably({rpc:async(n,a)=>{states.push(a._state);return {data:{},error:null}}},'r','sub_test','sandbox','owner'),/Retry Required/);assert.deepEqual(states,['requested','failed'])});
- await test('already canceled retry confirms without another provider mutation',async()=>{const states=[];globalThis.provider={subscriptions:{retrieve:async()=>({status:'canceled'}),cancel:async()=>{throw Error('must not call')}}};await ops.cancelDurably({rpc:async(n,a)=>{states.push(a._state);return {data:{},error:null}}},'r','sub_test','sandbox','owner');assert.deepEqual(states,['requested','confirmed'])});
+ await test('provider cancellation failure persists retry state',async()=>{const states=[];globalThis.provider={subscriptions:{retrieve:async()=>({id:'sub_test',status:'active'}),cancel:async()=>{throw Error('synthetic timeout')}}};await assert.rejects(()=>ops.cancelDurably({rpc:async(n,a)=>{states.push(a._state);return {data:{attempt_id:'attempt'},error:null}}},'r','sub_test','sandbox','owner'),/Cancellation Unknown/);assert.deepEqual(states,['requested','unknown'])});
+ await test('already canceled retry confirms without another provider mutation',async()=>{const states=[];globalThis.provider={subscriptions:{retrieve:async()=>({id:'sub_test',status:'canceled'}),cancel:async()=>{throw Error('must not call')}}};await ops.cancelDurably({rpc:async(n,a)=>{states.push(a._state);return {data:{attempt_id:'attempt'},error:null}}},'r','sub_test','sandbox','owner');assert.deepEqual(states,['requested','confirmed'])});
+ for(const scenario of ['rejection','timeout','malformed','read failure','confirmation write failure'])await test('cancellation '+scenario+' cannot falsely confirm',async()=>{
+  const calls=[];let cancels=0;
+  globalThis.provider={subscriptions:{retrieve:async()=>{if(scenario==='read failure')throw Error('secret');return {id:'sub_test',status:'active'}},cancel:async()=>{cancels++;if(scenario==='rejection')throw {type:'StripeInvalidRequestError',statusCode:400,message:'secret'};if(scenario==='timeout')throw Error('secret');return {id:'sub_test',status:scenario==='malformed'?'active':'canceled'}}}};
+  const db={rpc:async(n,a)=>{calls.push(a);return {data:{attempt_id:'attempt'},error:scenario==='confirmation write failure'&&a._state==='confirmed'?{}:null}}};
+  await assert.rejects(()=>ops.cancelDurably(db,'r','sub_test','sandbox','owner'),e=>!e.message.includes('secret'));
+  assert.equal(calls[1]._state,scenario==='rejection'?'failed':scenario==='confirmation write failure'?'confirmed':'unknown');
+  assert.equal(calls[1]._attempt,'attempt');assert.ok(!JSON.stringify(calls).includes('secret'));
+  if(scenario==='read failure')assert.equal(cancels,0);
+ });
+ await test('missing durable request receipt prevents provider cancellation',async()=>{globalThis.provider={subscriptions:{retrieve:async()=>{throw Error('must not reach provider')}}};await assert.rejects(()=>ops.cancelDurably({rpc:async()=>({data:{},error:null})},'r','sub_test','sandbox','owner'),/request not recorded/)});
  console.log(`${n} provider and server authorization tests passed`);
 }finally{rmSync(dir,{recursive:true,force:true})}

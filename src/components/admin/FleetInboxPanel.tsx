@@ -8,14 +8,16 @@ import {
 } from "lucide-react";
 import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
-  applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile,
+  applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile, attachInboxGroup,
 } from "@/lib/fleet-inbox.functions";
+import { documentDateOf, groupInboxVehicles, newVehiclePrefill, type VehicleGroup } from "@/lib/fleet-inbox-groups";
+import { AddVehicleDialog } from "@/components/admin/AddVehicleDialog";
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
 import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
-import { fmtDateTime } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 
 const BATCH_LABEL: Record<string, string> = {
   uploading: "Uploading", processing: "Processing", ready: "Ready for Review", needs_attention: "Needs Attention",
@@ -174,6 +176,9 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   const classify = useServerFn(classifyInboxItem);
   const attach = useServerFn(attachInboxItem);
   const fileFn = useServerFn(getFleetDocumentFile);
+  const attachGroup = useServerFn(attachInboxGroup);
+  const [creatingFor, setCreatingFor] = useState<VehicleGroup | null>(null);
+  const [attachRetry, setAttachRetry] = useState<{ vin: string; vehicleId: string } | null>(null);
   const [d, setD] = useState<any | null>(null);
   const [dec, setDec] = useState<Record<string, Decision>>({});
   const [confirming, setConfirming] = useState(false);
@@ -270,6 +275,21 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   const creates = selected.filter((p: any) => dec[p.id].action === "create");
   const matches = selected.filter((p: any) => dec[p.id].action === "match");
   const ignores = selected.filter((p: any) => dec[p.id].action === "ignore");
+  const { groups, uncertain } = groupInboxVehicles({ proposals: props, items: d.items, finance: d.finance, fleetByVin: d.fleetByVin ?? {} });
+  const groupedProposalIds = new Set(groups.flatMap((g) => g.members.map((m) => m.proposalId).filter(Boolean) as string[]));
+  async function attachGroupTo(g: VehicleGroup, vehicleId: string) {
+    try {
+      const r = await attachGroup({ data: { batchId, vehicleId, itemIds: g.members.map((m) => m.itemId), proposalIds: g.members.map((m) => m.proposalId).filter(Boolean) as string[] } });
+      if (!r.ok) throw new Error(r.error);
+      setAttachRetry(null);
+      toast.success(`${r.linked} document${r.linked === 1 ? "" : "s"} attached${r.refused ? ` · ${r.refused} left in the Inbox (VIN did not match)` : ""}`);
+    } catch (e: any) {
+      // The vehicle exists; the files stay safely in the Inbox and the card now offers Attach.
+      setAttachRetry({ vin: g.vin, vehicleId });
+      toast.error(e?.message?.startsWith("Forbidden") ? "Only a Manager or Owner can attach these documents." : "Vehicle saved, but the documents were not attached. Use Attach Documents to retry.");
+    }
+    await load();
+  }
   const linkDocs = new Set([...creates, ...matches].map((p: any) => itemById[p.item_id]?.document_id)).size;
 
   return (
@@ -339,6 +359,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                   {it.extraction ? ` · ${it.extraction.vehicleCount} vehicle entr${it.extraction.vehicleCount === 1 ? "y" : "ies"}` : ""}
                   {it.error ? ` · ${it.error}` : ""}
                 </div>
+                <ItemDates it={it} proposals={props.filter((p) => p.item_id === it.id)} />
                 {it.job && it.job.state === "retry_wait" && (
                   <div className="text-xs text-[#B45309] mt-0.5">Retrying Automatically · Attempt {it.job.attempts + 1} Of {it.job.maxAttempts}{it.job.nextRunAt ? ` · Next Try ${new Date(it.job.nextRunAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}` : ""}</div>
                 )}
@@ -390,6 +411,16 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
         </section>
       )}
 
+      {(groups.length > 0 || uncertain.length > 0) && (
+        <NewVehicleGroups groups={groups} uncertain={uncertain} isManager={isManager} vehLabel={vehLabel} attachRetry={attachRetry}
+          itemById={itemById} onCreate={setCreatingFor} onAttach={attachGroupTo} />
+      )}
+      {creatingFor && (
+        <AddVehicleDialog initialPrefill={newVehiclePrefill(creatingFor)} skipDocs
+          onClose={() => setCreatingFor(null)}
+          onCreated={async (id) => { const g = creatingFor; setCreatingFor(null); await attachGroupTo(g, id); }} />
+      )}
+
       {/* Proposals */}
       {props.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -414,7 +445,8 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       <div className="space-y-3">
         {props.map((p) => (
           <ProposalCard key={p.id} p={p} item={itemById[p.item_id]} dec={dec[p.id]} setOne={(patch) => setOne(p.id, patch)}
-            vehicles={d.vehicles} vehLabel={vehLabel} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager} />
+            vehicles={d.vehicles} vehLabel={vehLabel} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager}
+            grouped={groupedProposalIds.has(p.id)} />
         ))}
       </div>
 
@@ -445,9 +477,9 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   );
 }
 
-function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isManager }: {
+function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isManager, grouped }: {
   p: any; item: any; dec?: Decision; setOne: (patch: Partial<Decision>) => void; vehicles: any[];
-  vehLabel: (id: string) => string; finance: any[]; isManager: boolean;
+  vehLabel: (id: string) => string; finance: any[]; isManager: boolean; grouped?: boolean;
 }) {
   if (!dec) return null;
   const done = p.status === "applied" || p.status === "ignored";
@@ -540,7 +572,8 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
               Manager-and-above, as the server now requires. Dismissing a
               proposal changes no vehicle and stays part of preparing the
               queue for review. */}
-          {isManager && p.kind === "new" && (
+          {grouped && <span className="text-xs text-[#55555E]">Create or attach from the New Vehicle Detected card above.</span>}
+          {isManager && p.kind === "new" && !grouped && (
             <ActionBtn active={dec.action === "create"} onClick={() => setOne({ action: dec.action === "create" ? null : "create" })} disabled={!p.vin_check?.formatValid}>Create Vehicle</ActionBtn>
           )}
           {isManager && (
@@ -604,5 +637,80 @@ function ServiceSummary({ fields }: { fields: any }) {
       )}
       <div className="mt-2 text-[11px] text-[#9A9AA3]">Approving creates one service record, one linked expense and one dated mileage reading, all pointing back to this document.</div>
     </div>
+  );
+}
+
+/** Upload time is the server's original timestamp; document dates come from the paper itself. */
+function ItemDates({ it, proposals }: { it: any; proposals: any[] }) {
+  const fv = (k: string) => proposals.map((p) => p.fields?.[k]?.value).find(Boolean) as string | undefined;
+  const docDate = documentDateOf(proposals.map((p) => p.fields).find((f) => f?.issue_date || f?.service_date), it.extraction?.financial?.date?.value);
+  const exp = fv("registration_expires_on") ?? fv("insurance_expires_on");
+  const fmt = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? fmtDate(v) : v);
+  return (
+    <div className="text-xs text-[#55555E] mt-0.5">
+      Uploaded {fmtDateTime(it.created_at)}
+      {docDate ? ` · Document Date ${fmt(docDate)}` : ""}
+      {exp ? ` · Expires ${fmt(exp)}` : ""}
+    </div>
+  );
+}
+
+function NewVehicleGroups({ groups, uncertain, isManager, vehLabel, itemById, attachRetry, onCreate, onAttach }: {
+  groups: VehicleGroup[]; uncertain: { itemId: string; proposalId: string; raw: string | null; reason: string }[];
+  isManager: boolean; vehLabel: (id: string) => string; itemById: Record<string, any>;
+  attachRetry: { vin: string; vehicleId: string } | null;
+  onCreate: (g: VehicleGroup) => void; onAttach: (g: VehicleGroup, vehicleId: string) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  return (
+    <section className="space-y-3">
+      {groups.map((g) => {
+        const existing = g.existingVehicleId ?? (attachRetry?.vin === g.vin ? attachRetry.vehicleId : null);
+        const pf = newVehiclePrefill(g);
+        const title = [pf.year, pf.make, pf.model].filter(Boolean).join(" ") || "Vehicle";
+        const receipts = g.members.filter((m) => m.expenseCandidate);
+        return (
+          <div key={g.vin} className="rounded-xl border border-[#EDEDF0] bg-white p-4">
+            <div className="flex flex-wrap items-start gap-2">
+              <Car className="w-4 h-4 mt-0.5 text-[#9A9AA3]" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold tracking-wider text-[#9A9AA3]">{existing ? "Already In Fleet" : "New Vehicle Detected"}</div>
+                <div className="text-[15px] font-semibold text-[#111114]">{title}</div>
+                <div className="text-xs text-[#55555E] break-all">VIN {g.vin} · {g.members.length} Document{g.members.length === 1 ? "" : "s"}{existing ? ` · ${vehLabel(existing)}` : ""}</div>
+              </div>
+            </div>
+            <ul className="mt-2 space-y-0.5 text-xs text-[#33333A]">
+              {g.members.map((m) => (
+                <li key={m.itemId}>• {m.fileName} — {docClassLabel(m.docClass)} · Uploaded {fmtDateTime(m.uploadedAt)}</li>
+              ))}
+            </ul>
+            {!newVehiclePrefill(g).model && !existing && <p className="mt-2 text-xs text-[#B45309]">Model is not printed on these documents — enter it from the vehicle; it is never guessed.</p>}
+            {g.ownershipSuggestion && !existing && <p className="mt-1 text-xs text-[#55555E]">Suggested Ownership: Company (registered owner {g.ownerText}). Staff confirm before saving.</p>}
+            {receipts.map((m) => (
+              <p key={m.itemId} className="mt-1 text-xs text-[#55555E]">
+                Expense Review Candidate: {m.fileName}{m.expenseCandidate?.amount ? ` · $${m.expenseCandidate.amount}` : ""} — nothing is posted.
+              </p>
+            ))}
+            {g.issues.map((x) => <p key={x} className="mt-1 text-xs text-[#B45309]">{x}</p>)}
+            {isManager ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {existing ? (
+                  <ActionBtn active={false} disabled={busy === g.vin} onClick={async () => { setBusy(g.vin); await onAttach(g, existing); setBusy(null); }}>
+                    <Link2 className="w-3.5 h-3.5" /> Attach Documents
+                  </ActionBtn>
+                ) : (
+                  <ActionBtn active={false} onClick={() => onCreate(g)}>Create Vehicle</ActionBtn>
+                )}
+              </div>
+            ) : <p className="mt-2 text-xs text-[#9A9AA3]">Ready for Manager review — creating a vehicle is Manager-only.</p>}
+          </div>
+        );
+      })}
+      {uncertain.map((u) => (
+        <div key={u.proposalId} className="rounded-xl border border-[#F59E0B] bg-white px-4 py-3 text-xs text-[#7A4B00]">
+          VIN Needs Staff Review — {itemById[u.itemId]?.file_name ?? "File"}{u.raw ? ` (read as ${u.raw})` : ""}: {u.reason}. No vehicle is created until the VIN is confirmed.
+        </div>
+      ))}
+    </section>
   );
 }

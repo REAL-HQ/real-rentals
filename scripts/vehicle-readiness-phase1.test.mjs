@@ -79,9 +79,17 @@ const S = (globalThis.__fakeSb ??= { tables: {}, files: {}, log: [], defaults: {
  * needs its own minimal stand-in. It answers one question — is this user staff
  * — and the tests here are about vehicle identity, not about that gate.
  */
-const staffClient = {
-  from: () => ({ select: () => ({ eq: () => ({ in: () => ({ limit: async () => ({ data: [{ role: "admin" }] }) }) }) }) }),
+// Tolerant of either chain, because the role read is not what these tests are
+// about: the older gate filtered in SQL (.eq().in().limit()), the operational
+// one reads every grant and ranks them in JS (.eq() awaited). Answering both
+// means a change to that gate cannot fail this file for the wrong reason.
+const ROLE_ROWS = { data: [{ role: "admin" }] };
+const roleResult = {
+  then: (res, rej) => Promise.resolve(ROLE_ROWS).then(res, rej),
+  in: () => ({ limit: async () => ROLE_ROWS }),
+  limit: async () => ROLE_ROWS,
 };
+const staffClient = { from: () => ({ select: () => ({ eq: () => roleResult }) }) };
 const call = (fn, data) => fn({ data: fn._validate ? fn._validate(data) : data, context: { userId: "staff-1", supabase: staffClient } });
 
 // ============================================== 1. the right vehicle, server side
@@ -150,7 +158,9 @@ ok(/vehicles\.some\(\(v\) => v\.id === fromVehicleId\)/.test(panelSrc),
 // inspections tab was not listed as an owner of `id`. Source-matching the
 // navigate() call passed the whole time.
 const adminSrc = readFileSync("src/routes/admin.tsx", "utf8");
-ok(/id: \["drivers", "vehicles", "inspections"\]/.test(adminSrc),
+// Asserted as membership, not as the whole list: another tab joining the
+// owners of `id` is not this guard breaking.
+ok(/\n  id: \[[^\]]*"inspections"[^\]]*\],/.test(adminSrc),
   "the inspections tab is allowed to keep a vehicle id in its URL");
 
 // ====================================================== 2. three title facts

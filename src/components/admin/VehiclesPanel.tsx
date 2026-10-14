@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listVehicles } from "@/lib/vehicles-list.functions";
@@ -120,13 +121,16 @@ function Availability({ v }: { v: VehicleListRow }) {
  * find out. Colour alone never carries the meaning — the words are there.
  */
 const READINESS_TONE: Record<ReadinessBand, string> = {
-  listing_ready: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
-  rental_ready: "bg-[rgba(240,192,64,0.14)] text-[#8A6410]",
+  listing_ready: "bg-[rgba(32,160,96,0.16)] text-[#13613B]",
+  // Both "ready" bands are green — amber is for things that need attention,
+  // and a car that can be rented is not one of them. Listing Ready sits a step
+  // deeper so the two still read as different levels at a glance.
+  rental_ready: "bg-[rgba(32,160,96,0.10)] text-[#1E7B3C]",
   not_ready: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
 };
 const READINESS_DOT: Record<ReadinessBand, string> = {
   listing_ready: "bg-[#1C8F57]",
-  rental_ready: "bg-[#C68A12]",
+  rental_ready: "bg-[#50C060]",
   not_ready: "bg-[#D03020]",
 };
 
@@ -197,6 +201,9 @@ export function VehiclesPanel({
   );
 
   const [adding, setAddingLocal] = useState(autoOpenAdd);
+  // Add Vehicle sits in the shared page header (admin.tsx slot), found after mount.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => { setHeaderSlot(document.getElementById("admin-page-header-actions")); }, []);
   const setAdding = useCallback(
     (next: boolean) => {
       setAddingLocal(next);
@@ -316,53 +323,57 @@ export function VehiclesPanel({
 
   return (
     <div>
-      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
-        <div className="flex-1 flex flex-wrap gap-2">
+      {headerSlot && createPortal(
+        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white h-9 px-4 text-sm whitespace-nowrap font-medium hover:opacity-90 transition-opacity duration-150">
+            <Plus className="w-4 h-4" /> Add Vehicle
+          </button>,
+        headerSlot,
+      )}
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search unit, VIN, plate, year, make, model…"
             aria-label="Search vehicles"
-            className="flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white"
+            className="h-9 w-full min-w-0 border border-border rounded-md px-3 text-sm bg-white sm:col-span-3 lg:col-span-1"
           />
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full bg-white text-foreground text-sm" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm" aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full bg-white text-foreground text-sm" aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Body Types</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
-            <SelectTrigger className="h-9 w-[160px] bg-white text-foreground text-sm" aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full bg-white text-foreground text-sm" aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
               {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
-            <SelectTrigger className="h-9 w-[150px] bg-white text-foreground text-sm" aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
+        </div>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="w-[150px] shrink-0"><Select value={sort} onValueChange={(v) => setList({ sort: v })}>
+            <SelectTrigger className="h-9 w-full bg-white text-foreground text-sm" aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="unit">Sort: Unit</SelectItem>
               <SelectItem value="make">Sort: Make</SelectItem>
               <SelectItem value="rate">Sort: Rate</SelectItem>
               <SelectItem value="newest">Sort: Newest</SelectItem>
             </SelectContent>
-          </Select>
-          {/* Fleet-wide readiness lives IN the one sticky filter row: the bar
-              publishes its own height and overlaps the 16px below it, so a
-              second row underneath is covered and unclickable. Counts cover
-              everything the current search and filters match, not the page,
-              and each chip is the filter for its own band. */}
-          {result && (
-            <span className="inline-flex items-center gap-2" data-testid="fleet-readiness">
+          </Select></div>
+            {result && (
+            <span className="flex flex-wrap items-center gap-2" data-testid="fleet-readiness">
               <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
               {READINESS_BANDS.map((band) => {
                 const n = result.readinessCounts?.[band] ?? 0;
@@ -405,23 +416,21 @@ export function VehiclesPanel({
               )}
             </span>
           )}
-          {hasActiveFilters && (
+            {hasActiveFilters && (
             <button onClick={() => { setSearchInput(""); setList({ q: "", status: "all", body: "all", partner: "all", ready: "all" }); }} className="text-sm text-muted-foreground hover:text-foreground px-2">
               Clear
             </button>
           )}
-        </div>
-        <div className="flex items-center gap-2 self-start lg:self-auto">
-          <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5" role="group" aria-label="View">
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5" role="group" aria-label="View">
             <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
             <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
           </div>
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]">
+            <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white h-9 px-4 text-sm whitespace-nowrap font-medium hover:bg-[#FAFAFB]">
             Import / Fleet Inbox
           </button>
-          <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
-            <Plus className="w-4 h-4" /> Add Vehicle
-          </button>
+          </div>
         </div>
       </div>
 

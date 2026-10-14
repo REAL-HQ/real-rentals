@@ -12,7 +12,7 @@ CREATE TABLE public.stripe_operations (
  operation_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
  state text NOT NULL CHECK(state IN ('pending','created','failed','review')),
  parameters jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
- cancellation_state text CHECK(cancellation_state IN ('requested','failed','confirmed')),
+ cancellation_state text CHECK(cancellation_state IN ('requested','failed','confirmed','unknown')),
  cancellation_attempted_at timestamptz, error_code text
 );
 CREATE TABLE public.stripe_event_receipts (
@@ -101,19 +101,71 @@ BEGIN
  UPDATE public.stripe_operations SET state='created',error_code=NULL WHERE rental_id=_rental;
  UPDATE public.rentals SET autopay_active=true WHERE id=_rental;
 END $$;
-CREATE FUNCTION public.stripe_cancel_state(_rental uuid,_env text,_sub text,_state text,_actor uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE r public.rentals;
+-- Each request and terminal outcome is an immutable event, not a mutable audit row.
+CREATE TABLE public.stripe_cancellation_history (
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ attempt_id uuid NOT NULL, retry_of uuid,
+ operation_id uuid NOT NULL REFERENCES public.stripe_operations(operation_id),
+ rental_id uuid NOT NULL REFERENCES public.rentals(id),
+ environment text NOT NULL CHECK(environment IN ('sandbox','live')),
+ subscription_id text NOT NULL,
+ actor_user_id uuid NOT NULL REFERENCES auth.users(id),
+ requested_at timestamptz NOT NULL, recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ outcome text NOT NULL CHECK(outcome IN ('requested','confirmed','failed','unknown')),
+ evidence text CHECK(evidence IN ('provider_canceled','provider_rejected','provider_unverified')),
+ error_code text CHECK(error_code IN ('provider_rejected','provider_unverified')),
+ UNIQUE(attempt_id,outcome)
+);
+CREATE INDEX stripe_cancellation_history_operation ON public.stripe_cancellation_history(operation_id,id DESC);
+ALTER TABLE public.stripe_cancellation_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.stripe_cancellation_history FROM PUBLIC,anon,authenticated,service_role;
+GRANT SELECT ON public.stripe_cancellation_history TO authenticated,service_role;
+CREATE POLICY stripe_cancel_history_manager ON public.stripe_cancellation_history FOR SELECT TO authenticated USING(private.is_manager());
+CREATE FUNCTION public.stripe_history_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+BEGIN RAISE EXCEPTION 'Cancellation history is append only'; END $$;
+CREATE TRIGGER stripe_history_no_changes BEFORE UPDATE OR DELETE ON public.stripe_cancellation_history FOR EACH ROW EXECUTE FUNCTION public.stripe_history_immutable();
+CREATE TRIGGER stripe_history_no_truncate BEFORE TRUNCATE ON public.stripe_cancellation_history FOR EACH STATEMENT EXECUTE FUNCTION public.stripe_history_immutable();
+REVOKE ALL ON FUNCTION public.stripe_history_immutable() FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION public.stripe_cancel_state(_rental uuid,_env text,_sub text,_state text,_actor uuid,
+ _attempt uuid DEFAULT NULL,_evidence text DEFAULT NULL,_error text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE r public.rentals; o public.stripe_operations; h public.stripe_cancellation_history; attempt uuid; parent uuid;
 BEGIN
  PERFORM public.stripe_assert_manager(_actor);
- IF _state NOT IN ('requested','failed','confirmed') THEN RAISE EXCEPTION 'Invalid cancellation state'; END IF;
+ IF _state IS NULL OR _state NOT IN ('requested','failed','confirmed','unknown') THEN RAISE EXCEPTION 'Invalid cancellation state'; END IF;
  SELECT * INTO r FROM public.rentals WHERE id=_rental FOR UPDATE;
  IF NOT FOUND OR r.stripe_subscription_id IS DISTINCT FROM _sub THEN RAISE EXCEPTION 'Subscription changed'; END IF;
  INSERT INTO public.stripe_operations(rental_id,environment,state,parameters) VALUES(_rental,_env,'review','{}') ON CONFLICT DO NOTHING;
- IF EXISTS(SELECT 1 FROM public.stripe_operations WHERE rental_id=_rental AND environment<>_env) THEN RAISE EXCEPTION 'Environment mismatch'; END IF;
+ SELECT * INTO o FROM public.stripe_operations WHERE rental_id=_rental FOR UPDATE;
+ IF o.environment<>_env THEN RAISE EXCEPTION 'Environment mismatch'; END IF;
+ IF _state='requested' THEN
+  IF _attempt IS NOT NULL OR _evidence IS NOT NULL OR _error IS NOT NULL THEN RAISE EXCEPTION 'Invalid request'; END IF;
+  attempt:=gen_random_uuid();
+  SELECT attempt_id INTO parent FROM public.stripe_cancellation_history WHERE operation_id=o.operation_id AND outcome='requested' ORDER BY id DESC LIMIT 1;
+  INSERT INTO public.stripe_cancellation_history(attempt_id,retry_of,operation_id,rental_id,environment,subscription_id,actor_user_id,requested_at,outcome)
+   VALUES(attempt,parent,o.operation_id,_rental,_env,_sub,_actor,clock_timestamp(),'requested') RETURNING * INTO h;
+ ELSE
+  SELECT * INTO h FROM public.stripe_cancellation_history WHERE attempt_id=_attempt AND outcome='requested';
+  IF NOT FOUND OR h.operation_id<>o.operation_id OR h.actor_user_id<>_actor OR h.subscription_id<>_sub THEN RAISE EXCEPTION 'Attempt mismatch'; END IF;
+  IF _state='confirmed' AND (_evidence IS DISTINCT FROM 'provider_canceled' OR _error IS NOT NULL)
+   OR _state='failed' AND (_evidence IS DISTINCT FROM 'provider_rejected' OR _error IS DISTINCT FROM 'provider_rejected')
+   OR _state='unknown' AND (_evidence IS DISTINCT FROM 'provider_unverified' OR _error IS DISTINCT FROM 'provider_unverified') THEN RAISE EXCEPTION 'Outcome evidence required'; END IF;
+  IF EXISTS(SELECT 1 FROM public.stripe_cancellation_history WHERE attempt_id=_attempt AND outcome<>'requested') THEN
+   IF EXISTS(SELECT 1 FROM public.stripe_cancellation_history WHERE attempt_id=_attempt AND outcome=_state) THEN RETURN jsonb_build_object('attempt_id',_attempt); END IF;
+   RAISE EXCEPTION 'Attempt already completed';
+  END IF;
+  attempt:=_attempt;
+  INSERT INTO public.stripe_cancellation_history(attempt_id,retry_of,operation_id,rental_id,environment,subscription_id,actor_user_id,requested_at,outcome,evidence,error_code)
+   VALUES(attempt,h.retry_of,o.operation_id,_rental,_env,_sub,_actor,h.requested_at,_state,_evidence,_error);
+ END IF;
+ -- Confirmed is terminal; a late response cannot turn billing back on.
  UPDATE public.stripe_operations SET cancellation_state=CASE WHEN cancellation_state='confirmed' THEN 'confirmed' ELSE _state END,
- cancellation_attempted_at=now(),error_code=CASE WHEN _state='failed' AND cancellation_state IS DISTINCT FROM 'confirmed' THEN 'provider_cancel_failed' ELSE NULL END WHERE rental_id=_rental;
- -- Retain mapping for historical invoices/refunds. A new billing generation needs explicit review.
- IF _state='confirmed' THEN UPDATE public.rentals SET autopay_active=false WHERE id=_rental; UPDATE public.stripe_rental_links SET provider_canceled=true WHERE environment=_env AND subscription_id=_sub; END IF;
+ cancellation_attempted_at=clock_timestamp(),error_code=CASE WHEN cancellation_state='confirmed' THEN NULL ELSE _error END WHERE rental_id=_rental;
+ IF _state='confirmed' THEN
+  UPDATE public.rentals SET autopay_active=false WHERE id=_rental;
+  UPDATE public.stripe_rental_links SET provider_canceled=true WHERE environment=_env AND subscription_id=_sub;
+ END IF;
+ RETURN jsonb_build_object('attempt_id',attempt);
 END $$;
 
 -- Snapshot is minimized and retrieved server-side from the pinned Stripe account.
@@ -218,5 +270,5 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.stripe_report(date,date,date,date,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.stripe_report(date,date,date,date,text) TO authenticated;
-REVOKE ALL ON FUNCTION public.stripe_link(text,text,text,uuid,uuid,text,text),public.stripe_claim_creation(uuid,text,uuid),public.stripe_finish_creation(uuid,uuid,text,uuid),public.stripe_cancel_state(uuid,text,text,text,uuid),public.stripe_ingest(text,text,jsonb) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.stripe_link(text,text,text,uuid,uuid,text,text),public.stripe_claim_creation(uuid,text,uuid),public.stripe_finish_creation(uuid,uuid,text,uuid),public.stripe_cancel_state(uuid,text,text,text,uuid),public.stripe_ingest(text,text,jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.stripe_link(text,text,text,uuid,uuid,text,text),public.stripe_claim_creation(uuid,text,uuid),public.stripe_finish_creation(uuid,uuid,text,uuid),public.stripe_cancel_state(uuid,text,text,text,uuid,uuid,text,text),public.stripe_ingest(text,text,jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.stripe_link(text,text,text,uuid,uuid,text,text),public.stripe_claim_creation(uuid,text,uuid),public.stripe_finish_creation(uuid,uuid,text,uuid),public.stripe_cancel_state(uuid,text,text,text,uuid,uuid,text,text),public.stripe_ingest(text,text,jsonb) TO service_role;

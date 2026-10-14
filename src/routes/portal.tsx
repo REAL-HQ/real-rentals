@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBusinessPhone } from "@/lib/company.functions";
 import {
   getDriverDashboard,
+  getMyRentalHistory,
   getDriverDocuments,
   getDriverIssues,
   createDriverIssue,
@@ -74,13 +75,13 @@ export const Route = createFileRoute("/portal")({
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "vehicle", label: "My Vehicle", icon: Car },
+  { id: "vehicle", label: "Vehicle", icon: Car },
   { id: "documents", label: "Documents", icon: FileText },
-  { id: "pictures", label: "Pictures", icon: ImageIcon },
+  { id: "pictures", label: "Photos", icon: ImageIcon },
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "deposit", label: "Deposit", icon: Wallet },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
-  { id: "issue", label: "Report Issue", icon: AlertTriangle },
+  { id: "issue", label: "Support", icon: AlertTriangle },
   { id: "referrals", label: "Referrals", icon: Users },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -127,6 +128,33 @@ function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: A
 }
 function ReadOnlyNote({ what }: { what: string }) {
   return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
+}
+
+/**
+ * Shown when a panel's read FAILED, as opposed to coming back empty.
+ *
+ * Several of these panels render nothing at all when their query has no rows,
+ * which is right for a driver who genuinely has no agreements and wrong for a
+ * driver whose agreements could not be read: both produced the same blank
+ * page. A failed read now says so and offers a retry, so nobody concludes
+ * from an empty panel that they have nothing to sign and nothing to pay.
+ */
+function UnavailableNote({ what, error, onRetry }: { what: string; error: unknown; onRetry?: () => void }) {
+  const msg = error instanceof Error ? error.message : "";
+  return (
+    <div className="rounded-2xl border border-real-red/30 bg-real-red/5 p-5">
+      <h3 className="font-semibold text-real-red">{what} could not be loaded</h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {msg || "Something went wrong reading your account."} Nothing has been removed from your
+        account — we just could not read it right now.
+      </p>
+      {onRetry ? (
+        <button onClick={onRetry} className="mt-3 rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium">
+          Try Again
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function Portal() {
@@ -339,7 +367,7 @@ function fmt(amount: number) {
 function DocumentsView() {
   const docsPreviewId = usePreviewDriver();
   const fetchDocs = usePortalRead(getDriverDocuments);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["driver-documents"],
     queryFn: () => fetchDocs(),
   });
@@ -360,7 +388,11 @@ function DocumentsView() {
         </div>
       </div>
 
-      {!isLoading && shared.length > 0 ? (
+      {error ? (
+        <UnavailableNote what="Documents shared with you" error={error} onRetry={() => refetch()} />
+      ) : null}
+
+      {!isLoading && !error && shared.length > 0 ? (
         <div className="rounded-2xl border border-border bg-white p-5">
           <h3 className="font-semibold">Shared by Our Team</h3>
           <ul className="mt-3 divide-y divide-border">
@@ -396,7 +428,7 @@ function AgreementsView() {
   const fetchAgreements = usePortalRead(getMyAgreements);
   const sign = usePortalWrite(signMyAgreement);
   const getPdf = useServerFn(getAgreementPdf);
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["driver-agreements"],
     queryFn: () => fetchAgreements(),
   });
@@ -406,6 +438,9 @@ function AgreementsView() {
   const [busy, setBusy] = useState(false);
 
   if (isLoading) return null;
+  // An agreement waiting to be signed is the one thing a driver must not miss,
+  // so a failed read is named instead of leaving the panel absent.
+  if (error) return <UnavailableNote what="Your rental agreements" error={error} onRetry={() => refetch()} />;
   const rows = data ?? [];
   if (rows.length === 0) return null;
 
@@ -928,7 +963,7 @@ function PicturesView() {
 function SettingsView() {
   const fetchProfile = usePortalRead(getDriverProfile);
   const submitIssue = usePortalWrite(createDriverIssue);
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["driver-profile"],
     queryFn: () => fetchProfile(),
   });
@@ -963,31 +998,40 @@ function SettingsView() {
         <div className="rounded-2xl border border-border bg-white p-5 text-sm text-muted-foreground">
           Loading…
         </div>
+      ) : error ? (
+        // Not an empty ProfileForm. On a failed read `data` is undefined, and
+        // rendering the form anyway showed the driver blank name, phone and
+        // address fields as though that were their record — one Save away from
+        // wiping it. The status line below would likewise have read "—" for an
+        // approved applicant.
+        <UnavailableNote what="Your details" error={error} onRetry={() => refetch()} />
       ) : (
         <ProfileForm profile={data ?? null} onSaved={() => refetch()} />
       )}
 
-      <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Application</h3>
-        <dl className="mt-4 divide-y divide-border">
-          <div className="py-2.5 flex items-center justify-between gap-4">
-            <dt className="text-sm text-muted-foreground">Status</dt>
-            <dd className="text-sm font-medium capitalize text-right">
-              {data?.status ? data.status.replace(/_/g, " ") : "—"}
-            </dd>
-          </div>
-          <div className="py-2.5 flex items-center justify-between gap-4">
-            <dt className="text-sm text-muted-foreground">Applied</dt>
-            <dd className="text-sm font-medium text-right">
-              {data?.applied_at ? fmtDate(data.applied_at) : "—"}
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Your rental status, rates and approval are managed by our team. Use the form below to ask
-          about those.
-        </p>
-      </div>
+      {error ? null : (
+        <div className="rounded-2xl border border-border bg-white p-5">
+          <h3 className="font-semibold">Application</h3>
+          <dl className="mt-4 divide-y divide-border">
+            <div className="py-2.5 flex items-center justify-between gap-4">
+              <dt className="text-sm text-muted-foreground">Status</dt>
+              <dd className="text-sm font-medium capitalize text-right">
+                {data?.status ? data.status.replace(/_/g, " ") : "—"}
+              </dd>
+            </div>
+            <div className="py-2.5 flex items-center justify-between gap-4">
+              <dt className="text-sm text-muted-foreground">Applied</dt>
+              <dd className="text-sm font-medium text-right">
+                {data?.applied_at ? fmtDate(data.applied_at) : "—"}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Your rental status, rates and approval are managed by our team. Use the form below to
+            ask about those.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={requestChange} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Request a Change</h3>
@@ -1293,28 +1337,40 @@ function ReferralsView() {
 function PreRentalPanel({
   onNavigate,
   status,
+  statusUnavailable,
 }: {
   onNavigate: (t: Tab) => void;
   status: string | null;
+  statusUnavailable?: string;
 }) {
   // Having no active rental is not the same as being approved. Nothing revokes
   // the driver role when an application is rejected or a rental ends, so this
   // panel is reached in those states too — and telling somebody who was turned
   // down that they are approved and we are lining up their vehicle is a lie
   // the old copy did not tell.
-  const approved = status === "approved" || status === "active";
+  //
+  // When the status could not be READ, neither headline is honest: the
+  // approved one invents an approval, and the other implies we have looked
+  // and are still thinking about it. So the panel says it does not know.
+  const approved = !statusUnavailable && (status === "approved" || status === "active");
   return (
     <div className="rounded-2xl border border-border bg-white p-6 md:p-8">
       <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">
         {approved ? "You're Approved" : "Your Application"}
       </div>
       <h2 className="mt-3 text-2xl font-semibold">
-        {approved ? "Let's Get You On The Road." : "Everything In One Place."}
+        {statusUnavailable
+          ? "We Could Not Load Your Status."
+          : approved
+            ? "Let's Get You On The Road."
+            : "Everything In One Place."}
       </h2>
       <p className="mt-2 text-sm text-muted-foreground max-w-xl">
-        {approved
-          ? "Two things to finish while we line up your vehicle. We'll email you as soon as one is assigned, and it'll appear here."
-          : "Your documents and details are here whenever you need them. Our team will be in touch about next steps."}
+        {statusUnavailable
+          ? `${statusUnavailable} Your documents and details below still work. Nothing about your application has changed.`
+          : approved
+            ? "Two things to finish while we line up your vehicle. We'll email you as soon as one is assigned, and it'll appear here."
+            : "Your documents and details are here whenever you need them. Our team will be in touch about next steps."}
       </p>
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1385,7 +1441,11 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+        <PreRentalPanel
+          onNavigate={onNavigate}
+          status={data.applicationStatus}
+          statusUnavailable={data.unavailable?.applicationStatus}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
@@ -1485,7 +1545,11 @@ function DashboardView({
               </span>
             )}
           </div>
-          {payments.length === 0 ? (
+          {data.unavailable?.payments ? (
+            // "No payments yet" is a claim about the account. It is not made
+            // when the read failed.
+            <p className="mt-4 text-sm text-real-red">{data.unavailable?.payments}</p>
+          ) : payments.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">No payments yet.</p>
           ) : (
             <ul className="mt-4 divide-y divide-border">
@@ -1541,6 +1605,59 @@ function DashboardView({
           </ul>
         </div>
       )}
+
+      <MyRentalsCard />
+    </div>
+  );
+}
+
+/**
+ * The driver's own rentals, past and present.
+ *
+ * Every other portal read asks for the ACTIVE rental, which is right for "what
+ * am I driving?" and wrong for "what did I drive?": a rental that ended simply
+ * disappeared, so a driver could not see the dates, the car or the agreement of
+ * something they had lived with for months. Read-only, their own rentals only,
+ * and silent when there is nothing to show rather than printing an empty box.
+ */
+function MyRentalsCard() {
+  const fetchHistory = usePortalRead(getMyRentalHistory);
+  const { data } = useQuery({
+    queryKey: ["driver-rental-history"],
+    queryFn: () => fetchHistory(),
+  });
+  const rows = (data ?? []) as Awaited<ReturnType<typeof getMyRentalHistory>>;
+  if (!rows.length) return null;
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5" data-testid="my-rentals">
+      <div className="text-sm font-semibold">My Rentals</div>
+      <ul className="mt-3 space-y-3">
+        {rows.map((r) => {
+          const car = r.vehicle
+            ? [r.vehicle.year, r.vehicle.make, r.vehicle.model].filter(Boolean).join(" ")
+            : null;
+          return (
+            <li
+              key={r.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+              data-rental={r.id}
+            >
+              <span className="font-medium">{car ?? "Vehicle not recorded"}</span>
+              {r.vehicle?.plate && (
+                <span className="font-mono text-xs text-muted-foreground">{r.vehicle.plate}</span>
+              )}
+              <span className="text-muted-foreground">
+                {r.start_date ?? "Start date not recorded"} →{" "}
+                {r.end_date ?? (r.open_ended ? "Open-ended" : "End date not recorded")}
+              </span>
+              <span className="rounded-full bg-soft px-2 py-0.5 text-xs">{r.phase}</span>
+              {r.agreement?.signed_at && (
+                <span className="text-xs text-muted-foreground">Agreement signed</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -1584,7 +1701,7 @@ function MetricTile({
 }
 
 function VehicleView({ data }: { data: DriverDashboard }) {
-  if (!data.vehicle) return <Stub label="My Vehicle" />;
+  if (!data.vehicle) return <Stub label="Vehicle" />;
   const v = data.vehicle;
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">
@@ -1621,12 +1738,15 @@ function Field({ label, value }: { label: string; value: any }) {
  */
 function MyChargesCard() {
   const fetchCharges = usePortalRead(getMyCharges);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["driver-charges"],
     queryFn: () => fetchCharges(),
   });
 
   if (isLoading) return null;
+  // "No tolls" and "we could not read your tolls" are the same blank card
+  // otherwise, and only one of them means the driver owes nothing.
+  if (error) return <UnavailableNote what="Your tolls and citations" error={error} onRetry={() => refetch()} />;
   const rows = data ?? [];
   if (rows.length === 0) return null;
 
@@ -1777,7 +1897,9 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
 
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">All Payments</h3>
-        {data.payments.length === 0 ? (
+        {data.unavailable?.payments ? (
+          <p className="mt-3 text-sm text-real-red">{data.unavailable?.payments}</p>
+        ) : data.payments.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No payments on file yet.</p>
         ) : (
           <table className="mt-4 w-full text-sm">

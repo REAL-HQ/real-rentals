@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { tierAllows, tierFromRoles, type StaffTier } from "@/lib/roles";
 
 export const CONDITION_BUCKET = "condition-media";
 
@@ -90,14 +91,63 @@ export type InspectionDetail = {
   media: ConditionMedia[];
 };
 
-async function isStaff(supabase: any, userId: string): Promise<boolean> {
-  const { data } = await supabase
+/** Just enough of a Supabase client to read one person's roles. */
+type RoleClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => PromiseLike<{ data: unknown }>;
+    };
+  };
+};
+
+/**
+ * Two different questions, asked of the same roles table.
+ *
+ * Recording a handoff is operational work: a Coordinator meets the renter in
+ * a car park, walks the checklist, photographs the panels, writes down the
+ * odometer and the fuel. Destroying that evidence afterwards is not — it is
+ * the one thing on this screen that can make a damage claim unprovable, so it
+ * stays where it was, with a Manager.
+ *
+ * `isStaff` therefore keeps EXACTLY the boundary it always had (Owner or
+ * Manager) and only `deleteConditionMedia` still asks it. Everything
+ * operational asks `canInspect` instead. The role names come from the shared
+ * tier model rather than a third hand-written list in this file, so the two
+ * cannot drift apart from the rest of the app.
+ *
+ * Both read the roles through the CALLER's own client, as this file always
+ * has — the tier is never taken from the request.
+ */
+// Taken as `unknown` and narrowed once, here: structurally checking the real
+// client against RoleClient makes TypeScript walk the whole generated Database
+// type and give up (TS2589). `unknown` is not `any` — nothing is read off it
+// without this cast.
+async function staffTier(supabase: unknown, userId: string): Promise<StaffTier | null> {
+  const { data } = await (supabase as RoleClient)
     .from("user_roles")
     .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "team"])
-    .limit(1);
-  return !!(data && data.length);
+    .eq("user_id", userId);
+  return tierFromRoles(((data ?? []) as Array<{ role: unknown }>).map((r) => String(r.role)));
+}
+
+/** Owner or Manager. Unchanged: the gate on destroying condition evidence. */
+async function isStaff(supabase: unknown, userId: string): Promise<boolean> {
+  return tierAllows(await staffTier(supabase, userId), "manager");
+}
+
+/**
+ * Owner, Manager or Coordinator — may run a handoff and record what they saw.
+ *
+ * This is the operational inspection permission, enforced here on the server.
+ * It admits a Coordinator to: starting and completing a Check-Out or Check-In,
+ * setting checklist results, recording odometer, fuel and notes, uploading
+ * condition photographs, and reading the photographs for a car. It admits them
+ * to nothing else — no licence numbers, no identity documents, no agreement
+ * PDFs, no money, no rental lifecycle, and no bucket-wide storage access,
+ * because none of those are reached from this file.
+ */
+async function canInspect(supabase: unknown, userId: string): Promise<boolean> {
+  return tierAllows(await staffTier(supabase, userId), "coordinator");
 }
 
 function safeExt(fileName: string, mime: string): string {
@@ -166,10 +216,10 @@ export const createConditionUploadUrl = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const staff = await isStaff(context.supabase, context.userId);
+    const operator = await canInspect(context.supabase, context.userId);
 
     let vehicleId = data.vehicleId ?? null;
-    if (!staff) {
+    if (!operator) {
       // A driver may only ever upload against the car they are renting, no
       // matter what vehicle id the client sends.
       const rental = await activeRentalFor(context.supabase, context.userId);
@@ -206,10 +256,10 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const staff = await isStaff(context.supabase, context.userId);
+    const operator = await canInspect(context.supabase, context.userId);
 
     let rentalId = data.rentalId ?? null;
-    if (!staff) {
+    if (!operator) {
       const rental = await activeRentalFor(context.supabase, context.userId);
       if (!rental || rental.vehicle_id !== data.vehicleId) throw new Error("Forbidden");
       rentalId = rental.id as string;
@@ -233,7 +283,7 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
       mime_type: data.mimeType ?? null,
       size_bytes: data.sizeBytes ?? null,
       captured_by: context.userId,
-      captured_by_role: staff ? "staff" : "driver",
+      captured_by_role: operator ? "staff" : "driver",
       caption: data.caption ?? null,
     });
     if (error) throw new Error(error.message);
@@ -248,10 +298,10 @@ export const listConditionMedia = createServerFn({ method: "POST" })
       .parse(d ?? {}),
   )
   .handler(async ({ data, context }): Promise<ConditionMedia[]> => {
-    const staff = await isStaff(context.supabase, context.userId);
+    const operator = await canInspect(context.supabase, context.userId);
 
     let vehicleId = data.vehicleId ?? null;
-    if (!staff) {
+    if (!operator) {
       const rental = await activeRentalFor(context.supabase, context.userId);
       if (!rental?.vehicle_id) return [];
       vehicleId = rental.vehicle_id as string;
@@ -308,7 +358,7 @@ export const startInspection = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<{ id: string }> => {
-    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");
+    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // The vehicle was never checked here: a well-formed UUID for a car that
@@ -323,7 +373,8 @@ export const startInspection = createServerFn({ method: "POST" })
       .eq("id", data.vehicleId)
       .maybeSingle();
     if (!vehicle) throw new Error("That vehicle no longer exists.");
-    if (vehicle.archived_at) throw new Error("That vehicle is archived — restore it before inspecting it.");
+    if (vehicle.archived_at)
+      throw new Error("That vehicle is archived — restore it before inspecting it.");
 
     const { data: template } = await supabaseAdmin
       .from("inspection_templates")
@@ -332,11 +383,34 @@ export const startInspection = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!template) throw new Error("Template not found");
 
+    // An inspection of a car that is OUT belongs to the rental it is out on.
+    //
+    // rental_id was only ever what the caller passed, and the Start Inspection
+    // form never passed one — so every inspection and every condition photo
+    // taken during a live rental was stored with rental_id NULL. The evidence
+    // existed and could not be found from the rental it was evidence for: the
+    // booking's Inspections tab and listConditionMedia(vehicle, rental) both
+    // came back empty, which is exactly the gap that loses a damage claim.
+    //
+    // So when the caller does not name a rental, ask the car. Only the ACTIVE
+    // rental counts, which is why a pre-delivery inspection before activation
+    // still correctly records no rental at all.
+    let rentalId = data.rentalId ?? null;
+    if (!rentalId) {
+      const { data: live } = await supabaseAdmin
+        .from("rentals")
+        .select("id")
+        .eq("vehicle_id", data.vehicleId)
+        .eq("status", "active")
+        .maybeSingle();
+      rentalId = (live?.id as string | undefined) ?? null;
+    }
+
     const { data: inspection, error } = await supabaseAdmin
       .from("inspections")
       .insert({
         vehicle_id: data.vehicleId,
-        rental_id: data.rentalId ?? null,
+        rental_id: rentalId,
         template_id: template.id,
         inspection_type: template.inspection_type,
         status: "in_progress",
@@ -378,7 +452,7 @@ export const getInspection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<InspectionDetail> => {
-    const staff = await isStaff(context.supabase, context.userId);
+    const operator = await canInspect(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: inspection } = await supabaseAdmin
@@ -388,7 +462,7 @@ export const getInspection = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!inspection) throw new Error("Inspection not found");
 
-    if (!staff) {
+    if (!operator) {
       // Drivers may only read an inspection on the car they rent.
       const rental = await activeRentalFor(context.supabase, context.userId);
       if (!rental || rental.vehicle_id !== inspection.vehicle_id) throw new Error("Forbidden");
@@ -441,7 +515,7 @@ export const setInspectionItem = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");
+    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const patch: Record<string, unknown> = {};
     if (data.result !== undefined) patch.result = data.result;
@@ -472,7 +546,7 @@ export const updateInspection = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");
+    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const patch: Record<string, unknown> = {};
     if (data.odometer !== undefined) patch.odometer = data.odometer;
@@ -499,7 +573,7 @@ export const completeInspection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<CompleteResult> => {
-    if (!(await isStaff(context.supabase, context.userId))) throw new Error("Forbidden");
+    if (!(await canInspect(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: items } = await supabaseAdmin

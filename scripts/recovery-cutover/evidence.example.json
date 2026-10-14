@@ -1,0 +1,21 @@
+{
+  "target_verified": false,
+  "fence_verified": false,
+  "cron_paused": false,
+  "all_origins_inventoried": false,
+  "old_instances_quiesced": false,
+  "provider_inventory_complete": false,
+  "pre_pause_sends_reconciled": false,
+  "tokens_preserved": false,
+  "audit_preserved": false,
+  "published_candidate_verified": false,
+  "restart_approved": false,
+  "inflight_requests": null,
+  "pending_http_jobs": null,
+  "unaccounted_deliveries": null,
+  "retrying_deliveries": null,
+  "unknown_delivery_outcomes": null,
+  "provider_evidence_ref": "",
+  "origin_inventory_ref": "",
+  "fence_evidence_ref": ""
+}

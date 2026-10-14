@@ -13,7 +13,8 @@ Transcribe. Never infer, complete or correct. If a value is not printed, omit it
 A single document may describe MANY vehicles (e.g. a PDF of several insurance cards, one per page). Return one entry per distinct vehicle, with the page number (1-based) where it appears. Values that apply to every vehicle (insurer, policy number, policy dates, named insured, shop name) go in "shared" once.
 
 documentClass: one of ${DOC_CLASSES.join(", ")}. Use "unknown" if not confident.
-Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
+Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, issue_date, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
+issue_date: ONLY the "Date of Issue" printed on a certificate of title or registration — never the previous issue date, odometer date, acquisition date or a received/posted date. If it is unclear, give confidence "low".
 body_type: sedan, suv, minivan, truck, van, coupe, hatchback, wagon, convertible, other. Dates YYYY-MM-DD. Money and mileage digits only (decimal point allowed for money).
 confidence: high (clear), medium (legible but imperfect), low (unclear).
 For service/repair/maintenance receipts: current_odometer is the mileage printed on the invoice; also list each service line on that vehicle's entry as "serviceItems":[{"description":"as printed","amount":"digits or omit"}]. Never invent a line, amount, mileage, date, vendor or invoice number.
@@ -25,7 +26,7 @@ Respond ONLY with strict JSON:
  "warnings":["..."]}`;
 
 const ALL_FIELDS = new Set<string>([
-  ...VEHICLE_FIELDS, ...FINANCE_FIELDS, "unit_number", "named_insured", "service_date", "vendor",
+  ...VEHICLE_FIELDS, ...FINANCE_FIELDS, "unit_number", "named_insured", "issue_date", "service_date", "vendor",
   "service_description", "parts_total", "labor_total", "total", "invoice_number", "tax_total", "service_items",
 ]);
 

@@ -8,12 +8,13 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtDate } from "@/lib/date-format";
+import { fmtContractDate } from "@/lib/agreement-dates";
 import { minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { assertProjectionOk } from "@/lib/application-projection";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -294,14 +295,14 @@ async function buildMergeData(
     vehicle_vin: vehicle?.vin ? String(vehicle.vin).toUpperCase() : "",
     weekly_rate: money(weekly),
     deposit_amount: deposit != null && Number(deposit) === 0 ? "$0" : money(deposit),
-    start_date: startDate ? fmtDate(startDate) : "",
-    return_date: endDate ? fmtDate(endDate) : "",
+    start_date: startDate ? fmtContractDate(startDate) : "",
+    return_date: endDate ? fmtContractDate(endDate) : "",
     // v1.6 fields — real records only; empty values block a template that uses them.
     // RRA-000001 numbers are assigned only when the agreement record is created
     // (pending migration); previews print this placeholder so regenerating a
     // preview never consumes a number.
     agreement_number: AGREEMENT_NUMBER_PLACEHOLDER,
-    driver_dob: app.dob ? fmtDate(app.dob) : "",
+    driver_dob: app.dob ? fmtContractDate(app.dob) : "",
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
       : "",
@@ -313,7 +314,7 @@ async function buildMergeData(
     insurance_policy: String(app.insurance_policy_number ?? "").trim() || "None on file",
     min_term_end: "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: fmtDate(new Date()),
+    today: fmtContractDate(new Date()),
   };
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
@@ -469,7 +470,7 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     // makes the "Minimum-term end date" blocker below fire rather than a
     // contract printing a date nobody computed.
     const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));
-    if (endIso) data.min_term_end = fmtDate(endIso);
+    if (endIso) data.min_term_end = fmtContractDate(endIso);
   }
   const pay = { tab: "payments" as const };
   const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };
@@ -560,7 +561,7 @@ export const listAgreements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<AgreementRow[]> => {
-    const actor = await requireTierFor(context.userId, "coordinator");
+    const actor = await requireTierFor(context.userId, "manager");
     void actor;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows } = await supabaseAdmin
@@ -907,6 +908,8 @@ export const getAgreementPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agreementId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    const { getActor, requireManager } = await import("@/lib/roles.server");
+    if (await getActor(context.userId)) await requireManager(context.userId);
     const { data: ag } = await context.supabase
       .from("agreements")
       .select("id,status,document_id,archive_status")
@@ -1098,10 +1101,14 @@ export const getMyAgreements = createServerFn({ method: "GET" })
       body: string;
       document_id: string | null;
     };
-    const { data: apps } = await context.supabase
-      .from("applications")
+    const { data: apps, error: appsErr } = await context.supabase
+      .from("application_read_projection" as any)
       .select("id")
       .eq("user_id", context.userId);
+    // Not swallowed: a failed read here returned [] and the driver saw a
+    // portal with no agreements at all — including one they had been sent and
+    // were waiting to sign.
+    assertProjectionOk(appsErr as any, "your agreements");
     const ids = (apps ?? []).map((a: any) => a.id);
     if (!ids.length) return [] as Mine[];
     const { data } = await context.supabase
@@ -1136,12 +1143,17 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     if (!own) throw new Error("Agreement not found");
     const problems = adoptionProblems(own.body as string, data.adoption, data.signerName);
     if (problems.length) throw new Error(problems[0]);
-    const { data: mine } = await context.supabase
-      .from("applications")
+    const { data: mine, error: mineErr } = await context.supabase
+      .from("application_read_projection" as any)
       .select("id")
       .eq("id", own.application_id as string)
       .eq("user_id", context.userId)
       .maybeSingle();
+    // This read IS the ownership check on a signing write, and it already
+    // failed closed. The assert opens nothing; it replaces "Agreement not
+    // found" with the true reason when the cause was an unavailable
+    // projection rather than somebody else's agreement.
+    assertProjectionOk(mineErr as any, "this agreement");
     if (!mine) throw new Error("Agreement not found");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");

@@ -396,6 +396,8 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
     // Owner + Manager only — Coordinators may view the waitlist but not promote.
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { recoveryEntryPaused, recoveryMaintenanceResponse } = await import("@/lib/recovery-maintenance.server");
+    if (await recoveryEntryPaused(supabaseAdmin)) return recoveryMaintenanceResponse;
 
     // One atomic database call: locks the entry, reuses an existing applicant
     // by exact email/phone, never creates a second profile, keeps the original
