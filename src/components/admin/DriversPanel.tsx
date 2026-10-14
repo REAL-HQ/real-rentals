@@ -1376,7 +1376,8 @@ function DriverDetail({
     try {
       const res: any = await closeRental({ data: { rentalId: activeRentalId, vehicleStatus: "available", returnMileage: digits ? Number(digits) : null } });
       if (res && res.ok === false) { toast.error(res.error ?? "Could not end the rental"); return; }
-      toast.success("Rental ended — settle the deposit next");
+      toast.success(res.alreadyClosed ? "Rental was already closed." : res.vehicleStatus === "available" ? "Rental closed — vehicle released to Available." : `Rental closed — vehicle held in Maintenance: ${(res.releaseReasons ?? []).join("; ")}.`);
+      if (res.billing) toast.info(res.billing);
       setDepositRentalId(activeRentalId);
       onSaved({ status: "closed" });
     } catch (e) {

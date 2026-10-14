@@ -472,26 +472,25 @@ export const endRental = createServerFn({ method: "POST" })
       _vehicle_status: data.vehicleStatus,
       _return_miles: data.returnMileage ?? null,
       _actor: actor.userId,
+      _release_contract: "safe-release-v1",
     });
     if (error) {
       const m = String(error.message);
+      if (["PGRST202", "42883", "42P01"].includes(String(error.code)) || /function.*(missing|does not exist|schema cache)/i.test(m)) {
+        return { ok: false, error: "Safe vehicle release is unavailable. The required database upgrade is not available; this request did not close the rental. Contact an administrator." };
+      }
       const n = (s: string) => Number(m.split(s + ":")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
       if (m.includes("return_below_pickup")) return { ok: false, error: `Return mileage can't be lower than pickup mileage (${n("return_below_pickup")} mi).` };
       if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
       throw new Error(error.message);
     }
-    if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
+    // Missing/old migration cannot resolve this versioned RPC call. Never infer release from the request.
+    if (outcome?.contract !== "safe-release-v1" || (outcome.alreadyClosed !== true && (!["available", "maintenance"].includes(outcome.vehicleStatus) || !Array.isArray(outcome.releaseReasons)))) throw new Error("Safe vehicle release response unavailable. Verify rental state before retrying.");
+    return { ok: true, alreadyClosed: outcome.alreadyClosed === true,
+      vehicleStatus: outcome.vehicleStatus as "available" | "maintenance" | undefined,
+      releaseReasons: (outcome.releaseReasons ?? []) as string[],
+      billing: "Closure does not confirm Stripe cancellation. Review billing, charges and deposit separately." };
 
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, {
-      action: "rental.ended",
-      summary: `Ended rental ${rental.id}`,
-      entityType: "rental",
-      entityId: String(rental.id),
-      metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
-    });
-
-    return { ok: true, alreadyClosed: false };
   });
 
 /** Truthful messages for the reasons activate_rental_tx refuses. */
