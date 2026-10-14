@@ -5,6 +5,10 @@ DO $$ BEGIN
  OR to_regprocedure('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)') IS NULL
  OR to_regprocedure('public.vehicle_rental_ready_missing(uuid)') IS NULL
  THEN RAISE EXCEPTION 'safe_release_prerequisites_missing'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+ AND p.proname IN ('stripe_link','stripe_claim_creation','stripe_finish_creation','stripe_cancel_state','stripe_ingest')
+ AND position('pg_advisory_xact_lock(710026,2)' IN pg_get_functiondef(p.oid))=0)
+ THEN RAISE EXCEPTION 'safe_release_stripe_lock_upgrade_required'; END IF;
 END $$;
 
 -- One lock order before row locks, including evidence writes and assignments.
@@ -42,8 +46,11 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.inspection_items WHERE inspection_id=i.id AND (result IS NULL OR result NOT IN ('pass','fail','na') OR (is_critical AND result='fail')))
   THEN reasons:=array_append(reasons,'Return inspection missing, incomplete or failed'); END IF;
  END IF;
- SELECT * INTO i FROM public.inspections WHERE vehicle_id=_vehicle AND status IS DISTINCT FROM 'void' ORDER BY created_at DESC,id DESC LIMIT 1;
- IF FOUND AND (i.status='failed' OR EXISTS(SELECT 1 FROM public.inspection_items WHERE inspection_id=i.id AND is_critical AND result='fail')) THEN reasons:=array_append(reasons,'Latest vehicle inspection has unresolved failure'); END IF;
+ -- No existing repair record identifies and verifies resolution of a specific finding.
+ -- Neither a new draft nor a later passed inspection is proof of that resolution.
+ IF EXISTS(SELECT 1 FROM public.inspections h WHERE h.vehicle_id=_vehicle AND
+  (h.status='failed' OR EXISTS(SELECT 1 FROM public.inspection_items x WHERE x.inspection_id=h.id AND x.is_critical AND x.result='fail')))
+ THEN reasons:=array_append(reasons,'Historical inspection failure requires verified resolution; clearance workflow unavailable'); END IF;
  IF EXISTS(SELECT 1 FROM public.incidents WHERE vehicle_id=_vehicle AND status IS DISTINCT FROM 'closed') THEN reasons:=array_append(reasons,'Unresolved incident or damage'); END IF;
  IF EXISTS(SELECT 1 FROM public.maintenance_records WHERE vehicle_id=_vehicle AND status IS DISTINCT FROM 'completed'
   AND (status='upcoming' AND due_date>CURRENT_DATE AND (due_mileage IS NULL OR due_mileage>coalesce(v.current_odometer,0))) IS NOT TRUE)
@@ -63,7 +70,7 @@ BEGIN
    reasons:=private.vehicle_release_reasons(NEW.vehicle_id);
   END IF;
  ELSE
-  IF NEW.status IN ('available','reserved') AND TG_OP='UPDATE' THEN reasons:=private.vehicle_release_reasons(NEW.id); END IF;
+  IF NEW.status IN ('available','reserved') AND TG_OP='UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN reasons:=private.vehicle_release_reasons(NEW.id); END IF;
  END IF;
  IF cardinality(reasons)>0 THEN RAISE EXCEPTION 'vehicle_safety_hold:%',array_to_string(reasons,'; '); END IF;
  RETURN NEW;
@@ -71,6 +78,27 @@ END $$;
 REVOKE ALL ON FUNCTION private.guard_safe_vehicle_release() FROM PUBLIC,anon,authenticated;
 CREATE TRIGGER safe_release_guard BEFORE INSERT OR UPDATE ON public.rentals FOR EACH ROW EXECUTE FUNCTION private.guard_safe_vehicle_release();
 CREATE TRIGGER safe_release_guard BEFORE UPDATE ON public.vehicles FOR EACH ROW EXECUTE FUNCTION private.guard_safe_vehicle_release();
+
+-- Preserve completed safety evidence while allowing non-safety notes/signatures.
+CREATE FUNCTION private.preserve_inspection_safety() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE locked boolean;
+BEGIN
+ IF TG_TABLE_NAME='inspections' THEN
+  locked:=OLD.completed_at IS NOT NULL OR OLD.status IN ('passed','failed');
+  IF locked AND (TG_OP='DELETE' OR (to_jsonb(NEW)-ARRAY['updated_at','notes','exterior_notes','interior_notes','driver_signature_name','driver_signed_at','driver_notes','driver_user_id','driver_signature_ip','driver_signature_user_agent','signature_requested_at']) IS DISTINCT FROM
+   (to_jsonb(OLD)-ARRAY['updated_at','notes','exterior_notes','interior_notes','driver_signature_name','driver_signed_at','driver_notes','driver_user_id','driver_signature_ip','driver_signature_user_agent','signature_requested_at']))
+  THEN RAISE EXCEPTION 'completed_inspection_safety_immutable'; END IF;
+ ELSE
+  SELECT completed_at IS NOT NULL OR status IN ('passed','failed') INTO locked FROM public.inspections WHERE id=OLD.inspection_id;
+  IF locked AND (TG_OP='DELETE' OR (to_jsonb(NEW)-ARRAY['updated_at','notes']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['updated_at','notes']))
+  THEN RAISE EXCEPTION 'completed_inspection_safety_immutable'; END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION private.preserve_inspection_safety() FROM PUBLIC,anon,authenticated;
+CREATE TRIGGER safe_release_history BEFORE UPDATE OR DELETE ON public.inspections FOR EACH ROW EXECUTE FUNCTION private.preserve_inspection_safety();
+CREATE TRIGGER safe_release_history BEFORE UPDATE OR DELETE ON public.inspection_items FOR EACH ROW EXECUTE FUNCTION private.preserve_inspection_safety();
 
 DROP FUNCTION public.end_rental_tx(uuid,date,text,integer,uuid);
 CREATE FUNCTION public.end_rental_tx(_rental_id uuid, _end date, _vehicle_status text, _return_miles integer DEFAULT NULL, _actor uuid DEFAULT NULL, _release_contract text DEFAULT NULL)

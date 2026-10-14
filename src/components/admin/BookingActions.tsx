@@ -311,7 +311,7 @@ function EndRentalDialog({
           <span className="font-medium text-[#111114]">
             {d.vehicle?.label ?? d.vehicle?.unitNumber ?? "the vehicle"}
           </span>{" "}
-          to Available. Missing return evidence or unresolved safety issues hold it in Maintenance. Billing cancellation is separate. Closing stops running automations. The paperwork, photos and charges stay on the booking.
+          to Available. The server must verify release safety; if the required database upgrade is unavailable, closure is unavailable. Missing return evidence or unresolved safety issues require Maintenance. Billing cancellation is separate. Closing stops running automations. The paperwork, photos and charges stay on the booking.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -60,6 +60,8 @@ END $$;
 CREATE FUNCTION public.stripe_link(_env text,_sub text,_customer text,_rental uuid,_actor uuid,_reason text,_confirmed_customer text DEFAULT NULL) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r public.rentals; l public.stripe_rental_links;
 BEGIN
+ -- Shared outer lock: acquire before subscription, rental, operation or payment locks.
+ PERFORM pg_advisory_xact_lock(710026,2);
  PERFORM public.stripe_assert_manager(_actor);
  PERFORM pg_advisory_xact_lock(hashtextextended(_env||':'||_sub,0));
  SELECT * INTO r FROM public.rentals WHERE id=_rental FOR UPDATE;
@@ -78,6 +80,8 @@ END $$;
 CREATE FUNCTION public.stripe_claim_creation(_rental uuid,_env text,_actor uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r public.rentals; o public.stripe_operations;
 BEGIN
+ -- Shared outer lock: acquire before subscription, rental, operation or payment locks.
+ PERFORM pg_advisory_xact_lock(710026,2);
  PERFORM public.stripe_assert_manager(_actor);
  SELECT * INTO r FROM public.rentals WHERE id=_rental FOR UPDATE;
  IF NOT FOUND OR r.stripe_subscription_id IS NOT NULL THEN RAISE EXCEPTION 'Rental unavailable or already subscribed'; END IF;
@@ -94,6 +98,8 @@ END $$;
 CREATE FUNCTION public.stripe_finish_creation(_rental uuid,_op uuid,_sub text,_actor uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE o public.stripe_operations;
 BEGIN
+ -- Shared outer lock: acquire before subscription, rental, operation or payment locks.
+ PERFORM pg_advisory_xact_lock(710026,2);
  PERFORM 1 FROM public.rentals WHERE id=_rental FOR UPDATE;
  SELECT * INTO o FROM public.stripe_operations WHERE rental_id=_rental AND operation_id=_op FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Operation mismatch'; END IF;
@@ -131,6 +137,8 @@ CREATE FUNCTION public.stripe_cancel_state(_rental uuid,_env text,_sub text,_sta
  _attempt uuid DEFAULT NULL,_evidence text DEFAULT NULL,_error text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE r public.rentals; o public.stripe_operations; h public.stripe_cancellation_history; attempt uuid; parent uuid;
 BEGIN
+ -- Shared outer lock: acquire before subscription, rental, operation or payment locks.
+ PERFORM pg_advisory_xact_lock(710026,2);
  PERFORM public.stripe_assert_manager(_actor);
  IF _state IS NULL OR _state NOT IN ('requested','failed','confirmed','unknown') THEN RAISE EXCEPTION 'Invalid cancellation state'; END IF;
  SELECT * INTO r FROM public.rentals WHERE id=_rental FOR UPDATE;
@@ -174,6 +182,8 @@ CREATE FUNCTION public.stripe_ingest(_env text,_event text,_s jsonb) RETURNS jso
 DECLARE l public.stripe_rental_links; r public.rentals; p public.payments; receipt public.stripe_event_receipts;
  pid uuid; v_reason text; gross numeric; ra numeric;
 BEGIN
+ -- Shared outer lock: acquire before subscription, rental, operation or payment locks.
+ PERFORM pg_advisory_xact_lock(710026,2);
  PERFORM pg_advisory_xact_lock(hashtextextended(_env||':'||coalesce(_s->>'subscription_id',_s->>'id'),0));
  INSERT INTO public.stripe_event_receipts(environment,event_id,object_id,kind,snapshot) VALUES(_env,_event,_s->>'id',_s->>'kind',_s)
  ON CONFLICT DO NOTHING;

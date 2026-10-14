@@ -47,7 +47,7 @@ try{
   const r=(await db`select activate_rental_tx(${a.id},${v},${a.user_id},350,0,false,current_date,null,null,${owner}) id`)[0].id;
   if(kind!=='missing'){
    const i=(await db`insert into inspections(rental_id,vehicle_id,inspection_type,status,completed_at) values(${r},${v},'return',${kind==='failed'?'failed':'passed'},now()) returning id`)[0].id;
-   await db`insert into inspection_items(inspection_id,result,is_critical) values(${i},${kind==='critical'?'fail':'pass'},true)`;
+   if(kind!=='empty') await db`insert into inspection_items(inspection_id,result,is_critical) values(${i},${kind==='critical'?'fail':'pass'},true)`;
   }
   return {v,r};
  }
@@ -63,13 +63,92 @@ try{
  await test('concurrent close is idempotent',async()=>{const f=await fixture();const r=await Promise.all([close(f),close(f)]);assert.equal(r.filter(x=>x.alreadyClosed).length,1);assert.equal((await db`select count(*)::int n from audit_log where entity_id=${f.r}`)[0].n,1)});
  await test('concurrent incident/closure cannot leave vehicle available',async()=>{const f=await fixture();await Promise.all([close(f),db`insert into incidents(vehicle_id,status) values(${f.v},'open')`]);assert.equal((await db`select status from vehicles where id=${f.v}`)[0].status,'maintenance')});
  await test('concurrent assignment cannot bypass failed return hold',async()=>{const f=await fixture('failed');const a=(await db`insert into applications(status,user_id) values('approved',gen_random_uuid()) returning id,user_id`)[0];const outcomes=await Promise.allSettled([close(f),db`select activate_rental_tx(${a.id},${f.v},${a.user_id},350,0,false,current_date,null,null,${owner})`]);assert.equal(outcomes[0].status,'fulfilled');assert.equal(outcomes[1].status,'rejected');assert.equal((await db`select status from vehicles where id=${f.v}`)[0].status,'maintenance')});
- await test('empty checklist never clears return',async()=>{const f=await fixture();await db`delete from inspection_items where inspection_id in (select id from inspections where rental_id=${f.r})`;assert.equal((await close(f)).vehicleStatus,'maintenance')});
+ await test('empty checklist never clears return',async()=>{const f=await fixture('empty');assert.equal((await close(f)).vehicleStatus,'maintenance')});
  await test('unknown maintenance schedule holds vehicle',async()=>{const f=await fixture();await db`insert into maintenance_records(vehicle_id,status) values(${f.v},'upcoming')`;assert.equal((await close(f)).vehicleStatus,'maintenance')});
  await test('future scheduled service does not block safe return',async()=>{const f=await fixture();await db`insert into maintenance_records(vehicle_id,status,due_date) values(${f.v},'upcoming',current_date+30)`;assert.equal((await close(f)).vehicleStatus,'available')});
  await test('latest critical inspection failure blocks despite older passed return',async()=>{const f=await fixture();const i=(await db`insert into inspections(vehicle_id,inspection_type,status,completed_at) values(${f.v},'pre_delivery','failed',now()) returning id`)[0].id;await db`insert into inspection_items(inspection_id,result,is_critical) values(${i},'fail',true)`;assert.equal((await close(f)).vehicleStatus,'maintenance')});
  await test('requested maintenance remains a hold after passed inspection',async()=>{const f=await fixture();const r=(await db`select end_rental_tx(${f.r},current_date,'maintenance',null,${owner},'safe-release-v1') r`)[0].r;assert.equal(r.vehicleStatus,'maintenance');assert.ok(r.releaseReasons.includes('Staff requested maintenance'))});
  await test('missing Rental Ready profile holds despite passed return',async()=>{const f=await fixture();await db`update vehicles set weekly_rate=null where id=${f.v}`;assert.equal((await close(f)).vehicleStatus,'maintenance')});
  await test('original lifecycle guard still rejects split writes',async()=>{const f=await fixture();await assert.rejects(()=>db`update rentals set status='closed' where id=${f.r}`,/rental_lifecycle_guard/)});
+
+ await test('draft, empty passed inspection and later pass cannot erase historical critical failure',async()=>{
+  const f=await fixture('critical');
+  for(const state of ['in_progress','passed']) {
+   await db`insert into inspections(vehicle_id,inspection_type,status,completed_at) values(${f.v},'pre_delivery',${state},${state==='passed'?new Date():null})`;
+  }
+  const later=(await db`insert into inspections(vehicle_id,inspection_type,status,completed_at) values(${f.v},'pre_delivery','passed',now()) returning id`)[0].id;
+  await db`insert into inspection_items(inspection_id,result,is_critical) values(${later},'pass',true)`;
+  const draft=(await db`insert into inspections(vehicle_id,inspection_type,status) values(${f.v},'pre_delivery','in_progress') returning id`)[0].id;
+  await db`insert into inspection_items(inspection_id,result,is_critical) values(${draft},'pending',true)`;
+  assert.equal((await close(f)).vehicleStatus,'maintenance');
+  await assert.rejects(()=>db`update vehicles set status='available' where id=${f.v}`,/vehicle_safety_hold/);
+  await assert.rejects(()=>db`update inspection_items set result='pass' where inspection_id in(select id from inspections where rental_id=${f.r})`,/immutable/);
+  await assert.rejects(()=>db`delete from inspections where rental_id=${f.r}`,/immutable/);
+ });
+ await test('completed maintenance cannot fabricate resolution of inspection failure',async()=>{
+  const f=await fixture('critical');await db`insert into maintenance_records(vehicle_id,status) values(${f.v},'completed')`;
+  assert.equal((await close(f)).vehicleStatus,'maintenance');
+ });
+ await test('valid incident and maintenance resolution permits explicit release',async()=>{
+  const f=await fixture();await db`insert into maintenance_records(vehicle_id,status) values(${f.v},'in_progress')`;
+  await close(f);await db`update maintenance_records set status='completed' where vehicle_id=${f.v}`;
+  assert.equal((await db`select status from vehicles where id=${f.v}`)[0].status,'maintenance');
+  await db`update vehicles set status='available' where id=${f.v}`;
+ });
+ await test('metadata edits do not invoke release transition gate',async()=>{
+  const f=await fixture('missing');await close(f);
+  // Simulate a pre-install legacy available vehicle with missing evidence, locally only.
+  await db.unsafe('ALTER TABLE vehicles DISABLE TRIGGER safe_release_guard');
+  await db`update vehicles set status='available' where id=${f.v}`;
+  await db.unsafe('ALTER TABLE vehicles ENABLE TRIGGER safe_release_guard');
+  await db`update vehicles set model='Corrected model' where id=${f.v}`;
+  await db`update vehicles set status='onboarding' where id=${f.v}`;
+  await db`update vehicles set model='Corrected again' where id=${f.v}`;
+  await assert.rejects(()=>db`update vehicles set status='available' where id=${f.v}`,/vehicle_safety_hold/);
+ });
+
+ await test('concurrent safe assignments cannot double assign',async()=>{
+  const f=await fixture();await close(f);
+  const apps=await db`insert into applications(status,user_id) values('approved',gen_random_uuid()),('approved',gen_random_uuid()) returning id,user_id`;
+  const results=await Promise.allSettled(apps.map(a=>db`select activate_rental_tx(${a.id},${f.v},${a.user_id},350,0,false,current_date,null,null,${owner})`));
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal((await db`select count(*)::int n from rentals where vehicle_id=${f.v} and status='active'`)[0].n,1);
+ });
+ // Install the real proposed Stripe RPCs against supplemental synthetic tables.
+ await db.unsafe(`CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
+ INSERT INTO auth.users SELECT user_id FROM user_roles;
+ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+ CREATE FUNCTION private.is_manager() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id=auth.uid() AND role IN ('admin','team'))$$;
+ CREATE FUNCTION private.is_staff() RETURNS boolean LANGUAGE sql STABLE AS $$SELECT private.is_manager()$$;
+ ALTER TABLE rentals ADD COLUMN stripe_customer_id text DEFAULT 'cus_synthetic', ADD COLUMN stripe_payment_method_id text DEFAULT 'pm_synthetic';`);
+ await db`update rentals set stripe_subscription_id=null`;
+ await db.unsafe('CREATE UNIQUE INDEX rentals_stripe_subscription_id_key ON rentals(stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL');
+ const stripeFixture=readFileSync('scripts/stripe-reconciliation/fixture.sql','utf8');
+ await db.unsafe(stripeFixture.slice(stripeFixture.indexOf('CREATE TABLE public.payments'),stripeFixture.indexOf('CREATE FUNCTION private.is_staff')));
+ const refund=readFileSync('supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql','utf8').split('CREATE OR REPLACE FUNCTION public.vehicle_pl')[0];
+ await db.unsafe(refund);
+ await db.begin(tx=>tx.unsafe(readFileSync('scripts/stripe-reconciliation/0033_stripe_reconciliation.proposed.sql','utf8')));
+ await test('actual Stripe cancellation and closeout serialize without deadlock',async()=>{
+  const f=await fixture('missing');const sub='sub_'+f.r;
+  await db`update rentals set stripe_subscription_id=null where id=${f.r}`;
+  await db`select stripe_link('sandbox',${sub},'cus_synthetic',${f.r},${owner},'Synthetic review')`;
+  let ready;const entered=new Promise(r=>ready=r);
+  const stripe=db.begin(async tx=>{
+   await tx`set local statement_timeout='5s'`;
+   await tx`select stripe_cancel_state(${f.r},'sandbox',${sub},'requested',${owner})`;
+   ready();await new Promise(r=>setTimeout(r,100));
+  });
+  await entered;await Promise.all([stripe,close(f)]);
+  assert.equal((await db`select status from vehicles where id=${f.v}`)[0].status,'maintenance');
+  assert.equal((await db`select stripe_subscription_id from rentals where id=${f.r}`)[0].stripe_subscription_id,sub);
+ });
+ await test('closeout and actual Stripe ingestion serialize without deadlock',async()=>{
+  const f=await fixture();const sub='sub_'+f.r;await db`update rentals set stripe_subscription_id=null where id=${f.r}`;
+  await db`select stripe_link('sandbox',${sub},'cus_synthetic',${f.r},${owner},'Synthetic review')`;
+  await Promise.all([close(f),db`select stripe_ingest('sandbox',${'evt_'+f.r},${db.json({kind:'subscription',id:sub,subscription_id:sub,customer_id:'cus_synthetic',status:'canceled'})})`]);
+  assert.equal((await db`select status,autopay_active from rentals where id=${f.r}`)[0].status,'closed');
+  assert.equal((await db`select autopay_active from rentals where id=${f.r}`)[0].autopay_active,false);
+ });
  await test('repeat installation refused',()=>assert.rejects(()=>db.begin(tx=>tx.unsafe(migration))));
  console.log(`${n} disposable database checks passed`);
 }finally{await db.end();await admin.unsafe('DROP DATABASE '+name+' WITH (FORCE)');await admin.end()}

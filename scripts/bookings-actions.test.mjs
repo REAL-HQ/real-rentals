@@ -262,7 +262,7 @@ const SQL = readFileSync("scripts/safe-vehicle-release/migration.proposed.sql", 
 ok(SQL.includes("INSERT INTO public.audit_log"), "transaction appends audit (rollback verified in PostgreSQL suite)");
 for (const result of [{data:null,error:{message:"function missing"}}, {data:"closed",error:null}]) {
  seed(); S.rpcResults.end_rental_tx=result; let rejected=false;
- try { await call(endRental,{rentalId:R1,vehicleStatus:"available"},"mgr-1"); } catch { rejected=true; }
+ try { const r=await call(endRental,{rentalId:R1,vehicleStatus:"available"},"mgr-1"); rejected=r.ok===false && /unavailable/.test(r.error); } catch { rejected=result.error===null; }
  ok(rejected,"missing migration or legacy response cannot imply safe release");
 }
 

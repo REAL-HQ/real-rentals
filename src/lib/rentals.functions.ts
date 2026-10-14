@@ -476,6 +476,9 @@ export const endRental = createServerFn({ method: "POST" })
     });
     if (error) {
       const m = String(error.message);
+      if (["PGRST202", "42883", "42P01"].includes(String(error.code)) || /function.*(missing|does not exist|schema cache)/i.test(m)) {
+        return { ok: false, error: "Safe vehicle release is unavailable. The required database upgrade is not available; this request did not close the rental. Contact an administrator." };
+      }
       const n = (s: string) => Number(m.split(s + ":")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
       if (m.includes("return_below_pickup")) return { ok: false, error: `Return mileage can't be lower than pickup mileage (${n("return_below_pickup")} mi).` };
       if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
