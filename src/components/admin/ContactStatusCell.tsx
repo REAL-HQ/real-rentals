@@ -257,3 +257,31 @@ export function ContactStatusCell({
     </Popover>
   );
 }
+
+/** Display-only preview of the stored note: clamps to ~5 lines, never alters the text. */
+function NotePreview({ note }: { note: string | null | undefined }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!note) return <div className="mt-1 text-[12px] text-muted-foreground">No Note</div>;
+  const long = note.length > 220 || note.split("\n").length > 5;
+  return (
+    <div className="mt-1">
+      <p
+        className={`whitespace-pre-wrap break-words text-[12px] leading-[1.45] text-foreground ${
+          expanded ? "max-h-48 overflow-y-auto" : "line-clamp-5"
+        }`}
+        data-contact-status-note
+      >
+        {note}
+      </p>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 text-[11px] font-medium text-muted-foreground underline-offset-2 hover:underline"
+        >
+          {expanded ? "View Less" : "View More"}
+        </button>
+      )}
+    </div>
+  );
+}
