@@ -19,6 +19,7 @@ import { startInspection } from "@/lib/inspections.functions";
 import { InspectionRunner } from "@/components/admin/InspectionsPanel";
 import { DepositDialog } from "@/components/admin/DepositDialog";
 import { MicroLabel } from "./ui";
+import { CloseoutReadiness } from "./CloseoutReadiness";
 import type { BookingDetail } from "@/lib/bookings.functions";
 
 // The booking's actions — all of them somebody else's, on purpose.
@@ -302,6 +303,7 @@ function EndRentalDialog({
 
   return (
     <Modal title="End Rental" onClose={onClose} testId="end-rental-dialog">
+      <CloseoutReadiness rentalId={d.booking.id} />
       <div className="space-y-4">
         <p className="text-[13px] text-[#55555E]">
           Closing this rental releases{" "}
