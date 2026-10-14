@@ -1,5 +1,7 @@
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useHeadingActionsSlot } from "./useHeadingActionsSlot";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
@@ -419,6 +421,9 @@ export function DriversPanel({
   }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
+  /* The Merge Duplicates button belongs to the whole page, so it is portal-ed
+     into the far right of the "Drivers" title row rendered by admin.tsx. */
+  const headingSlot = useHeadingActionsSlot();
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
@@ -838,16 +843,20 @@ setDocCounts(requiredDocCounts(rows));
             Recently Deleted
           </button>
         )}
-        <div className="ml-auto shrink-0">
-          <button
-            onClick={handleMerge}
-            disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
-          >
-            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
-          </button>
-        </div>
       </div>
+      {headingSlot
+        ? createPortal(
+            <button
+              type="button"
+              onClick={handleMerge}
+              disabled={merging}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3.5 py-1.5 text-[13px] font-medium hover:bg-soft disabled:opacity-50"
+            >
+              <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
+            </button>,
+            headingSlot,
+          )
+        : null}
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">

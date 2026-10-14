@@ -737,9 +737,14 @@ function Admin() {
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
             {tab !== "overview" && !recordParent && (
-              <div className="mb-3">
-                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                </div>
+                {/* Far right of the title row: a panel portals its primary
+                    action here (see useHeadingActionsSlot). */}
+                <div id="admin-heading-actions" className="flex shrink-0 items-center gap-2 pt-0.5" />
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (
