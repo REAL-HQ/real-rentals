@@ -12,6 +12,7 @@ import {
   type BookingPhase,
   type BookingRow,
 } from "@/lib/bookings-list";
+import { ReservationsPanel } from "./ReservationsPanel";
 import { BookingDetails } from "./BookingDetails";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, StatusPill } from "./ui";
@@ -37,8 +38,8 @@ import {
 //
 // The three phase chips are the filter, the way the Vehicles list's readiness
 // chips are, and they count the filtered scope rather than the page. There is
-// deliberately no "Upcoming" chip: advance reservations do not exist yet, and
-// an empty tab promising them would be a claim about inventory nobody holds.
+// no Upcoming rental chip: future reservations use the separately gated
+// reservation panel and never masquerade as active rental records.
 
 type ListState = { q?: string; phase?: string; sort?: string; page?: string; vehicle?: string };
 
@@ -73,7 +74,7 @@ function VehicleCell({ b }: { b: BookingRow }) {
   );
 }
 
-export function BookingsPanel({
+function RentalBookingsPanel({
   externalSearch = "",
   openId = null,
   listState = {},
@@ -413,4 +414,14 @@ export function BookingsPanel({
       )}
     </div>
   );
+}
+
+/** Rental URL/detail behavior is unchanged; reservation records never enter RentalBookingsPanel. */
+export function BookingsPanel(props: {externalSearch?:string;openId?:string|null;listState?:ListState} = {}) {
+ const [view,setView]=useState<'rentals'|'reservations'>('rentals');
+ useEffect(()=>{if(props.openId)setView('rentals');},[props.openId]);
+ return <div className="space-y-4"><nav aria-label="Booking record type" className="flex gap-2">
+  <button className="rounded-md border px-3 py-2 text-sm" aria-pressed={view==='rentals'} onClick={()=>setView('rentals')}>Rental Bookings</button>
+  <button className="rounded-md border px-3 py-2 text-sm" aria-pressed={view==='reservations'} onClick={()=>setView('reservations')}>Advance Reservations</button>
+ </nav>{view==='rentals'?<RentalBookingsPanel {...props}/>:<ReservationsPanel/>}</div>;
 }
