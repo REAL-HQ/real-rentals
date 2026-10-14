@@ -242,6 +242,20 @@ try {
       );
     }
   });
+
+  const conversion={id,version:2,weeklyRate:350,deposit:0,depositHeld:false,pickupMileage:null};
+  const preview={id,version:2,rentalId:null,state:"confirmed",blockers:[],agreement:"No signed agreement recorded",payment:"Unknown"};
+  for(const role of ["coordinator","driver",""])await test("conversion endpoints denied "+role,async()=>{setup();globalThis.roles=role?[role]:[];await assert.rejects(()=>call("getReservationConversion",{id}),/Forbidden/);await assert.rejects(()=>call("convertReservation",conversion),/Forbidden/);assert.equal(calls.length,0)});
+  await test("conversion gate off makes zero RPCs",async()=>{setup();delete process.env.RESERVATIONS_ENABLED;assert.equal((await call("convertReservation",conversion)).available,false);assert.equal((await call("getReservationConversion",{id})).available,false);assert.equal(calls.length,0)});
+  for(const code of ["PGRST202","42P01","42501"])await test("conversion supplemental schema required "+code,async()=>{setup();reply={data:null,error:{code}};assert.equal((await call("convertReservation",conversion)).available,false);assert.equal(calls.length,1);assert.equal(calls[0].name,"reservation_conversion_preview")});
+  await test("conversion transport failure has no automatic retry",async()=>{setup();reject=true;const r=await call("convertReservation",conversion);assert.equal(r.available,false);assert.equal(calls.length,1)});
+  await test("conversion blockers and stale version never mutate",async()=>{for(const value of [{...preview,blockers:["Unsafe"]},{...preview,version:3}]){setup();reply={data:value,error:null};assert.equal((await call("convertReservation",conversion)).available,false);assert.equal(calls.length,1)}});
+  await test("Owner and Manager use caller RPC; success and ambiguous mutation response",async()=>{
+   const old=context.supabase.rpc;
+   try{for(const role of ["admin","team"]){setup();globalThis.roles=[role];context.supabase.rpc=async(name,args)=>{calls.push({name,args});return {data:name==="reservation_conversion_preview"?preview:id,error:null}};assert.equal((await call("convertReservation",conversion)).value,id);assert.deepEqual(calls.map(x=>x.name),["reservation_conversion_preview","reservation_convert"])}
+    setup();context.supabase.rpc=async(name,args)=>{calls.push({name,args});if(name==="reservation_convert")throw Error("lost response");return {data:preview,error:null}};assert.equal((await call("convertReservation",conversion)).available,false);assert.equal(calls.length,2);
+   }finally{context.supabase.rpc=old}
+  });
   console.log(`${n} interface/server checks passed; no network`);
 } finally {
   rmSync(dir, { recursive: true, force: true });

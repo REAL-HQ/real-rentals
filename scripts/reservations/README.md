@@ -58,3 +58,26 @@ Run `node scripts/reservations/database.test.mjs` from repository root with loca
 35 checks: atomic install rollback/replay refusal, Owner configuration, Manager mutations, Coordinator operational projection/pagination, Driver/anonymous denials, direct table denial, overlap/turnaround/unbounded ranges, active rental conflict, direct activation guard, racing holds/activation, stale/null versions, expiry-versus-confirmation/conversion, no-show refusal, maintenance races, reassignment rollback, reschedule reconfirmation, duplicate conversion, deferred partial-conversion refusal, audit rollback, immutable history, quarter-hour/DST boundaries, missing configuration/inspection evidence, staff-linked identity denial and a negative control that removes the activation guard and requires the security assertion to fail.
 
 No application code changes: TypeScript/build and unrelated accepted suites are not repeated. No hosted verification is claimed.
+
+
+## Phase 2C.3 — conversion interface (review only)
+
+Development base: `204b1d4bf970f4e93b5a9196db57112f43e3cd4f`.
+Supplemental SQL: `scripts/reservations/conversion.proposed.sql`.
+SHA-256: `69c7f2efb4a4af2fbc1d9087b17cb192c8f5705e5615acb72d86c753987cc08b`.
+
+The original PR39 SQL and all automatic migration directories/journals are unchanged. The supplemental SQL is not an install-ready production package. It requires a separately reviewed atomic installer, actual catalog/privilege preflight and full-schema staging rehearsal. The private helper and preview use CREATE FUNCTION, so replay fails; execute the entire package in one transaction, never piecemeal.
+
+The existing `RESERVATIONS_ENABLED` server gate remains disabled by default. Owner/Manager requests use the authenticated caller's Supabase client. Coordinator/Driver requests are denied before conversion evidence or mutation RPCs. Missing supplemental preview RPC, missing tables and denied execution yield controlled unavailable responses; there is no activation fallback. No provisioning, Stripe, email, reminder or background job is introduced.
+
+The existing `reservation_convert` remains the only reservation activation transaction and calls existing `activate_rental_tx`. Its added Driver check requires an existing Auth user, matching normalized applicant/account email, Driver membership and no staff membership. No identity is supplied by the caller. The existing global lifecycle advisory lock `(710026,2)` precedes reservation/application/vehicle row locks. Conversion rechecks safety and allocations inside that transaction, creates the rental and links it with one attributed final conversion-history event. Audit/activation failures roll everything back. Stale retries are refused; a current-version replay returns only the existing rental ID. Confirmed reservations have no hold deadline; no-show cancellation remains an explicit Manager decision.
+
+The preview is informational and does not reserve or write records. It acquires the same lifecycle lock while inspecting readiness. Conversion repeats the checks. Finite rentals conservatively occupy the whole final calendar day plus turnaround; open-ended rentals remain unbounded. Draft/expired/cancelled reservations and future pickups cannot activate. Existing Safe Vehicle Release restrictions remain authoritative.
+
+UI reviews the applicant, vehicle, pickup timezone, blockers and terms, then opens the existing Bookings rental detail on success. An ambiguous response is never retried automatically: staff must reload evidence; if committed, the existing rental link is shown. Deposit-held is explicit staff attestation, not verified provider settlement.
+
+Existing activation does not enforce a signed agreement or verified payment. This phase does not invent either requirement: it displays matching signed-agreement metadata when recorded, always describes unverified payment/deposit evidence truthfully, and does not collect money or start billing. Business approval of stricter agreement/payment prerequisites is separate. Existing Driver accounts must be linked through the separately authorized workflow before conversion.
+
+Installation order remains revised lock-compatible 0033 (if reconciliation is installed), Safe Vehicle Release, PR39 reservation contract, PR40 read projections, then this supplemental conversion package; never replay installed migrations. 0031 remains independently controlled and untouched. Approved migration installation, full-schema staging, publication and explicit reservation-gate activation are still required before hosted use.
+
+Local verification for this phase: 44 disposable database checks, 34 mocked real-handler checks, six responsive browser role/workflow scenarios at 390/1440px (including success navigation, missing schema, readiness denial and ambiguous-result recovery), Bookings action/detail/list regressions, 30 Closeout Readiness checks, targeted lint, TypeScript and production build. Fixtures reuse the actual activation/lifecycle/Safe Release functions; they are not a full production catalog clone. No hosted or live Stripe tests were performed.
