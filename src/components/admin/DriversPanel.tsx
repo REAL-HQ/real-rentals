@@ -940,22 +940,24 @@ setDocCounts(requiredDocCounts(rows));
                           {held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
-                              className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
+                              className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
                             >
                               Waitlist
+                              <ChevronDown className="h-3 w-3 shrink-0" />
                             </span>
                           ) : a.status ? (
                             activeRenters.has(a.id) ? (
-                              <StatusPill status="active" />
+                              <StatusPill status="active" caret />
                             ) : a.status === "active" ? (
                               <span
                                 title="Marked Active, but no active rental exists. Status unchanged pending review."
-                                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
                               >
                                 Marked Active, No Rental
+                                <ChevronDown className="h-3 w-3 shrink-0" />
                               </span>
                             ) : (
-                              <StatusPill status={a.status} />
+                              <StatusPill status={a.status} caret />
                             )
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
