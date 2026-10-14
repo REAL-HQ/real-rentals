@@ -23,7 +23,7 @@
  *
  * Run: npm run dev, then npm run test:contact-e2e
  */
-import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs");
 import { toCrossJSON, fromCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
@@ -61,10 +61,11 @@ const row = (id, name, status, contact) => ({
   ...contact,
 });
 
+const LONG_NOTE = Array.from({length:8},(_,i)=>`Synthetic line ${i+1}: preserve this stored note exactly.`).join("\n");
 const APPS = [
   row(A1, "Dana Reyes", "reviewing", {}),
   row(A2, "Marcus Hall", "approved", {
-    contact_status: "follow_up", contact_status_note: "Wants the Camry",
+    contact_status: "follow_up", contact_status_note: LONG_NOTE,
     contact_follow_up_on: "2026-10-14", contact_status_at: "2026-10-11T12:00:00Z",
   }),
   row(A3, "Priya Shah", "new", {
@@ -131,15 +132,19 @@ function serverFn(name, input) {
   }
 }
 
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium", headless: true });
 
-async function open(viewport, { migrated = true, role = "coordinator", canSeeSensitive = true } = {}) {
+async function open(viewport, { migrated = true, role = "team", canSeeSensitive = true } = {}) {
   calls = [];
   saves = [];
   restWrites = [];
   migratedRows = migrated ? APPS : APPS_UNMIGRATED;
   serverCanSeeSensitive = canSeeSensitive;
   const ctx = await browser.newContext({ viewport });
+  await ctx.route("**/*", async route => {
+    if (new URL(route.request().url()).origin === BASE) return route.continue();
+    return route.abort();
+  });
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
     const u = route.request().url();
     const method = route.request().method();
@@ -311,7 +316,6 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
 
   if (viewport.width < 500) {
     console.log("\nthe phone layout");
-    const box = await page.locator("[data-contact-status-list], [data-contact-status-form]").first().boundingBox().catch(() => null);
     await openBadge(page, A3);
     const panel = await page.locator("[data-contact-status-list]").boundingBox();
     ok(panel && panel.width <= viewport.width - 24, `the popover fits the screen (${Math.round(panel?.width ?? 0)}px of ${viewport.width})`);
@@ -321,7 +325,6 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
     ok(f && f.x >= 0 && f.x + f.width <= viewport.width, "and so does the form");
     const sv = await page.locator("[data-contact-status-save]").boundingBox();
     ok(sv && sv.height >= 28, `the Save target is thumb-sized (${Math.round(sv?.height ?? 0)}px)`);
-    void box;
     await page.keyboard.press("Escape");
   }
 
@@ -329,6 +332,18 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   await ctx.close();
 }
 
+// Focused Owner coverage; all writes intercepted by the existing synthetic adapter.
+{
+ const {ctx,page,errors} = await open({width:1440,height:900},{role:"admin",canSeeSensitive:true});
+ ok(await page.locator('th:has-text("Contact")').count()===1,"Owner: Contact column exists");
+ ok(await page.locator('[data-contact-filter]').count()===1,"Owner: Contact filter exists");
+ await openBadge(page,A1); await pick(page,"Voicemail");
+ await page.locator('[data-contact-status-form] textarea').fill('Synthetic owner note');
+ await page.locator('[data-contact-status-save]').click(); await page.waitForTimeout(1200);
+ ok(saves.length===1 && saves[0].status==='voicemail',"Owner: Contact save uses server function");
+ ok(restWrites.length===0,"Owner: no direct database writes");
+ ok(errors.length===0,"Owner: no page errors"); await ctx.close();
+}
 // ============================================ the Coordinator, under 0031
 console.log("\n================= a Coordinator (0031: operational fields only)");
 for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]]) {
@@ -355,6 +370,83 @@ for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["ph
   ok(restWrites.length === 0, `${label}: and the browser still writes nothing directly`);
   ok(errors.length === 0, `${label}: no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
   await ctx.close();
+}
+
+// Priority columns must be reachable before any horizontal scrolling.
+for (const role of ["admin", "team", "coordinator"]) {
+ for (const width of [1440,1280,1024,390]) {
+  const {ctx,page} = await open({width,height:900},{role,canSeeSensitive:role!=="coordinator"});
+  const headers = await page.locator('thead th').allTextContents();
+  ok(headers.slice(0,3).map(x=>x.trim()).join(',')==='Name,Contact,Status', `${role}/${width}: priority header order`);
+  const first = page.locator('tbody tr').first();
+  ok(await first.locator('td').nth(1).locator('[data-contact-status]').count()===1,`${role}/${width}: Contact cell aligns with header`);
+  ok(await first.locator('td').nth(2).getByRole('combobox').count()===1,`${role}/${width}: Status cell aligns with header`);
+  const geometry = await first.evaluate(row=>{
+   const host=row.closest('table').parentElement;const hr=host.getBoundingClientRect();
+   return {scroll:host.scrollLeft,right:Math.min(hr.right,window.innerWidth),contact:row.children[1].getBoundingClientRect().right,status:row.children[2].getBoundingClientRect().right};
+  });
+  ok(geometry.scroll===0 && geometry.contact<=geometry.right,`${role}/${width}: Contact visible without horizontal scrolling`);
+  if(width>=1024) ok(geometry.status<=geometry.right,`${role}/${width}: Status visible without horizontal scrolling`);
+  // Compare the actual rendered badge geometry, not just source classes.
+  const statusTrigger = first.locator('td').nth(2).getByRole('combobox');
+  const contactTrigger = first.locator('[data-contact-status]');
+  const inspectBadge = el => {
+    const badge = el.matches('[data-contact-status]') ? el : el.querySelector('span');
+    const svg = badge.querySelector('svg');
+    const css = getComputedStyle(badge);
+    const box = svg?.getBoundingClientRect();
+    const b = badge.getBoundingClientRect();
+    return {count:badge.querySelectorAll('svg').length,width:box?.width,height:box?.height,
+      gap:css.gap,padding:css.padding,align:css.alignItems,
+      centered:box ? Math.abs((box.y+box.height/2)-(b.y+b.height/2))<1 : false};
+  };
+  const sc = await statusTrigger.evaluate(inspectBadge);
+  const cc = await contactTrigger.evaluate(inspectBadge);
+  ok(sc.count===1 && sc.width===12 && sc.height===12,`${role}/${width}: one visible 12px status caret`);
+  ok(sc.gap===cc.gap && sc.padding===cc.padding && sc.align===cc.align && sc.centered,
+    `${role}/${width}: caret spacing, padding and vertical alignment match Contact (${JSON.stringify(sc)} vs ${JSON.stringify(cc)})`);
+  await statusTrigger.hover();
+  ok(await statusTrigger.evaluate(el=>getComputedStyle(el).opacity)==='0.8',`${role}/${width}: existing hover opacity preserved`);
+  await statusTrigger.click();
+  const options = await page.getByRole('option').allTextContents();
+  ok(options.length>0 && options.some(x=>x.trim()==='reviewing') &&
+    !options.some(x=>['approved','active'].includes(x.trim())),`${role}/${width}: existing lifecycle menu restrictions preserved`);
+  await page.keyboard.press('Escape');
+  ok(saves.length===0 && restWrites.length===0,`${role}/${width}: opening status menu performs no writes`);
+  await openBadge(page,A2);
+  const panel = page.locator('[data-contact-status-list]');
+  const details = page.locator('[data-contact-status-details]');
+  const layout = await panel.evaluate(el=>{
+    const left=el.children[0].getBoundingClientRect(),right=el.children[1].getBoundingClientRect();
+    const popup=el.parentElement.getBoundingClientRect();
+    return {direction:getComputedStyle(el).flexDirection,left:{x:left.x,y:left.y,right:left.right,bottom:left.bottom},
+      right:{x:right.x,y:right.y},fits:popup.x>=0 && popup.right<=innerWidth && popup.y>=0 && popup.bottom<=innerHeight};
+  });
+  ok(layout.fits,`${role}/${width}: popover stays inside viewport`);
+  ok(width>=640 ? layout.direction==='row' && layout.right.x>=layout.left.right-1 :
+    layout.direction==='column' && layout.right.y>=layout.left.bottom-1,
+    `${role}/${width}: details are beside statuses on desktop and stacked on mobile`);
+  ok((await panel.locator('button').allTextContents()).filter(x=>!x.includes('View More')).length===9,
+    `${role}/${width}: all nine Contact statuses remain available`);
+  ok((await details.innerText()).includes('Oct 14, 2026') && !(await details.innerText()).includes('Not Set'),
+    `${role}/${width}: stored follow-up date displayed`);
+  const note = details.locator('[data-contact-status-note]');
+  ok(await note.textContent()===LONG_NOTE,`${role}/${width}: stored note preserved exactly`);
+  ok(await note.evaluate(el=>getComputedStyle(el).webkitLineClamp)==='5',`${role}/${width}: long note initially clamped`);
+  await details.getByRole('button',{name:'View More',exact:true}).click();
+  ok(await note.textContent()===LONG_NOTE && await note.evaluate(el=>getComputedStyle(el).overflowY)==='auto',
+    `${role}/${width}: expanded note remains unchanged and scrollable`);
+  await details.getByRole('button',{name:'View Less',exact:true}).click();
+  await page.keyboard.press('Escape');
+  await panel.waitFor({state:'detached'});
+  await openBadge(page,A1);
+  ok((await page.locator('[data-contact-status-details]').innerText()).includes('Not Set') &&
+    (await page.locator('[data-contact-status-details]').innerText()).includes('No Note'),
+    `${role}/${width}: empty date and note states shown`);
+  await page.keyboard.press('Escape');
+  ok(saves.length===0 && restWrites.length===0,`${role}/${width}: viewing details performs no writes`);
+  await ctx.close();
+ }
 }
 
 // ============================================ the pre-migration world

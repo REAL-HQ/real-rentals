@@ -854,6 +854,10 @@ setDocCounts(requiredDocCounts(rows));
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
+                  Contact
+                </th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Phone</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
@@ -864,10 +868,6 @@ setDocCounts(requiredDocCounts(rows));
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Deposit
-                </th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Contact
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Created
@@ -923,6 +923,62 @@ setDocCounts(requiredDocCounts(rows));
                       className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <ContactStatusCell
+                        applicationId={a.id}
+                        row={a}
+                        onSaved={(st) => applyContactStatus(a.id, st)}
+                      />
+                    </td>
+                    <td
+                      className="px-3 py-2.5 whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Select
+                        value={a.status || ""}
+                        onValueChange={(status) => update(a.id, { status })}
+                      >
+                        <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
+                          {held.has(a.id) ? (
+                            <span
+                              title={`Underlying stage: ${a.status ?? "—"}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
+                            >
+                              Waitlist
+                              <ChevronDown className="h-3 w-3 shrink-0" />
+                            </span>
+                          ) : a.status ? (
+                            activeRenters.has(a.id) ? (
+                              <StatusPill status="active" caret />
+                            ) : a.status === "active" ? (
+                              <span
+                                title="Marked Active, but no active rental exists. Status unchanged pending review."
+                                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                              >
+                                Marked Active, No Rental
+                                <ChevronDown className="h-3 w-3 shrink-0" />
+                              </span>
+                            ) : (
+                              <StatusPill status={a.status} caret />
+                            )
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
+                              Select status <ChevronDown className="w-3 h-3" />
+                            </span>
+                          )}
+                        </SelectTrigger>
+                        <SelectContent align="start" className="min-w-[10rem]">
+                          {SELECTABLE_STATUSES.map((s) => (
+                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td
+                      className="px-3 py-2.5 whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {a.phone ? (
                         <a
                           href={`tel:${a.phone}`}
@@ -972,60 +1028,6 @@ setDocCounts(requiredDocCounts(rows));
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
-                    </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Select
-                        value={a.status || ""}
-                        onValueChange={(status) => update(a.id, { status })}
-                      >
-                        <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
-                          {held.has(a.id) ? (
-                            <span
-                              title={`Underlying stage: ${a.status ?? "—"}`}
-                              className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
-                            >
-                              Waitlist
-                            </span>
-                          ) : a.status ? (
-                            activeRenters.has(a.id) ? (
-                              <StatusPill status="active" />
-                            ) : a.status === "active" ? (
-                              <span
-                                title="Marked Active, but no active rental exists. Status unchanged pending review."
-                                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
-                              >
-                                Marked Active, No Rental
-                              </span>
-                            ) : (
-                              <StatusPill status={a.status} />
-                            )
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[11px] font-medium text-[#9A9AA3]">
-                              Select status <ChevronDown className="w-3 h-3" />
-                            </span>
-                          )}
-                        </SelectTrigger>
-                        <SelectContent align="start" className="min-w-[10rem]">
-                          {SELECTABLE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ContactStatusCell
-                        applicationId={a.id}
-                        row={a}
-                        onSaved={(st) => applyContactStatus(a.id, st)}
-                      />
                     </td>
                     <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       <div>{fmtDate(a.created_at!)}</div>

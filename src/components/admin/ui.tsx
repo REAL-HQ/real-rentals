@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, ArrowRight, ArrowUp, ArrowDown, AlertTriangle, HelpCircle } from "lucide-react";
+import { Check, ArrowRight, ArrowUp, ArrowDown, AlertTriangle, HelpCircle, ChevronDown } from "lucide-react";
 import {
   nextActions,
   STATE_SHORT,
@@ -107,11 +107,15 @@ export function StatusPill({
   tone,
   children,
   className = "",
+  caret = false,
 }: {
   status?: string | null;
   tone?: Tone;
   children?: ReactNode;
   className?: string;
+  /** Renders the same h-3 w-3 downward chevron the Contact Status badge uses;
+   *  pass it only when the pill actually opens a menu for the current user. */
+  caret?: boolean;
 }) {
   const t = TONE[tone ?? toneFor(status)];
   const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? String(status).replace(/_/g, " ") : "—");
@@ -121,6 +125,7 @@ export function StatusPill({
       style={{ backgroundColor: t.bg, color: t.fg }}
     >
       {label}
+      {caret ? <ChevronDown className="h-3 w-3 shrink-0" /> : null}
     </span>
   );
 }
