@@ -23,7 +23,7 @@
  *
  * Run: npm run dev, then npm run test:contact-e2e
  */
-import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs");
 import { toCrossJSON, fromCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
@@ -131,15 +131,19 @@ function serverFn(name, input) {
   }
 }
 
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium", headless: true });
 
-async function open(viewport, { migrated = true, role = "coordinator", canSeeSensitive = true } = {}) {
+async function open(viewport, { migrated = true, role = "team", canSeeSensitive = true } = {}) {
   calls = [];
   saves = [];
   restWrites = [];
   migratedRows = migrated ? APPS : APPS_UNMIGRATED;
   serverCanSeeSensitive = canSeeSensitive;
   const ctx = await browser.newContext({ viewport });
+  await ctx.route("**/*", async route => {
+    if (new URL(route.request().url()).origin === BASE) return route.continue();
+    return route.abort();
+  });
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
     const u = route.request().url();
     const method = route.request().method();
@@ -311,7 +315,6 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
 
   if (viewport.width < 500) {
     console.log("\nthe phone layout");
-    const box = await page.locator("[data-contact-status-list], [data-contact-status-form]").first().boundingBox().catch(() => null);
     await openBadge(page, A3);
     const panel = await page.locator("[data-contact-status-list]").boundingBox();
     ok(panel && panel.width <= viewport.width - 24, `the popover fits the screen (${Math.round(panel?.width ?? 0)}px of ${viewport.width})`);
@@ -321,7 +324,6 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
     ok(f && f.x >= 0 && f.x + f.width <= viewport.width, "and so does the form");
     const sv = await page.locator("[data-contact-status-save]").boundingBox();
     ok(sv && sv.height >= 28, `the Save target is thumb-sized (${Math.round(sv?.height ?? 0)}px)`);
-    void box;
     await page.keyboard.press("Escape");
   }
 
@@ -329,6 +331,18 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   await ctx.close();
 }
 
+// Focused Owner coverage; all writes intercepted by the existing synthetic adapter.
+{
+ const {ctx,page,errors} = await open({width:1440,height:900},{role:"admin",canSeeSensitive:true});
+ ok(await page.locator('th:has-text("Contact")').count()===1,"Owner: Contact column exists");
+ ok(await page.locator('[data-contact-filter]').count()===1,"Owner: Contact filter exists");
+ await openBadge(page,A1); await pick(page,"Voicemail");
+ await page.locator('[data-contact-status-form] textarea').fill('Synthetic owner note');
+ await page.locator('[data-contact-status-save]').click(); await page.waitForTimeout(1200);
+ ok(saves.length===1 && saves[0].status==='voicemail',"Owner: Contact save uses server function");
+ ok(restWrites.length===0,"Owner: no direct database writes");
+ ok(errors.length===0,"Owner: no page errors"); await ctx.close();
+}
 // ============================================ the Coordinator, under 0031
 console.log("\n================= a Coordinator (0031: operational fields only)");
 for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]]) {
@@ -355,6 +369,25 @@ for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["ph
   ok(restWrites.length === 0, `${label}: and the browser still writes nothing directly`);
   ok(errors.length === 0, `${label}: no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
   await ctx.close();
+}
+
+// Priority columns must be reachable before any horizontal scrolling.
+for (const role of ["admin", "team", "coordinator"]) {
+ for (const width of [1440,1280,1024,390]) {
+  const {ctx,page} = await open({width,height:900},{role,canSeeSensitive:role!=="coordinator"});
+  const headers = await page.locator('thead th').allTextContents();
+  ok(headers.slice(0,3).map(x=>x.trim()).join(',')==='Name,Contact,Status', `${role}/${width}: priority header order`);
+  const first = page.locator('tbody tr').first();
+  ok(await first.locator('td').nth(1).locator('[data-contact-status]').count()===1,`${role}/${width}: Contact cell aligns with header`);
+  ok(await first.locator('td').nth(2).getByRole('combobox').count()===1,`${role}/${width}: Status cell aligns with header`);
+  const geometry = await first.evaluate(row=>{
+   const host=row.closest('table').parentElement;const hr=host.getBoundingClientRect();
+   return {scroll:host.scrollLeft,right:Math.min(hr.right,window.innerWidth),contact:row.children[1].getBoundingClientRect().right,status:row.children[2].getBoundingClientRect().right};
+  });
+  ok(geometry.scroll===0 && geometry.contact<=geometry.right,`${role}/${width}: Contact visible without horizontal scrolling`);
+  if(width>=1024) ok(geometry.status<=geometry.right,`${role}/${width}: Status visible without horizontal scrolling`);
+  await ctx.close();
+ }
 }
 
 // ============================================ the pre-migration world

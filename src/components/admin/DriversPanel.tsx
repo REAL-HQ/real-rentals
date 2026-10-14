@@ -853,6 +853,10 @@ setDocCounts(requiredDocCounts(rows));
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
+                  Contact
+                </th>
+                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Phone</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Email</th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
@@ -863,10 +867,6 @@ setDocCounts(requiredDocCounts(rows));
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Deposit
-                </th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Contact
                 </th>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Created
@@ -922,55 +922,11 @@ setDocCounts(requiredDocCounts(rows));
                       className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {a.phone ? (
-                        <a
-                          href={`tel:${a.phone}`}
-                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                        >
-                          <Phone className="w-3 h-3" /> {formatPhone(a.phone)}
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {a.email ? (
-                        <a
-                          href={`mailto:${a.email}`}
-                          title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                        >
-                          <Mail className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{a.email}</span>
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {canSeeSensitive ? (
-                        <ReadinessCell
-                          result={readinessIndex.get(a.id)}
-                          docCount={docCounts[a.id] ?? 0}
-                        />
-                      ) : (
-                        <span
-                          data-readiness-withheld
-                          title="Readiness is computed from licence, insurance and document data, which this list does not send to a Coordinator."
-                          className="inline-flex items-center rounded-full bg-[#F2F2F4] px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-[#55555E]"
-                        >
-                          Manager Only
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                      {payCells(payIndex[a.id]).pay}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                      {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
+                      <ContactStatusCell
+                        applicationId={a.id}
+                        row={a}
+                        onSaved={(st) => applyContactStatus(a.id, st)}
+                      />
                     </td>
                     <td
                       className="px-3 py-2.5 whitespace-nowrap"
@@ -1020,11 +976,55 @@ setDocCounts(requiredDocCounts(rows));
                       className="px-3 py-2.5 whitespace-nowrap"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <ContactStatusCell
-                        applicationId={a.id}
-                        row={a}
-                        onSaved={(st) => applyContactStatus(a.id, st)}
-                      />
+                      {a.phone ? (
+                        <a
+                          href={`tel:${a.phone}`}
+                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          <Phone className="w-3 h-3" /> {formatPhone(a.phone)}
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td
+                      className="px-3 py-2.5 whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {a.email ? (
+                        <a
+                          href={`mailto:${a.email}`}
+                          title={a.email}
+                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          <Mail className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{a.email}</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {canSeeSensitive ? (
+                        <ReadinessCell
+                          result={readinessIndex.get(a.id)}
+                          docCount={docCounts[a.id] ?? 0}
+                        />
+                      ) : (
+                        <span
+                          data-readiness-withheld
+                          title="Readiness is computed from licence, insurance and document data, which this list does not send to a Coordinator."
+                          className="inline-flex items-center rounded-full bg-[#F2F2F4] px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-[#55555E]"
+                        >
+                          Manager Only
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                      {payCells(payIndex[a.id]).pay}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                      {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
                     </td>
                     <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       <div>{fmtDate(a.created_at!)}</div>
