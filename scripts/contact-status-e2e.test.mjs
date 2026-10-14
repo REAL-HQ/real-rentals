@@ -386,6 +386,32 @@ for (const role of ["admin", "team", "coordinator"]) {
   });
   ok(geometry.scroll===0 && geometry.contact<=geometry.right,`${role}/${width}: Contact visible without horizontal scrolling`);
   if(width>=1024) ok(geometry.status<=geometry.right,`${role}/${width}: Status visible without horizontal scrolling`);
+  // Compare the actual rendered badge geometry, not just source classes.
+  const statusTrigger = first.locator('td').nth(2).getByRole('combobox');
+  const contactTrigger = first.locator('[data-contact-status]');
+  const inspectBadge = el => {
+    const badge = el.matches('[data-contact-status]') ? el : el.querySelector('span');
+    const svg = badge.querySelector('svg');
+    const css = getComputedStyle(badge);
+    const box = svg?.getBoundingClientRect();
+    const b = badge.getBoundingClientRect();
+    return {count:badge.querySelectorAll('svg').length,width:box?.width,height:box?.height,
+      gap:css.gap,padding:css.padding,align:css.alignItems,
+      centered:box ? Math.abs((box.y+box.height/2)-(b.y+b.height/2))<1 : false};
+  };
+  const sc = await statusTrigger.evaluate(inspectBadge);
+  const cc = await contactTrigger.evaluate(inspectBadge);
+  ok(sc.count===1 && sc.width===12 && sc.height===12,`${role}/${width}: one visible 12px status caret`);
+  ok(sc.gap===cc.gap && sc.padding===cc.padding && sc.align===cc.align && sc.centered,
+    `${role}/${width}: caret spacing, padding and vertical alignment match Contact (${JSON.stringify(sc)} vs ${JSON.stringify(cc)})`);
+  await statusTrigger.hover();
+  ok(await statusTrigger.evaluate(el=>getComputedStyle(el).opacity)==='0.8',`${role}/${width}: existing hover opacity preserved`);
+  await statusTrigger.click();
+  const options = await page.getByRole('option').allTextContents();
+  ok(options.length>0 && options.some(x=>x.trim()==='reviewing') &&
+    !options.some(x=>['approved','active'].includes(x.trim())),`${role}/${width}: existing lifecycle menu restrictions preserved`);
+  await page.keyboard.press('Escape');
+  ok(saves.length===0 && restWrites.length===0,`${role}/${width}: opening status menu performs no writes`);
   await ctx.close();
  }
 }
