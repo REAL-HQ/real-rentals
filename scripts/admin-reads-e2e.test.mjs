@@ -14,23 +14,38 @@
  * Needs the dev server: npx vite dev --host 127.0.0.1 --port 5199 --strictPort
  * Run: node scripts/admin-reads-e2e.test.mjs   (npm run test:admin-reads-e2e)
  */
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs");
+const { chromium } = await import(
+  process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright/index.mjs"
+);
 import { toCrossJSON, fromCrossJSON } from "seroval";
 
 const BASE = process.env.BASE || "http://127.0.0.1:5199";
 const REF = "yuyzdsnrbfhkmfzpvhwx";
 
 let fail = 0;
-const ok = (c, l) => { if (!c) fail++; console.log(`  ${c ? "PASS" : "BLOCKER"}  ${l}`); };
+const ok = (c, l) => {
+  if (!c) fail++;
+  console.log(`  ${c ? "PASS" : "BLOCKER"}  ${l}`);
+};
 
 const exp = Math.floor(Date.now() / 1000) + 86400 * 30;
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const jwt = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: "00000000-0000-0000-0000-0000000000aa", role: "authenticated", email: "rosa@drivereal.com", exp })}.sig`;
 const session = {
-  access_token: jwt, token_type: "bearer", expires_in: 86400 * 30, expires_at: exp, refresh_token: "probe-refresh",
-  user: { id: "00000000-0000-0000-0000-0000000000aa", aud: "authenticated", role: "authenticated",
-    email: "rosa@drivereal.com", app_metadata: {}, user_metadata: { full_name: "Rosa" },
-    created_at: new Date().toISOString() },
+  access_token: jwt,
+  token_type: "bearer",
+  expires_in: 86400 * 30,
+  expires_at: exp,
+  refresh_token: "probe-refresh",
+  user: {
+    id: "00000000-0000-0000-0000-0000000000aa",
+    aud: "authenticated",
+    role: "authenticated",
+    email: "rosa@drivereal.com",
+    app_metadata: {},
+    user_metadata: { full_name: "Rosa" },
+    created_at: new Date().toISOString(),
+  },
 };
 
 const A1 = "33333333-0000-4000-8000-000000000001";
@@ -39,20 +54,46 @@ const iso = (d) => new Date(Date.now() - d * 864e5).toISOString();
 
 /** Exactly what the server function returns — display fields, no evidence. */
 const APPLICANTS = [
-  { id: A1, full_name: "Dana Reyes", status: "reviewing", current_step: "part2", created_at: iso(1), reviewed_at: null },
-  { id: A2, full_name: "Marcus Hall", status: "new", current_step: "part1", created_at: iso(2), reviewed_at: null },
+  {
+    id: A1,
+    full_name: "Dana Reyes",
+    status: "reviewing",
+    current_step: "part2",
+    created_at: iso(1),
+    reviewed_at: null,
+  },
+  {
+    id: A2,
+    full_name: "Marcus Hall",
+    status: "new",
+    current_step: "part1",
+    created_at: iso(2),
+    reviewed_at: null,
+  },
 ];
 
 const verdict = (state, qualification) => ({
-  qualification, coverage: 90, verifiedCoverage: 80, state, stateLabel: state,
-  factors: [], positives: [], attention: [], unknowns: [], disqualifiers: [],
+  qualification,
+  coverage: 90,
+  verifiedCoverage: 80,
+  state,
+  stateLabel: state,
+  factors: [],
+  positives: [],
+  attention: [],
+  unknowns: [],
+  disqualifiers: [],
 });
 /** A Hot Prospect needs qualification and coverage high, no disqualifiers. */
 const READINESS = { [A1]: verdict("decision_ready", 95), [A2]: verdict("more_info_needed", 40) };
 
 const NOTIFS = APPLICANTS.map((a) => ({
-  id: a.id, full_name: a.full_name, email: `${a.full_name.split(" ")[0].toLowerCase()}@example.com`,
-  phone: "8135550142", created_at: a.created_at, status: a.status,
+  id: a.id,
+  full_name: a.full_name,
+  email: `${a.full_name.split(" ")[0].toLowerCase()}@example.com`,
+  phone: "8135550142",
+  created_at: a.created_at,
+  status: a.status,
 }));
 
 /** Set per run. */
@@ -60,73 +101,215 @@ let mode = "manager";
 /** Every direct PostgREST table the page asked for. */
 let restReads;
 
-function serverFn(name) {
+const priorityRows = [
+  [
+    "Taylor Brooks",
+    "Urgent",
+    "overdue",
+    "follow_up",
+    "Follow-up is overdue",
+    "Contact the applicant and record the outcome or a new follow-up date.",
+  ],
+  [
+    "Alex Rivera",
+    "High",
+    "new",
+    "new",
+    "Awaiting first contact",
+    "Make first contact and record the outcome.",
+  ],
+  [
+    "Jordan Lee",
+    "High",
+    "interested",
+    "interested",
+    "Marked Interested",
+    "Confirm interest and next steps. Interest does not establish rental readiness.",
+  ],
+  [
+    "Casey Morgan",
+    "Medium",
+    "today",
+    "follow_up",
+    "Follow-up is due today",
+    "Contact the applicant today and record the outcome.",
+  ],
+  [
+    "Sam Parker",
+    "Medium",
+    "information",
+    "documents",
+    "Waiting on additional information",
+    "Review the contact note and confirm which information is still needed.",
+  ],
+  [
+    "Robin Lane",
+    "Low",
+    "future",
+    "contacted",
+    "Follow-up is scheduled",
+    "Review the contact note before the scheduled follow-up.",
+  ],
+].map(([full_name, priority, bucket, contact_status, reason, action], i) => ({
+  id: `44444444-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+  full_name,
+  priority,
+  bucket,
+  contact_status,
+  reason,
+  action,
+  phone: "8135550100",
+  contact_status_note:
+    i === 0 ? "Please follow up in Spanish to confirm the rental information arrived." : null,
+  contact_follow_up_on:
+    bucket === "overdue"
+      ? "2026-10-13"
+      : bucket === "today"
+        ? "2026-10-14"
+        : bucket === "future"
+          ? "2026-10-16"
+          : null,
+  contact_status_at: null,
+  contact_status_by: null,
+}));
+function serverFn(name, input) {
   switch (true) {
+    case /getLeadPriorities/.test(name): {
+      if (mode === "failed") throw new Error("synthetic lead read failure");
+      const offset = input?.offset ?? 0,
+        limit = input?.limit ?? 5;
+      return {
+        rows: priorityRows.slice(offset, offset + limit),
+        total: 6,
+        counts: { new: 1, overdue: 1, hot: 1 },
+        today: "2026-10-14",
+        offset,
+        nextOffset: offset + limit < 6 ? offset + limit : null,
+      };
+    }
     case /getOverviewApplicants/.test(name): {
       if (mode === "failed") throw new Error("permission denied for table applications");
       const coord = mode === "coordinator";
       return {
-        newApps: 1, pendingApps: 1, applicants: APPLICANTS,
-        readiness: coord ? {} : READINESS, canSeeReadiness: !coord,
+        newApps: 1,
+        pendingApps: 1,
+        applicants: APPLICANTS,
+        readiness: coord ? {} : READINESS,
+        canSeeReadiness: !coord,
       };
     }
     case /getAdminNotifications/.test(name):
       if (mode === "failed") throw new Error("permission denied for table applications");
       return { rows: NOTIFS };
-    case /listConversations/.test(name): return { unread: 0, conversations: [] };
-    case /getFleetMaintenance/.test(name): return { counts: { overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 } };
-    case /listDriverRows/.test(name): return { rows: [], canSeeSensitive: mode !== "coordinator" };
-    default: return null;
+    case /listConversations/.test(name):
+      return { unread: 0, conversations: [] };
+    case /getFleetMaintenance/.test(name):
+      return { counts: { overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 } };
+    case /listDriverRows/.test(name):
+      return { rows: [], canSeeSensitive: mode !== "coordinator" };
+    default:
+      return null;
   }
 }
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_EXECUTABLE || "/opt/pw-browsers/chromium" });
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_EXECUTABLE || "/opt/pw-browsers/chromium",
+});
 
 async function open(runMode) {
   mode = runMode;
   restReads = [];
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   // Synthetic-only test: fail closed on every unmocked external destination.
-  await ctx.route("**/*", route => new URL(route.request().url()).origin === new URL(BASE).origin
-    ? route.continue() : route.abort());
+  await ctx.route("**/*", (route) =>
+    new URL(route.request().url()).origin === new URL(BASE).origin
+      ? route.continue()
+      : route.abort(),
+  );
   await ctx.route(`**://${REF}.supabase.co/**`, async (route) => {
     const u = route.request().url();
     if (u.includes("/auth/v1/"))
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(session),
+      });
     if (u.includes("/storage/v1/"))
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "ok" }) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ Key: "ok" }),
+      });
     const table = u.split("/rest/v1/")[1]?.split("?")[0] ?? "";
     if (table) restReads.push(table);
     // 0030: a direct applications query that touches a revoked column —
     // deleted_at, for every read this PR moved — is refused outright.
     if (table === "applications")
       return route.fulfill({
-        status: 403, contentType: "application/json",
-        body: JSON.stringify({ code: "42501", message: "permission denied for table applications" }),
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "42501",
+          message: "permission denied for table applications",
+        }),
       });
     const rows = u.includes("user_roles")
-      ? [{ role: runMode === "coordinator" ? "coordinator" : "team" }]
+      ? [
+          {
+            role:
+              runMode === "coordinator" ? "coordinator" : runMode === "owner" ? "admin" : "team",
+          },
+        ]
       : [];
     return route.fulfill({
-      status: 200, contentType: "application/json", headers: { "content-range": "0-0/0" },
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/0" },
       body: route.request().method() === "HEAD" ? "" : JSON.stringify(rows),
     });
   });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push("PAGEERROR " + String(e).slice(0, 200)));
-  await page.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [`sb-${REF}-auth-token`, JSON.stringify(session)]);
+  await page.addInitScript(
+    ([k, v]) => window.localStorage.setItem(k, v),
+    [`sb-${REF}-auth-token`, JSON.stringify(session)],
+  );
   await page.route("**/_serverFn/**", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/").pop() ?? "";
     let name = "";
-    try { name = Buffer.from(id.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(); } catch { /* not ours */ }
+    try {
+      name = Buffer.from(id.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString();
+    } catch {
+      /* not ours */
+    }
     try {
       return route.fulfill({
-        status: 200, contentType: "application/json", headers: { "x-tss-serialized": "true" },
-        body: JSON.stringify(toCrossJSON({ result: serverFn(name), context: {} }, { refs: new Map() })),
+        status: 200,
+        contentType: "application/json",
+        headers: { "x-tss-serialized": "true" },
+        body: JSON.stringify(
+          toCrossJSON(
+            {
+              result: serverFn(
+                name,
+                route.request().postData()
+                  ? fromCrossJSON(JSON.parse(route.request().postData()).t, { refs: new Map() })
+                      ?.data
+                  : null,
+              ),
+              context: {},
+            },
+            { refs: new Map() },
+          ),
+        ),
       });
     } catch (e) {
-      return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: String(e?.message ?? e) }) });
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ message: String(e?.message ?? e) }),
+      });
     }
   });
   await page.goto(`${BASE}/admin?tab=overview`, { waitUntil: "domcontentloaded" });
@@ -145,11 +328,16 @@ console.log("\n================= a Manager, with applications refused in the bro
   ok(/1 New/.test(body) && /1 Pending/.test(body), "the New and Pending counts render");
   ok(!/Counts Unavailable/.test(body), "  and are not reported unavailable");
   ok(!/Could Not Load Applications/.test(body), "the list does not claim it failed");
-  ok(await page.locator('option[value="readiness"]').count() > 0, "the Readiness sort is offered");
+  ok(
+    (await page.locator('option[value="readiness"]').count()) > 0,
+    "the Readiness sort is offered",
+  );
   ok(/Hot Prospects/.test(body), "the Hot Prospect strip renders from the server's verdict");
   ok(/Worth Following Up First/.test(body), "  with its heading intact");
-  ok(restReads.filter((t) => t === "applications").length === 0,
-    "the browser made NO direct applications request at all");
+  ok(
+    restReads.filter((t) => t === "applications").length === 0,
+    "the browser made NO direct applications request at all",
+  );
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
   await ctx.close();
 }
@@ -162,12 +350,16 @@ console.log("\n================= a Coordinator");
   ok(/Dana Reyes/.test(body), "a Coordinator still sees the recent applicants");
   ok(/1 New/.test(body) && /1 Pending/.test(body), "and the operational counts");
   ok(!/Hot Prospect/i.test(body), "the Hot Prospect strip is withheld");
-  ok(await page.locator('option[value="readiness"]').count() === 0,
-    "the Readiness sort is not offered to a tier with no readiness");
+  ok(
+    (await page.locator('option[value="readiness"]').count()) === 0,
+    "the Readiness sort is not offered to a tier with no readiness",
+  );
   for (const s of ["R123-456-78-901-0", "1991-07-02", "4242", "1200 N Ashley", "licences/"])
     ok(!body.includes(s), `  no identity or card data on screen (${s})`);
-  ok(restReads.filter((t) => t === "applications").length === 0,
-    "and still no direct applications request");
+  ok(
+    restReads.filter((t) => t === "applications").length === 0,
+    "and still no direct applications request",
+  );
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
   await ctx.close();
 }
@@ -181,12 +373,99 @@ console.log("\n================= the read fails");
   ok(!/No Applications Yet/.test(body), "  and does NOT claim an empty pipeline");
   ok(/Counts Unavailable/.test(body), "the counts say they are unavailable");
   ok(!/\b0 New\b/.test(body) && !/\b0 Pending\b/.test(body), "  and no zero is drawn");
-  ok(await page.locator('[data-applicants-state="failed"]').count() > 0,
-    "the failed state is marked in the DOM");
+  ok(
+    (await page.locator('[data-applicants-state="failed"]').count()) > 0,
+    "the failed state is marked in the DOM",
+  );
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
   await ctx.close();
 }
 
+// Focused Lead Priorities coverage reuses this synthetic dashboard adapter.
+for (const role of ["owner", "manager", "coordinator"]) {
+  const { ctx, page } = await open(role);
+  const section = page.getByRole("region", { name: "Lead Priorities" });
+  await section.locator("[data-lead-priority]").first().waitFor();
+  ok(
+    (await section.locator("[data-lead-priority]").count()) === 5,
+    `${role}: five initial priority leads`,
+  );
+  ok(
+    (await section.innerText()).includes("Interest does not establish rental readiness"),
+    `${role}: interest is not rental readiness`,
+  );
+  ok(
+    (await section.innerText()).includes(
+      "Please follow up in Spanish to confirm the rental information arrived.",
+    ),
+    `${role}: recommendation grounded in quoted note`,
+  );
+  ok(
+    (await section.locator("[data-lead-priority]").first().innerText()).includes("1 day overdue"),
+    `${role}: overdue first with explicit calendar-day age`,
+  );
+  await section.locator("[data-contact-status]").first().click();
+  const contactMenu = page.locator("[data-contact-status-list]");
+  await contactMenu.waitFor();
+  ok(
+    (await contactMenu.innerText()).includes("Please follow up in Spanish"),
+    `${role}: existing contact editor exposes the stored note`,
+  );
+  await page.keyboard.press("Escape");
+  const target = section.getByRole("link", { name: "View Applicant" }).first();
+  ok(
+    (await target.getAttribute("href")).includes("44444444-0000-4000-8000-000000000001"),
+    `${role}: correct applicant deep link`,
+  );
+  ok(
+    (await section
+      .getByRole("link", { name: "Call", exact: true })
+      .first()
+      .getAttribute("href")) === "tel:8135550100",
+    `${role}: actual call destination`,
+  );
+  if (role === "manager" && process.env.SCREENSHOT_PATH) {
+    await page.setViewportSize({ width: 1440, height: 1500 });
+    await section.screenshot({ path: process.env.SCREENSHOT_PATH });
+  }
+  await section.getByRole("button", { name: "View All", exact: true }).click();
+  await page.waitForTimeout(400);
+  ok(
+    (await section.locator("[data-lead-priority]").count()) === 6,
+    `${role}: View All uses expanded bounded page`,
+  );
+  ok(
+    restReads.every((t) => t !== "applications"),
+    `${role}: no browser application-table reads`,
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  ok(
+    await section.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    `${role}: mobile has no panel overflow`,
+  );
+  await target.click();
+  await page.waitForURL(/id=44444444-0000-4000-8000-000000000001/);
+  ok(
+    new URL(page.url()).searchParams.get("tab") === "drivers",
+    `${role}: click navigates to the correct Drivers record`,
+  );
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open("failed");
+  const section = page.getByRole("region", { name: "Lead Priorities" });
+  await section.getByRole("alert").waitFor({ timeout: 15000 });
+  ok(
+    (await section.innerText()).toLowerCase().includes("could not be loaded"),
+    "Lead failure is explicit",
+  );
+  ok(
+    !(await section.locator("[data-lead-priority]").count()),
+    "Lead failure does not show stale rows or invented totals",
+  );
+  await ctx.close();
+}
 await browser.close();
 console.log(fail ? `\n${fail} BLOCKER(S)` : "\nall admin dashboard browser checks pass");
 process.exit(fail ? 1 : 0);
