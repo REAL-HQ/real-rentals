@@ -450,7 +450,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
           for (const f of [...accept]) {
             if (!isOwnerOnlyField(f)) continue;
             accept.delete(f);
-            refused.push({ field: f, label: labelOf(f), reason: "Owner only." });
+  
           }
         }
         const toWrite: Record<string, unknown> = {};
