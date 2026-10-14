@@ -131,40 +131,57 @@ export function ContactStatusCell({
         {contactStatusLabel(state.status)}
         <ChevronDown className="h-3 w-3 shrink-0" />
       </PopoverTrigger>
-      {/* Fits a 390px screen with the 16px gutter the rest of admin uses. */}
-      <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] p-0">
+      {/* Two columns on wider screens; stacks within a 390px screen's 16px gutter. */}
+      <PopoverContent
+        align="start"
+        collisionPadding={16}
+        className={`${picked ? "w-[min(20rem,calc(100vw-2rem))]" : "w-[min(34rem,calc(100vw-2rem))]"} p-0`}
+      >
         {!picked ? (
-          <div className="py-1" data-contact-status-list>
-            <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Contact Status
+          <div className="flex flex-col sm:flex-row" data-contact-status-list>
+            <div className="py-1 sm:w-[15rem] sm:shrink-0">
+              <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Contact Status
+              </div>
+              {CONTACT_STATUSES.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => pick(s.key)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] hover:bg-soft"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 rounded-full ${CONTACT_STATUS_TONE[s.key].split(" ")[0]}`}
+                    />
+                    {s.label}
+                  </span>
+                  {s.key === state.status && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+                </button>
+              ))}
             </div>
-            {CONTACT_STATUSES.map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => pick(s.key)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] hover:bg-soft"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className={`h-2 w-2 rounded-full ${CONTACT_STATUS_TONE[s.key].split(" ")[0]}`}
-                  />
-                  {s.label}
-                </span>
-                {s.key === state.status && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
-              </button>
-            ))}
-            {state.followUpOn && (
-              <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-                <CalendarDays className="mr-1 inline h-3 w-3" />
-                Follow up {fmtDate(state.followUpOn)}
+            <div
+              className="min-w-0 flex-1 border-t border-border px-3 py-2 sm:border-l sm:border-t-0"
+              data-contact-status-details
+            >
+              <div className="py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Follow-Up
               </div>
-            )}
-            {state.note && (
-              <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
-                {state.note}
+              <div className="mt-1 text-[12px] text-foreground">
+                {state.followUpOn ? (
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarDays className="h-3 w-3 text-muted-foreground" />
+                    {fmtDate(state.followUpOn)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Not Set</span>
+                )}
               </div>
-            )}
+              <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Latest Note
+              </div>
+              <NotePreview note={state.note} />
+            </div>
           </div>
         ) : (
           <div className="p-3" data-contact-status-form={picked}>
