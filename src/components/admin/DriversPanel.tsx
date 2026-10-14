@@ -838,16 +838,20 @@ setDocCounts(requiredDocCounts(rows));
             Recently Deleted
           </button>
         )}
-        <div className="ml-auto shrink-0">
-          <button
-            onClick={handleMerge}
-            disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
-          >
-            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
-          </button>
-        </div>
       </div>
+      {headingSlot
+        ? createPortal(
+            <button
+              type="button"
+              onClick={handleMerge}
+              disabled={merging}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3.5 py-1.5 text-[13px] font-medium hover:bg-soft disabled:opacity-50"
+            >
+              <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
+            </button>,
+            headingSlot,
+          )
+        : null}
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
