@@ -2,22 +2,27 @@ import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
 
+import { canSaveCard } from '@/lib/payment-safety';
+
 type SessionResult = { clientSecret: string } | { error: string };
 
 export const createCardOnFileSession = createServerFn({ method: 'POST' })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data: { applicationId: string; returnUrl: string; environment: StripeEnv }) => {
     if (!/^[0-9a-f-]{36}$/i.test(data.applicationId)) throw new Error('Invalid applicationId');
     return data;
   })
-  .handler(async ({ data }): Promise<SessionResult> => {
+  .handler(async ({ data, context }): Promise<SessionResult> => {
     try {
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: app, error } = await supabaseAdmin
         .from('applications')
-        .select('id, full_name, email, phone, stripe_customer_id')
+        .select('id, user_id, deleted_at, full_name, email, phone, stripe_customer_id')
         .eq('id', data.applicationId)
         .maybeSingle();
-      if (error || !app) throw new Error('Application not found');
+      if (error || !app || app.deleted_at) throw new Error('Forbidden');
+      const roles = await context.supabase.from('user_roles').select('role').eq('user_id', context.userId);
+      if (roles.error || !canSaveCard(context.userId, app.user_id, (roles.data ?? []).map(r => r.role))) throw new Error('Forbidden');
 
       const stripe = createStripeClient(data.environment);
 
@@ -30,10 +35,11 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
           metadata: { applicationId: app.id as string },
         });
         customerId = created.id;
-        await supabaseAdmin
+        const saved = await supabaseAdmin
           .from('applications')
           .update({ stripe_customer_id: customerId })
           .eq('id', app.id);
+        if (saved.error) throw new Error('Customer mapping could not be saved. Staff review required.');
       }
 
       const session = await stripe.checkout.sessions.create({

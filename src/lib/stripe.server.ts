@@ -64,7 +64,7 @@ export async function verifyWebhook(req: Request, env: StripeEnv): Promise<{ typ
     if (key === 't') timestamp = value;
     if (key === 'v1') v1Signatures.push(value);
   }
-  if (!timestamp || v1Signatures.length === 0) throw new Error('Invalid signature format');
+  if (!timestamp || !/^\d+$/.test(timestamp) || !Number.isSafeInteger(Number(timestamp)) || v1Signatures.length === 0) throw new Error('Invalid signature format');
 
   const age = Math.abs(Date.now() / 1000 - Number(timestamp));
   if (age > 300) throw new Error('Webhook timestamp too old');

@@ -1,3 +1,5 @@
+import { getStripeReport } from '@/lib/stripe-reconciliation.functions';
+import { StripeReconciliationPanel } from './StripeReconciliationPanel';
 import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -62,26 +64,6 @@ import {
 import { fmtDate } from "@/lib/date-format";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
-
-/**
- * What counts as revenue.
- *
- * The same rule vehicle_pl() uses: money actually received, excluding
- * deposits. A deposit is the renter's money held against damage — it is on the
- * balance sheet, not the income statement, and counting it made a good week
- * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
- */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
-
-/**
- * What counts as collections.
- *
- * Money that was due and did not arrive. Not the same as "unpaid": the old
- * figure summed every row whose status was not 'paid', which swept in
- * invoices that are simply not due yet and showed them as outstanding debt.
- */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
 
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
@@ -149,12 +131,15 @@ export function OverviewPanel() {
   const [newApps, setNewApps] = useState<number | null>(null);
   const [pendingApps, setPendingApps] = useState<number | null>(null);
   const [appsFailed, setAppsFailed] = useState(false);
-  const [overdueCount, setOverdueCount] = useState(0);
-  const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
+  const loadStripeReport = useServerFn(getStripeReport);
+  const [reconciliationCounts, setReconciliationCounts] = useState({ unmatched: 0, unverified: 0 });
+  const [financialError, setFinancialError] = useState<string | null>('Loading Collections');
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+  const [collectionDetails, setCollectionDetails] = useState({ refunds: 0, deposits: 0 });
   const [revenue, setRevenue] = useState(0);
   const [priorRevenue, setPriorRevenue] = useState(0);
   const [revenueLoading, setRevenueLoading] = useState(true);
@@ -176,8 +161,6 @@ export function OverviewPanel() {
 
   useEffect(() => {
     (async () => {
-      const now = new Date();
-      const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
 
       // The applicant reads happen on the server now. Migration 0030
       // revokes the blanket SELECT on applications and its column
@@ -189,25 +172,9 @@ export function OverviewPanel() {
         .catch(() => ({ ok: false as const, r: null }));
 
       const [
-        overdueQ,
-        pay12wQ,
-        billed12wQ,
         nextReturnQ,
         allVehiclesQ,
       ] = await Promise.all([
-        // Collections: due and not received. `current` is issued-but-not-yet-due
-        // and is deliberately absent.
-        supabase
-          .from("payments")
-          .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
-        supabase
-          .from("payments")
-          .select("net_collected, paid_date")
-          .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
         supabase
           .from("rentals")
           .select("end_date")
@@ -244,45 +211,6 @@ export function OverviewPanel() {
         // it.
         setAppsFailed(true);
       }
-      const sumAmt = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
-      const overdueRows = (overdueQ.data ?? []) as any[];
-      setOverdueAmt(sumAmt(overdueRows));
-      setOverdueCount(overdueRows.length);
-      setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
-
-
-      // 12-week weekly buckets
-      const bucketStart = (d: Date) => {
-        const c = new Date(d);
-        c.setHours(0, 0, 0, 0);
-        c.setDate(c.getDate() - c.getDay());
-        return c;
-      };
-      const start = bucketStart(new Date(now.getTime() - 11 * 7 * 864e5));
-      const series: WeekPoint[] = [];
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(start.getTime() + i * 7 * 864e5);
-        series.push({
-          label: fmtDate(d),
-          iso: d.toISOString(),
-          collected: 0,
-          billed: 0,
-        });
-      }
-      for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
-        const w = bucketStart(new Date(p.paid_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
-      }
-      for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
-        const w = bucketStart(new Date(p.due_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
-      }
-      setWeekly(series);
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,21 +235,22 @@ export function OverviewPanel() {
     let live = true;
     setRevenueLoading(true);
     (async () => {
-      const q = (r: DayRange) =>
-        supabase
-          .from("payments")
-          .select("net_collected")
-          .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", r.from)
-          .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
-      if (!live) return;
-      const sum = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
-      setRevenue(sum(cur.data));
-      setPriorRevenue(sum(prev.data));
-      setRevenueLoading(false);
+      try {
+        const report = await loadStripeReport({data:{from:range.from,to:range.to,priorFrom:compare.from,priorTo:compare.to}});
+        if (!live) return;
+        setRevenue(Number(report.revenue));
+        setPriorRevenue(Number(report.prior));
+        setCollectionDetails({refunds:Number(report.refunds),deposits:Number(report.deposits)});
+        setReconciliationCounts({unmatched:Number(report.unmatched),unverified:Number(report.unverified)});
+        setOverdueAmt(Number(report.outstanding));
+        setWeekly((report.weekly ?? []).map((w: any) => ({label:fmtDate(w.day),iso:w.day,collected:Number(w.collected),billed:Number(w.billed)})));
+        setFinancialError(null);
+        setRevenueError(null);
+      } catch {
+        if (live) { setRevenueError('Verified Revenue Unavailable — Refresh To Retry'); setFinancialError('Collections Unavailable'); }
+      } finally {
+        if (live) setRevenueLoading(false);
+      }
     })();
     return () => {
       live = false;
@@ -479,7 +408,7 @@ export function OverviewPanel() {
           control="add"
         />
 
-        <RevenueCard
+        {revenueError ? <div role="alert" className="rounded-2xl border p-5">{revenueError}</div> : <RevenueCard
           amount={revenue}
           delta={revenueDelta}
           loading={revenueLoading}
@@ -489,22 +418,21 @@ export function OverviewPanel() {
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-        />
+        />}
 
         <ActionCard
           icon={overdueAmt > 0 ? CreditCard : CheckCircle2}
           eyebrow="Collections"
-          title={overdueAmt > 0 ? `${usd(overdueAmt)} Due` : "All Current"}
+          title={financialError ?? (overdueAmt > 0 ? `${usd(overdueAmt)} Due` : "All Current")}
           hint={
-            overdueAmt > 0
-              ? `${overdueRenters || overdueCount} ${overdueRenters === 1 ? "renter" : "renters"} past due`
+            financialError ? "Totals Not Verified" : overdueAmt > 0
+              ? `Outstanding Charges Through Selected Date`
               : "$0 outstanding"
           }
           href="/admin"
           search={{ tab: "payments", filter: "overdue" }}
           control="view"
           tint={overdueAmt > 0 ? "red" : undefined}
-          badge={overdueAmt > 0 ? overdueCount : undefined}
         />
 
         <ActionCard
@@ -714,8 +642,15 @@ export function OverviewPanel() {
         </SectionCard>
       </div>
 
+      <p className="text-xs text-muted-foreground">
+        {!revenueLoading && !revenueError && <>Recorded Refunds Against Period Collections: {usd(collectionDetails.refunds)} · Net Deposits Collected (Not Revenue): {usd(collectionDetails.deposits)}. </>}
+        Collections Are Net Of Recorded Refunds, Not Stripe Payouts. Refunds Adjust The Original Collection Period.
+        {!revenueError && <> {reconciliationCounts.unmatched} Events Require Review; {reconciliationCounts.unverified} Payment Records Await Verification And Are Excluded.</>}
+        Processing Fees And Payouts Are Not Yet Reconciled.
+      </p>
+      {!revenueError && !revenueLoading && <StripeReconciliationPanel />}
       {/* Billed vs Collected — full width */}
-      {(() => {
+      {financialError ? <div role="alert">{financialError}</div> : (() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
         const collectionRate = totBilled > 0 ? Math.round((totCollected / totBilled) * 100) : null;
@@ -955,7 +890,7 @@ function RevenueCard({
       </div>
 
       <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
-        Revenue
+        Verified Stripe Revenue
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {loading ? <span className="text-[#C7C7CC]">—</span> : usd(amount)}
