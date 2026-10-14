@@ -1,3 +1,4 @@
+import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -395,6 +396,8 @@ export function OverviewPanel() {
         <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Overview</h1>
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
+
+      <LeadPriorities />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
