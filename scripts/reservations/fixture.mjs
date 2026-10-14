@@ -1,0 +1,33 @@
+import {readFileSync} from 'node:fs';
+export async function baseline(db,owner,manager,coordinator,driver){
+ await db.unsafe(`DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ DO $$ BEGIN CREATE ROLE service_role BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ CREATE SCHEMA private;
+ CREATE TABLE user_roles(user_id uuid,role text);INSERT INTO user_roles VALUES('${owner}','admin'),('${manager}','team'),('${coordinator}','coordinator'),('${driver}','driver');
+ CREATE TABLE vehicles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),status text,archived_at timestamptz,current_odometer int,year int DEFAULT 2020,make text DEFAULT 'Ford',model text DEFAULT 'Fusion',vin text DEFAULT '3FA6P0H77GR351009',weekly_rate numeric DEFAULT 350);
+ CREATE TABLE applications(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),status text,user_id uuid,vehicle_id uuid);
+ CREATE TABLE rentals(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),vehicle_id uuid,driver_id uuid,application_id uuid,status text,pickup_reading_id uuid,return_reading_id uuid,start_date date,end_date date,weekly_rate numeric,deposit_amount numeric,deposit_held bool,next_payment_due date,autopay_active bool DEFAULT true,stripe_subscription_id text DEFAULT 'sub_synthetic',created_at timestamptz DEFAULT clock_timestamp());
+ CREATE UNIQUE INDEX one_active_vehicle ON rentals(vehicle_id) WHERE status='active';
+ CREATE TABLE odometer_readings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),vehicle_id uuid,mileage int,status text);
+ CREATE TABLE agreements(rental_id uuid,application_id uuid);
+ CREATE TABLE automation_enrollments(application_id uuid,status text,cancelled_reason text,next_run_at timestamptz);
+ CREATE TABLE inspections(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),rental_id uuid,vehicle_id uuid,inspection_type text,status text,completed_at timestamptz,created_at timestamptz DEFAULT clock_timestamp());
+ CREATE TABLE inspection_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),inspection_id uuid,result text,is_critical bool);
+ CREATE TABLE incidents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),vehicle_id uuid,status text);
+ CREATE TABLE maintenance_records(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),vehicle_id uuid,status text,due_date date,due_mileage int);
+ CREATE TABLE audit_log(actor_user_id uuid,actor_role text,action text,entity_type text,entity_id text,summary text,metadata jsonb);
+ CREATE FUNCTION vehicle_rental_ready_missing(uuid) RETURNS text[] LANGUAGE sql AS $$ SELECT '{}'::text[] $$;
+ CREATE FUNCTION private.rental_mileage_reading(uuid,uuid,uuid,integer,text,text,uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT null::uuid $$;
+ `);
+ const lifecycle=readFileSync('supabase/migrations/20261006014406_0abdea2e-a87c-4adc-9431-d697b5bb30bb.sql','utf8');
+ await db.unsafe(lifecycle.slice(0,lifecycle.indexOf('CREATE OR REPLACE FUNCTION public.activate_rental_tx')));
+ const ready=readFileSync('supabase/migrations/20261006084912_1bf46cf7-571d-4014-b3d3-df8f58bb7ad3.sql','utf8');
+ await db.unsafe(ready.slice(0,ready.indexOf('CREATE OR REPLACE FUNCTION public.guard_vehicle_ready_status')));
+ const vehicleGuard=readFileSync('supabase/migrations/20261006012455_0e19926e-9f07-438a-a62d-534e9f14673f.sql','utf8');
+ await db.unsafe(vehicleGuard.slice(vehicleGuard.indexOf('CREATE OR REPLACE FUNCTION public.guard_vehicle_rented_status'),vehicleGuard.indexOf('CREATE OR REPLACE FUNCTION public.activate_rental_tx')));
+ const original=readFileSync('supabase/migrations/20261006112250_6c73a4f7-a851-44fd-bdf1-f8fc85906eda.sql','utf8');
+ await db.unsafe(original.slice(original.indexOf('CREATE FUNCTION public.activate_rental_tx'),original.indexOf('DROP POLICY IF EXISTS')));
+ const migration=readFileSync('scripts/safe-vehicle-release/migration.proposed.sql','utf8');
+ await db.begin(tx=>tx.unsafe(migration));
+}
