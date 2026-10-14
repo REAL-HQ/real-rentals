@@ -472,6 +472,7 @@ export const endRental = createServerFn({ method: "POST" })
       _vehicle_status: data.vehicleStatus,
       _return_miles: data.returnMileage ?? null,
       _actor: actor.userId,
+      _release_contract: "safe-release-v1",
     });
     if (error) {
       const m = String(error.message);
@@ -480,18 +481,13 @@ export const endRental = createServerFn({ method: "POST" })
       if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
       throw new Error(error.message);
     }
-    if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
+    // Missing/old migration cannot resolve this versioned RPC call. Never infer release from the request.
+    if (outcome?.contract !== "safe-release-v1" || (outcome.alreadyClosed !== true && (!["available", "maintenance"].includes(outcome.vehicleStatus) || !Array.isArray(outcome.releaseReasons)))) throw new Error("Safe vehicle release response unavailable. Verify rental state before retrying.");
+    return { ok: true, alreadyClosed: outcome.alreadyClosed === true,
+      vehicleStatus: outcome.vehicleStatus as "available" | "maintenance" | undefined,
+      releaseReasons: (outcome.releaseReasons ?? []) as string[],
+      billing: "Closure does not confirm Stripe cancellation. Review billing, charges and deposit separately." };
 
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, {
-      action: "rental.ended",
-      summary: `Ended rental ${rental.id}`,
-      entityType: "rental",
-      entityId: String(rental.id),
-      metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
-    });
-
-    return { ok: true, alreadyClosed: false };
   });
 
 /** Truthful messages for the reasons activate_rental_tx refuses. */

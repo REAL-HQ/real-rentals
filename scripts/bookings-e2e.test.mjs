@@ -191,7 +191,7 @@ function serverFn(name, input, canSeeMoney) {
     case /listAuditLog/.test(name): return { rows: [], total: 0 };
     // The R1 actions. Recorded, never performed: the point is which endpoint
     // the button reached and with what, not to run a transaction in a browser.
-    case /endRental/.test(name): return { ok: true, alreadyClosed: false };
+    case /endRental/.test(name): return { ok: true, alreadyClosed: false, vehicleStatus: "maintenance", releaseReasons: ["Return inspection missing, incomplete or failed"], billing: "Closure does not confirm Stripe cancellation. Review billing separately." };
     case /startInspection/.test(name): return { id: "insp-new-1" };
     case /getInspection/.test(name):
       return { id: "insp-new-1", vehicle_id: V1, rental_id: R1, inspection_type: "return",
@@ -422,7 +422,7 @@ async function run(label, viewport) {
   ok(await page.locator('[data-testid="end-rental-dialog"]').count() === 1, "End Rental opens its own dialog");
   const endText = await page.locator('[data-testid="end-rental-dialog"]').innerText();
   ok(/48,000 mi|48000/.test(endText), "the return mileage is prefilled from the completed check-in");
-  ok(/Back To Available/.test(endText) && /Into Maintenance/.test(endText),
+  ok(/Available If Safe/.test(endText) && /Into Maintenance/.test(endText),
     "and it can send the car to the shop, which the driver-record path never could");
   await page.locator('[data-testid="end-rental-maintenance"]').click();
   await page.waitForTimeout(300);

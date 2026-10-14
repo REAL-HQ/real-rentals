@@ -281,7 +281,7 @@ function EndRentalDialog({
           vehicleStatus: destination,
           returnMileage: digits ? Number(digits) : null,
         },
-      })) as { ok: boolean; error?: string; alreadyClosed?: boolean };
+      })) as { ok: boolean; error?: string; alreadyClosed?: boolean; vehicleStatus?: string; releaseReasons?: string[]; billing?: string };
       if (res && res.ok === false) {
         setError(res.error ?? "Could not end the rental.");
         return;
@@ -289,10 +289,11 @@ function EndRentalDialog({
       toast.success(
         res?.alreadyClosed
           ? "This rental was already closed."
-          : destination === "maintenance"
-            ? "Rental ended — the vehicle went to maintenance."
-            : "Rental ended — the vehicle is available again.",
+          : res?.vehicleStatus === "maintenance"
+            ? `Rental closed — vehicle held in Maintenance: ${(res.releaseReasons ?? []).join("; ")}.`
+            : "Rental closed — vehicle released to Available.",
       );
+      if (res?.billing) toast.info(res.billing);
       onEnded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not end the rental.");
@@ -306,11 +307,11 @@ function EndRentalDialog({
       <CloseoutReadiness rentalId={d.booking.id} />
       <div className="space-y-4">
         <p className="text-[13px] text-[#55555E]">
-          Closing this rental releases{" "}
+          Closing this rental does not automatically release{" "}
           <span className="font-medium text-[#111114]">
             {d.vehicle?.label ?? d.vehicle?.unitNumber ?? "the vehicle"}
           </span>{" "}
-          and stops any running automations. The paperwork, photos and charges stay on the booking.
+          to Available. Missing return evidence or unresolved safety issues hold it in Maintenance. Billing cancellation is separate. Closing stops running automations. The paperwork, photos and charges stay on the booking.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -358,15 +359,14 @@ function EndRentalDialog({
                     : "border-[#EDEDF0] bg-white text-[#55555E]"
                 }`}
               >
-                {v === "available" ? "Back To Available" : "Into Maintenance"}
+                {v === "available" ? "Available If Safe" : "Into Maintenance"}
               </button>
             ))}
           </div>
           {failedCheckIn && destination === "available" && (
             <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-[#C68A12]">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-              The check-in inspection failed. A car cannot be taken off the road while its rental is
-              open, so send it to maintenance here.
+              The return inspection failed. The rental can close, but the vehicle will remain in Maintenance until safety evidence is cleared.
             </p>
           )}
         </div>

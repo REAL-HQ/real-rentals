@@ -142,7 +142,7 @@ function seed() {
     agreements: [], payments: [], toll_charges: [], audit_log: [],
   };
   S.log = []; S.audit = []; S.rpcs = []; S.defaults = {};
-  S.rpcResults = { end_rental_tx: { data: "closed", error: null } };
+  S.rpcResults = { end_rental_tx: { data: { contract: "safe-release-v1", alreadyClosed: false, vehicleStatus: "maintenance", releaseReasons: ["Return inspection missing, incomplete or failed"] }, error: null } };
 }
 
 // ====================================== the inspection belongs to the rental
@@ -255,7 +255,17 @@ ok(S.rpcs[0].args._vehicle_status === "maintenance",
 ok(S.rpcs[0].args._return_miles === 48000, "and the return mileage as one observation");
 ok(!S.log.some((w) => w.table === "rentals"), "no rental row was written outside the transaction");
 ok(!S.log.some((w) => w.table === "vehicles"), "and no vehicle row either");
-ok((S.audit ?? []).some((a) => a.action === "rental.ended"), "the end was audited");
+ok(S.rpcs[0].args._release_contract === "safe-release-v1", "versioned safety contract required before mutation");
+ok(res.vehicleStatus === "maintenance" && res.releaseReasons.length > 0, "server returns transaction disposition, not requested availability");
+ok((S.audit ?? []).length === 0, "no duplicate best-effort audit outside atomic transaction");
+const SQL = readFileSync("scripts/safe-vehicle-release/migration.proposed.sql", "utf8");
+ok(SQL.includes("INSERT INTO public.audit_log"), "transaction appends audit (rollback verified in PostgreSQL suite)");
+for (const result of [{data:null,error:{message:"function missing"}}, {data:"closed",error:null}]) {
+ seed(); S.rpcResults.end_rental_tx=result; let rejected=false;
+ try { await call(endRental,{rentalId:R1,vehicleStatus:"available"},"mgr-1"); } catch { rejected=true; }
+ ok(rejected,"missing migration or legacy response cannot imply safe release");
+}
+
 
 console.log("\\na Coordinator never reaches it");
 seed();
