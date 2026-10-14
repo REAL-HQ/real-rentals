@@ -61,10 +61,11 @@ const row = (id, name, status, contact) => ({
   ...contact,
 });
 
+const LONG_NOTE = Array.from({length:8},(_,i)=>`Synthetic line ${i+1}: preserve this stored note exactly.`).join("\n");
 const APPS = [
   row(A1, "Dana Reyes", "reviewing", {}),
   row(A2, "Marcus Hall", "approved", {
-    contact_status: "follow_up", contact_status_note: "Wants the Camry",
+    contact_status: "follow_up", contact_status_note: LONG_NOTE,
     contact_follow_up_on: "2026-10-14", contact_status_at: "2026-10-11T12:00:00Z",
   }),
   row(A3, "Priya Shah", "new", {
@@ -412,6 +413,38 @@ for (const role of ["admin", "team", "coordinator"]) {
     !options.some(x=>['approved','active'].includes(x.trim())),`${role}/${width}: existing lifecycle menu restrictions preserved`);
   await page.keyboard.press('Escape');
   ok(saves.length===0 && restWrites.length===0,`${role}/${width}: opening status menu performs no writes`);
+  await openBadge(page,A2);
+  const panel = page.locator('[data-contact-status-list]');
+  const details = page.locator('[data-contact-status-details]');
+  const layout = await panel.evaluate(el=>{
+    const left=el.children[0].getBoundingClientRect(),right=el.children[1].getBoundingClientRect();
+    const popup=el.parentElement.getBoundingClientRect();
+    return {direction:getComputedStyle(el).flexDirection,left:{x:left.x,y:left.y,right:left.right,bottom:left.bottom},
+      right:{x:right.x,y:right.y},fits:popup.x>=0 && popup.right<=innerWidth && popup.y>=0 && popup.bottom<=innerHeight};
+  });
+  ok(layout.fits,`${role}/${width}: popover stays inside viewport`);
+  ok(width>=640 ? layout.direction==='row' && layout.right.x>=layout.left.right-1 :
+    layout.direction==='column' && layout.right.y>=layout.left.bottom-1,
+    `${role}/${width}: details are beside statuses on desktop and stacked on mobile`);
+  ok((await panel.locator('button').allTextContents()).filter(x=>!x.includes('View More')).length===9,
+    `${role}/${width}: all nine Contact statuses remain available`);
+  ok((await details.innerText()).includes('Oct 14, 2026') && !(await details.innerText()).includes('Not Set'),
+    `${role}/${width}: stored follow-up date displayed`);
+  const note = details.locator('[data-contact-status-note]');
+  ok(await note.textContent()===LONG_NOTE,`${role}/${width}: stored note preserved exactly`);
+  ok(await note.evaluate(el=>getComputedStyle(el).webkitLineClamp)==='5',`${role}/${width}: long note initially clamped`);
+  await details.getByRole('button',{name:'View More',exact:true}).click();
+  ok(await note.textContent()===LONG_NOTE && await note.evaluate(el=>getComputedStyle(el).overflowY)==='auto',
+    `${role}/${width}: expanded note remains unchanged and scrollable`);
+  await details.getByRole('button',{name:'View Less',exact:true}).click();
+  await page.keyboard.press('Escape');
+  await panel.waitFor({state:'detached'});
+  await openBadge(page,A1);
+  ok((await page.locator('[data-contact-status-details]').innerText()).includes('Not Set') &&
+    (await page.locator('[data-contact-status-details]').innerText()).includes('No Note'),
+    `${role}/${width}: empty date and note states shown`);
+  await page.keyboard.press('Escape');
+  ok(saves.length===0 && restWrites.length===0,`${role}/${width}: viewing details performs no writes`);
   await ctx.close();
  }
 }
