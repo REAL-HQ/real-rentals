@@ -390,9 +390,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
      * Autofill is untouched: it is the Owner's standing switch acting on
      * blank descriptive fields, not a person applying a change.
      */
-    if (!isManager && data.decisions.some((d) => d.action !== "ignore")) {
-      throw new Error("Forbidden: applying extracted details to a vehicle is Manager-only.");
-    }
+
     // Acquisition finance, liens, payoffs: Owner only (DB enforces the same).
     const canOwnership = (await import("@/lib/experience.server")).ownerView(actor);
     const sb = await admin();
