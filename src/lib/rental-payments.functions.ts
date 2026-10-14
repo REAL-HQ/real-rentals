@@ -192,7 +192,7 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') {
         const { createReservedSubscription } = await import('@/lib/stripe-operations.server');
-        return createReservedSubscription(supabaseAdmin, data.rentalId, data.environment, context.userId);
+        return await createReservedSubscription(supabaseAdmin, data.rentalId, data.environment, context.userId);
       }
       const { data: rental } = await supabaseAdmin
         .from('rentals')
@@ -266,7 +266,7 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
       if (rental.stripe_subscription_id) {
         if (process.env.STRIPE_RECONCILIATION_ENABLED === 'true') {
           const { cancelDurably } = await import('@/lib/stripe-operations.server');
-          return cancelDurably(supabaseAdmin,data.rentalId,rental.stripe_subscription_id,data.environment,context.userId);
+          return await cancelDurably(supabaseAdmin,data.rentalId,rental.stripe_subscription_id,data.environment,context.userId);
         }
         const stripe = createStripeClient(data.environment);
         await cancelMappedSubscription(rental.stripe_subscription_id, id => stripe.subscriptions.cancel(id), async id => {
