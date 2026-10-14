@@ -1,0 +1,322 @@
+{
+  "base": "d8c3b84a066c7ad58836527926e64619fb0482b4",
+  "files": {
+    "drizzle/migrations/0000_fleet_inbox_job_queue.sql": "60e27532f009295eb18cd9b0764093326417847d070f228be55c15afa3da53aa",
+    "drizzle/migrations/0001_fleet_inbox_wake_timeout.sql": "738ba1b78a229c55eaf5f4bb8446d86afd6ff25feccd5277adf5ad4409cabeb5",
+    "drizzle/migrations/0002_owner_only_acquisition_finance.sql": "cd11f5db078aaf63476e339f1cff6f581433a7978160ffdb74e328687700b138",
+    "drizzle/migrations/0003_title_originals_owner_only.sql": "611235fa2841a9b977a0a9c730558f64eafe3193bb9a7799794d8af9f12f8b7b",
+    "drizzle/migrations/0004_owner_only_vehicle_titles.sql": "63623386f23a6c36cbc24cad601e469a5cb67a0ba52edf660aab72893395c033",
+    "drizzle/migrations/0005_vehicle_titles_revoke_anon.sql": "63695e00db5f1636954ad79f396d72937402d940fdc279e0578c43a5361cf271",
+    "drizzle/migrations/0006_migration.sql": "33c85b39c5410bc74e5302104d0f8cd062934f4fa4c4d8ae0c22c48d442bb808",
+    "drizzle/migrations/0007_safe_autofill.sql": "9442071c9712fa259c9255fbeadbb73657c552fb5c4bed1ec0114304e9257b43",
+    "drizzle/migrations/0008_fin_core_c1.sql": "dcbabda64efa476c0b1c855807cf9747822af3dba4960771e1140a1cf56c5265",
+    "drizzle/migrations/0009_fin_core_c1_tables.sql": "ee0ee9066eb3e0e9fabf3415da1c64d9d68484252a4371062167e8cdfd503957",
+    "drizzle/migrations/0010_fin_c1_deposit_correction.sql": "18fb3113f234e0bb7834884e1e9c89a6d79ee880d4f59519b7399d990cbfcf77",
+    "drizzle/migrations/0011_fin_c1_deposit_reverse_guard.sql": "6a558eda9c92b87d352e3849bd509ee939d6b5801afa77c6fe7d9d7b893b743e",
+    "drizzle/migrations/0012_photo_enhancer.sql": "873e4c4d4e4df1c0864291483d3fe805f3f4a1a5738f82572a3d2e5ab71022c4",
+    "drizzle/migrations/0013_vehicle_docs_finance_owner_only_writes.sql": "c5807075884bdd3f8b868b9491bec4d2c61d685d55a11653cf9bf8fbe727aae1",
+    "drizzle/migrations/0014_waitlist_holds_and_safe_promotion.sql": "0165723216a1346ae1dfab78180356c5f8b8a62038390119285a2f4ac6224890",
+    "drizzle/migrations/0015_waitlist_promotion_identity_review.sql": "2f12f169a12fc3acba57fc46423c51a461f407222c5272fbf142905222eea1cc",
+    "drizzle/migrations/0016_0016_driver_deletion_stage1.sql": "a3f9b526698a5f682f7b7162cec45ad75833e25a4fc16abfbf02a700944f040a",
+    "drizzle/migrations/0017_0017_driver_deletion_security_repair.sql": "71b806abd5211fbe63227473a03e947d6a51d9fcda68c9927c62a24481ba54c6",
+    "drizzle/migrations/0018_portal_signin_challenges.sql": "cb6f88b17b356c9c6189da608829566f09ad6acd0d8411c0a38c332dd573dfc2",
+    "drizzle/migrations/0019_application_identity_reviews.sql": "6ab09e206256d0b3752f8eb4e32c60be9f78cd07837398203a52a172d2029a2e",
+    "drizzle/migrations/0020_identity_reviews_tighten_grants.sql": "2c60e0bbd894ae6fd63fbafe8eb1956918169e43b7385ea11cca43f64be5cb80",
+    "drizzle/migrations/0021_phase_b_active_requires_running_rental.sql": "a8f14f62b9c84e02e0e07a276300e7be6ef7f0f8eec221acd9981d2604eac2de",
+    "drizzle/migrations/meta/0000_snapshot.json": "baf2a54e1d86d448a25ac0bb6e7ddd2f7759ffd21bf66eb03b68e0c78e052ee2",
+    "drizzle/migrations/meta/0001_snapshot.json": "2c71b49428bd11de870d898c5bab2bc196866ac274849871536063a254bb77ac",
+    "drizzle/migrations/meta/0002_snapshot.json": "8d88809d7ee08e5799ce9e1a4ea3a550052bca2cac7bb02fcf507e72570efc04",
+    "drizzle/migrations/meta/0003_snapshot.json": "f15b372d97b45c89c6a5480829f607e10d8742fa00603eb50e95d2f9c49ea699",
+    "drizzle/migrations/meta/0004_snapshot.json": "8961d1e892a1ed19124c2f932ff30be565aa5cc4a364ea24329c261c2f678134",
+    "drizzle/migrations/meta/0005_snapshot.json": "a4067bee154f96c752ca2a65fc3a9a9b22846c58622af3948ff3d2d33a44219b",
+    "drizzle/migrations/meta/0006_snapshot.json": "952698810920b5895207d85d83fba5505053ede3431b5e346a27942a424e6101",
+    "drizzle/migrations/meta/0007_snapshot.json": "0323d6609f75c635d190929764d763660d2348ce1075dff7ff0bd2a4e6fe98a6",
+    "drizzle/migrations/meta/0008_snapshot.json": "22bbfa12aa975377172513677bf8de2ab21e34eed1d02dc7c62a278cd3de47a1",
+    "drizzle/migrations/meta/0009_snapshot.json": "a4899f659e61dc6072df852566d50b11d433b7d0a9c7b23a6e4943f4c1c935e7",
+    "drizzle/migrations/meta/0010_snapshot.json": "85d7d91d88fff8b2b101778cc8185d6f24df1d7631fd7b782d96ddf980a26f63",
+    "drizzle/migrations/meta/0011_snapshot.json": "070d2fd72f94f1147f55dc0f1fff0e0afe870e70ad7dec95470f2af6e9fc21b3",
+    "drizzle/migrations/meta/0012_snapshot.json": "57b0a3889e84f1ff91bed95a15078a601cfcbdb303273411b431b5e423a8384c",
+    "drizzle/migrations/meta/0013_snapshot.json": "ae6bbf3942c034852ffa441d8ffb043c0ae244d27fe68759147c5a409ae922ce",
+    "drizzle/migrations/meta/0014_snapshot.json": "f50af7ac4ce20d3b40773e4d1d2f5bdb539374ef899235555344ce6addf82e38",
+    "drizzle/migrations/meta/0015_snapshot.json": "d34295380f38e1e5606a5839d52a35e66d91807be9e89aa4fb28208d939d0716",
+    "drizzle/migrations/meta/0016_snapshot.json": "73745d60691b5ad14f8e564f808e9832e8c6e8f5c03686e4e1782e2cb85ca292",
+    "drizzle/migrations/meta/0017_snapshot.json": "27a380b5b33826b5ecbde4e075766b58806bc97aa879286ca1a64907fd1cd0e4",
+    "drizzle/migrations/meta/0018_snapshot.json": "4e4b816b3e4c82b156f780f266e9aaa838f9bcd467063c50a64a858db017b9c5",
+    "drizzle/migrations/meta/0019_snapshot.json": "1e012a8bc1512512f51cbb5e7699fb4c235e426d14db3a5573d44dfb31235a62",
+    "drizzle/migrations/meta/0020_snapshot.json": "370f9c38148d14d39dc291ffc8c967365f2f84e1586cbe061a098b03b1786a6d",
+    "drizzle/migrations/meta/0021_snapshot.json": "4deaf5000dc16d724aaa38152ecbce3a3c97ed865889fd32172b5415f57fd9db",
+    "drizzle/migrations/meta/_journal.json": "a09d099658ee1e70955056e5deab4a21f250eedf44a86739f25a5f22a5e39dd1"
+  },
+  "journal": {
+    "version": "7",
+    "dialect": "postgresql",
+    "entries": [
+      {
+        "idx": 0,
+        "version": "7",
+        "when": 1791420975062,
+        "tag": "0000_fleet_inbox_job_queue",
+        "breakpoints": true
+      },
+      {
+        "idx": 1,
+        "version": "7",
+        "when": 1791421074958,
+        "tag": "0001_fleet_inbox_wake_timeout",
+        "breakpoints": true
+      },
+      {
+        "idx": 2,
+        "version": "7",
+        "when": 1791430766220,
+        "tag": "0002_owner_only_acquisition_finance",
+        "breakpoints": true
+      },
+      {
+        "idx": 3,
+        "version": "7",
+        "when": 1791431279577,
+        "tag": "0003_title_originals_owner_only",
+        "breakpoints": true
+      },
+      {
+        "idx": 4,
+        "version": "7",
+        "when": 1791432590443,
+        "tag": "0004_owner_only_vehicle_titles",
+        "breakpoints": true
+      },
+      {
+        "idx": 5,
+        "version": "7",
+        "when": 1791432832737,
+        "tag": "0005_vehicle_titles_revoke_anon",
+        "breakpoints": true
+      },
+      {
+        "idx": 6,
+        "version": "7",
+        "when": 1791458463060,
+        "tag": "0006_migration",
+        "breakpoints": true
+      },
+      {
+        "idx": 7,
+        "version": "7",
+        "when": 1791459951490,
+        "tag": "0007_safe_autofill",
+        "breakpoints": true
+      },
+      {
+        "idx": 8,
+        "version": "7",
+        "when": 1791462253541,
+        "tag": "0008_fin_core_c1",
+        "breakpoints": true
+      },
+      {
+        "idx": 9,
+        "version": "7",
+        "when": 1791462346435,
+        "tag": "0009_fin_core_c1_tables",
+        "breakpoints": true
+      },
+      {
+        "idx": 10,
+        "version": "7",
+        "when": 1791463536348,
+        "tag": "0010_fin_c1_deposit_correction",
+        "breakpoints": true
+      },
+      {
+        "idx": 11,
+        "version": "7",
+        "when": 1791463558283,
+        "tag": "0011_fin_c1_deposit_reverse_guard",
+        "breakpoints": true
+      },
+      {
+        "idx": 12,
+        "version": "7",
+        "when": 1791464019517,
+        "tag": "0012_photo_enhancer",
+        "breakpoints": true
+      },
+      {
+        "idx": 13,
+        "version": "7",
+        "when": 1791471257211,
+        "tag": "0013_vehicle_docs_finance_owner_only_writes",
+        "breakpoints": true
+      },
+      {
+        "idx": 14,
+        "version": "7",
+        "when": 1791473301327,
+        "tag": "0014_waitlist_holds_and_safe_promotion",
+        "breakpoints": true
+      },
+      {
+        "idx": 15,
+        "version": "7",
+        "when": 1791473830599,
+        "tag": "0015_waitlist_promotion_identity_review",
+        "breakpoints": true
+      },
+      {
+        "idx": 16,
+        "version": "7",
+        "when": 1791477139776,
+        "tag": "0016_0016_driver_deletion_stage1",
+        "breakpoints": true
+      },
+      {
+        "idx": 17,
+        "version": "7",
+        "when": 1791479523295,
+        "tag": "0017_0017_driver_deletion_security_repair",
+        "breakpoints": true
+      },
+      {
+        "idx": 18,
+        "version": "7",
+        "when": 1791480452755,
+        "tag": "0018_portal_signin_challenges",
+        "breakpoints": true
+      },
+      {
+        "idx": 19,
+        "version": "7",
+        "when": 1791480942211,
+        "tag": "0019_application_identity_reviews",
+        "breakpoints": true
+      },
+      {
+        "idx": 20,
+        "version": "7",
+        "when": 1791481035617,
+        "tag": "0020_identity_reviews_tighten_grants",
+        "breakpoints": true
+      },
+      {
+        "idx": 21,
+        "version": "7",
+        "when": 1791496432098,
+        "tag": "0021_phase_b_active_requires_running_rental",
+        "breakpoints": true
+      }
+    ]
+  },
+  "receipts": [
+    {
+      "created_at": 1791420975062,
+      "hash": "60e27532f009295eb18cd9b0764093326417847d070f228be55c15afa3da53aa",
+      "id": 1
+    },
+    {
+      "created_at": 1791421074958,
+      "hash": "738ba1b78a229c55eaf5f4bb8446d86afd6ff25feccd5277adf5ad4409cabeb5",
+      "id": 2
+    },
+    {
+      "created_at": 1791430766220,
+      "hash": "cd11f5db078aaf63476e339f1cff6f581433a7978160ffdb74e328687700b138",
+      "id": 3
+    },
+    {
+      "created_at": 1791431279577,
+      "hash": "611235fa2841a9b977a0a9c730558f64eafe3193bb9a7799794d8af9f12f8b7b",
+      "id": 4
+    },
+    {
+      "created_at": 1791432590443,
+      "hash": "63623386f23a6c36cbc24cad601e469a5cb67a0ba52edf660aab72893395c033",
+      "id": 5
+    },
+    {
+      "created_at": 1791432832737,
+      "hash": "63695e00db5f1636954ad79f396d72937402d940fdc279e0578c43a5361cf271",
+      "id": 6
+    },
+    {
+      "created_at": 1791458463060,
+      "hash": "33c85b39c5410bc74e5302104d0f8cd062934f4fa4c4d8ae0c22c48d442bb808",
+      "id": 7
+    },
+    {
+      "created_at": 1791459951490,
+      "hash": "9442071c9712fa259c9255fbeadbb73657c552fb5c4bed1ec0114304e9257b43",
+      "id": 8
+    },
+    {
+      "created_at": 1791462253541,
+      "hash": "dcbabda64efa476c0b1c855807cf9747822af3dba4960771e1140a1cf56c5265",
+      "id": 9
+    },
+    {
+      "created_at": 1791462346435,
+      "hash": "ee0ee9066eb3e0e9fabf3415da1c64d9d68484252a4371062167e8cdfd503957",
+      "id": 10
+    },
+    {
+      "created_at": 1791463536348,
+      "hash": "18fb3113f234e0bb7834884e1e9c89a6d79ee880d4f59519b7399d990cbfcf77",
+      "id": 11
+    },
+    {
+      "created_at": 1791463558283,
+      "hash": "6a558eda9c92b87d352e3849bd509ee939d6b5801afa77c6fe7d9d7b893b743e",
+      "id": 12
+    },
+    {
+      "created_at": 1791464019517,
+      "hash": "873e4c4d4e4df1c0864291483d3fe805f3f4a1a5738f82572a3d2e5ab71022c4",
+      "id": 13
+    },
+    {
+      "created_at": 1791471257211,
+      "hash": "c5807075884bdd3f8b868b9491bec4d2c61d685d55a11653cf9bf8fbe727aae1",
+      "id": 14
+    },
+    {
+      "created_at": 1791473301327,
+      "hash": "0165723216a1346ae1dfab78180356c5f8b8a62038390119285a2f4ac6224890",
+      "id": 15
+    },
+    {
+      "created_at": 1791473830599,
+      "hash": "2f12f169a12fc3acba57fc46423c51a461f407222c5272fbf142905222eea1cc",
+      "id": 16
+    },
+    {
+      "created_at": 1791477139776,
+      "hash": "a3f9b526698a5f682f7b7162cec45ad75833e25a4fc16abfbf02a700944f040a",
+      "id": 17
+    },
+    {
+      "created_at": 1791479523295,
+      "hash": "71b806abd5211fbe63227473a03e947d6a51d9fcda68c9927c62a24481ba54c6",
+      "id": 18
+    },
+    {
+      "created_at": 1791480452755,
+      "hash": "cb6f88b17b356c9c6189da608829566f09ad6acd0d8411c0a38c332dd573dfc2",
+      "id": 19
+    },
+    {
+      "created_at": 1791480942211,
+      "hash": "6ab09e206256d0b3752f8eb4e32c60be9f78cd07837398203a52a172d2029a2e",
+      "id": 20
+    },
+    {
+      "created_at": 1791481035617,
+      "hash": "2c60e0bbd894ae6fd63fbafe8eb1956918169e43b7385ea11cca43f64be5cb80",
+      "id": 21
+    },
+    {
+      "created_at": 1791496432098,
+      "hash": "a8f14f62b9c84e02e0e07a276300e7be6ef7f0f8eec221acd9981d2604eac2de",
+      "id": 22
+    }
+  ]
+}

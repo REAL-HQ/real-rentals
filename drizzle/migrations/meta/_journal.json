@@ -155,6 +155,13 @@
       "when": 1791496432098,
       "tag": "0021_phase_b_active_requires_running_rental",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791970564241,
+      "tag": "0031_guarded_coordinator_containment",
+      "breakpoints": true
     }
   ]
 }
