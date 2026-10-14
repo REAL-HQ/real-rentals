@@ -135,7 +135,7 @@ export function ContactStatusCell({
       <PopoverContent
         align="start"
         collisionPadding={16}
-        className={`${picked ? "w-[min(20rem,calc(100vw-2rem))]" : "w-[min(34rem,calc(100vw-2rem))]"} p-0`}
+        className={`${picked ? "w-[min(20rem,calc(100vw-2rem))]" : "w-[min(34rem,calc(100vw-2rem))]"} max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0`}
       >
         {!picked ? (
           <div className="flex flex-col sm:flex-row" data-contact-status-list>
