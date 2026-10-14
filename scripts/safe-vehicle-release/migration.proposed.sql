@@ -189,4 +189,3 @@ EXCEPTION WHEN unique_violation THEN
 END $function$;
 REVOKE ALL ON FUNCTION public.activate_rental_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.activate_rental_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid) TO service_role;
-
