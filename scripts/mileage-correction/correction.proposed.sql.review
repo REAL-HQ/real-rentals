@@ -1,0 +1,39 @@
+-- LOCAL PROPOSAL ONLY. NOT A HOSTED INSTALLER. No historical data update.
+DO $$ BEGIN IF current_database()<>'rr_scope_prototype_local' OR inet_server_addr() IS NOT NULL THEN RAISE EXCEPTION 'local_only'; END IF; END $$;
+CREATE OR REPLACE FUNCTION public.inspection_odometer_to_history() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ IF NEW.vehicle_id IS NULL OR NEW.odometer IS NULL OR NEW.odometer<=0 OR NEW.completed_at IS NULL THEN RETURN NULL; END IF;
+ INSERT INTO public.odometer_readings(vehicle_id,mileage,observed_on,observed_at,source_type,source_id,evidence_key,entered_by)
+ VALUES(NEW.vehicle_id,NEW.odometer,(NEW.completed_at AT TIME ZONE 'America/New_York')::date,NEW.completed_at,'inspection',NEW.id,'inspection:'||NEW.id,NEW.inspector_id)
+ ON CONFLICT(evidence_key) WHERE evidence_key IS NOT NULL DO NOTHING;
+ RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION public.vehicle_sync_current_odometer() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE r record;vid uuid:=COALESCE(NEW.vehicle_id,OLD.vehicle_id);
+BEGIN
+ SELECT mileage,observed_on,observed_at INTO r FROM public.odometer_readings WHERE vehicle_id=vid AND status='valid'
+ ORDER BY observed_on DESC,observed_at DESC NULLS LAST,id DESC LIMIT 1;
+ IF FOUND THEN
+  PERFORM set_config('app.odo_sync','on',true);
+  UPDATE public.vehicles SET current_odometer=r.mileage,
+   odometer_updated_at=COALESCE(r.observed_at,r.observed_on::timestamp AT TIME ZONE 'America/New_York')
+   WHERE id=vid AND (current_odometer IS DISTINCT FROM r.mileage OR odometer_updated_at IS DISTINCT FROM COALESCE(r.observed_at,r.observed_on::timestamp AT TIME ZONE 'America/New_York'));
+  PERFORM set_config('app.odo_sync','off',true);
+ END IF;
+ RETURN NULL;
+END $$;
+-- Same lock order as lifecycle/Safe Release, before row locks. No per-vehicle lock inversion.
+CREATE TRIGGER mileage_order_lock BEFORE INSERT OR UPDATE ON public.odometer_readings
+ FOR EACH STATEMENT EXECUTE FUNCTION private.lock_vehicle_release();
+REVOKE EXECUTE ON FUNCTION public.inspection_odometer_to_history(),public.vehicle_sync_current_odometer() FROM PUBLIC,anon,authenticated;
+
+-- Validate new observation inputs; never rewrite or block unrelated linkage updates to legacy evidence.
+CREATE FUNCTION public.validate_mileage_observation() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+ IF TG_OP='UPDATE' AND NEW.observed_on IS NOT DISTINCT FROM OLD.observed_on AND NEW.observed_at IS NOT DISTINCT FROM OLD.observed_at THEN RETURN NEW; END IF;
+ IF NEW.observed_on IS NULL OR NOT isfinite(NEW.observed_on) OR NEW.observed_on<DATE '1000-01-01' OR NEW.observed_on>DATE '9999-12-31' THEN RAISE EXCEPTION 'invalid_observation_date'; END IF;
+ IF NEW.observed_at IS NOT NULL AND (NOT isfinite(NEW.observed_at) OR (NEW.observed_at AT TIME ZONE 'America/New_York')::date IS DISTINCT FROM NEW.observed_on) THEN RAISE EXCEPTION 'observation_date_time_conflict'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.validate_mileage_observation() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER mileage_observation_validate BEFORE INSERT OR UPDATE ON public.odometer_readings FOR EACH ROW EXECUTE FUNCTION public.validate_mileage_observation();

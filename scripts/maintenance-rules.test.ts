@@ -5,11 +5,11 @@ let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(`${c ? "  PASS" : "  FAIL"}  ${m}`); if (!c) fails++; };
 
 const hist = [
-  { mileage: 92150, observed_on: "2026-09-20", status: "valid" },
-  { mileage: 88000, observed_on: "2026-06-01", status: "valid" },
+  { id: "00000000-0000-0000-0000-000000000001", mileage: 92150, observed_on: "2026-09-20", status: "valid" },
+  { id: "00000000-0000-0000-0000-000000000002", mileage: 88000, observed_on: "2026-06-01", status: "valid" },
 ];
 ok(!isOdometerConflict(hist, { mileage: 84300, observed_on: "2026-03-01" }), "A. older receipt with lower miles is not a conflict");
-ok(currentMileage([...hist, { mileage: 84300, observed_on: "2026-03-01", status: "valid" }])!.mileage === 92150, "B. older reading never lowers current mileage");
+ok(currentMileage([...hist, { id: "00000000-0000-0000-0000-000000000003", mileage: 84300, observed_on: "2026-03-01", status: "valid" }])!.mileage === 92150, "B. older reading never lowers current mileage");
 ok(isOdometerConflict(hist, { mileage: 80000, observed_on: "2026-10-01" }), "C. newer date + materially lower miles is flagged");
 ok(!isOdometerConflict(hist, { mileage: 91900, observed_on: "2026-10-01" }), "D. small difference within tolerance is not flagged");
 ok(vendorKey("PEP BOYS") === vendorKey("Pep Boys") && vendorKey("PepBoys") === vendorKey("pep-boys"), "E. vendor names normalize for matching");
@@ -41,12 +41,12 @@ ok(milesDriven(92018, 91250) === null && milesDriven(null, 5) === null, "P2. no 
 ok(netServiceCost(500, null) === 500 && netServiceCost(500, 200) === 300 && netServiceCost(500, 400, 200) === 0, "P3. expense counts net paid (warranty/credit), never below 0");
 ok(netServiceCost(null, 50) === null, "P4. unknown total stays unknown");
 const sameDay = [
-  { mileage: 90100, observed_on: "2026-10-05", status: "valid" },
-  { mileage: 90050, observed_on: "2026-10-05", observed_at: "2026-10-05T15:00:00Z", status: "valid" },
-  { mileage: 90000, observed_on: "2026-10-05", observed_at: "2026-10-05T09:00:00Z", status: "valid" },
+  { id: "00000000-0000-0000-0000-000000000004", mileage: 90100, observed_on: "2026-10-05", status: "valid" },
+  { id: "00000000-0000-0000-0000-000000000005", mileage: 90050, observed_on: "2026-10-05", observed_at: "2026-10-05T15:00:00Z", status: "valid" },
+  { id: "00000000-0000-0000-0000-000000000006", mileage: 90000, observed_on: "2026-10-05", observed_at: "2026-10-05T09:00:00Z", status: "valid" },
 ];
 ok(currentMileage(sameDay)!.mileage === 90050, "P5. same date: latest exact time wins over earlier time and over date-only");
-ok(currentMileage([{ mileage: 88000, observed_on: "2026-05-01", status: "valid" }, { mileage: 92000, observed_on: "2026-10-01", observed_at: "2026-10-01T12:00:00Z", status: "valid" }])!.mileage === 92000, "P6. old receipt imported later never becomes current");
+ok(currentMileage([{ id: "00000000-0000-0000-0000-000000000007", mileage: 88000, observed_on: "2026-05-01", status: "valid" }, { id: "00000000-0000-0000-0000-000000000008", mileage: 92000, observed_on: "2026-10-01", observed_at: "2026-10-01T12:00:00Z", status: "valid" }])!.mileage === 92000, "P6. old receipt imported later never becomes current");
 const none = dueStatus({ item: "Oil Change", interval_miles: null, interval_days: null, last_done_on: null, last_done_miles: null }, 90000, "2026-10-06");
 ok(none.state === "unknown", "P7. no rule → no fake due state");
 const combo = { item: "Oil Change", interval_miles: 5000, interval_days: 180, last_done_on: "2026-01-01", last_done_miles: 80000 };

@@ -1,0 +1,93 @@
+MILEAGE CORRECTION — DRAFT REVIEW ONLY
+Base: 30ebdc13a0b3ab557667c02794b2205e9b7261c1 (current origin/main at preparation).
+
+Before: an inspection at 1,100 with no observed_at could leave an earlier timestamped
+1,050 as current. JavaScript truncated sub-millisecond order and absent IDs made ties
+input-dependent. After proposed SQL installation: new inspection evidence preserves
+completed_at, same-mile observations advance cache metadata, and writes take the shared
+Safe Release statement advisory lock before row locks. The TS comparator orders exact
+microseconds, date, and UUID; never highest mileage. Missing/invalid/duplicate persisted
+IDs and contradictory date/time inputs fail explicitly. Unsaved conflict inputs still
+allow no ID. The 500-mile conflict rule and lifecycle signatures are unchanged.
+
+EXACT FILE SCOPE
+src/lib/maintenance-rules.ts
+scripts/maintenance-rules.test.ts
+scripts/mileage-correction/correction.proposed.sql.review
+scripts/mileage-correction/parity.test.mjs
+scripts/mileage-correction/package.test.mjs
+scripts/mileage-correction/verification.json
+scripts/mileage-correction/REVIEW.txt
+
+INTEGRITY
+SQL SHA256 b41e2d2de2f08f9957f2de855ab3b7c6b5488f19ffd3a6476913f8176708a74c
+TS SHA256 a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a
+Both byte-identical to approved proposal. Existing test changes only add UUID fixtures.
+New parity tests adapt the approved test import/output and formatting for this repository.
+The proposed SQL includes the reviewed validate_mileage_observation function and trigger
+in addition to the inspection/cache functions and mileage_order_lock.
+
+DISABLED DATABASE PACKAGE
+Not registered in any journal; outside drizzle/migrations and automatic discovery.
+Retains local database-name and Unix-socket guard. Not a hosted installer. No push/merge
+installs it. No hosted SQL executed, no application deployment, no automatic jobs or Stripe.
+TypeScript has no app currentMileage callers at this base; UI uses DB cache.
+
+INSTALLATION DEPENDENCIES (SEPARATE REVIEW REQUIRED)
+Real maintenance/inspection/odometer schema and immutable/audit triggers; mileage-aware
+lifecycle foundation; reviewed Safe Vehicle Release private.lock_vehicle_release() and
+its advisory key (710026,2), plus compatible revised 0033 lock ordering if Stripe
+reconciliation is present. Preserve RLS, function owners, existing signature and security
+0031. Verify exact catalog, prior function definitions/grants, trigger attachments,
+executor CREATE TRIGGER/REPLACE FUNCTION authority and local/staging scope before any
+future installation package. Function replacement preserves existing owners/grants;
+REVOKE restricts direct public/anon/authenticated calls. No elevation or ownership change.
+Reservation foundation/reads/conversion are compatibility-test dependencies, not included
+or activated here. Final staging order, provider execution and receipt design are pending.
+
+Future installation must use one reviewed transaction for all definitions/triggers and
+receipt/evidence, with preflight and postconditions; the local SQL is not replay-safe and
+must not be promoted directly. Duplicate trigger/function creation currently errors.
+Failure in disposable tests rolls back. Do not remove locks or immutable guards to roll
+back. Before installation no DB rollback is needed. After a future approved installation,
+prefer reviewed forward repair; restoration of prior definitions requires a separate
+review against the installed catalog. Never delete mileage or audit evidence.
+
+HISTORICAL LIMITS
+No historical rows/cache are backfilled on install. Existing evidence stays unchanged.
+New timestamps must agree with observed_on in America/New_York. Genuine date-only
+observations remain unknown-time, behind timed evidence on the same date; cache display
+uses existing date-only midnight convention without changing the reading itself.
+Years 1000–9999, zoned ISO timestamps up to six fractional digits, UUID identifiers.
+Legacy conflicting rows need explicit preflight and review; selector throws, never silently
+normalizes. UUID tie order is deterministic, not a claim of chronological priority.
+
+VERIFICATION
+121 mileage/maintenance/disposable assertions PASS, zero functional FAIL, four BLOCKED
+groups. Additionally 11 static package checks, 30 closeout checks, 10 closeout browser
+checks, 18 Safe Release browser scenarios and Bookings action suite PASS.
+TypeScript and production build PASS. Existing local disposable harness used actual
+assembled repository definitions and local identity fixtures; results in verification.json.
+Its setup artifacts remain in the local reviewed staging-baseline workspace and are not
+bundled as an installer in this PR. Provider authentication was not simulated as a PASS.
+Commands: node scripts/mileage-correction/parity.test.mjs;
+node scripts/mileage-correction/package.test.mjs; tsx scripts/maintenance-rules.test.ts;
+node scripts/closeout-readiness.test.mjs; node scripts/closeout-readiness-ui.test.mjs;
+node scripts/safe-vehicle-release/ui.test.mjs; node scripts/bookings-actions.test.mjs;
+tsc --noEmit; npm run build.
+
+LINT LIMITATION — NOT MERGE READY
+Changed-file ESLint: 96 errors (95 formatting, one unchanged any). Clean-base versions
+of the two existing files already have 72 (71 formatting, same any); candidate adds
+24 formatting diagnostics. Both new mjs tests lint clean. No lint rule was disabled
+in repository configuration. Approved source was retained byte-for-byte rather than
+reformatting unrelated code. Formatting cleanup remains before merge approval.
+
+FOUR BLOCKED ACCEPTANCE GROUPS
+1 Actual Supabase Auth/PostgREST/Storage integration and session/account revocation.
+2 Full Application Resume stages 01–09/driver agreement parity.
+3 Hosted installation authority, migration receipts and least-privilege executor.
+4 Live Stripe/provider concurrency (not called).
+Valid JWT claims alone do not prove immediate session/account revocation. No auth changes,
+service-role shortcut or custom verifier is implemented. Local role revocation is not
+provider revocation evidence. These remain separately approved hosted release gates.

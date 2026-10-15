@@ -64,22 +64,62 @@ export function isOdometerConflict(history: Reading[], next: { mileage: number; 
   return history.some((r) => r.status === "valid" && r.observed_on <= next.observed_on && r.mileage > next.mileage + ODOMETER_TOLERANCE);
 }
 
+/** Persisted selection requires stable UUIDs; conflict prechecks may use unsaved Reading inputs. */
+export type PersistedReading = Reading & { id: string };
+const readingUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const observationZone = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+function validObservationDate(value: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RangeError("invalid_observation_date");
+  const [y, m, d] = value.split("-").map(Number);
+  const ms = Date.UTC(y, m - 1, d);
+  if (y < 1000 || y > 9999 || new Date(ms).toISOString().slice(0, 10) !== value) throw new RangeError("invalid_observation_date");
+  return ms;
+}
+/** Exact microseconds for the supported PostgREST ISO timestamp format, never rounded to milliseconds. */
+export function observationMicros(value: string): bigint {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!m) throw new RangeError("invalid_observation_timestamp");
+  const base = validObservationDate(m[1]);
+  const hour = Number(m[2]), minute = Number(m[3]), second = Number(m[4]);
+  const oh = m[6] === "Z" ? 0 : Number(m[6].slice(1, 3));
+  const om = m[6] === "Z" ? 0 : Number(m[6].slice(4, 6));
+  if (hour > 23 || minute > 59 || second > 59 || oh > 15 || om > 59) throw new RangeError("invalid_observation_timestamp");
+  const offset = (oh * 60 + om) * (m[6][0] === "-" ? -1 : 1);
+  return BigInt(base + ((hour * 60 + minute - offset) * 60 + second) * 1000) * 1000n + BigInt((m[5] ?? "").padEnd(6, "0"));
+}
 /**
- * Current mileage = newest valid reading by OBSERVATION (not insert) order: date, then exact time when the
- * source had one (date-only sources are never given an invented time and sort after timed ones that day),
- * then miles. Mirrors vehicle_sync_current_odometer.
+ * Observation date, exact instant (unknown time last), then canonical UUID descending.
+ * UUID order resolves ambiguity deterministically; it is not a claim of temporal recency.
+ * Timestamp and observed_on must describe the same America/New_York calendar date.
  */
-export function currentMileage(history: Reading[]): Reading | null {
-  const valid = history.filter((r) => r.status === "valid");
-  valid.sort((a, b) => {
-    if (a.observed_on !== b.observed_on) return a.observed_on < b.observed_on ? 1 : -1;
-    const ta = a.observed_at ?? null, tb = b.observed_at ?? null;
-    if (ta && tb && ta !== tb) return ta < tb ? 1 : -1;
-    if (ta && !tb) return -1;
-    if (!ta && tb) return 1;
-    return b.mileage - a.mileage;
+export function currentMileage(history: readonly PersistedReading[]): PersistedReading | null {
+  const ids = new Set<string>();
+  const valid = history.filter((r) => r.status === "valid").map((r) => {
+    if (typeof r.id !== "string" || !readingUuid.test(r.id)) throw new RangeError("stable_reading_id_required");
+    const id = r.id.toLowerCase();
+    if (ids.has(id)) throw new RangeError("duplicate_reading_id");
+    ids.add(id);
+    validObservationDate(r.observed_on);
+    const micros = r.observed_at == null ? null : observationMicros(r.observed_at);
+    if (micros !== null) {
+      // Floor before epoch as well: millisecond conversion is used ONLY for calendar-date validation.
+      const millis = micros >= 0n ? micros / 1000n : (micros - 999n) / 1000n;
+      const parts = observationZone.formatToParts(new Date(Number(millis)));
+      const part = (type: string) => parts.find((p) => p.type === type)!.value;
+      if (`${part("year")}-${part("month")}-${part("day")}` !== r.observed_on) throw new RangeError("observation_date_time_conflict");
+    }
+    return { r, id, micros };
   });
-  return valid[0] ?? null;
+  valid.sort((a, b) => {
+    if (a.r.observed_on !== b.r.observed_on) return a.r.observed_on < b.r.observed_on ? 1 : -1;
+    if (a.micros !== b.micros) {
+      if (a.micros === null) return 1;
+      if (b.micros === null) return -1;
+      return a.micros < b.micros ? 1 : -1;
+    }
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  });
+  return valid[0]?.r ?? null;
 }
 
 export type DueState = "overdue" | "due" | "due_soon" | "ok" | "unknown";
