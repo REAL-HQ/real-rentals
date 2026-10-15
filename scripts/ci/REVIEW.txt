@@ -21,7 +21,7 @@ Network phases: checkout/tool/download provisioning needs Internet. Dependency l
 scripts are disabled. Only trusted pinned setup and Playwright provisioning run online.
 All application hooks, build and tests run in a new Linux network namespace with only
 loopback enabled. setpriv drops to runner uid, removes capability bounding/inheritable/
-ambient sets and sets no-new-privileges; env is cleared except tool PATH, HOME, CI, base SHA.
+ambient sets, clears supplementary groups (including Docker access), and sets no-new-privileges; env is cleared except tool PATH, HOME, CI, base SHA.
 No hosted database credentials are supplied. Network check asserts only lo, nonroot,
 zero capability bound and NoNewPrivs; documentation address 192.0.2.1 must immediately
 fail no-route. If isolation cannot be established, validation stops. No shared host network

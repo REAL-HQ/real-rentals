@@ -10,6 +10,10 @@ const status = readFileSync("/proc/self/status", "utf8");
 assert.match(status, /NoNewPrivs:\s+1/);
 assert.match(status, /CapBnd:\s+0+\s/);
 assert.notEqual(process.getuid(), 0);
+assert.deepEqual(
+  process.getgroups().filter((g) => g !== process.getgid()),
+  [],
+);
 // Documentation-only address; never a production endpoint.
 await new Promise((resolve, reject) => {
   const socket = net.connect({ host: "192.0.2.1", port: 443 });
