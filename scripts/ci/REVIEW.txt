@@ -61,6 +61,7 @@ No local PostgreSQL harness execution, no provider Auth/PostgREST/Storage verifi
 no full Application Resume acceptance, no installation authority/receipt validation,
 no live Stripe/provider concurrency. Prior local evidence is not CI evidence.
 
-Local validation: fresh frozen application install PASS; CI script lint/syntax PASS.
+Local validation: fresh frozen application install PASS; CI script lint/syntax PASS. Four lint controls PASS: baseline unchanged accepted;
+same-count new issue, additional issue and syntax/tooling failure rejected.
 Linux namespace/browser/build behavior must be confirmed by actual GitHub run. No claim
 of full CI success until logs confirm every step, including mileage files after integration.
