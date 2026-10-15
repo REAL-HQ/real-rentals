@@ -21,8 +21,10 @@ scripts/mileage-correction/REVIEW.txt
 
 INTEGRITY
 SQL SHA256 b41e2d2de2f08f9957f2de855ab3b7c6b5488f19ffd3a6476913f8176708a74c
-TS SHA256 a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a
-Both byte-identical to approved proposal. Existing test changes only add UUID fixtures.
+TS SHA256 0af37b45c547c4876d00194ca9a6f0f048758b0e2e7bf109a18e514521b95194
+SQL remains byte-identical to approved proposal. TypeScript and UUID fixture formatting
+changed only; full Prettier-normalized old/new source equality verified for both files.
+Original approved TS SHA256 a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a.
 New parity tests adapt the approved test import/output and formatting for this repository.
 The proposed SQL includes the reviewed validate_mileage_observation function and trigger
 in addition to the inspection/cache functions and mileage_order_lock.
@@ -76,12 +78,23 @@ node scripts/closeout-readiness.test.mjs; node scripts/closeout-readiness-ui.tes
 node scripts/safe-vehicle-release/ui.test.mjs; node scripts/bookings-actions.test.mjs;
 tsc --noEmit; npm run build.
 
-LINT LIMITATION — NOT MERGE READY
-Changed-file ESLint: 96 errors (95 formatting, one unchanged any). Clean-base versions
-of the two existing files already have 72 (71 formatting, same any); candidate adds
-24 formatting diagnostics. Both new mjs tests lint clean. No lint rule was disabled
-in repository configuration. Approved source was retained byte-for-byte rather than
-reformatting unrelated code. Formatting cleanup remains before merge approval.
+LINT REMEDIATION — DEVELOPMENT MERGE GO, HOSTED RELEASE STILL BLOCKED
+The earlier +24 was a net count, not 24 distinct new diagnostics: 22 new comparator
+formatting diagnostics replaced one old comparator diagnostic; three new fixture
+formatting diagnostics account for the remaining increase. All 25 introduced diagnostics
+are fixed. No baseline issue was reformatted. Remaining: 71 baseline-only diagnostics
+(70 prettier/prettier and one unchanged no-explicit-any), versus 72 on main.
+Original HEAD locations fixed in src/lib/maintenance-rules.ts:
+70,75,80,83,86,88,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112.
+These cover Intl options, date validation wrapping, timestamp regex/arguments, multi-variable
+declaration, bounds check, BigInt expression parentheses/wrapping and filter/map indentation.
+Original HEAD fixture locations: scripts/maintenance-rules.test.ts lines 8,9,44 (UUID rows).
+Both new mjs tests remain lint-clean. ESLint still exits nonzero solely for baseline debt;
+no rule suppression or configuration change. Same seven PR paths.
+This remediation reruns 24 parity, 24 maintenance, 11 static checks, closeout server/browser,
+Safe Release browser and Bookings actions; TypeScript and build. No SQL executed this turn.
+The 55+18 disposable PostgreSQL results above are retained prior evidence, not a fresh run.
+SQL byte equality and formatting-equivalence checks ensure this cleanup changes no behavior.
 
 FOUR BLOCKED ACCEPTANCE GROUPS
 1 Actual Supabase Auth/PostgREST/Storage integration and session/account revocation.

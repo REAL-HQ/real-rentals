@@ -7,7 +7,7 @@ assert.equal(hash(sql), "b41e2d2de2f08f9957f2de855ab3b7c6b5488f19ffd3a6476913f81
 const read = (p) => readFileSync(new URL("../../" + p, import.meta.url), "utf8");
 assert.equal(
   hash(read("src/lib/maintenance-rules.ts")),
-  "a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a",
+  "0af37b45c547c4876d00194ca9a6f0f048758b0e2e7bf109a18e514521b95194",
 );
 assert.match(read("drizzle.config.ts"), /out: "\.\/drizzle\/migrations"/);
 assert.doesNotMatch(read("drizzle/migrations/meta/_journal.json"), /mileage.correction/);

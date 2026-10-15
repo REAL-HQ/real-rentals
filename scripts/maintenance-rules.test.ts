@@ -5,8 +5,18 @@ let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(`${c ? "  PASS" : "  FAIL"}  ${m}`); if (!c) fails++; };
 
 const hist = [
-  { id: "00000000-0000-0000-0000-000000000001", mileage: 92150, observed_on: "2026-09-20", status: "valid" },
-  { id: "00000000-0000-0000-0000-000000000002", mileage: 88000, observed_on: "2026-06-01", status: "valid" },
+  {
+    id: "00000000-0000-0000-0000-000000000001",
+    mileage: 92150,
+    observed_on: "2026-09-20",
+    status: "valid",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000002",
+    mileage: 88000,
+    observed_on: "2026-06-01",
+    status: "valid",
+  },
 ];
 ok(!isOdometerConflict(hist, { mileage: 84300, observed_on: "2026-03-01" }), "A. older receipt with lower miles is not a conflict");
 ok(currentMileage([...hist, { id: "00000000-0000-0000-0000-000000000003", mileage: 84300, observed_on: "2026-03-01", status: "valid" }])!.mileage === 92150, "B. older reading never lowers current mileage");
@@ -41,7 +51,12 @@ ok(milesDriven(92018, 91250) === null && milesDriven(null, 5) === null, "P2. no 
 ok(netServiceCost(500, null) === 500 && netServiceCost(500, 200) === 300 && netServiceCost(500, 400, 200) === 0, "P3. expense counts net paid (warranty/credit), never below 0");
 ok(netServiceCost(null, 50) === null, "P4. unknown total stays unknown");
 const sameDay = [
-  { id: "00000000-0000-0000-0000-000000000004", mileage: 90100, observed_on: "2026-10-05", status: "valid" },
+  {
+    id: "00000000-0000-0000-0000-000000000004",
+    mileage: 90100,
+    observed_on: "2026-10-05",
+    status: "valid",
+  },
   { id: "00000000-0000-0000-0000-000000000005", mileage: 90050, observed_on: "2026-10-05", observed_at: "2026-10-05T15:00:00Z", status: "valid" },
   { id: "00000000-0000-0000-0000-000000000006", mileage: 90000, observed_on: "2026-10-05", observed_at: "2026-10-05T09:00:00Z", status: "valid" },
 ];

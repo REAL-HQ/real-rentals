@@ -323,11 +323,51 @@
     "production_build": "PASS",
     "lint": {
       "baseline_errors": 72,
-      "candidate_errors": 96,
-      "new_test_files_errors": 0,
-      "explanation": "95 formatting errors and one unchanged no-explicit-any. Baseline has 71 formatting errors and same any. Formatting not suppressed; merge-quality follow-up remains."
+      "previous_candidate_errors": 96,
+      "candidate_errors": 71,
+      "new_diagnostics_fixed": 25,
+      "net_previous_increase": 24,
+      "remaining": "70 baseline formatting plus one unchanged no-explicit-any",
+      "new_test_files_errors": 0
     },
     "hosted_sql_executed": false,
     "source_base": "30ebdc13a0b3ab557667c02794b2205e9b7261c1"
+  },
+  "lint_remediation": {
+    "sql_executed": false,
+    "postgres_tests": "prior evidence retained, not rerun",
+    "formatting_equivalence": "PASS both TS files normalized with Prettier",
+    "sql_sha256": "b41e2d2de2f08f9957f2de855ab3b7c6b5488f19ffd3a6476913f8176708a74c",
+    "previous_typescript_sha256": "a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a",
+    "typescript_sha256": "0af37b45c547c4876d00194ca9a6f0f048758b0e2e7bf109a18e514521b95194",
+    "fixed_source_lines": [
+      70,
+      75,
+      80,
+      83,
+      86,
+      88,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112
+    ],
+    "fixed_fixture_lines": [
+      8,
+      9,
+      44
+    ]
   }
 }
