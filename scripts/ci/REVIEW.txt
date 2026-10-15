@@ -1,0 +1,83 @@
+CI INFRASTRUCTURE — DRAFT, NOT MERGE APPROVAL
+Base: 30ebdc13a0b3ab557667c02794b2205e9b7261c1. PR #42 and its seven paths unchanged.
+
+Workflow: Mileage validation / Mileage validation, pull_request to main (opened,
+synchronize, reopened, ready_for_review), drafts included. No pull_request_target,
+schedule, deployment, workflow_dispatch, SQL, service containers or secrets. Token is
+contents:read; checkout credentials not persisted. Actions pinned to verified commits;
+Node 24.21.0, Bun 1.3.3, ubuntu-24.04, 25-minute timeout, cancel obsolete PR runs.
+
+Dependencies: unchanged application package.json/bun.lock. Frozen Bun install with
+lifecycle scripts disabled. CI-only package.json/package-lock.json explicitly lock tsx
+4.23.15, esbuild 0.25.12, playwright 1.64.0. npm ci uses that separate tooling directory;
+no runtime dependency upgrades or app lockfile rewrite. Chrome is provisioned by locked
+Playwright before test isolation. Chrome channel provisioning is not an immutable browser
+revision; this is a reproducibility limitation of the existing tests' explicit channel.
+No private registry credentials. A committed Lovable cache tarball HEAD returned 200
+unauthenticated; clean local Bun installation installed 515 packages with the committed
+lockfile and no scripts. This does NOT establish fresh Linux/GitHub runner success.
+
+Network phases: checkout/tool/download provisioning needs Internet. Dependency lifecycle
+scripts are disabled. Only trusted pinned setup and Playwright provisioning run online.
+All application hooks, build and tests run in a new Linux network namespace with only
+loopback enabled. setpriv drops to runner uid, removes capability bounding/inheritable/
+ambient sets, clears supplementary groups (including Docker access), and sets no-new-privileges; env is cleared except tool PATH, HOME, CI, base SHA.
+No hosted database credentials are supplied. Network check asserts only lo, nonroot,
+zero capability bound and NoNewPrivs; documentation address 192.0.2.1 must immediately
+fail no-route. If isolation cannot be established, validation stops. No shared host network
+fallback. This is process-level network isolation on a disposable GitHub runner, not a
+sandbox against hostile kernel exploits. The Actions agent remains outside namespace.
+
+Validation commands are in validate.sh: tsc, build, baseline lint, maintenance, mocked
+Bookings/Closeout, local-browser Closeout/Safe Release, mileage parity and static SQL
+package checks. Mock scripts replace Supabase/server/provider calls; browser traffic is
+loopback. No SQL parser executes SQL. No database or Stripe operations. Build uses Vite/
+Lovable plugin (which can inject env and choose Cloudflare output); no env secrets are
+provided and external network is unavailable. No generated artifact is published.
+
+Lint remediation: unchanged source locations are mapped through zero-context Git diff
+hunks. Diagnostic spans and their complete enclosing top-level statements must correspond
+uniquely and remain byte-identical. Moved/reordered or edited/ambiguous occurrences fail
+closed. Rule, severity, message and mapped ranges must match one unconsumed baseline
+occurrence. Lower total counts never authorize new diagnostics.
+ESLint runs with --no-inline-config; ignored files, suppression warnings, parser errors,
+missing results and tool failures stop validation. Configuration, formatter, TypeScript
+configuration and application toolchain changes require separate explicit review. CI-only
+package and lockfile bytes are independently pinned by SHA-256.
+There is no UUID normalization. A single exact-byte exception recognizes only the reviewed
+maintenance fixture from PR #42, pinned by baseline source, candidate source and full
+candidate diagnostic hashes. Any additional edit or diagnostic fails the exception and
+must pass ordinary conservative correspondence. The exception cannot apply to other files.
+The new core and its negative-control tests increase infrastructure scope from seven to
+nine files. PR #42 remains untouched. Tests run before the mandatory mileage-file checks.
+
+INTEGRATION / EXPECTED INITIAL BLOCKER
+Current main does not contain scripts/mileage-correction. This separate infrastructure
+PR deliberately does not copy or change those seven files. Its first job may validate
+common checks but MUST fail when required mileage files are missing. Missing tests are
+not a passing skip. Any earlier Linux dependency/tool/browser failure must be fixed first.
+Checks on this infrastructure PR are not checks for PR #42.
+After separately approving and merging CI infrastructure, separately authorize updating
+PR #42's branch with current main (normal merge, never force push). That creates a NEW
+HEAD and synchronize event with workflow plus mileage tests, producing genuine Actions
+checks for the updated PR #42 candidate. Reapprove the new SHA and expanded infrastructure
+scope after reviewing it. Do not assume adding this workflow to main retroactively tests
+51a1dc7152ce2f694043d3613c4e8640048e0375. No current permission to update PR #42 or merge.
+
+EXCLUDED
+No local PostgreSQL harness execution, no provider Auth/PostgREST/Storage verification,
+no full Application Resume acceptance, no installation authority/receipt validation,
+no live Stripe/provider concurrency. Prior local evidence is not CI evidence.
+
+Local validation: fresh frozen application install PASS; CI script lint/syntax PASS. Four lint controls PASS: baseline unchanged accepted;
+same-count new issue, additional issue and syntax/tooling failure rejected.
+Linux namespace/browser/build behavior must be confirmed by actual GitHub run. No claim
+of full CI success until logs confirm every step, including mileage files after integration.
+
+Fresh GitHub run 38734001611: frozen app/tool install and browser provisioning PASS.
+Initial isolation assertion stopped before tests because /sys/class/net reflects the host
+mount namespace. Corrected verification to netlink (ip -j link/route), retaining nonroot,
+capability, no-new-privileges and no-route checks. Await updated runner result.
+
+Current remediation: local correspondence controls and changed-file lint passed. Fresh
+GitHub runner evidence is reported on the PR; a missing mileage test remains a failure.
