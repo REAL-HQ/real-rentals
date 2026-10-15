@@ -65,3 +65,8 @@ Local validation: fresh frozen application install PASS; CI script lint/syntax P
 same-count new issue, additional issue and syntax/tooling failure rejected.
 Linux namespace/browser/build behavior must be confirmed by actual GitHub run. No claim
 of full CI success until logs confirm every step, including mileage files after integration.
+
+Fresh GitHub run 38734001611: frozen app/tool install and browser provisioning PASS.
+Initial isolation assertion stopped before tests because /sys/class/net reflects the host
+mount namespace. Corrected verification to netlink (ip -j link/route), retaining nonroot,
+capability, no-new-privileges and no-route checks. Await updated runner result.

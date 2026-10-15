@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import net from "node:net";
-assert.deepEqual(readdirSync("/sys/class/net").sort(), ["lo"]);
+import { execFileSync } from "node:child_process";
+// sysfs belongs to the host mount namespace; netlink reports this process network namespace.
+const links = JSON.parse(execFileSync("ip", ["-j", "link"], { encoding: "utf8" }));
+assert.deepEqual(links.map((link) => link.ifname).sort(), ["lo"]);
+assert.deepEqual(JSON.parse(execFileSync("ip", ["-j", "route"], { encoding: "utf8" })), []);
 const status = readFileSync("/proc/self/status", "utf8");
 assert.match(status, /NoNewPrivs:\s+1/);
 assert.match(status, /CapBnd:\s+0+\s/);
