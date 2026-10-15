@@ -1,0 +1,373 @@
+{
+  "LIFECYCLE-RESULTS.json": {
+    "PASS": 55,
+    "FAIL": 0,
+    "BLOCKED": 4,
+    "tests": [
+      {
+        "test": "Unauthorized activation lab_coordinator",
+        "result": "PASS"
+      },
+      {
+        "test": "Unauthorized activation lab_driver",
+        "result": "PASS"
+      },
+      {
+        "test": "Unauthorized activation lab_unknown",
+        "result": "PASS"
+      },
+      {
+        "test": "Forged Owner claim rejected",
+        "result": "PASS"
+      },
+      {
+        "test": "Unregistered application denied",
+        "result": "PASS"
+      },
+      {
+        "test": "Context table inaccessible",
+        "result": "PASS"
+      },
+      {
+        "test": "Principal registry inaccessible",
+        "result": "PASS"
+      },
+      {
+        "test": "Caller rental setting not authority",
+        "result": "PASS"
+      },
+      {
+        "test": "Activation audit failure rolls back",
+        "result": "PASS"
+      },
+      {
+        "test": "Activation rollback leaves no rental mileage or registry",
+        "result": "PASS"
+      },
+      {
+        "test": "Real activation succeeds",
+        "result": "PASS"
+      },
+      {
+        "test": "Activation mileage nested vehicle sync",
+        "result": "PASS"
+      },
+      {
+        "test": "Duplicate activation denied",
+        "result": "PASS"
+      },
+      {
+        "test": "Cross graph rental denied",
+        "result": "PASS"
+      },
+      {
+        "test": "Real append mileage succeeds",
+        "result": "PASS"
+      },
+      {
+        "test": "Inspection completion creates actual mileage evidence",
+        "result": "PASS"
+      },
+      {
+        "test": "Inspection reading advances current odometer after timestamped reading",
+        "result": "PASS",
+        "evidence": "Proposed inspection trigger retains completed_at; current odometer becomes 1100."
+      },
+      {
+        "test": "Completed safety rewrite denied",
+        "result": "PASS"
+      },
+      {
+        "test": "Closeout audit rollback",
+        "result": "PASS"
+      },
+      {
+        "test": "Rollback retains active rental and vehicle",
+        "result": "PASS"
+      },
+      {
+        "test": "Real closeout safely releases passed vehicle",
+        "result": "PASS"
+      },
+      {
+        "test": "Synthetic enrollment cancelled; unrelated preserved",
+        "result": "PASS"
+      },
+      {
+        "test": "Audit actor derived from session",
+        "result": "PASS"
+      },
+      {
+        "test": "Closed rental replay denied",
+        "result": "PASS"
+      },
+      {
+        "test": "Conversion audit failure rolls back",
+        "result": "PASS"
+      },
+      {
+        "test": "Conversion failure preserves confirmed state and zero linkage",
+        "result": "PASS"
+      },
+      {
+        "test": "Concurrent conversion exactly one success",
+        "result": "PASS"
+      },
+      {
+        "test": "Concurrent conversion loser stale; no deadlock",
+        "result": "PASS"
+      },
+      {
+        "test": "Atomic converted linkage one rental",
+        "result": "PASS"
+      },
+      {
+        "test": "Missing return closes rental but holds vehicle",
+        "result": "PASS"
+      },
+      {
+        "test": "Maintenance holds idle vehicle",
+        "result": "PASS"
+      },
+      {
+        "test": "Incident preserved as unresolved safety evidence",
+        "result": "PASS"
+      },
+      {
+        "test": "Failed inspection safety history persists",
+        "result": "PASS"
+      },
+      {
+        "test": "Failed inspection cannot become passed",
+        "result": "PASS"
+      },
+      {
+        "test": "Unsafe vehicle cannot reactivate",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied close",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied mileage",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied inspection",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied complete",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied maintenance",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied incident",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied reserve_create",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied reserve",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied confirm",
+        "result": "PASS"
+      },
+      {
+        "test": "Coordinator denied convert",
+        "result": "PASS"
+      },
+      {
+        "test": "Service role alone cannot activate",
+        "result": "PASS"
+      },
+      {
+        "test": "Actor cannot grant own role",
+        "result": "PASS"
+      },
+      {
+        "test": "Authenticated cannot assume Owner login",
+        "result": "PASS"
+      },
+      {
+        "test": "Audit immutable even for privileged fixture",
+        "result": "PASS"
+      },
+      {
+        "test": "Nonregistered vehicle unchanged",
+        "result": "PASS"
+      },
+      {
+        "test": "Revoked role takes effect immediately",
+        "result": "PASS"
+      },
+      {
+        "test": "Direct reservation configuration disabled",
+        "result": "PASS"
+      },
+      {
+        "test": "No scope context leaks",
+        "result": "PASS"
+      },
+      {
+        "test": "Partners freeze preserved",
+        "result": "PASS"
+      },
+      {
+        "test": "Agreement boundary preserved",
+        "result": "PASS"
+      }
+    ],
+    "blocked": [
+      "Provider JWT/PostgREST/Auth and Storage integration",
+      "Full Application Resume stages 01\u201309/driver agreement parity",
+      "Hosted installation authority, receipts and least-privilege executor",
+      "Live Stripe/provider concurrency (not called)"
+    ]
+  },
+  "ORDERING-RESULTS.json": {
+    "PASS": 18,
+    "FAIL": 0,
+    "tests": [
+      {
+        "test": "Correction leaves all historical readings byte-equivalent",
+        "result": "PASS"
+      },
+      {
+        "test": "Inspection supplies known observation timestamp",
+        "result": "PASS"
+      },
+      {
+        "test": "Newer inspection outranks earlier timed reading",
+        "result": "PASS"
+      },
+      {
+        "test": "Backdated inspection cannot replace newer event",
+        "result": "PASS"
+      },
+      {
+        "test": "Unknown time stays date-only and does not displace same-day timed evidence",
+        "result": "PASS"
+      },
+      {
+        "test": "Newer observation date wins without inventing time",
+        "result": "PASS"
+      },
+      {
+        "test": "Later lower valid reading can become current",
+        "result": "PASS"
+      },
+      {
+        "test": "Timestamp tie uses stable ID not mileage or insertion order",
+        "result": "PASS"
+      },
+      {
+        "test": "Equal mileage advances observation timestamp",
+        "result": "PASS"
+      },
+      {
+        "test": "Material drop remains conflict, not automatic replacement",
+        "result": "PASS"
+      },
+      {
+        "test": "Late inserted older high mileage does not win",
+        "result": "PASS"
+      },
+      {
+        "test": "Concurrent mileage writes leave newest observation current",
+        "result": "PASS"
+      },
+      {
+        "test": "History retained after ordering changes",
+        "result": "PASS"
+      },
+      {
+        "test": "Observed timestamp remains immutable",
+        "result": "PASS"
+      },
+      {
+        "test": "New timestamp/date mismatch rejected",
+        "result": "PASS"
+      },
+      {
+        "test": "Rejected mismatch leaves no row",
+        "result": "PASS"
+      },
+      {
+        "test": "PostgreSQL microseconds outrank inverse UUID order",
+        "result": "PASS"
+      },
+      {
+        "test": "TypeScript exact instant equals PostgreSQL across offsets DST and epoch",
+        "result": "PASS"
+      }
+    ]
+  },
+  "verification": {
+    "parity": 24,
+    "maintenance": 24,
+    "package_static": 11,
+    "closeout_server": 30,
+    "closeout_browser": 10,
+    "safe_release_browser": 18,
+    "bookings_actions": "PASS",
+    "typecheck": "PASS",
+    "production_build": "PASS",
+    "lint": {
+      "baseline_errors": 72,
+      "previous_candidate_errors": 96,
+      "candidate_errors": 71,
+      "new_diagnostics_fixed": 25,
+      "net_previous_increase": 24,
+      "remaining": "70 baseline formatting plus one unchanged no-explicit-any",
+      "new_test_files_errors": 0
+    },
+    "hosted_sql_executed": false,
+    "source_base": "30ebdc13a0b3ab557667c02794b2205e9b7261c1"
+  },
+  "lint_remediation": {
+    "sql_executed": false,
+    "postgres_tests": "prior evidence retained, not rerun",
+    "formatting_equivalence": "PASS both TS files normalized with Prettier",
+    "sql_sha256": "b41e2d2de2f08f9957f2de855ab3b7c6b5488f19ffd3a6476913f8176708a74c",
+    "previous_typescript_sha256": "a80290a6b8b6a9769fd5c3f1a69228ca82bab0784a440d1f37e5554788ec445a",
+    "typescript_sha256": "0af37b45c547c4876d00194ca9a6f0f048758b0e2e7bf109a18e514521b95194",
+    "fixed_source_lines": [
+      70,
+      75,
+      80,
+      83,
+      86,
+      88,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112
+    ],
+    "fixed_fixture_lines": [
+      8,
+      9,
+      44
+    ]
+  }
+}
