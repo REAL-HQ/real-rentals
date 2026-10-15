@@ -1,0 +1,66 @@
+CI INFRASTRUCTURE — DRAFT, NOT MERGE APPROVAL
+Base: 30ebdc13a0b3ab557667c02794b2205e9b7261c1. PR #42 and its seven paths unchanged.
+
+Workflow: Mileage validation / Mileage validation, pull_request to main (opened,
+synchronize, reopened, ready_for_review), drafts included. No pull_request_target,
+schedule, deployment, workflow_dispatch, SQL, service containers or secrets. Token is
+contents:read; checkout credentials not persisted. Actions pinned to verified commits;
+Node 24.21.0, Bun 1.3.3, ubuntu-24.04, 25-minute timeout, cancel obsolete PR runs.
+
+Dependencies: unchanged application package.json/bun.lock. Frozen Bun install with
+lifecycle scripts disabled. CI-only package.json/package-lock.json explicitly lock tsx
+4.23.15, esbuild 0.25.12, playwright 1.64.0. npm ci uses that separate tooling directory;
+no runtime dependency upgrades or app lockfile rewrite. Chrome is provisioned by locked
+Playwright before test isolation. Chrome channel provisioning is not an immutable browser
+revision; this is a reproducibility limitation of the existing tests' explicit channel.
+No private registry credentials. A committed Lovable cache tarball HEAD returned 200
+unauthenticated; clean local Bun installation installed 515 packages with the committed
+lockfile and no scripts. This does NOT establish fresh Linux/GitHub runner success.
+
+Network phases: checkout/tool/download provisioning needs Internet. Dependency lifecycle
+scripts are disabled. Only trusted pinned setup and Playwright provisioning run online.
+All application hooks, build and tests run in a new Linux network namespace with only
+loopback enabled. setpriv drops to runner uid, removes capability bounding/inheritable/
+ambient sets and sets no-new-privileges; env is cleared except tool PATH, HOME, CI, base SHA.
+No hosted database credentials are supplied. Network check asserts only lo, nonroot,
+zero capability bound and NoNewPrivs; documentation address 192.0.2.1 must immediately
+fail no-route. If isolation cannot be established, validation stops. No shared host network
+fallback. This is process-level network isolation on a disposable GitHub runner, not a
+sandbox against hostile kernel exploits. The Actions agent remains outside namespace.
+
+Validation commands are in validate.sh: tsc, build, baseline lint, maintenance, mocked
+Bookings/Closeout, local-browser Closeout/Safe Release, mileage parity and static SQL
+package checks. Mock scripts replace Supabase/server/provider calls; browser traffic is
+loopback. No SQL parser executes SQL. No database or Stripe operations. Build uses Vite/
+Lovable plugin (which can inject env and choose Cloudflare output); no env secrets are
+provided and external network is unavailable. No generated artifact is published.
+
+Lint: ESLint JSON on candidate changed source and base version, same installed tools and
+config. Diagnostic multiset uses rule, severity and affected full source line. Only the
+reviewed stable UUID fixture property addition is normalized. New rules/new source lines/
+extra occurrences fail even if total errors decline. Tool errors and fatal parse errors
+fail. This conservative comparison can require review when legitimate code edits move
+baseline diagnostics. No count threshold, suppressions or automatic fix. Both candidate
+and base use the same config; ESLint/config/dependency changes need explicit review.
+
+INTEGRATION / EXPECTED INITIAL BLOCKER
+Current main does not contain scripts/mileage-correction. This separate infrastructure
+PR deliberately does not copy or change those seven files. Its first job may validate
+common checks but MUST fail when required mileage files are missing. Missing tests are
+not a passing skip. Any earlier Linux dependency/tool/browser failure must be fixed first.
+Checks on this infrastructure PR are not checks for PR #42.
+After separately approving and merging CI infrastructure, separately authorize updating
+PR #42's branch with current main (normal merge, never force push). That creates a NEW
+HEAD and synchronize event with workflow plus mileage tests, producing genuine Actions
+checks for the updated PR #42 candidate. Reapprove the new SHA and expanded infrastructure
+scope after reviewing it. Do not assume adding this workflow to main retroactively tests
+51a1dc7152ce2f694043d3613c4e8640048e0375. No current permission to update PR #42 or merge.
+
+EXCLUDED
+No local PostgreSQL harness execution, no provider Auth/PostgREST/Storage verification,
+no full Application Resume acceptance, no installation authority/receipt validation,
+no live Stripe/provider concurrency. Prior local evidence is not CI evidence.
+
+Local validation: fresh frozen application install PASS; CI script lint/syntax PASS.
+Linux namespace/browser/build behavior must be confirmed by actual GitHub run. No claim
+of full CI success until logs confirm every step, including mileage files after integration.
