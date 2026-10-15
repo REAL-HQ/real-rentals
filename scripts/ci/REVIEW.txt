@@ -35,13 +35,21 @@ loopback. No SQL parser executes SQL. No database or Stripe operations. Build us
 Lovable plugin (which can inject env and choose Cloudflare output); no env secrets are
 provided and external network is unavailable. No generated artifact is published.
 
-Lint: ESLint JSON on candidate changed source and base version, same installed tools and
-config. Diagnostic multiset uses rule, severity and affected full source line. Only the
-reviewed stable UUID fixture property addition is normalized. New rules/new source lines/
-extra occurrences fail even if total errors decline. Tool errors and fatal parse errors
-fail. This conservative comparison can require review when legitimate code edits move
-baseline diagnostics. No count threshold, suppressions or automatic fix. Both candidate
-and base use the same config; ESLint/config/dependency changes need explicit review.
+Lint remediation: unchanged source locations are mapped through zero-context Git diff
+hunks. Diagnostic spans and their complete enclosing top-level statements must correspond
+uniquely and remain byte-identical. Moved/reordered or edited/ambiguous occurrences fail
+closed. Rule, severity, message and mapped ranges must match one unconsumed baseline
+occurrence. Lower total counts never authorize new diagnostics.
+ESLint runs with --no-inline-config; ignored files, suppression warnings, parser errors,
+missing results and tool failures stop validation. Configuration, formatter, TypeScript
+configuration and application toolchain changes require separate explicit review. CI-only
+package and lockfile bytes are independently pinned by SHA-256.
+There is no UUID normalization. A single exact-byte exception recognizes only the reviewed
+maintenance fixture from PR #42, pinned by baseline source, candidate source and full
+candidate diagnostic hashes. Any additional edit or diagnostic fails the exception and
+must pass ordinary conservative correspondence. The exception cannot apply to other files.
+The new core and its negative-control tests increase infrastructure scope from seven to
+nine files. PR #42 remains untouched. Tests run before the mandatory mileage-file checks.
 
 INTEGRATION / EXPECTED INITIAL BLOCKER
 Current main does not contain scripts/mileage-correction. This separate infrastructure
@@ -70,3 +78,6 @@ Fresh GitHub run 38734001611: frozen app/tool install and browser provisioning P
 Initial isolation assertion stopped before tests because /sys/class/net reflects the host
 mount namespace. Corrected verification to netlink (ip -j link/route), retaining nonroot,
 capability, no-new-privileges and no-route checks. Await updated runner result.
+
+Current remediation: local correspondence controls and changed-file lint passed. Fresh
+GitHub runner evidence is reported on the PR; a missing mileage test remains a failure.

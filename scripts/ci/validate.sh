@@ -10,6 +10,7 @@ for tool in tsx playwright esbuild; do
 done
 ./node_modules/.bin/tsc --noEmit
 npm run build
+node scripts/ci/lint-correspondence.test.mjs
 node scripts/ci/lint-baseline.mjs "$BASE_SHA"
 node scripts/ci/tooling/node_modules/tsx/dist/cli.mjs scripts/maintenance-rules.test.ts
 node scripts/bookings-actions.test.mjs
