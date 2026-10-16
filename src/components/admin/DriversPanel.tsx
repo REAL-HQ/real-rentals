@@ -1,5 +1,5 @@
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useHeadingActionsSlot } from "./useHeadingActionsSlot";
 import { useNavigate } from "@tanstack/react-router";
@@ -237,6 +237,29 @@ const DRIVER_STATUSES = [
 // "active" is set only by activate_rental_tx when a rental really starts;
 // approval goes through approveApplication; neither is a generic status edit.
 const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active" && s !== "approved");
+const STATUS_LABEL: Record<string, string> = {
+  new: "New", reviewing: "Reviewing", approved: "Approved", active: "Active",
+  suspended: "Suspended", declined: "Declined", closed: "Closed",
+};
+// Shown, never selectable: each has its own authorized workflow.
+const LOCKED_STATUS_HINT: Record<string, string> = {
+  approved: "Use Approve after checks",
+  active: "Set when a rental starts",
+};
+function LockedStatusItems() {
+  return (
+    <>
+      {(["approved", "active"] as const).map((s) => (
+        <SelectItem key={s} value={`locked:${s}`} disabled className="text-[13px]">
+          <span className="flex flex-col">
+            <span>{STATUS_LABEL[s]}</span>
+            <span className="text-[10.5px] text-muted-foreground">{LOCKED_STATUS_HINT[s]}</span>
+          </span>
+        </SelectItem>
+      ))}
+    </>
+  );
+}
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
@@ -949,7 +972,7 @@ setDocCounts(requiredDocCounts(rows));
                     >
                       <Select
                         value={a.status || ""}
-                        onValueChange={(status) => update(a.id, { status })}
+                        onValueChange={(status) => { if ((SELECTABLE_STATUSES as readonly string[]).includes(status)) update(a.id, { status }); }}
                       >
                         <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
                           {held.has(a.id) ? (
@@ -982,10 +1005,11 @@ setDocCounts(requiredDocCounts(rows));
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
                           {SELECTABLE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
-                              {s}
+                            <SelectItem key={s} value={s} className="text-[13px]">
+                              {STATUS_LABEL[s]}
                             </SelectItem>
                           ))}
+                          <LockedStatusItems />
                         </SelectContent>
                       </Select>
                     </td>
@@ -2014,7 +2038,9 @@ function DriverDetail({
                       label="Driver Status"
                       value={driver.status}
                       options={[...new Set([driver.status, ...SELECTABLE_STATUSES])]}
-                      onChange={(v) => { if (v !== "active" && v !== "approved") onUpdate({ status: v }); }}
+                      labels={STATUS_LABEL}
+                      extra={<LockedStatusItems />}
+                      onChange={(v) => { if ((SELECTABLE_STATUSES as readonly string[]).includes(v)) onUpdate({ status: v }); }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
@@ -2543,11 +2569,15 @@ function SelField({
   value,
   options,
   onChange,
+  labels,
+  extra,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  labels?: Record<string, string>;
+  extra?: ReactNode;
 }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
@@ -2559,9 +2589,10 @@ function SelField({
         <SelectContent>
           {options.map((o) => (
             <SelectItem key={o} value={o}>
-              {o.replace(/_/g, " ")}
+              {labels?.[o] ?? o.replace(/_/g, " ")}
             </SelectItem>
           ))}
+          {extra}
         </SelectContent>
       </Select>
     </div>
