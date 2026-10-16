@@ -14,6 +14,7 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { RecordRentalDialog } from "./RecordRentalDialog";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
@@ -1342,6 +1343,7 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
@@ -1793,6 +1795,15 @@ function DriverDetail({
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
+              {!rentalActive ? (
+                <button
+                  onClick={() => setRecordOpen(true)}
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#DEDEE3] bg-white text-[#28282E] px-3 py-1.5 text-[12px] font-semibold hover:bg-[#F4F4F6] transition-colors"
+                  title="Record a rental that already started outside REAL RENTALS"
+                >
+                  Record Rental
+                </button>
+              ) : null}
               {driver.phone && (
                 <a
                   href={`tel:${driver.phone}`}
@@ -2213,6 +2224,18 @@ function DriverDetail({
 
       {depositRentalId ? (
         <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />
+      ) : null}
+
+      {recordOpen ? (
+        <RecordRentalDialog
+          driver={driver}
+          vehicles={vehicles as any}
+          onClose={() => setRecordOpen(false)}
+          onRecorded={() => {
+            setRecordOpen(false);
+            onRentalStarted?.();
+          }}
+        />
       ) : null}
 
       {activateOpen ? (

@@ -104,7 +104,7 @@ export function RecordRentalDialog({
   const canRecord = clear && confirm === RECORD_CONFIRM_PHRASE && reason.trim().length >= 5;
 
   return (
-    <ModalShell onClose={onClose} size="lg">
+    <ModalShell onClose={onClose} size="lg" label="Record Rental">
       <ModalHeader title="Record Rental" subtitle={`${driver.full_name ?? "Driver"} · rental already started`} onClose={onClose} />
       <ModalBody>
         <div className="rounded-lg border border-[#E6E6EA] bg-[#FAFAFB] px-3 py-2 text-[12px] text-[#55555E] flex gap-2">
@@ -181,11 +181,11 @@ export function RecordRentalDialog({
       <ModalFooter>
         <ModalButton variant="ghost" onClick={onClose}>Cancel</ModalButton>
         {clear ? (
-          <ModalButton onClick={runRecord} disabled={!canRecord || busy !== null}>
+          <ModalButton variant="primary" onClick={runRecord} disabled={!canRecord || busy !== null}>
             {busy === "record" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Record Rental
           </ModalButton>
         ) : (
-          <ModalButton onClick={runCheck} disabled={!ready || busy !== null}>
+          <ModalButton variant="primary" onClick={runCheck} disabled={!ready || busy !== null}>
             {busy === "check" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Check
           </ModalButton>
         )}
