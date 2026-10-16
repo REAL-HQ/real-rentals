@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import {
   mergeDuplicateApplications,
-  approveApplication,
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
@@ -1371,11 +1370,9 @@ function DriverDetail({
   );
 
   // ---- Primary action -------------------------------------------------
-  const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
   const [rentalStatus, setRentalStatus] = useState<string | null>(null);
@@ -1427,40 +1424,9 @@ function DriverDetail({
     }
   }
 
-  // Approving and sending the contract used to be two separate manual steps,
-  // so an approved driver could sit waiting on a contract nobody sent.
-  async function approveAndSend() {
-    setApproving(true);
-    try {
-      const res = await approve({ data: { id: driver.id } });
-      if (!res.ok) throw new Error(res.error ?? "Could not approve");
-      // Say what happened to the portal login too. Approval now creates the
-      // driver's account, and whether they were emailed a set-password link is
-      // the first thing anybody asks when the applicant says they can't get in.
-      const portal =
-        res.portalAccount === "created"
-          ? " Portal invite emailed."
-          : res.portalAccount === "existing"
-            ? " They already have a portal login."
-            : res.portalAccount === "conflict"
-              ? " Portal login NOT linked: this application belongs to a different account. Check the email on file."
-              : res.portalAccount === "failed"
-                ? " Portal login could not be created — it will retry on activation."
-                : "";
-      if (res.agreementSent) {
-        toast.success(`Approved — rental agreement sent for signature.${portal}`);
-      } else {
-        toast.success(
-          `Approved. Agreement not sent: ${res.agreementSkippedReason ?? "unknown"}.${portal}`,
-        );
-      }
-      onSaved({ status: "approved" });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not approve this driver");
-    } finally {
-      setApproving(false);
-    }
-  }
+  // Approval is one checked server path (Approve Only / Approve & Invite);
+  // agreements are sent separately and explicitly.
+  const [approveOpen, setApproveOpen] = useState(false);
 
   const primaryAction = !screeningDone
     ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
@@ -1478,8 +1444,8 @@ function DriverDetail({
           }
         : !approved
           ? {
-              label: approving ? "Approving…" : "Approve & Send Contract",
-              onClick: approveAndSend,
+              label: "Approve",
+              onClick: () => (canManage ? setApproveOpen(true) : toast.error("Only a Manager or Owner can approve.")),
               icon: Check,
             }
           : !rentalActive
@@ -1833,6 +1799,9 @@ function DriverDetail({
                   status={driver.status}
                   hasLogin={!!driver.user_id}
                   hasEmail={!!driver.email}
+                  open={approveOpen}
+                  onOpenChange={setApproveOpen}
+                  showApproveButton={primaryAction.label !== "Approve"}
                   onApproved={() => onSaved({ status: "approved" })}
                 />
               ) : null}
