@@ -166,3 +166,23 @@ describe("Approval modes", () => {
     expect(inv).not.toMatch(/issueAgreement|stripe|rentals/i);
   });
 });
+
+describe("Approve / Invite buttons (source guarantees)", () => {
+  const ui = readFileSync("src/components/admin/DriverApprovalActions.tsx", "utf8");
+  const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+  const srv = readFileSync("src/lib/applications.functions.ts", "utf8");
+  it("shown only to Manager/Owner and never with an active rental", () =>
+    expect(panel).toMatch(/\{canManage && !rentalActive \? \(\s*<DriverApprovalActions/));
+  it("Approve always uses manual intake", () => {
+    expect(ui).toContain('mode: "manual_intake"');
+    expect(ui).not.toMatch(/approve\(\{ data: \{ id: driverId \} \}\)/);
+  });
+  it("Approve disabled until eligibility returns no blockers", () => expect(ui).toMatch(/const blocked = missing === null \|\| missing\.length > 0/));
+  it("Invite only for Approved drivers without a login", () => expect(ui).toMatch(/status === "approved" && !hasLogin/));
+  it("eligibility check is Manager+ and read-only", () => {
+    const e = srv.slice(srv.indexOf("export const getApprovalEligibility"), srv.indexOf("export const inviteDriverPortal"));
+    expect(e).toContain("requireManager");
+    expect(e).not.toMatch(/\.(update|insert|delete|upsert)\(/);
+  });
+  it("Record Rental unchanged and still off", () => expect(RECORD_RENTAL_ENABLED).toBe(false));
+});
