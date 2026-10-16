@@ -77,3 +77,92 @@ describe("No-charge guarantees (source check)", () => {
     expect(src).toMatch(/RECORD_CONFIRM_PHRASE/);
   });
 });
+
+// ── Corrections (Oct 16, 2026): identity, authorization, approval modes ──
+import { evaluateDriverEligibility, RECORD_RENTAL_ENABLED, type DriverIdentityFacts } from "../src/lib/rental-intake";
+const okId: DriverIdentityFacts = {
+  status: "approved", deleted: false, openIdentityReviews: 0, differentPersonResolved: false,
+  hasLicenseNumber: true, licenseExpiration: "2028-01-01", hasLicenseFront: true, hasLicenseBack: true,
+};
+const elig = (o: Partial<DriverIdentityFacts>, req = true) =>
+  evaluateDriverEligibility({ ...okId, ...o }, "2026-10-16", { requireApproved: req }).map((b) => b.code);
+
+describe("Driver identity requirements", () => {
+  it("complete evidence passes", () => expect(elig({})).toEqual([]));
+  it("requires Approved for Record Rental", () => expect(elig({ status: "reviewing" })).toContain("application_not_approved"));
+  it("approval itself does not require Approved", () => expect(elig({ status: "reviewing" }, false)).toEqual([]));
+  it("blocks open or different-person reviews", () => {
+    expect(elig({ openIdentityReviews: 1 })).toContain("identity_review_open");
+    expect(elig({ differentPersonResolved: true })).toContain("identity_conflict");
+  });
+  it("requires a valid license and both photos", () => {
+    expect(elig({ hasLicenseNumber: false })).toContain("license_missing_or_expired");
+    expect(elig({ licenseExpiration: "2026-10-15" })).toContain("license_missing_or_expired");
+    expect(elig({ licenseExpiration: null })).toContain("license_missing_or_expired");
+    expect(elig({ hasLicenseBack: false })).toContain("license_documents_missing");
+  });
+  it("deleted or missing driver fails", () => {
+    expect(elig({ deleted: true })).toEqual(["no_driver"]);
+    expect(evaluateDriverEligibility(null, "2026-10-16", { requireApproved: true }).map((b) => b.code)).toEqual(["no_driver"]);
+  });
+  it("Record Rental rules include identity when supplied", () => {
+    expect(codes(facts({ identity: { ...okId, status: "reviewing", hasLicenseFront: false } })))
+      .toEqual(expect.arrayContaining(["application_not_approved", "license_documents_missing"]));
+    expect(codes(facts({ identity: okId }))).toEqual([]);
+  });
+});
+
+describe("Record Rental authorization and activation (source guarantees)", () => {
+  const fn = readFileSync("src/lib/rental-intake.functions.ts", "utf8");
+  const sql = readFileSync("scripts/record-existing-rental.v2.proposed.sql", "utf8");
+  it("stays disabled", () => expect(RECORD_RENTAL_ENABLED).toBe(false));
+  it("calls the database as the signed-in user with no actor", () => {
+    expect(fn).toMatch(/context\.supabase as any\)\.rpc\("record_existing_rental_tx"/);
+    expect(fn).not.toMatch(/supabaseAdmin as any\)\.rpc\("record_existing_rental_tx"/);
+    expect(fn).not.toMatch(/_actor/);
+  });
+  it("checks the feature gate before calling the database", () =>
+    expect(fn.indexOf("!RECORD_RENTAL_ENABLED")).toBeLessThan(fn.indexOf('rpc("record_existing_rental_tx"')));
+  it("database function: auth.uid + is_manager, no actor param, no service_role grant", () => {
+    expect(sql).toMatch(/v_actor uuid := auth\.uid\(\)/);
+    expect(sql).toMatch(/private\.is_manager\(\) IS NOT TRUE/);
+    expect(sql).not.toMatch(/_actor uuid\)/);
+    expect(sql).toMatch(/FROM PUBLIC, anon, service_role/);
+    expect(sql).toMatch(/TO authenticated;/);
+    expect(sql).toMatch(/actor_user_id, actor_role, action, entity_type, entity_id, summary, metadata/);
+  });
+  it("database function: identity gate and payment conflict handling", () => {
+    for (const c of ["application_not_approved", "identity_review_open", "identity_conflict", "license_missing_or_expired", "license_documents_missing", "payment_conflict"])
+      expect(sql).toContain(c);
+    expect(sql).not.toMatch(/ON CONFLICT DO NOTHING/);
+  });
+  it("still no Stripe writes, messages or logins", () => {
+    expect(fn).not.toMatch(/\.(create|update|cancel|del)\(/);
+    expect(fn).not.toMatch(/sendEmail|sendSms|sendPortalInviteEmail|provisionDriverAccount|issueAgreement/);
+  });
+});
+
+describe("Approval modes", () => {
+  const src = readFileSync("src/lib/applications.functions.ts", "utf8");
+  const start = src.indexOf('if (data.mode === "manual_intake")');
+  const manual = src.slice(start, src.indexOf("const patch: Record<string, unknown> = { status: \"approved\" };", start));
+  it("manual intake requires identity evidence and skips login, email, agreement", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(manual).toContain("evaluateDriverEligibility");
+    expect(manual).toMatch(/return \{ ok: true, agreementSent: false/);
+    expect(manual).not.toMatch(/provisionDriverAccount|sendPortalInviteEmail|issueAgreement/);
+    expect(manual).toContain('mode: "manual_intake", portal_provisioned: false, agreement_sent: false');
+  });
+  it("standard approval is unchanged (default, provisions and sends agreement)", () => {
+    const std = src.slice(src.indexOf("const patch: Record<string, unknown> = { status: \"approved\" };", start));
+    expect(std).toContain("provisionDriverAccount");
+    expect(std).toContain("issueAgreement");
+    expect(src).toMatch(/mode: z\.enum\(\["standard", "manual_intake"\]\)\.optional\(\)/);
+  });
+  it("Invite is Manager+, approved-only, never sends an agreement or touches Stripe", () => {
+    const inv = src.slice(src.indexOf("export const inviteDriverPortal"), src.indexOf("// ---------------------------------------------------------- acknowledgement"));
+    expect(inv).toContain("requireManager");
+    expect(inv).toMatch(/\["approved", "active"\]/);
+    expect(inv).not.toMatch(/issueAgreement|stripe|rentals/i);
+  });
+});
