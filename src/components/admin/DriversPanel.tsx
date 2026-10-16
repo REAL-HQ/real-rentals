@@ -1916,27 +1916,38 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
-                <SectionCard
-                  title="Documents"
-                  subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
-                  padded={false}
-                >
-                  <div className="p-5">
-                    {/* One view over the document vault. It used to be three
-                        stacked surfaces — the vault as a text list, a card
-                        backed by a different table, and two one-off cards
-                        reading the raw application columns — so the same
-                        licence could appear three times with different
-                        controls and the insurance document appeared nowhere. */}
-                    <ApplicantDocuments
-                      applicationId={driver.id}
-                      docs={vaultDocs}
-                      loading={vaultLoading}
-                      onRefresh={refreshVault}
-                    />
-                  </div>
-                </SectionCard>
+                <Tabs defaultValue="files" className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="files">Documents</TabsTrigger>
+                    <TabsTrigger value="agreements">Agreements</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="files" className="mt-0">
+                    <SectionCard
+                      title="Documents"
+                      subtitle="Identification, insurance, verification and general documents."
+                      padded={false}
+                    >
+                      <div className="p-5">
+                        <ApplicantDocuments
+                          applicationId={driver.id}
+                          docs={vaultDocs}
+                          loading={vaultLoading}
+                          onRefresh={refreshVault}
+                        />
+                      </div>
+                    </SectionCard>
+                  </TabsContent>
+                  <TabsContent value="agreements" className="mt-0 space-y-4">
+                    <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
+                    <SectionCard title="Paper Agreements" subtitle="Externally signed PDF contracts.">
+                      <p className="text-sm text-muted-foreground">
+                        Paper uploads are pending approval. Saving them with a rental, signed date and
+                        Paper signature type needs a database change that has not been approved yet, so
+                        no upload is offered here.
+                      </p>
+                    </SectionCard>
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               <TabsContent value="screening" className="mt-0 space-y-4">
