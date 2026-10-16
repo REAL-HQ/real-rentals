@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useHeadingActionsSlot } from "./useHeadingActionsSlot";
 import { useNavigate } from "@tanstack/react-router";
+import { RecordNumber } from "./RecordNumber";
+import { persistedNumber } from "@/lib/record-numbers";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";

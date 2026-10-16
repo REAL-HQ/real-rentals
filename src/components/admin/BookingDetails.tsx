@@ -26,6 +26,9 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
+import { RecordNumber } from "./RecordNumber";
+import { VehicleTimeline } from "./VehicleTimeline";
+import { persistedNumber } from "@/lib/record-numbers";
 
 // A booking, read.
 //

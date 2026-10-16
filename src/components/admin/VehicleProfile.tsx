@@ -1,5 +1,6 @@
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
+import { VehicleTimeline } from "./VehicleTimeline";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -563,6 +564,10 @@ function Overview({
           <Row label="Service" value={<button onClick={() => onOpenTab("service")} className="text-[13px] font-medium underline-offset-2 hover:underline">View Service</button>} />
           <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
           <Row label="Rentals to Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
+        </SectionCard>
+
+        <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
+          <VehicleTimeline />
         </SectionCard>
 
         {p.financials && (
