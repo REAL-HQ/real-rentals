@@ -7,6 +7,8 @@ import {
   planPaymentImport,
   collectedTotal,
   RECORD_CONFIRM_PHRASE,
+  RECORD_RENTAL_ENABLED,
+  type DriverIdentityFacts,
   type IntakeBlocker,
   type IntakeInput,
   type SubscriptionSummary,
@@ -55,6 +57,27 @@ export type IntakePreflight = {
   collected: number;
   stripeError: string | null;
 };
+
+/** Identity evidence for one application (service role, after a staff check). */
+export async function loadDriverIdentityFacts(admin: any, applicationId: string): Promise<DriverIdentityFacts | null> {
+  const [{ data: app }, { data: reviews }, { data: docs }] = await Promise.all([
+    admin.from("applications").select("id,status,deleted_at,license_number,license_expiration").eq("id", applicationId).maybeSingle(),
+    admin.from("application_identity_reviews").select("status,resolution").eq("application_id", applicationId),
+    admin.from("documents").select("category").eq("driver_id", applicationId).in("category", ["license_front", "license_back"]),
+  ]);
+  if (!app) return null;
+  const cats = new Set((docs ?? []).map((d: any) => String(d.category)));
+  return {
+    status: app.status ?? null,
+    deleted: !!app.deleted_at,
+    openIdentityReviews: (reviews ?? []).filter((r: any) => r.status === "open").length,
+    differentPersonResolved: (reviews ?? []).some((r: any) => r.resolution === "different_person"),
+    hasLicenseNumber: !!String(app.license_number ?? "").trim(),
+    licenseExpiration: app.license_expiration ? String(app.license_expiration).slice(0, 10) : null,
+    hasLicenseFront: cats.has("license_front"),
+    hasLicenseBack: cats.has("license_back"),
+  };
+}
 
 async function gather(admin: any, input: IntakeInput, env: "sandbox" | "live"): Promise<IntakePreflight> {
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -109,9 +132,11 @@ async function gather(admin: any, input: IntakeInput, env: "sandbox" | "live"): 
     }
   }
 
+  const identity = driver ? await loadDriverIdentityFacts(admin, input.applicationId) : null;
   const blockers = evaluateIntake(input, {
     today,
     driver: driver ? { id: driver.id, status: driver.status } : null,
+    identity,
     vehicle: vehicle ? { id: vehicle.id, status: vehicle.status, archived: !!vehicle.archived_at } : null,
     rentalReadyMissing: Array.isArray(missingRes.data) ? missingRes.data : [],
     activeRentalOnVehicle: !!onVehicle?.length,
@@ -151,7 +176,10 @@ export const recordExistingRental = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }): Promise<RecordRentalResult> => {
     const { requireManager } = await import("@/lib/roles.server");
-    const actor = await requireManager(context.userId);
+    await requireManager(context.userId);
+    // Off until the reviewed database function is installed and the Owner enables it.
+    if (!RECORD_RENTAL_ENABLED)
+      return { ok: false, blockers: [{ code: "feature_disabled", message: "Record Rental is not enabled yet." }] };
     if (data.confirm !== RECORD_CONFIRM_PHRASE)
       return { ok: false, blockers: [{ code: "confirmation_required", message: `Type ${RECORD_CONFIRM_PHRASE} to confirm.` }] };
 
@@ -159,7 +187,9 @@ export const recordExistingRental = createServerFn({ method: "POST" })
     const pre = await gather(supabaseAdmin, data, data.environment);
     if (pre.blockers.length) return { ok: false, blockers: pre.blockers };
 
-    const { data: rentalId, error } = await (supabaseAdmin as any).rpc("record_existing_rental_tx", {
+    // Called as the signed-in user, never the service role: the database reads
+    // auth.uid(), re-checks Manager/Owner and attributes the audit entry. No actor is passed.
+    const { data: rentalId, error } = await (context.supabase as any).rpc("record_existing_rental_tx", {
       _application_id: data.applicationId,
       _vehicle_id: data.vehicleId,
       _start: data.pickupDate,
@@ -171,7 +201,6 @@ export const recordExistingRental = createServerFn({ method: "POST" })
       _next_payment_due: pre.subscription?.nextBillingDate ?? null,
       _payments: pre.paymentsToImport,
       _reason: data.reason,
-      _actor: actor.userId,
     });
     if (error) {
       const msg = String(error.message ?? "");
@@ -180,6 +209,10 @@ export const recordExistingRental = createServerFn({ method: "POST" })
       const known: Record<string, IntakeBlocker["code"]> = {
         vehicle_busy: "vehicle_busy", already_active: "driver_has_active_rental", duplicate_rental: "duplicate_rental",
         vehicle_unavailable: "vehicle_unavailable", subscription_already_linked: "subscription_already_linked",
+        not_authenticated: "forbidden", forbidden: "forbidden", application_not_approved: "application_not_approved",
+        identity_review_open: "identity_review_open", identity_conflict: "identity_conflict",
+        license_missing_or_expired: "license_missing_or_expired", license_documents_missing: "license_documents_missing",
+        payment_conflict: "payment_conflict", payment_without_provider_id: "payment_conflict",
       };
       const code = Object.keys(known).find((k) => msg.includes(k));
       return { ok: false, blockers: [{ code: code ? known[code] : ("vehicle_not_ready" as const), message: msg }] };
