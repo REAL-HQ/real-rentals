@@ -120,6 +120,7 @@ import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
+import { AssignVehiclePicker } from "./AssignVehiclePicker";
 import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
@@ -2060,9 +2061,10 @@ function DriverDetail({
                       <div className="text-[13px] text-[#55555E]">No vehicle assigned</div>
                     )}
                   </div>
-                  <VehiclePicker
+                  <AssignVehiclePicker
                     vehicles={vehicles}
                     value={driver.vehicle_id}
+                    driverId={driver.id}
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
                 </Card>
