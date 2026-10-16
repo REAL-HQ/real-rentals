@@ -16,6 +16,7 @@ import { BookingDetails } from "./BookingDetails";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, StatusPill } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { formatRecordNumber, persistedNumber } from "@/lib/record-numbers";
 import {
   Select,
   SelectContent,
@@ -230,6 +231,7 @@ export function BookingsPanel({
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
+                <th className="px-3 py-2 font-medium">Booking</th>
                 <th className="px-3 py-2 font-medium">Driver</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Dates</th>
@@ -247,6 +249,9 @@ export function BookingsPanel({
                   data-booking={b.id}
                   className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]"
                 >
+                  <td className="px-3 py-2 whitespace-nowrap tabular-nums text-muted-foreground" data-booking-number>
+                    {formatRecordNumber(persistedNumber(b, "bookingNumber")) ?? "—"}
+                  </td>
                   <td className="px-3 py-2 max-w-[220px]">
                     <DriverCell b={b} />
                   </td>

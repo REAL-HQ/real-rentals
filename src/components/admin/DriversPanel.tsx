@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useHeadingActionsSlot } from "./useHeadingActionsSlot";
 import { useNavigate } from "@tanstack/react-router";
+import { RecordNumber } from "./RecordNumber";
+import { persistedNumber } from "@/lib/record-numbers";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
@@ -1746,6 +1748,7 @@ function DriverDetail({
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
                   <StatusPill status={driver.status} />
+                  <RecordNumber label="Customer" value={persistedNumber(driver, "customer_number")} />
                   {driver.gclid && (
                     <span className="text-[10px] font-semibold tracking-[0.04em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
                       Google Ads

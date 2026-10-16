@@ -78,6 +78,8 @@ export type BookingRow = {
   endDate: string | null;
   /** True when the rental runs until somebody ends it. Not a missing value. */
   openEnded: boolean;
+  /** Persisted Booking # once the numbering backend exists. Never derived. */
+  bookingNumber?: number | null;
   driverName: string | null;
   driverEmail: string | null;
   /** applications.id — the person's record. NOT rentals.driver_id. */
