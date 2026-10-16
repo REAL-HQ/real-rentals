@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Driver Overview cards/checklist: preview verified on desktop/mobile, existing navigation and focused readiness tests passed; rules/records unchanged, unpublished. Existing unrelated driver-access assertion remains outside this visual scope.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure

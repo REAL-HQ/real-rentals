@@ -135,6 +135,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { DriverAssessment, OverviewCard, RentalChecklist } from "./DriverOverviewCards";
+import { Button } from "@/components/ui/button";
 
 /**
  * What arrived, at a glance, above the tabs.
@@ -1510,9 +1512,9 @@ function DriverDetail({
               : "applicant";
       return [
         remedy,
-        <button key={a.label} onClick={a.onClick} className={btnSecondary}>
+        <Button key={a.label} onClick={a.onClick} variant="outline" size="sm" className="h-auto min-h-8 max-w-full justify-start whitespace-normal rounded-md border-border bg-card px-3 py-2 text-xs text-card-foreground">
           {a.label}
-        </button>,
+        </Button>,
       ];
     }),
   );
@@ -1551,12 +1553,11 @@ function DriverDetail({
     { ok: !!(driver as any).agreement_signed_at, label: "Agreement Signed" },
     { ok: !!(driver as any).pickup_at, label: "Pickup Scheduled" },
   ];
-  const reqDone = requirements.filter((r) => r.ok).length;
 
   const summaryRow = (
-    <div className="grid gap-4 md:grid-cols-3">
-      <SectionCard title="Driver Summary">
-        <div className="space-y-2 text-[12px]">
+    <div className="grid items-start gap-4 lg:grid-cols-3">
+      <OverviewCard title="Driver Summary" icon={<UserIcon className="size-4" />}>
+        <div className="space-y-3 text-xs [&>div]:rounded-md [&>div]:bg-muted/50 [&>div]:p-3 [&>div]:text-foreground [&_svg]:text-muted-foreground">
           {driver.phone && (
             <div className="flex items-center gap-2 text-[#111114]">
               <Phone className="w-3.5 h-3.5 text-[#9A9AA3] shrink-0" /> {formatPhone(driver.phone)}
@@ -1578,10 +1579,10 @@ function DriverDetail({
             {driver.gclid ? "Google Ads" : driver.utm_source || "Direct"}
           </div>
         </div>
-      </SectionCard>
+      </OverviewCard>
 
-      <SectionCard title="Rental Need">
-        <dl className="space-y-2 text-[12px]">
+      <OverviewCard title="Rental Need" icon={<Car className="size-4" />}>
+        <dl className="divide-y divide-border text-xs [&>div]:py-3 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
           <Row2
             label="Needed By"
             value={
@@ -1616,24 +1617,15 @@ function DriverDetail({
             value={veh ? `${veh.year} ${veh.make} ${veh.model}` : "Unassigned"}
           />
         </dl>
-      </SectionCard>
+      </OverviewCard>
 
       {/* The one operational checklist. Replaces the separate Readiness
           Signals card and Requirements Checklist, which showed the same state twice. */}
-      <SectionCard
-        title="Rental Readiness"
-        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
-      >
-        <dl className="space-y-2 text-[12px]">
-          {requirements.map((r) => (
-            <SignalRow key={r.label} label={r.label} ok={r.ok} />
-          ))}
-        </dl>
-      </SectionCard>
+      <RentalChecklist requirements={requirements} />
     </div>
   );
 
-  const readinessCard = <ReadinessSummary result={readiness} remedyActions={remedyActions} />;
+  const readinessCard = <DriverAssessment result={readiness} remedyActions={remedyActions} />;
 
   const docsPreview = (
     <DocumentsStrip docs={vaultDocs} loading={vaultLoading} onOpen={() => setTab("documents")} />

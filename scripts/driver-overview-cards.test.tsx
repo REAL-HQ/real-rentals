@@ -1,0 +1,21 @@
+import { strict as assert } from "node:assert";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DriverAssessment, RentalChecklist } from "../src/components/admin/DriverOverviewCards";
+import { computeReadiness } from "../src/lib/readiness";
+
+const result = computeReadiness({});
+const before = JSON.stringify(result);
+const markup = renderToStaticMarkup(<DriverAssessment result={result} remedyActions={{ interview: <span>Existing Interview Action</span> }} />);
+assert.ok(markup.includes("Positive Signals"));
+assert.ok(markup.includes("Needs Attention"));
+assert.ok(markup.includes("Next Steps"));
+assert.ok(markup.includes("Existing Interview Action"));
+assert.ok(markup.includes("Nothing favourable recorded yet."));
+assert.equal(JSON.stringify(result), before);
+const checklist = renderToStaticMarkup(<RentalChecklist requirements={[{ label: "Interview Complete", ok: true }, { label: "Insurance Verified", ok: false }]} />);
+assert.ok(checklist.includes('aria-valuenow="1"'));
+assert.ok(checklist.includes('aria-valuemax="2"'));
+assert.ok(checklist.includes("Complete"));
+assert.ok(checklist.includes("Pending"));
+assert.ok(!checklist.includes('type="checkbox"'));
+console.log("Driver Overview cards: 12 checks passed");
