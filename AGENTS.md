@@ -20,3 +20,4 @@
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
 
 - Agreement templates: each agreement family has its own key, version history and fingerprint (src/lib/agreement-library.ts); prepareAgreement takes an optional templateKey, adds it to the fingerprint, and refuses Send for any family version not Owner-approved — so insurance and no-insurance wording never mix and drafts can't be sent.
+- Record Rental (existing rentals started outside the app): only via src/lib/rental-intake.functions.ts → record_existing_rental_tx; Stripe read-only, no messages/logins/charges, live Stripe gated by LIVE_STRIPE_INTAKE_APPROVED — so intake can never double-bill or contact a driver.
