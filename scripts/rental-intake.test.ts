@@ -142,47 +142,59 @@ describe("Record Rental authorization and activation (source guarantees)", () =>
   });
 });
 
-describe("Approval modes", () => {
+describe("Consolidated approval (source guarantees)", () => {
   const src = readFileSync("src/lib/applications.functions.ts", "utf8");
-  const start = src.indexOf('if (data.mode === "manual_intake")');
-  const manual = src.slice(start, src.indexOf("const patch: Record<string, unknown> = { status: \"approved\" };", start));
-  it("manual intake requires identity evidence and skips login, email, agreement", () => {
-    expect(start).toBeGreaterThan(0);
-    expect(manual).toContain("evaluateDriverEligibility");
-    expect(manual).toMatch(/return \{ ok: true, agreementSent: false/);
-    expect(manual).not.toMatch(/provisionDriverAccount|sendPortalInviteEmail|issueAgreement/);
-    expect(manual).toContain('mode: "manual_intake", portal_provisioned: false, agreement_sent: false');
+  const ap = src.slice(src.indexOf("export const approveApplication"), src.indexOf("export const getApprovalEligibility"));
+  const inv = src.slice(src.indexOf("export const inviteDriverPortal"), src.indexOf("// ---------------------------------------------------------- acknowledgement"));
+  const core = src.slice(src.indexOf("async function invitePortalCore"), src.indexOf("export const approveApplication"));
+  it("one approval path: Manager+, eligibility before any write, strict input", () => {
+    expect(ap).toContain("requireManager");
+    expect(ap.indexOf("evaluateDriverEligibility")).toBeLessThan(ap.indexOf(".update("));
+    expect(ap).toMatch(/\.strict\(\)/);
+    expect(ap).toMatch(/mode: z\.enum\(\["approve_only", "approve_invite"\]\)/);
+    expect(ap).not.toMatch(/"standard"|"manual_intake"/);
   });
-  it("standard approval is unchanged (default, provisions and sends agreement)", () => {
-    const std = src.slice(src.indexOf("const patch: Record<string, unknown> = { status: \"approved\" };", start));
-    expect(std).toContain("provisionDriverAccount");
-    expect(std).toContain("issueAgreement");
-    expect(src).toMatch(/mode: z\.enum\(\["standard", "manual_intake"\]\)\.optional\(\)/);
-  });
-  it("Invite is Manager+, approved-only, never sends an agreement or touches Stripe", () => {
-    const inv = src.slice(src.indexOf("export const inviteDriverPortal"), src.indexOf("// ---------------------------------------------------------- acknowledgement"));
-    expect(inv).toContain("requireManager");
-    expect(inv).toMatch(/\["approved", "active"\]/);
+  it("never sends an agreement or touches Stripe/rentals", () => {
+    expect(ap).not.toMatch(/issueAgreement|hasOpenOrSignedAgreement|stripe|from\("rentals"\)/i);
     expect(inv).not.toMatch(/issueAgreement|stripe|rentals/i);
   });
+  it("Approve Only creates no login and sends nothing", () => {
+    expect(ap).toMatch(/mode === "approve_invite"\s*\? await invitePortalCore/);
+    expect(ap).not.toMatch(/provisionDriverAccount|sendPortalInviteEmail/);
+  });
+  it("guarded update and audit attribution", () => {
+    expect(ap).toMatch(/\.eq\("status", app\.status as string\)/);
+    expect(ap).toMatch(/logAudit\(actor,/);
+    expect(ap).toContain("agreement_sent: false");
+  });
+  it("only New/Reviewing can be approved", () => expect(ap).toMatch(/\["new", "reviewing"\]\.includes/));
+  it("no duplicate invites: email only when the login is new", () => {
+    expect(core).toMatch(/if \(!account\.created\) return "existing"/);
+    expect(core.indexOf('return "existing"')).toBeLessThan(core.indexOf("sendPortalInviteEmail"));
+  });
+  it("Invite: Manager+, Approved/Active only, shared core", () => {
+    expect(inv).toContain("requireManager");
+    expect(inv).toMatch(/\["approved", "active"\]/);
+    expect(inv).toContain("invitePortalCore");
+  });
+  it("Send Agreement remains a separate explicit action", () =>
+    expect(readFileSync("src/lib/agreements.functions.ts", "utf8")).toMatch(/export const sendAgreement = createServerFn/));
 });
 
-describe("Approve / Invite buttons (source guarantees)", () => {
+describe("Approval interface (source guarantees)", () => {
   const ui = readFileSync("src/components/admin/DriverApprovalActions.tsx", "utf8");
   const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
-  const srv = readFileSync("src/lib/applications.functions.ts", "utf8");
+  it("old Approve & Send Contract is gone", () => {
+    expect(panel).not.toContain("Approve & Send Contract");
+    expect(panel).not.toContain("approveApplication");
+  });
   it("shown only to Manager/Owner and never with an active rental", () =>
     expect(panel).toMatch(/\{canManage && !rentalActive \? \(\s*<DriverApprovalActions/));
-  it("Approve always uses manual intake", () => {
-    expect(ui).toContain('mode: "manual_intake"');
-    expect(ui).not.toMatch(/approve\(\{ data: \{ id: driverId \} \}\)/);
+  it("modal offers exactly Approve Only and Approve & Invite, disabled until eligible", () => {
+    expect(ui).toContain('doApprove("approve_only")');
+    expect(ui).toContain('doApprove("approve_invite")');
+    expect(ui).toMatch(/const blocked = missing === null \|\| missing\.length > 0/);
   });
-  it("Approve disabled until eligibility returns no blockers", () => expect(ui).toMatch(/const blocked = missing === null \|\| missing\.length > 0/));
   it("Invite only for Approved drivers without a login", () => expect(ui).toMatch(/status === "approved" && !hasLogin/));
-  it("eligibility check is Manager+ and read-only", () => {
-    const e = srv.slice(srv.indexOf("export const getApprovalEligibility"), srv.indexOf("export const inviteDriverPortal"));
-    expect(e).toContain("requireManager");
-    expect(e).not.toMatch(/\.(update|insert|delete|upsert)\(/);
-  });
-  it("Record Rental unchanged and still off", () => expect(RECORD_RENTAL_ENABLED).toBe(false));
+  it("Record Rental still off", () => expect(RECORD_RENTAL_ENABLED).toBe(false));
 });
