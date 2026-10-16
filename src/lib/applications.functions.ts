@@ -1131,218 +1131,100 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
  * send. This does both, and is safe to call repeatedly: if an agreement is
  * already out for signature or already signed, it is not re-sent.
  */
+/** Portal access for an approved application: login + set-password email only when new. */
+async function invitePortalCore(
+  admin: any,
+  app: { id: string; email: string | null; full_name: string | null },
+): Promise<"created" | "existing" | "conflict" | "failed" | "no email"> {
+  if (!app.email) return "no email";
+  try {
+    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
+    const account = await provisionDriverAccount(admin, {
+      applicationId: app.id, email: app.email, fullName: app.full_name ?? null,
+    });
+    if (account.conflict) return "conflict";
+    if (!account.created) return "existing"; // never a second invite
+    try {
+      const { sendPortalInviteEmail } = await import("@/lib/email.server");
+      await sendPortalInviteEmail({
+        to: app.email,
+        firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
+        inviteUrl: account.inviteUrl,
+      });
+    } catch (e) {
+      console.error("[invite] portal invite email failed", e);
+    }
+    return "created";
+  } catch (e) {
+    console.error("[invite] provisioning failed", e);
+    return "failed";
+  }
+}
+
+/**
+ * The one approval path. Manager/Owner only; identity and license evidence is
+ * re-checked here on every call, so no caller (UI or direct) can skip it.
+ *  - approve_only (default): status only — no login, no message, no agreement.
+ *  - approve_invite: also starts portal access via the same invite path.
+ * Agreements are never sent from here; use the explicit Send Agreement action.
+ */
 export const approveApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z
-      .object({
-        id: z.string().uuid(),
-        sendAgreement: z.boolean().optional(),
-        /**
-         * "standard" (default) is unchanged: approve, provision a login, email
-         * the invite and send the agreement. "manual_intake" is for renters who
-         * already have a car (Record Rental): it requires identity and license
-         * evidence and does NOT create a login, email anyone or send an agreement.
-         */
-        mode: z.enum(["standard", "manual_intake"]).optional(),
-      })
-      .parse(d),
+    z.object({ id: z.string().uuid(), mode: z.enum(["approve_only", "approve_invite"]).optional() }).strict().parse(d),
   )
   .handler(
-    async ({
-      data,
-      context,
-    }): Promise<{
+    async ({ data, context }): Promise<{
       ok: boolean;
-      agreementSent: boolean;
-      agreementSkippedReason?: string;
-      /**
-       * What happened to their portal login. "created" means they were just
-       * emailed a set-password link; "existing" means they already had one.
-       * "failed" is reported rather than thrown — see below.
-       */
-      portalAccount: "created" | "existing" | "failed" | "conflict" | "no email";
+      agreementSent: false;
+      portalAccount: "created" | "existing" | "failed" | "conflict" | "no email" | "not requested";
+      blockers?: { code: string; message: string }[];
       error?: string;
     }> => {
-      // Manager, not staff. A Coordinator may read and work an application —
-      // that is the vetting job — but approving it commits the business and
-      // fires off the rental agreement, so it stays with someone trusted with
-      // money.
       const { requireManager } = await import("@/lib/roles.server");
       const actor = await requireManager(context.userId);
-
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const mode = data.mode ?? "approve_only";
 
       const { data: app } = await supabaseAdmin
         .from("applications")
-        .select("id,status,email,full_name,contacted_at")
+        .select("id,status,email,full_name,contacted_at,deleted_at")
         .eq("id", data.id)
         .maybeSingle();
-      if (!app)
-        return {
-          ok: false,
-          agreementSent: false,
-          portalAccount: "failed",
-          error: "Application not found",
-        };
+      if (!app || (app as any).deleted_at)
+        return { ok: false, agreementSent: false, portalAccount: "not requested", error: "Application not found" };
 
-      if (data.mode === "manual_intake") {
-        const { loadDriverIdentityFacts } = await import("@/lib/rental-intake.functions");
-        const { evaluateDriverEligibility } = await import("@/lib/rental-intake");
-        const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-        const facts = await loadDriverIdentityFacts(supabaseAdmin, data.id);
-        const blockers = evaluateDriverEligibility(facts, today, { requireApproved: false });
-        if (!["new", "reviewing", "approved"].includes(String(app.status)))
-          blockers.push({ code: "application_not_approved", message: `Cannot approve from ${app.status}.` });
-        if (blockers.length)
-          return { ok: false, agreementSent: false, portalAccount: "no email", error: blockers.map((x) => x.message).join(" ") };
-        const mpatch: Record<string, unknown> = { status: "approved" };
-        if (!app.contacted_at) mpatch.contacted_at = new Date().toISOString();
-        const { data: updated, error: mErr } = await supabaseAdmin
-          .from("applications").update(mpatch as any).eq("id", data.id).eq("status", app.status).select("id");
-        if (mErr || (updated ?? []).length !== 1)
-          return { ok: false, agreementSent: false, portalAccount: "no email", error: mErr?.message ?? "Application changed; reload and try again." };
-        const { logAudit } = await import("@/lib/audit.server");
-        await logAudit(actor, {
-          action: "application.approved",
-          summary: `Approved ${app.full_name ?? app.email ?? data.id} (manual intake)`,
-          entityType: "application",
-          entityId: data.id,
-          metadata: { previous_status: app.status, mode: "manual_intake", portal_provisioned: false, agreement_sent: false },
-        });
-        return { ok: true, agreementSent: false, agreementSkippedReason: "manual intake", portalAccount: "no email" };
-      }
+      const { loadDriverIdentityFacts } = await import("@/lib/rental-intake.functions");
+      const { evaluateDriverEligibility } = await import("@/lib/rental-intake");
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+      const blockers = evaluateDriverEligibility(await loadDriverIdentityFacts(supabaseAdmin, data.id), today, { requireApproved: false });
+      if (!["new", "reviewing"].includes(String(app.status)))
+        blockers.push({ code: "application_not_approved", message: `Cannot approve from ${app.status}.` });
+      if (blockers.length)
+        return { ok: false, agreementSent: false, portalAccount: "not requested", blockers, error: blockers.map((b) => b.message).join(" ") };
 
       const patch: Record<string, unknown> = { status: "approved" };
       if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
-      const { error: updErr } = await supabaseAdmin
-        .from("applications")
-        .update(patch as any)
-        .eq("id", data.id);
-      if (updErr)
-        return { ok: false, agreementSent: false, portalAccount: "failed", error: updErr.message };
+      // Guarded: only if nobody changed the status since we checked it.
+      const { data: updated, error: updErr } = await supabaseAdmin
+        .from("applications").update(patch as any).eq("id", data.id).eq("status", app.status as string).select("id");
+      if (updErr || (updated ?? []).length !== 1)
+        return { ok: false, agreementSent: false, portalAccount: "not requested", error: updErr?.message ?? "Application changed; reload and try again." };
+
+      const portalAccount =
+        mode === "approve_invite"
+          ? await invitePortalCore(supabaseAdmin, { id: data.id, email: (app.email as string) ?? null, full_name: (app.full_name as string) ?? null })
+          : ("not requested" as const);
 
       const { logAudit } = await import("@/lib/audit.server");
       await logAudit(actor, {
         action: "application.approved",
-        summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
+        summary: `Approved ${app.full_name ?? app.email ?? data.id}${mode === "approve_invite" ? " and invited" : ""}`,
         entityType: "application",
         entityId: data.id,
-        metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
+        metadata: { previous_status: app.status, mode, portal_account: portalAccount, agreement_sent: false },
       });
-
-      /*
-       * Give them a login now, not when a car is assigned.
-       *
-       * Approval is the point at which this is a person we intend to rent to,
-       * and it is the start of the window where they have to finish documents
-       * and sign a contract. Doing it at activation meant that whole window
-       * ran on emailed links with no account behind them.
-       *
-       * Deliberately never fatal. Approval has already been written and
-       * audited by this point; failing the call would leave the operator
-       * looking at an error for something that succeeded, and re-approving is
-       * the obvious response, which would re-send the agreement. The outcome
-       * is reported instead, and activateRental provisions again anyway, so a
-       * failure here self-repairs at the next step.
-       */
-      let portalAccount: "created" | "existing" | "failed" | "conflict" | "no email" = "no email";
-      let inviteUrl: string | null = null;
-      if (app.email) {
-        try {
-          const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-          const account = await provisionDriverAccount(supabaseAdmin, {
-            applicationId: data.id,
-            email: app.email as string,
-            fullName: (app.full_name as string | null) ?? null,
-          });
-          portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
-          inviteUrl = account.inviteUrl;
-        } catch (e) {
-          console.error("[approve] driver account provisioning failed", e);
-          portalAccount = "failed";
-        }
-      }
-
-      // Only a brand-new account needs telling. Somebody who already had a
-      // login does not need a second "set your password" email, and a
-      // re-approval must not generate one at all.
-      if (portalAccount === "created" && app.email) {
-        try {
-          const { sendPortalInviteEmail } = await import("@/lib/email.server");
-          await sendPortalInviteEmail({
-            to: app.email as string,
-            firstName:
-              String(app.full_name ?? "there")
-                .trim()
-                .split(/\s+/)[0] || "there",
-            inviteUrl,
-          });
-        } catch (e) {
-          console.error("[approve] portal invite email failed", e);
-        }
-      }
-
-      /*
-       * A conflicted identity does not get a contract.
-       *
-       * The approval itself stands — it is written and audited above, and it
-       * was a legitimate decision. But issuing the agreement now would put a
-       * signable contract on an application whose portal is reachable by the
-       * wrong account, and signMyAgreement derives ownership from exactly that
-       * link. Staff resolve the identity, then approve again; this function is
-       * safe to re-run and will send the agreement once the conflict is gone.
-       */
-      if (portalAccount === "conflict") {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason:
-            "the portal login for this application is in conflict — resolve it, then approve again",
-          portalAccount,
-        };
-      }
-
-      if (data.sendAgreement === false) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "not requested",
-          portalAccount,
-        };
-      }
-      if (!app.email) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "no email on file",
-          portalAccount,
-        };
-      }
-
-      const { hasOpenOrSignedAgreement, issueAgreement } =
-        await import("@/lib/agreements.functions");
-      if (await hasOpenOrSignedAgreement(supabaseAdmin, data.id)) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "an agreement is already out",
-          portalAccount,
-        };
-      }
-
-      try {
-        await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
-        return { ok: true, agreementSent: true, portalAccount };
-      } catch (e) {
-        // Approval already succeeded; report the send failure without undoing it.
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
-          portalAccount,
-        };
-      }
+      return { ok: true, agreementSent: false, portalAccount };
     },
   );
 
@@ -1377,19 +1259,9 @@ export const inviteDriverPortal = createServerFn({ method: "POST" })
     if (!app || (app as any).deleted_at) return { ok: false, error: "Application not found" };
     if (!["approved", "active"].includes(String(app.status))) return { ok: false, error: "Approve the application first." };
     if (!app.email) return { ok: false, error: "No email on file." };
-    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-    const account = await provisionDriverAccount(supabaseAdmin, {
-      applicationId: data.id, email: app.email as string, fullName: (app.full_name as string | null) ?? null,
+    const portalAccount = await invitePortalCore(supabaseAdmin, {
+      id: data.id, email: app.email as string, full_name: (app.full_name as string | null) ?? null,
     });
-    const portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
-    if (portalAccount === "created") {
-      const { sendPortalInviteEmail } = await import("@/lib/email.server");
-      await sendPortalInviteEmail({
-        to: app.email as string,
-        firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
-        inviteUrl: account.inviteUrl,
-      });
-    }
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, {
       action: "driver.portal_invited",
@@ -1398,7 +1270,12 @@ export const inviteDriverPortal = createServerFn({ method: "POST" })
       entityId: data.id,
       metadata: { portal_account: portalAccount, agreement_sent: false },
     });
-    return { ok: portalAccount !== "conflict", portalAccount, error: portalAccount === "conflict" ? "Portal login conflict — resolve identity first." : undefined };
+    const ok = portalAccount === "created" || portalAccount === "existing";
+    return {
+      ok,
+      portalAccount: ok || portalAccount === "conflict" ? (portalAccount as "created" | "existing" | "conflict") : undefined,
+      error: ok ? undefined : portalAccount === "conflict" ? "Portal login conflict — resolve identity first." : "Could not create the portal login.",
+    };
   });
 
 // ---------------------------------------------------------- acknowledgement
