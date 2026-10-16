@@ -1746,6 +1746,7 @@ function DriverDetail({
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
                   <StatusPill status={driver.status} />
+                  <RecordNumber label="Customer" value={persistedNumber(driver, "customer_number")} />
                   {driver.gclid && (
                     <span className="text-[10px] font-semibold tracking-[0.04em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
                       Google Ads
