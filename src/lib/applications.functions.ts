@@ -1259,19 +1259,9 @@ export const inviteDriverPortal = createServerFn({ method: "POST" })
     if (!app || (app as any).deleted_at) return { ok: false, error: "Application not found" };
     if (!["approved", "active"].includes(String(app.status))) return { ok: false, error: "Approve the application first." };
     if (!app.email) return { ok: false, error: "No email on file." };
-    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-    const account = await provisionDriverAccount(supabaseAdmin, {
-      applicationId: data.id, email: app.email as string, fullName: (app.full_name as string | null) ?? null,
+    const portalAccount = await invitePortalCore(supabaseAdmin, {
+      id: data.id, email: app.email as string, full_name: (app.full_name as string | null) ?? null,
     });
-    const portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
-    if (portalAccount === "created") {
-      const { sendPortalInviteEmail } = await import("@/lib/email.server");
-      await sendPortalInviteEmail({
-        to: app.email as string,
-        firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
-        inviteUrl: account.inviteUrl,
-      });
-    }
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, {
       action: "driver.portal_invited",
@@ -1280,7 +1270,12 @@ export const inviteDriverPortal = createServerFn({ method: "POST" })
       entityId: data.id,
       metadata: { portal_account: portalAccount, agreement_sent: false },
     });
-    return { ok: portalAccount !== "conflict", portalAccount, error: portalAccount === "conflict" ? "Portal login conflict — resolve identity first." : undefined };
+    const ok = portalAccount === "created" || portalAccount === "existing";
+    return {
+      ok,
+      portalAccount: ok || portalAccount === "conflict" ? (portalAccount as "created" | "existing" | "conflict") : undefined,
+      error: ok ? undefined : portalAccount === "conflict" ? "Portal login conflict — resolve identity first." : "Could not create the portal login.",
+    };
   });
 
 // ---------------------------------------------------------- acknowledgement
