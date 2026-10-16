@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Driver Overview cards/checklist: preview-only visual refresh and desktop/mobile verification; preserve rules and records.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure

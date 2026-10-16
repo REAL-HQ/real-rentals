@@ -15,7 +15,8 @@
 - Driver Preview: staff view a driver only via portal reads carrying previewDriverId, checked in driver-preview.server.ts (Manager+, real driver, audited); driver write actions call refuseStaffPortalWrite; no driver tokens ever — so preview can never act as the driver.
 - Vehicle titles: title_number/title_status live only in Owner-only public.vehicle_titles (vehicles columns deprecated; a trigger diverts writes); staff see vehicles.title_on_file — because staff-readable vehicles rows leaked title identifiers.
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
-- Back-office sticky: chrome locked once in admin.tsx; pages opt filter rows in via `admin-sticky-bar` (styles.css) — no per-page sticky code.
+- Sticky chrome: admin.tsx owns it; filters use `admin-sticky-bar`, never per-page sticky code.
+- DriverOverviewCards renders existing readiness/callbacks only; it never derives eligibility or writes records.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
 
 - Agreement templates: each agreement family has its own key, version history and fingerprint (src/lib/agreement-library.ts); prepareAgreement takes an optional templateKey, adds it to the fingerprint, and refuses Send for any family version not Owner-approved — so insurance and no-insurance wording never mix and drafts can't be sent.
