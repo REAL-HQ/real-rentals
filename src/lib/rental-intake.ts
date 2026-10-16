@@ -132,7 +132,7 @@ export function evaluateIntake(input: IntakeInput, f: IntakeFacts): IntakeBlocke
 
   if (!f.driver) add("no_driver", "Driver not found.");
   else if (f.identity !== undefined)
-    b.push(...evaluateDriverEligibility(f.identity, f.today, { requireApproved: true }).filter((x) => x.code !== "no_driver" || !f.driver));
+    b.push(...evaluateDriverEligibility(f.identity, f.today, { requireApproved: true }));
   if (!f.vehicle) add("no_vehicle", "Vehicle not found.");
   else if (f.vehicle.archived || ["archived", "sold", "retired"].includes(String(f.vehicle.status)))
     add("vehicle_unavailable", "This vehicle is archived, sold or retired.");
