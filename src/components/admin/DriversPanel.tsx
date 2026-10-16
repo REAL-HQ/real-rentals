@@ -16,6 +16,7 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { DriverApprovalActions } from "./DriverApprovalActions";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
@@ -806,6 +807,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        canManage={canManageWaitlist}
       />
       {deleteDialog}
       </>
@@ -1198,6 +1200,7 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  canManage = false,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1210,6 +1213,8 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  /** Manager or Owner (server re-checks every action). */
+  canManage?: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -1822,6 +1827,15 @@ function DriverDetail({
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
+              {canManage && !rentalActive ? (
+                <DriverApprovalActions
+                  driverId={driver.id}
+                  status={driver.status}
+                  hasLogin={!!driver.user_id}
+                  hasEmail={!!driver.email}
+                  onApproved={() => onSaved({ status: "approved" })}
+                />
+              ) : null}
               {!rentalActive ? (
                 <button
                   onClick={() => setRecordOpen(true)}
