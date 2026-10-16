@@ -1,6 +1,6 @@
-import { formatRecordNumber } from "@/lib/record-numbers";
+import { formatRecordNumber, type RecordKind } from "@/lib/record-numbers";
 
-/** Compact "Customer #001" chip. Shows "—" until a persisted number exists. */
+/** Compact "Customer C-001" chip. Shows "—" until a persisted number exists. */
 export function RecordNumber({
   label,
   value,
@@ -10,7 +10,7 @@ export function RecordNumber({
   value: number | null | undefined;
   className?: string;
 }) {
-  const text = formatRecordNumber(value);
+  const text = formatRecordNumber(label.toLowerCase() as RecordKind, value);
   return (
     <span
       data-record-number={label.toLowerCase()}
