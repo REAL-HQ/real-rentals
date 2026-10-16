@@ -186,7 +186,7 @@ describe("Approval interface (source guarantees)", () => {
   const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
   it("old Approve & Send Contract is gone", () => {
     expect(panel).not.toContain("Approve & Send Contract");
-    expect(panel).not.toContain("approveApplication");
+    expect(panel).not.toContain("useServerFn(approveApplication)");
   });
   it("shown only to Manager/Owner and never with an active rental", () =>
     expect(panel).toMatch(/\{canManage && !rentalActive \? \(\s*<DriverApprovalActions/));
