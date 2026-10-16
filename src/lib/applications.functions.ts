@@ -1138,6 +1138,13 @@ export const approveApplication = createServerFn({ method: "POST" })
       .object({
         id: z.string().uuid(),
         sendAgreement: z.boolean().optional(),
+        /**
+         * "standard" (default) is unchanged: approve, provision a login, email
+         * the invite and send the agreement. "manual_intake" is for renters who
+         * already have a car (Record Rental): it requires identity and license
+         * evidence and does NOT create a login, email anyone or send an agreement.
+         */
+        mode: z.enum(["standard", "manual_intake"]).optional(),
       })
       .parse(d),
   )
@@ -1178,6 +1185,33 @@ export const approveApplication = createServerFn({ method: "POST" })
           portalAccount: "failed",
           error: "Application not found",
         };
+
+      if (data.mode === "manual_intake") {
+        const { loadDriverIdentityFacts } = await import("@/lib/rental-intake.functions");
+        const { evaluateDriverEligibility } = await import("@/lib/rental-intake");
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const facts = await loadDriverIdentityFacts(supabaseAdmin, data.id);
+        const blockers = evaluateDriverEligibility(facts, today, { requireApproved: false });
+        if (!["new", "reviewing", "approved"].includes(String(app.status)))
+          blockers.push({ code: "application_not_approved", message: `Cannot approve from ${app.status}.` });
+        if (blockers.length)
+          return { ok: false, agreementSent: false, portalAccount: "no email", error: blockers.map((x) => x.message).join(" ") };
+        const mpatch: Record<string, unknown> = { status: "approved" };
+        if (!app.contacted_at) mpatch.contacted_at = new Date().toISOString();
+        const { data: updated, error: mErr } = await supabaseAdmin
+          .from("applications").update(mpatch as any).eq("id", data.id).eq("status", app.status).select("id");
+        if (mErr || (updated ?? []).length !== 1)
+          return { ok: false, agreementSent: false, portalAccount: "no email", error: mErr?.message ?? "Application changed; reload and try again." };
+        const { logAudit } = await import("@/lib/audit.server");
+        await logAudit(actor, {
+          action: "application.approved",
+          summary: `Approved ${app.full_name ?? app.email ?? data.id} (manual intake)`,
+          entityType: "application",
+          entityId: data.id,
+          metadata: { previous_status: app.status, mode: "manual_intake", portal_provisioned: false, agreement_sent: false },
+        });
+        return { ok: true, agreementSent: false, agreementSkippedReason: "manual intake", portalAccount: "no email" };
+      }
 
       const patch: Record<string, unknown> = { status: "approved" };
       if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
@@ -1311,6 +1345,46 @@ export const approveApplication = createServerFn({ method: "POST" })
       }
     },
   );
+
+/**
+ * Invite — portal access only, on request, for an already-approved driver.
+ * Never creates a rental, subscription or charge, and never sends an agreement.
+ */
+export const inviteDriverPortal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ ok: boolean; portalAccount?: "created" | "existing" | "conflict"; error?: string }> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: app } = await supabaseAdmin
+      .from("applications").select("id,status,email,full_name,deleted_at").eq("id", data.id).maybeSingle();
+    if (!app || (app as any).deleted_at) return { ok: false, error: "Application not found" };
+    if (!["approved", "active"].includes(String(app.status))) return { ok: false, error: "Approve the application first." };
+    if (!app.email) return { ok: false, error: "No email on file." };
+    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
+    const account = await provisionDriverAccount(supabaseAdmin, {
+      applicationId: data.id, email: app.email as string, fullName: (app.full_name as string | null) ?? null,
+    });
+    const portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
+    if (portalAccount === "created") {
+      const { sendPortalInviteEmail } = await import("@/lib/email.server");
+      await sendPortalInviteEmail({
+        to: app.email as string,
+        firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
+        inviteUrl: account.inviteUrl,
+      });
+    }
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "driver.portal_invited",
+      summary: `Portal invite for ${app.full_name ?? app.email}`,
+      entityType: "application",
+      entityId: data.id,
+      metadata: { portal_account: portalAccount, agreement_sent: false },
+    });
+    return { ok: portalAccount !== "conflict", portalAccount, error: portalAccount === "conflict" ? "Portal login conflict — resolve identity first." : undefined };
+  });
 
 // ---------------------------------------------------------- acknowledgement
 
