@@ -250,7 +250,7 @@ export function BookingsPanel({
                   className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]"
                 >
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums text-muted-foreground" data-booking-number>
-                    {formatRecordNumber(persistedNumber(b, "bookingNumber")) ?? "—"}
+                    {formatRecordNumber("booking", persistedNumber(b, "bookingNumber")) ?? "—"}
                   </td>
                   <td className="px-3 py-2 max-w-[220px]">
                     <DriverCell b={b} />

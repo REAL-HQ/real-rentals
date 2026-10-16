@@ -8,10 +8,13 @@
 /** Swap stays off until the reviewed backend is installed and activated. */
 export const SWAP_ENABLED = false;
 
-/** "#001", "#042", "#999", "#1000". Null for anything that is not a real positive integer. */
-export function formatRecordNumber(n: unknown): string | null {
+export type RecordKind = "customer" | "booking" | "swap";
+const PREFIX: Record<RecordKind, string> = { customer: "C", booking: "B", swap: "S" };
+
+/** "C-001", "B-042", "S-1000". Stored values are plain integers; prefix/padding are display only. */
+export function formatRecordNumber(kind: RecordKind, n: unknown): string | null {
   if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) return null;
-  return `#${String(n).padStart(3, "0")}`;
+  return `${PREFIX[kind]}-${String(n).padStart(3, "0")}`;
 }
 
 /** Reads a persisted number field if the record carries one; never derives it. */
