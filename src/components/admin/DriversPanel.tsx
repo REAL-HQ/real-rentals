@@ -1,5 +1,5 @@
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useHeadingActionsSlot } from "./useHeadingActionsSlot";
 import { useNavigate } from "@tanstack/react-router";
@@ -972,7 +972,7 @@ setDocCounts(requiredDocCounts(rows));
                     >
                       <Select
                         value={a.status || ""}
-                        onValueChange={(status) => update(a.id, { status })}
+                        onValueChange={(status) => { if ((SELECTABLE_STATUSES as readonly string[]).includes(status)) update(a.id, { status }); }}
                       >
                         <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
                           {held.has(a.id) ? (
@@ -2577,7 +2577,7 @@ function SelField({
   options: string[];
   onChange: (v: string) => void;
   labels?: Record<string, string>;
-  extra?: React.ReactNode;
+  extra?: ReactNode;
 }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
