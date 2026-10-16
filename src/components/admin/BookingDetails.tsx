@@ -27,7 +27,7 @@ import { Row, TwoCol } from "./VehicleProfileFields";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
 import { RecordNumber } from "./RecordNumber";
-import { VehicleTimeline } from "./VehicleTimeline";
+import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { persistedNumber } from "@/lib/record-numbers";
 
 // A booking, read.
@@ -379,7 +379,7 @@ function Overview({
         </SectionCard>
 
         <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <VehicleTimeline showSwap={b.phase === "active"} />
+          <BookingVehicleHistory showSwap={b.phase === "active"} />
         </SectionCard>
 
 

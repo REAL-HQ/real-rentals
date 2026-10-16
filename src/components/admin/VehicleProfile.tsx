@@ -1,6 +1,6 @@
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
-import { VehicleTimeline } from "./VehicleTimeline";
+import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -567,7 +567,7 @@ function Overview({
         </SectionCard>
 
         <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
-          <VehicleTimeline />
+          <BookingVehicleHistory />
         </SectionCard>
 
         {p.financials && (
