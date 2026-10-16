@@ -5,7 +5,7 @@ import { AlertTriangle, Check, Loader2, ShieldCheck } from "lucide-react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { MicroLabel } from "./ui";
 import { previewRecordRental, recordExistingRental, type IntakePreflight } from "@/lib/rental-intake.functions";
-import { RECORD_CONFIRM_PHRASE } from "@/lib/rental-intake";
+import { RECORD_CONFIRM_PHRASE, RECORD_RENTAL_ENABLED } from "@/lib/rental-intake";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { fmtDate } from "@/lib/date-format";
 
@@ -101,7 +101,7 @@ export function RecordRentalDialog({
 
   const ready = vehicleId && pickupDate && Number(rate) > 0;
   const clear = result && result.blockers.length === 0 && !result.stripeError;
-  const canRecord = clear && confirm === RECORD_CONFIRM_PHRASE && reason.trim().length >= 5;
+  const canRecord = RECORD_RENTAL_ENABLED && clear && confirm === RECORD_CONFIRM_PHRASE && reason.trim().length >= 5;
 
   return (
     <ModalShell onClose={onClose} size="lg" label="Record Rental">
@@ -111,6 +111,9 @@ export function RecordRentalDialog({
           <ShieldCheck className="w-4 h-4 shrink-0 text-[#1E7B4A]" />
           No charge, no new subscription, no welcome email or text, and no driver login.
         </div>
+        {!RECORD_RENTAL_ENABLED ? (
+          <div className="mt-2 text-[12px] text-[#8A5A00]">Check works. Recording turns on after the database update is approved.</div>
+        ) : null}
 
         <div className="mt-4 space-y-3">
           <div>

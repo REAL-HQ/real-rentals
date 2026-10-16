@@ -28,7 +28,56 @@ export type IntakeBlockerCode =
   | "subscription_amount_mismatch"
   | "subscription_already_linked"
   | "db_not_installed"
-  | "confirmation_required";
+  | "confirmation_required"
+  | "feature_disabled"
+  | "forbidden"
+  | "application_not_approved"
+  | "identity_review_open"
+  | "identity_conflict"
+  | "license_missing_or_expired"
+  | "license_documents_missing"
+  | "payment_conflict";
+
+/**
+ * Record Rental stays off until its reviewed database function is installed
+ * and the Owner explicitly turns it on. Client-safe so the dialog can show it.
+ */
+export const RECORD_RENTAL_ENABLED = false;
+
+/** Identity evidence the database function re-checks under lock. */
+export type DriverIdentityFacts = {
+  status: string | null;
+  deleted: boolean;
+  openIdentityReviews: number;
+  differentPersonResolved: boolean;
+  hasLicenseNumber: boolean;
+  licenseExpiration: string | null; // YYYY-MM-DD
+  hasLicenseFront: boolean;
+  hasLicenseBack: boolean;
+};
+
+/**
+ * Identity requirements shared by Record Rental and manual-intake approval.
+ * requireApproved=false is used *by* approval (the status it is about to set).
+ */
+export function evaluateDriverEligibility(
+  d: DriverIdentityFacts | null,
+  today: string,
+  opts: { requireApproved: boolean },
+): IntakeBlocker[] {
+  const b: IntakeBlocker[] = [];
+  const add = (code: IntakeBlockerCode, message: string) => b.push({ code, message });
+  if (!d || d.deleted) return [{ code: "no_driver", message: "Driver not found." }];
+  if (opts.requireApproved && d.status !== "approved")
+    add("application_not_approved", "Application must be Approved first.");
+  if (d.openIdentityReviews > 0) add("identity_review_open", "Resolve the open identity review first.");
+  if (d.differentPersonResolved) add("identity_conflict", "An identity review found a different person.");
+  if (!d.hasLicenseNumber || !d.licenseExpiration || d.licenseExpiration < today)
+    add("license_missing_or_expired", "Enter a valid, unexpired license number and expiration.");
+  if (!d.hasLicenseFront || !d.hasLicenseBack)
+    add("license_documents_missing", "Upload license front and back.");
+  return b;
+}
 
 export type IntakeBlocker = { code: IntakeBlockerCode; message: string };
 
@@ -59,6 +108,8 @@ export type SubscriptionSummary = {
 export type IntakeFacts = {
   today: string;
   driver: { id: string; status: string | null } | null;
+  /** Omitted only by legacy callers/tests; the server always supplies it. */
+  identity?: DriverIdentityFacts | null;
   vehicle: { id: string; status: string | null; archived: boolean } | null;
   rentalReadyMissing: string[];
   activeRentalOnVehicle: boolean;
@@ -80,6 +131,8 @@ export function evaluateIntake(input: IntakeInput, f: IntakeFacts): IntakeBlocke
   const add = (code: IntakeBlockerCode, message: string) => b.push({ code, message });
 
   if (!f.driver) add("no_driver", "Driver not found.");
+  else if (f.identity !== undefined)
+    b.push(...evaluateDriverEligibility(f.identity, f.today, { requireApproved: true }));
   if (!f.vehicle) add("no_vehicle", "Vehicle not found.");
   else if (f.vehicle.archived || ["archived", "sold", "retired"].includes(String(f.vehicle.status)))
     add("vehicle_unavailable", "This vehicle is archived, sold or retired.");
