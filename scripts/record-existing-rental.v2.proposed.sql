@@ -58,7 +58,7 @@ BEGIN
   IF (SELECT count(DISTINCT category) FROM documents
       WHERE driver_id = _application_id AND category IN ('license_front','license_back')) < 2
     THEN RAISE EXCEPTION 'license_documents_missing'; END IF;
-  -- NOTE at build: add "AND deleted_at IS NULL" if documents carries soft-delete.
+  -- documents has no soft-delete column (verified Oct 16, 2026).
 
   -- 4. Vehicle readiness and conflicts
   SELECT id, status, archived_at INTO v_veh FROM vehicles WHERE id = _vehicle_id FOR UPDATE;
@@ -91,7 +91,7 @@ BEGIN
   IF _pickup_miles IS NOT NULL THEN
     -- Verified deployed signature (Oct 16, 2026):
     -- private.rental_mileage_reading(uuid,uuid,uuid,integer,text,text,uuid), SECURITY DEFINER.
-    -- _driver may be NULL (odometer_readings.driver_id nullable — confirm at build).
+    -- _driver may be NULL: odometer_readings.driver_id is nullable (verified).
     v_read := private.rental_mileage_reading(_vehicle_id, v_rental, v_app.user_id, _pickup_miles,
                                              'rental_checkout', 'pre_delivery', v_actor);
     UPDATE rentals SET pickup_reading_id = v_read WHERE id = v_rental;
@@ -128,12 +128,12 @@ BEGIN
       p->>'stripe_charge_id', _stripe_subscription_id, 'Imported at Record Rental');
   END LOOP;
 
-  INSERT INTO audit_log (actor_id, action, entity_type, entity_id, details)
-  VALUES (v_actor, 'rental.recorded_existing', 'rental', v_rental, jsonb_build_object(
+  INSERT INTO audit_log (actor_user_id, actor_role, action, entity_type, entity_id, summary, metadata)
+  VALUES (v_actor, (SELECT string_agg(role::text, ',') FROM user_roles WHERE user_id = v_actor),
+    'rental.recorded_existing', 'rental', v_rental, 'Recorded existing rental', jsonb_build_object(
     'application_id', _application_id, 'vehicle_id', _vehicle_id, 'start', _start, 'weekly_rate', _weekly_rate,
     'deposit', _deposit, 'stripe_customer_id', _stripe_customer_id, 'stripe_subscription_id', _stripe_subscription_id,
     'payments_submitted', jsonb_array_length(COALESCE(_payments,'[]'::jsonb)), 'reason', _reason));
-  -- NOTE at build: confirm audit_log column names against audit.server.ts.
   PERFORM set_config('app.rental_tx', 'off', true);
   RETURN v_rental;
 END $$;
