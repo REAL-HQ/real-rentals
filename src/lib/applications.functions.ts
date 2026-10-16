@@ -1346,6 +1346,21 @@ export const approveApplication = createServerFn({ method: "POST" })
     },
   );
 
+/** Read-only: what manual-intake approval would still need. Manager+. */
+export const getApprovalEligibility = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ blockers: { code: string; message: string }[] }> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { loadDriverIdentityFacts } = await import("@/lib/rental-intake.functions");
+    const { evaluateDriverEligibility } = await import("@/lib/rental-intake");
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const facts = await loadDriverIdentityFacts(supabaseAdmin, data.id);
+    return { blockers: evaluateDriverEligibility(facts, today, { requireApproved: false }) };
+  });
+
 /**
  * Invite — portal access only, on request, for an already-approved driver.
  * Never creates a rental, subscription or charge, and never sends an agreement.
