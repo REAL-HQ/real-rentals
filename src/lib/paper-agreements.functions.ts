@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { LIVE_RENTAL_RELEASE } from "@/lib/live-rental-release";
 import {
-  PAPER_BUCKET, PAPER_MAX_BYTES, checkPaperPdf, decodeSignedOn, encodeSignedOn,
+  PAPER_BUCKET, PAPER_MAX_BYTES, PAPER_TYPES, checkPaperPdf, decodePaperMeta, encodePaperMeta, resolvePaperMeta, type PaperMeta,
   paperStoragePath, safeFileName, sha256Hex, validSignedOn,
 } from "@/lib/paper-agreements";
 
@@ -23,7 +23,20 @@ export const listPaperAgreementOriginals = createServerFn({ method: "POST" })
       .eq("storage_bucket", PAPER_BUCKET).eq("source", "paper")
       .order("created_at", { ascending: false });
     if (error) throw new Error("Could not load paper agreements.");
-    return (rows ?? []).map(({ notes, ...r }) => ({ ...r, signed_on: decodeSignedOn(notes) }));
+    const ids = (rows ?? []).map((r) => r.id as string);
+    const audit = new Map<string, PaperMeta>();
+    if (ids.length) {
+      const { data: logs } = await supabaseAdmin.from("audit_log").select("entity_id,metadata")
+        .eq("action", "paper_agreement.uploaded").eq("entity_type", "document").in("entity_id", ids);
+      for (const l of logs ?? []) {
+        const m = l.metadata as { signed_on?: string | null; type?: string } | null;
+        if (m && PAPER_TYPES.includes(m.type as never)) audit.set(l.entity_id as string, { signed_on: m.signed_on ?? null, type: m.type as PaperMeta["type"] });
+      }
+    }
+    return (rows ?? []).map(({ notes, ...r }) => {
+      const { meta, mismatch } = resolvePaperMeta(audit.get(r.id as string) ?? null, decodePaperMeta(notes));
+      return { ...r, signed_on: meta?.signed_on ?? null, agreement_type: meta?.type ?? null, metadata_mismatch: mismatch };
+    });
   });
 
 /**
@@ -38,6 +51,7 @@ export const uploadPaperAgreement = createServerFn({ method: "POST" })
     fileName: z.string().min(1).max(255),
     base64: z.string().min(1).max(Math.ceil(PAPER_MAX_BYTES / 3) * 4 + 8),
     signedOn: z.string().nullable(),
+    agreementType: z.enum(PAPER_TYPES),
   }).strict().parse(data))
   .handler(async ({ data, context }) => {
     const { requireManager } = await import("@/lib/roles.server");
@@ -46,7 +60,7 @@ export const uploadPaperAgreement = createServerFn({ method: "POST" })
     return storePaperAgreement(actor, data);
   });
 
-type UploadInput = { applicationId: string; fileName: string; base64: string; signedOn: string | null };
+type UploadInput = { applicationId: string; fileName: string; base64: string; signedOn: string | null; agreementType: PaperMeta["type"] };
 
 export async function storePaperAgreement(actor: { userId: string; role: string; email: string | null; tier: string }, data: UploadInput) {
   const today = new Date().toISOString().slice(0, 10);
@@ -89,7 +103,7 @@ export async function storePaperAgreement(actor: { userId: string; role: string;
     label: fileName, file_name: fileName, mime_type: "application/pdf", size_bytes: bytes.length,
     content_sha256: sha, source: "paper", evidence_class: "operational", review_status: "uploaded",
     is_current: true, uploaded_by: actor.userId, uploaded_by_role: actor.role,
-    notes: encodeSignedOn(data.signedOn),
+    notes: encodePaperMeta({ signed_on: data.signedOn, type: data.agreementType }),
   });
   if (insErr) {
     await supabaseAdmin.storage.from(PAPER_BUCKET).remove([path]);
@@ -100,7 +114,7 @@ export async function storePaperAgreement(actor: { userId: string; role: string;
   await logAudit(actor as never, {
     action: "paper_agreement.uploaded", entityType: "document", entityId: id,
     summary: `Uploaded paper agreement ${fileName}`,
-    metadata: { application_id: data.applicationId, sha256: sha, size_bytes: bytes.length, signed_on: data.signedOn },
+    metadata: { application_id: data.applicationId, sha256: sha, size_bytes: bytes.length, signed_on: data.signedOn, type: data.agreementType },
   });
   return { id, sha256: sha };
 }
