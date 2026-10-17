@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
 import { z } from "zod";
+import { LIVE_RENTAL_RELEASE, APPROVAL_RELEASE_HOLD } from "@/lib/live-rental-release";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
 const nullableUuid = z.string().uuid().nullable().optional();
@@ -1183,6 +1184,9 @@ export const approveApplication = createServerFn({ method: "POST" })
     }> => {
       const { requireManager } = await import("@/lib/roles.server");
       const actor = await requireManager(context.userId);
+      if (!LIVE_RENTAL_RELEASE.approveOnly || (data.mode === "approve_invite" && !LIVE_RENTAL_RELEASE.invitations))
+        return { ok: false, agreementSent: false, portalAccount: "not requested", error: APPROVAL_RELEASE_HOLD,
+          blockers: [{ code: "feature_disabled", message: APPROVAL_RELEASE_HOLD }] };
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const mode = data.mode ?? "approve_only";
 
@@ -1253,6 +1257,8 @@ export const inviteDriverPortal = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<{ ok: boolean; portalAccount?: "created" | "existing" | "conflict"; error?: string }> => {
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);
+    if (!LIVE_RENTAL_RELEASE.invitations)
+      return { ok: false, error: "Invitations are disabled for this release." };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: app } = await supabaseAdmin
       .from("applications").select("id,status,email,full_name,deleted_at").eq("id", data.id).maybeSingle();

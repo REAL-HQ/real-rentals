@@ -5,6 +5,7 @@
 //   1. Every reason not to record a rental is returned at once (blockers).
 //   2. Payment import only ever records money Stripe says actually moved —
 //      once per invoice / PaymentIntent / charge, never projected revenue.
+import { LIVE_RENTAL_RELEASE } from "./live-rental-release";
 
 export type IntakeBlockerCode =
   | "no_driver"
@@ -42,7 +43,7 @@ export type IntakeBlockerCode =
  * Record Rental stays off until its reviewed database function is installed
  * and the Owner explicitly turns it on. Client-safe so the dialog can show it.
  */
-export const RECORD_RENTAL_ENABLED = false;
+export const RECORD_RENTAL_ENABLED = LIVE_RENTAL_RELEASE.recordRental;
 
 /** Identity evidence the database function re-checks under lock. */
 export type DriverIdentityFacts = {
@@ -108,8 +109,7 @@ export type SubscriptionSummary = {
 export type IntakeFacts = {
   today: string;
   driver: { id: string; status: string | null } | null;
-  /** Omitted only by legacy callers/tests; the server always supplies it. */
-  identity?: DriverIdentityFacts | null;
+  identity: DriverIdentityFacts | null;
   vehicle: { id: string; status: string | null; archived: boolean } | null;
   rentalReadyMissing: string[];
   activeRentalOnVehicle: boolean;
@@ -131,7 +131,7 @@ export function evaluateIntake(input: IntakeInput, f: IntakeFacts): IntakeBlocke
   const add = (code: IntakeBlockerCode, message: string) => b.push({ code, message });
 
   if (!f.driver) add("no_driver", "Driver not found.");
-  else if (f.identity !== undefined)
+  else
     b.push(...evaluateDriverEligibility(f.identity, f.today, { requireApproved: true }));
   if (!f.vehicle) add("no_vehicle", "Vehicle not found.");
   else if (f.vehicle.archived || ["archived", "sold", "retired"].includes(String(f.vehicle.status)))
