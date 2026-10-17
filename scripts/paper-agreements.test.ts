@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   checkPaperPdf, sha256Hex, paperStoragePath, safeFileName, PAPER_MAX_BYTES,
-  encodeSignedOn, decodeSignedOn, validSignedOn,
+  encodePaperMeta, decodePaperMeta, resolvePaperMeta, validSignedOn,
 } from "../src/lib/paper-agreements";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -28,7 +28,14 @@ describe("Integrity and storage", () => {
     expect(paperStoragePath("app", "a")).toBe("paper/app/a.pdf");
   });
   it("sanitizes file names", () => expect(safeFileName("../x<y>")).toBe(".._x_y_.pdf"));
-  it("round-trips signed date", () => expect(decodeSignedOn(encodeSignedOn("2026-10-15"))).toBe("2026-10-15"));
+  it("round-trips signed date and type", () =>
+    expect(decodePaperMeta(encodePaperMeta({ signed_on: "2026-10-15", type: "addendum" }))).toEqual({ signed_on: "2026-10-15", type: "addendum" }));
+  it("ignores ordinary notes", () => expect(decodePaperMeta("Signed On: 2026-10-15 call back")).toBeNull());
+  it("audit value wins and edited notes are flagged", () => {
+    const r = resolvePaperMeta({ signed_on: "2026-10-15", type: "original" }, { signed_on: "2026-10-01", type: "original" });
+    expect(r.meta?.signed_on).toBe("2026-10-15"); expect(r.mismatch).toBe(true);
+  });
+  it("uploading an addendum never demotes the original", () => expect(src).not.toMatch(/is_current: false|superseded_by:/));
   it("refuses future signed dates", () => expect(validSignedOn("2026-12-01", "2026-10-17")).toBe(false));
 });
 

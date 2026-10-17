@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { FileUploader } from "@/components/FileUploader";
 import { listPaperAgreementOriginals, uploadPaperAgreement, getPaperAgreementPdf, PAPER_UPLOAD_HOLD } from "@/lib/paper-agreements.functions";
-import { PAPER_MAX_BYTES } from "@/lib/paper-agreements";
+import { PAPER_MAX_BYTES, PAPER_TYPES, PAPER_TYPE_LABEL, type PaperType } from "@/lib/paper-agreements";
 import { LIVE_RENTAL_RELEASE, createRequestGate } from "@/lib/live-rental-release";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
@@ -27,6 +27,7 @@ export function PaperAgreements({ applicationId }: { applicationId: string }) {
   const [rows, setRows] = useState<Original[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [signedOn, setSignedOn] = useState("");
+  const [agreementType, setAgreementType] = useState<PaperType>("original");
   const [busy, setBusy] = useState<string | null>(null);
   const enabled = LIVE_RENTAL_RELEASE.paperAgreements;
 
@@ -41,7 +42,7 @@ export function PaperAgreements({ applicationId }: { applicationId: string }) {
   useEffect(() => { refresh(); return () => { gate.current.invalidate(); }; }, [refresh]);
 
   const doUpload = async (file: File) => {
-    await upload({ data: { applicationId, fileName: file.name, base64: await toBase64(file), signedOn: signedOn || null } });
+    await upload({ data: { applicationId, fileName: file.name, base64: await toBase64(file), signedOn: signedOn || null, agreementType } });
     toast.success("Paper agreement saved");
     setSignedOn("");
     refresh();
@@ -65,6 +66,13 @@ export function PaperAgreements({ applicationId }: { applicationId: string }) {
               onChange={(e) => setSignedOn(e.target.value)}
               className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground" />
           </label>
+          <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            Type
+            <select value={agreementType} onChange={(e) => setAgreementType(e.target.value as PaperType)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground">
+              {PAPER_TYPES.map((t) => <option key={t} value={t}>{PAPER_TYPE_LABEL[t]}</option>)}
+            </select>
+          </label>
           <FileUploader variant="inline" label="Upload" accept="application/pdf,.pdf" maxBytes={PAPER_MAX_BYTES}
             upload={doUpload} context="Paper Agreement · PDF" />
         </div>
@@ -83,8 +91,9 @@ export function PaperAgreements({ applicationId }: { applicationId: string }) {
               </Button>
             </div>
             <div className="text-muted-foreground">
-              Signed {row.signed_on ? fmtDate(row.signed_on) : "Not Set"} · Uploaded {fmtDateTime(row.created_at)} · Source: Paper · {row.is_current ? "Current" : "Historical"}
+              {row.agreement_type ? `${PAPER_TYPE_LABEL[row.agreement_type]} · ` : ""}Signed {row.signed_on ? fmtDate(row.signed_on) : "Not Set"} · Uploaded {fmtDateTime(row.created_at)} · Source: Paper · {row.is_current ? "Current" : "Historical"}
             </div>
+            {row.metadata_mismatch ? <div className="text-destructive">Notes Edited — showing values recorded at upload</div> : null}
             <div className="font-mono break-all text-muted-foreground">{row.content_sha256 ? `SHA-256 ${row.content_sha256}` : "Hash Not Recorded"}</div>
           </li>
         ))}</ul>}
