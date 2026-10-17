@@ -50,7 +50,7 @@ function UploadDialog({ applicationId, onClose, onSaved }: { applicationId: stri
   };
   return (
     <ModalShell onClose={busy ? () => {} : onClose} size="md" label="Upload Paper Agreement">
-      <ModalHeader title="Upload Agreement" subtitle="Complete wet-signed PDF. Saved privately as Paper." onClose={busy ? undefined as never : onClose} />
+      <ModalHeader title="Upload Agreement" subtitle="Complete wet-signed PDF. Saved privately as Paper." onClose={onClose} />
       <ModalBody className="space-y-4">
         <FileUploader variant="zone" accept="application/pdf,.pdf" maxBytes={PAPER_MAX_BYTES} value={files} onChange={setFiles}
           title="Add PDF" hint="PDF only, up to 20 MB" context="Paper Agreement" disabled={busy} />
