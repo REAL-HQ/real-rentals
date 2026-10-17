@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { LIVE_RENTAL_RELEASE } from "@/lib/live-rental-release";
 import {
-  PAPER_BUCKET, PAPER_MAX_BYTES, PAPER_TYPES, checkPaperPdf, decodePaperMeta, encodePaperMeta, resolvePaperMeta, type PaperMeta,
+  PAPER_BUCKET, PAPER_MAX_BYTES, PAPER_TYPES, checkPaperPdf, decodePaperMeta, composePaperNotes, paperNoteText, resolvePaperMeta, type PaperMeta,
   paperStoragePath, safeFileName, sha256Hex, validSignedOn,
 } from "@/lib/paper-agreements";
 
@@ -35,7 +35,7 @@ export const listPaperAgreementOriginals = createServerFn({ method: "POST" })
     }
     return (rows ?? []).map(({ notes, ...r }) => {
       const { meta, mismatch } = resolvePaperMeta(audit.get(r.id as string) ?? null, decodePaperMeta(notes));
-      return { ...r, signed_on: meta?.signed_on ?? null, agreement_type: meta?.type ?? null, metadata_mismatch: mismatch };
+      return { ...r, signed_on: meta?.signed_on ?? null, agreement_type: meta?.type ?? null, note: paperNoteText(notes), metadata_mismatch: mismatch };
     });
   });
 
@@ -52,6 +52,7 @@ export const uploadPaperAgreement = createServerFn({ method: "POST" })
     base64: z.string().min(1).max(Math.ceil(PAPER_MAX_BYTES / 3) * 4 + 8),
     signedOn: z.string().nullable(),
     agreementType: z.enum(PAPER_TYPES),
+    note: z.string().max(1000).nullable(),
   }).strict().parse(data))
   .handler(async ({ data, context }) => {
     const { requireManager } = await import("@/lib/roles.server");
@@ -60,7 +61,7 @@ export const uploadPaperAgreement = createServerFn({ method: "POST" })
     return storePaperAgreement(actor, data);
   });
 
-type UploadInput = { applicationId: string; fileName: string; base64: string; signedOn: string | null; agreementType: PaperMeta["type"] };
+type UploadInput = { applicationId: string; fileName: string; base64: string; signedOn: string | null; agreementType: PaperMeta["type"]; note: string | null };
 
 export async function storePaperAgreement(actor: { userId: string; role: string; email: string | null; tier: string }, data: UploadInput) {
   const today = new Date().toISOString().slice(0, 10);
@@ -103,7 +104,7 @@ export async function storePaperAgreement(actor: { userId: string; role: string;
     label: fileName, file_name: fileName, mime_type: "application/pdf", size_bytes: bytes.length,
     content_sha256: sha, source: "paper", evidence_class: "operational", review_status: "uploaded",
     is_current: true, uploaded_by: actor.userId, uploaded_by_role: actor.role,
-    notes: encodePaperMeta({ signed_on: data.signedOn, type: data.agreementType }),
+    notes: composePaperNotes({ signed_on: data.signedOn, type: data.agreementType }, data.note),
   });
   if (insErr) {
     await supabaseAdmin.storage.from(PAPER_BUCKET).remove([path]);

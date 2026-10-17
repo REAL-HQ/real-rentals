@@ -13,8 +13,9 @@ describe("Agreement retention", () => {
 });
 
 describe("Minimum release holds", () => {
+  const APPROVED = new Set(["paperAgreements"]); // explicitly approved Oct 17, 2026
   for (const [feature, enabled] of Object.entries(LIVE_RENTAL_RELEASE))
-    it(`${feature} is disabled`, () => expect(enabled).toBe(false));
+    it(`${feature} is ${APPROVED.has(feature) ? "enabled (approved)" : "disabled"}`, () => expect(enabled).toBe(APPROVED.has(feature)));
   it("does not allocate Customer or Booking numbers", () => {
     expect(formatRecordNumber("customer", undefined)).toBeNull();
     expect(formatRecordNumber("booking", null)).toBeNull();
