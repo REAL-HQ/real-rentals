@@ -47,6 +47,15 @@ const META_PREFIX = "[paper-agreement v1] ";
 export function encodePaperMeta(meta: PaperMeta): string {
   return META_PREFIX + JSON.stringify({ signed_on: meta.signed_on, type: meta.type });
 }
+/** Meta line first, then free-text notes; a forged meta prefix in notes is neutralized. */
+export function composePaperNotes(meta: PaperMeta, note: string | null): string {
+  const clean = (note ?? "").trim().split("\n").map((l) => l.startsWith(META_PREFIX) ? l.slice(1) : l).join("\n").slice(0, 1000);
+  return clean ? `${encodePaperMeta(meta)}\n${clean}` : encodePaperMeta(meta);
+}
+export function paperNoteText(notes: string | null | undefined): string | null {
+  const rest = (notes ?? "").split("\n").filter((l) => !l.startsWith(META_PREFIX)).join("\n").trim();
+  return rest || null;
+}
 export function decodePaperMeta(notes: string | null | undefined): PaperMeta | null {
   const line = notes?.split("\n").find((l) => l.startsWith(META_PREFIX));
   if (!line) return null;

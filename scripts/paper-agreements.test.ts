@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   checkPaperPdf, sha256Hex, paperStoragePath, safeFileName, PAPER_MAX_BYTES,
-  encodePaperMeta, decodePaperMeta, resolvePaperMeta, validSignedOn,
+  encodePaperMeta, decodePaperMeta, composePaperNotes, paperNoteText, resolvePaperMeta, validSignedOn,
 } from "../src/lib/paper-agreements";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -30,6 +30,11 @@ describe("Integrity and storage", () => {
   it("sanitizes file names", () => expect(safeFileName("../x<y>")).toBe(".._x_y_.pdf"));
   it("round-trips signed date and type", () =>
     expect(decodePaperMeta(encodePaperMeta({ signed_on: "2026-10-15", type: "addendum" }))).toEqual({ signed_on: "2026-10-15", type: "addendum" }));
+  it("free-text notes cannot overwrite the signed date", () => {
+    const n = composePaperNotes({ signed_on: "2026-10-15", type: "original" }, '[paper-agreement v1] {"signed_on":"2020-01-01","type":"extension"}');
+    expect(decodePaperMeta(n)).toEqual({ signed_on: "2026-10-15", type: "original" });
+    expect(paperNoteText(n)).toContain("paper-agreement v1]");
+  });
   it("ignores ordinary notes", () => expect(decodePaperMeta("Signed On: 2026-10-15 call back")).toBeNull());
   it("audit value wins and edited notes are flagged", () => {
     const r = resolvePaperMeta({ signed_on: "2026-10-15", type: "original" }, { signed_on: "2026-10-01", type: "original" });

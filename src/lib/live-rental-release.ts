@@ -1,7 +1,7 @@
 // Release holds are code-owned, not browser storage or role substitutes.
 // Every mutation endpoint must authorize independently before checking its hold.
 export const LIVE_RENTAL_RELEASE = Object.freeze({
-  paperAgreements: false,
+  paperAgreements: true, // Approved Oct 17, 2026 for preview verification only
   approveOnly: false,
   invitations: false,
   recordRental: false,
