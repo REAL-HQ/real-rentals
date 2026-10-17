@@ -38,6 +38,7 @@ import {
 import { useServerFn } from "@tanstack/react-start";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
 import { applicationStage, wizardProgress } from "@/lib/application-stage";
+import { readCollectedRevenue } from "@/lib/collected-revenue";
 
 /**
  * How many applicants the dashboard pulls in to derive readiness from.
@@ -154,8 +155,9 @@ export function OverviewPanel() {
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
-  const [revenue, setRevenue] = useState(0);
-  const [priorRevenue, setPriorRevenue] = useState(0);
+  const [revenue, setRevenue] = useState<number | null>(null);
+  const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
+  const [weeklyUnavailable, setWeeklyUnavailable] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
@@ -281,7 +283,9 @@ export function OverviewPanel() {
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
       }
-      setWeekly(series);
+      const weeklyFailed = !!pay12wQ.error || !!billed12wQ.error || readCollectedRevenue(pay12wQ) === null;
+      setWeeklyUnavailable(weeklyFailed);
+      setWeekly(weeklyFailed ? [] : series);
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -316,10 +320,8 @@ export function OverviewPanel() {
           .lte("paid_date", r.to);
       const [cur, prev] = await Promise.all([q(range), q(compare)]);
       if (!live) return;
-      const sum = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
-      setRevenue(sum(cur.data));
-      setPriorRevenue(sum(prev.data));
+      setRevenue(readCollectedRevenue(cur));
+      setPriorRevenue(readCollectedRevenue(prev));
       setRevenueLoading(false);
     })();
     return () => {
@@ -330,7 +332,7 @@ export function OverviewPanel() {
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
     // made, and saying so is more honest than printing a number.
-    if (priorRevenue === 0) return null;
+    if (revenue === null || priorRevenue === null || priorRevenue === 0) return null;
     return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
   }, [revenue, priorRevenue]);
 
@@ -713,6 +715,7 @@ export function OverviewPanel() {
 
       {/* Billed vs Collected — full width */}
       {(() => {
+        if (weeklyUnavailable) return <SectionCard title="Billed vs Collected"><p className="text-sm text-muted-foreground">Payment reporting unavailable.</p></SectionCard>;
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
         const collectionRate = totBilled > 0 ? Math.round((totCollected / totBilled) * 100) : null;
@@ -923,7 +926,7 @@ function RevenueCard({
   custom,
   onCustom,
 }: {
-  amount: number;
+  amount: number | null;
   delta: number | null;
   loading: boolean;
   range: DayRange;
@@ -955,7 +958,7 @@ function RevenueCard({
         Revenue
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
-        {loading ? <span className="text-[#C7C7CC]">—</span> : usd(amount)}
+        {loading ? <span className="text-[#C7C7CC]">—</span> : amount === null ? "Unavailable" : usd(amount)}
       </div>
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
@@ -971,7 +974,7 @@ function RevenueCard({
         ) : (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
-            <span className="text-[#9A9AA3]">no prior revenue to compare</span>
+            <span className="text-[#9A9AA3]">{amount === null ? "reporting unavailable" : "no prior revenue to compare"}</span>
           </>
         )}
       </div>

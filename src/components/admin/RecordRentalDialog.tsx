@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Loader2, ShieldCheck } from "lucide-react";
@@ -8,6 +8,7 @@ import { previewRecordRental, recordExistingRental, type IntakePreflight } from 
 import { RECORD_CONFIRM_PHRASE, RECORD_RENTAL_ENABLED } from "@/lib/rental-intake";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { fmtDate } from "@/lib/date-format";
+import { createRequestGate } from "@/lib/live-rental-release";
 
 type VehicleLite = {
   id: string;
@@ -54,6 +55,8 @@ export function RecordRentalDialog({
   const [confirm, setConfirm] = useState("");
   const [result, setResult] = useState<IntakePreflight | null>(null);
   const [busy, setBusy] = useState<"check" | "record" | null>(null);
+  const requests = useRef(createRequestGate());
+  useEffect(() => () => { requests.current.invalidate(); }, [driver.id]);
 
   const env = (() => {
     try { return getStripeEnvironment(); } catch { return "sandbox" as const; }
@@ -80,23 +83,27 @@ export function RecordRentalDialog({
   });
 
   // Any edit invalidates the last check — never record on stale results.
-  const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setResult(null); setConfirm(""); };
+  const edit = <T,>(set: (v: T) => void) => (v: T) => { requests.current.invalidate(); setBusy(null); set(v); setResult(null); setConfirm(""); };
 
   async function runCheck() {
+    const request = requests.current.begin();
     setBusy("check");
-    try { setResult(await preview({ data: payload() })); }
-    catch (e: any) { toast.error(e?.message || "Check failed"); }
-    finally { setBusy(null); }
+    try { const checked = await preview({ data: payload() }); if (requests.current.isCurrent(request)) setResult(checked); }
+    catch (e: any) { if (requests.current.isCurrent(request)) toast.error(e?.message || "Check failed"); }
+    finally { if (requests.current.isCurrent(request)) setBusy(null); }
   }
 
   async function runRecord() {
+    if (!RECORD_RENTAL_ENABLED) return;
+    const request = requests.current.begin();
     setBusy("record");
     try {
       const r = await record({ data: { ...payload(), confirm, reason } });
+      if (!requests.current.isCurrent(request)) return;
       if (r.ok) { toast.success(`Rental recorded · ${r.paymentsRecorded} past payment(s)`); onRecorded(); }
       else setResult((prev) => ({ ...(prev as IntakePreflight), blockers: r.blockers }));
-    } catch (e: any) { toast.error(e?.message || "Could not record rental"); }
-    finally { setBusy(null); }
+    } catch (e: any) { if (requests.current.isCurrent(request)) toast.error(e?.message || "Could not record rental"); }
+    finally { if (requests.current.isCurrent(request)) setBusy(null); }
   }
 
   const ready = vehicleId && pickupDate && Number(rate) > 0;
@@ -138,7 +145,7 @@ export function RecordRentalDialog({
             <label><MicroLabel>Deposit Collected</MicroLabel>
               <input inputMode="decimal" className={inputCls} placeholder="Not Set" value={deposit} onChange={(e) => edit(setDeposit)(e.target.value)} /></label>
           </div>
-          <p className="text-[11.5px] text-[#77777F]">Open-ended — no end date. Leave Deposit blank if none was collected or it is unknown.</p>
+          <p className="text-[11.5px] text-[#77777F]">Open-ended — no end date. Enter 0 if no deposit was collected; leave blank only if unknown.</p>
           <div className="grid grid-cols-2 gap-3">
             <label><MicroLabel>Stripe Customer</MicroLabel>
               <input className={inputCls} placeholder="cus_…" value={customerId} onChange={(e) => edit(setCustomerId)(e.target.value)} /></label>
@@ -167,7 +174,7 @@ export function RecordRentalDialog({
               <div className="rounded-lg border border-[#E6E6EA] px-3 py-2 text-[12px] text-[#28282E] space-y-0.5">
                 <div>Subscription {result.subscription.status} · {result.subscription.weeklyAmount != null ? money(result.subscription.weeklyAmount) : "?"} / {result.subscription.interval ?? "?"}</div>
                 <div>Next Billing: {result.subscription.nextBillingDate ? fmtDate(result.subscription.nextBillingDate) : "Not Set"}{result.subscription.cancelAtPeriodEnd ? " · cancels at period end" : ""}</div>
-                <div>Past Payments To Record: {result.paymentsToImport.length} · Collected {money(result.collected)}</div>
+                <div>{result.collected === null ? "Historical Payments: Unavailable" : `Past Payments To Record: ${result.paymentsToImport.length} · Collected ${money(result.collected)}`}</div>
               </div>
             ) : null}
             {clear ? (

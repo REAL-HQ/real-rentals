@@ -685,9 +685,13 @@ export const deleteDocument = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,storage_bucket,storage_path")
+      .select("id,category,kind,storage_bucket,storage_path")
       .eq("id", data.documentId)
       .maybeSingle();
+    // Signed/paper originals must never be removed through the generic vault.
+    // Database/storage retention remains a separate release dependency.
+    if (doc && (doc.category === "agreement" || doc.kind === "agreement" || doc.storage_bucket === "rental-agreements"))
+      throw new Error("Agreement originals are retained and cannot be deleted here.");
     if (doc) {
       await supabaseAdmin.storage
         .from(doc.storage_bucket as string)

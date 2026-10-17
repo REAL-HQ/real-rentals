@@ -205,7 +205,7 @@ export function DocumentVault({
                     upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                   />
                 ) : null}
-                {mode === "admin" && doc ? (
+                {mode === "admin" && doc && cat.key !== "agreement" ? (
                   <button
                     onClick={async () => {
                       if (!confirm("Delete this document permanently?")) return;
