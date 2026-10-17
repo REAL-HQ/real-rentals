@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { isRetainedAgreement } from "@/lib/agreement-retention";
 
 export const DOC_BUCKET = "driver-docs";
 
@@ -690,7 +691,7 @@ export const deleteDocument = createServerFn({ method: "POST" })
       .maybeSingle();
     // Signed/paper originals must never be removed through the generic vault.
     // Database/storage retention remains a separate release dependency.
-    if (doc && (doc.category === "agreement" || doc.kind === "agreement" || doc.storage_bucket === "rental-agreements"))
+    if (doc && isRetainedAgreement(doc))
       throw new Error("Agreement originals are retained and cannot be deleted here.");
     if (doc) {
       await supabaseAdmin.storage

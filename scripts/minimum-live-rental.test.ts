@@ -3,6 +3,14 @@ import { LIVE_RENTAL_RELEASE, createRequestGate } from "../src/lib/live-rental-r
 import { readCollectedRevenue } from "../src/lib/collected-revenue";
 import { formatRecordNumber } from "../src/lib/record-numbers";
 import { evaluateIntake } from "../src/lib/rental-intake";
+import { isRetainedAgreement } from "../src/lib/agreement-retention";
+
+describe("Agreement retention", () => {
+  it.each([{ category: "agreement" }, { kind: "agreement" }, { storage_bucket: "rental-agreements" }])("protects each original identifier %j", doc =>
+    expect(isRetainedAgreement(doc)).toBe(true));
+  it("does not classify ordinary license evidence as an agreement", () =>
+    expect(isRetainedAgreement({ category: "license_front", kind: "license_front", storage_bucket: "license-uploads" })).toBe(false));
+});
 
 describe("Minimum release holds", () => {
   for (const [feature, enabled] of Object.entries(LIVE_RENTAL_RELEASE))

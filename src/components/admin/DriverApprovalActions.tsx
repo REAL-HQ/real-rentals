@@ -139,7 +139,7 @@ export function DriverApprovalActions({
               </div>
             ) : (
               <div className="rounded-lg border border-[#CFE8D9] bg-[#EEF8F2] px-3 py-2 text-[12px] text-[#1E5B3A] flex gap-2">
-                <Check className="w-3.5 h-3.5 mt-0.5" /> License and identity requirements met.
+                <Check className="w-3.5 h-3.5 mt-0.5" /> Current license checks passed. Verified identity approval remains unavailable.
               </div>
             )}
             {!LIVE_RENTAL_RELEASE.approveOnly ? <p className="text-xs text-warning-foreground">{APPROVAL_RELEASE_HOLD}</p> : null}

@@ -16,4 +16,6 @@
 - Sticky chrome: admin.tsx owns it; filters use `admin-sticky-bar`, never per-page sticky code.
 - DriverOverviewCards renders existing readiness/callbacks only; it never derives eligibility or writes records.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
-- Minimum Live-Rental release holds live in src/lib/live-rental-release.ts and are checked server-side after authorization; schema-dependent writes stay disabled until separately approved database safeguards exist, because a UI hold cannot protect direct requests or table writes.
+- Minimum rental holds: live-rental-release.ts, server-checked after authorization; pending DB writes stay off because UI is not a boundary.
+- Paper reads: paper-agreements.functions.ts, explicitly classified originals only; no backfill/inferred linkage because reads must not write.
+- Revenue: collected-revenue.ts returns unknown on missing/error; agreement-retention.ts blocks generic original deletion. DB/storage protection still required.
