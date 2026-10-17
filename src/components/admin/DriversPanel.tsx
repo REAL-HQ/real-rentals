@@ -1960,13 +1960,6 @@ function DriverDetail({
                   </TabsContent>
                   <TabsContent value="agreements" className="mt-0 space-y-4">
                     <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
-                    <SectionCard title="Paper Agreements" subtitle="Externally signed PDF contracts.">
-                      <p className="text-sm text-muted-foreground">
-                        Paper uploads are pending approval. Saving them with a rental, signed date and
-                        Paper signature type needs a database change that has not been approved yet, so
-                        no upload is offered here.
-                      </p>
-                    </SectionCard>
                   </TabsContent>
                 </Tabs>
               </TabsContent>
