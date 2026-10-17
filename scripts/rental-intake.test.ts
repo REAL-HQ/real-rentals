@@ -12,7 +12,7 @@ const sub = summarizeSubscription({
   items: { data: [{ quantity: 1, current_period_end: 1792022400, price: { unit_amount: 35000, recurring: { interval: "week", interval_count: 1 } } }] },
 });
 const facts = (o: Partial<IntakeFacts> = {}): IntakeFacts => ({
-  today: "2026-10-16", driver: { id: "a", status: "reviewing" }, vehicle: { id: "v", status: "available", archived: false },
+  today: "2026-10-16", driver: { id: "a", status: "approved" }, identity: { status: "approved", deleted: false, openIdentityReviews: 0, differentPersonResolved: false, hasLicenseNumber: true, licenseExpiration: "2028-01-01", hasLicenseFront: true, hasLicenseBack: true }, vehicle: { id: "v", status: "available", archived: false },
   rentalReadyMissing: [], activeRentalOnVehicle: false, activeRentalForDriver: false, duplicateRental: false,
   mileageHistoryMax: 99000, subscription: sub, stripeChecked: true, stripeLiveBlocked: false,
   subscriptionLinkedElsewhere: false, ...o,

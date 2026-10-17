@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { LIVE_RENTAL_RELEASE } from "@/lib/live-rental-release";
 import {
   evaluateIntake,
   summarizeSubscription,
@@ -54,7 +55,7 @@ export type IntakePreflight = {
   blockers: IntakeBlocker[];
   subscription: SubscriptionSummary | null;
   paymentsToImport: PaymentImportRow[];
-  collected: number;
+  collected: number | null;
   stripeError: string | null;
 };
 
@@ -115,7 +116,7 @@ async function gather(admin: any, input: IntakeInput, env: "sandbox" | "live"): 
       stripeChecked = true;
       const { data: linked } = await admin.from("rentals").select("id").eq("stripe_subscription_id", subscription.id).limit(1);
       linkedElsewhere = !!linked?.length;
-      const invoices = (await stripe.listInvoices(subscription.id)).data ?? [];
+      const invoices = LIVE_RENTAL_RELEASE.historicalPayments ? (await stripe.listInvoices(subscription.id)).data ?? [] : [];
       const invIds = invoices.map((i: any) => i.id);
       const { data: existing } = invIds.length
         ? await admin.from("payments").select("stripe_invoice_id,stripe_payment_intent_id").in("stripe_invoice_id", invIds)
@@ -148,7 +149,11 @@ async function gather(admin: any, input: IntakeInput, env: "sandbox" | "live"): 
     stripeLiveBlocked: liveBlocked,
     subscriptionLinkedElsewhere: linkedElsewhere,
   });
-  return { blockers, subscription, paymentsToImport, collected: collectedTotal(paymentsToImport), stripeError };
+  if (wantsStripe && !LIVE_RENTAL_RELEASE.historicalPayments)
+    blockers.push({ code: "feature_disabled", message: "Historical reconciliation and subscription linkage remain disabled pending database approval." });
+  return { blockers, subscription, paymentsToImport,
+    collected: LIVE_RENTAL_RELEASE.historicalPayments && stripeChecked && !stripeError ? collectedTotal(paymentsToImport) : null,
+    stripeError };
 }
 
 /** Read-only. Nothing is written anywhere. */

@@ -17,6 +17,7 @@ import {
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { AgreementPdfViewer } from "./AgreementPdfViewer";
 import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
+import { PaperAgreements } from "./PaperAgreements";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -412,6 +413,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
             ))}
           </ul>
         )}
+        <PaperAgreements applicationId={applicationId} />
       </div>
     </SectionCard>
   );
