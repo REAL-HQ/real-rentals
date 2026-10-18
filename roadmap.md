@@ -1,5 +1,5 @@
 # Roadmap
-- [x] Unified Finance Phase 1: synthetic reporting/reconciliation modules and focused tests only; no live integration. Phase 2 awaits separate approval.
+- [ ] Unified Finance Phase 1 Corrections: repair confirmed synthetic refund/missing-data defects, preserve 69 tests, add regressions and deliver exact diff; acceptance awaits supported TypeScript/build evidence. No live integration; Phase 2 awaits separate approval.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure

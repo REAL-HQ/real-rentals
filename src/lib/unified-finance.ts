@@ -49,7 +49,7 @@ export type FinanceIssue = { eventId: string; code: IssueCode; detail: string };
 export type IssueCode =
   | "missing_amount" | "missing_currency" | "currency_mismatch" | "missing_date" | "invalid_amount"
   | "missing_evidence" | "unverified" | "duplicate_event" | "conflicting_event" | "duplicate_fee"
-  | "reversal_exceeds_collection" | "unknown_fee" | "missing_related_event";
+  | "reversal_exceeds_collection" | "unknown_fee" | "missing_related_event" | "missing_identity" | "missing_attribution";
 
 export type FinanceReport = {
   currency: string;
@@ -72,6 +72,8 @@ export type FinanceReport = {
   unverifiedAmount: Measure; // recorded but not verified; excluded from totals
   counts: { succeededCollections: number; failedCollections: number; pendingCollections: number };
   complete: boolean;
+  /** Aggregate money coverage is separate from customer/booking/vehicle attribution. */
+  attributionComplete: { customer: boolean; booking: boolean; vehicle: boolean };
   issues: FinanceIssue[];
 };
 
@@ -94,7 +96,7 @@ function combine(parts: Array<[Measure, 1 | -1]>): Measure {
 }
 
 /** Which date places an event in a period under each basis. */
-function eventDate(e: FinanceEvent, basis: FinanceBasis): string | null | undefined {
+export function eventDate(e: FinanceEvent, basis: FinanceBasis): string | null | undefined {
   if (e.kind === "deposit_applied") return e.recognitionDate ?? e.cashDate; // non-cash settlement
   if (e.kind === "projected_renewal" || e.kind === "earned_revenue") return e.recognitionDate;
   if (e.kind === "collection") return e.cashDate; // collected revenue always means actual cash
@@ -114,6 +116,7 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
   if (currency !== "USD") throw new Error("Phase 1 supports USD cents only; no currency conversion");
   const issues: FinanceIssue[] = [];
   const flag = (eventId: string, code: IssueCode, detail: string) => issues.push({ eventId, code, detail });
+  const attributionComplete = { customer: input.coverage === "complete", booking: input.coverage === "complete", vehicle: input.coverage === "complete" };
 
   // One event id contributes once; differing copies of one id are a conflict and contribute nothing.
   const byId = new Map<string, FinanceEvent>();
@@ -141,6 +144,7 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
   for (const e of input.events) if (conflicted.has(e.id)) {
     target[e.kind].complete = false;
     if (e.kind === "collection") a.fees.complete = false;
+    if (e.evidence !== "verified") a.unverified.complete = false;
   }
 
   const collections = new Map(events.filter(e => e.kind === "collection").map(e => [e.id, e]));
@@ -159,19 +163,30 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
     } else if (e.status !== "succeeded" && e.kind !== "projected_renewal" && !(e.kind === "chargeback" && e.disputeStage === "open")) continue;
 
     const d = eventDate(e, input.basis);
-    if (!d || !validFinanceDate(d)) { t.complete = false; flag(e.id, "missing_date", `No valid ${input.basis} date`); continue; }
+    const invalidate = (code: IssueCode, detail: string) => {
+      t.complete = false;
+      if (e.kind === "collection") a.fees.complete = false;
+      if (e.evidence !== "verified") a.unverified.complete = false;
+      flag(e.id, code, detail);
+    };
+    if (!d || !validFinanceDate(d)) { invalidate("missing_date", `No valid ${input.basis} date`); continue; }
     if (!inPeriod(d, input.period)) continue;
 
-    if (e.amountCents === null || e.amountCents === undefined) { t.complete = false; flag(e.id, "missing_amount", "Amount unknown"); continue; }
-    if (!Number.isSafeInteger(e.amountCents) || e.amountCents < 0) { t.complete = false; flag(e.id, "invalid_amount", "Amount must be safe whole non-negative cents"); continue; }
-    if (!e.currency) { t.complete = false; flag(e.id, "missing_currency", "Currency unknown"); continue; }
-    if (e.currency.toUpperCase() !== currency) { t.complete = false; flag(e.id, "currency_mismatch", `${e.currency.toUpperCase()} is not summed into ${currency}`); continue; }
+    if (!e.id.trim()) { invalidate("missing_identity", "No economic event identity; excluded"); continue; }
+    for (const [key, value] of [["customer", e.customerId], ["booking", e.bookingId], ["vehicle", e.vehicleId]] as const) {
+      if (!value?.trim()) { attributionComplete[key] = false; flag(e.id, "missing_attribution", `No ${key} attribution; aggregate evidence is not a linked total`); }
+    }
+    if (e.amountCents === null || e.amountCents === undefined) { invalidate("missing_amount", "Amount unknown"); continue; }
+    if (!Number.isSafeInteger(e.amountCents) || e.amountCents < 0) { invalidate("invalid_amount", "Amount must be safe whole non-negative cents"); continue; }
+    if (!e.currency) { invalidate("missing_currency", "Currency unknown"); continue; }
+    if (e.currency.toUpperCase() !== currency) { invalidate("currency_mismatch", `${e.currency.toUpperCase()} is not summed into ${currency}`); continue; }
 
     if (e.kind === "projected_renewal") { a.projected.total += e.amountCents; continue; }
 
     if (e.evidence !== "verified") {
       a.unverified.total += e.amountCents;
       t.complete = false;
+      if (e.kind === "collection") a.fees.complete = false;
       if (e.evidence === "missing") { flag(e.id, "missing_evidence", "No evidence money moved; excluded"); }
       else flag(e.id, "unverified", "Awaiting verification; excluded");
       continue;
@@ -185,7 +200,7 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
 
     if (e.kind === "refund" || e.kind === "chargeback") {
       const c = e.relatedEventId ? collections.get(e.relatedEventId) : undefined;
-      if (!c || c.amountCents === null) { t.complete = false; flag(e.id, "missing_related_event", "Reversal has no known collection"); continue; }
+      if (!c || c.amountCents === null || !Number.isSafeInteger(c.amountCents) || c.amountCents < 0) { t.complete = false; flag(e.id, "missing_related_event", "Reversal has no valid collection amount"); continue; }
       if (c.currency?.toUpperCase() !== currency || c.status !== "succeeded" || c.evidence !== "verified") { t.complete = false; flag(e.id, "missing_related_event", "Collection evidence incompatible"); continue; }
       if ((reversedByCollection.get(c.id) ?? 0) > c.amountCents) { t.complete = false; flag(e.id, "reversal_exceeds_collection", "Refund and chargeback together exceed the collection; excluded"); continue; }
     }
@@ -220,7 +235,7 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
     currency, basis: input.basis, period: input.period,
     grossCollected, earnedRevenue, refunds, chargebacksLost, processingFees, netCollections, operatingExpenses, customerCompensation,
     operatingResult, depositLiabilityChange, actualPayouts, payoutDifference, openDisputes: m(a.disputes),
-    projectedRenewals: m(a.projected), unverifiedAmount, counts, complete: false, issues,
+    projectedRenewals: m(a.projected), unverifiedAmount, counts, complete: false, attributionComplete, issues,
   };
   report.complete = [grossCollected, earnedRevenue, refunds, chargebacksLost, processingFees, operatingExpenses, customerCompensation, depositLiabilityChange, actualPayouts, operatingResult, report.openDisputes, report.projectedRenewals, unverifiedAmount].every(x => x.complete);
   return report;

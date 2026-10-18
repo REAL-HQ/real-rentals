@@ -1,4 +1,4 @@
-import { assertPeriod, validFinanceDate, type FinanceEvent } from "./unified-finance";
+import { assertPeriod, eventDate, validFinanceDate, type FinanceBasis, type FinanceEvent } from "./unified-finance";
 
 /** Pure source-identity reconciliation; never creates or edits C1 or operational records. */
 export type ProviderIdentity = {
@@ -13,7 +13,7 @@ export type Representation = {
   id: string;
   source: "provider" | "operational" | "c1" | "manual";
   event: FinanceEvent;
-  /** Same-kind representations sharing these identities describe one economic event. */
+  /** Child adjustments merge only by their own money-event identity, never parent aliases. */
   identities: ProviderIdentity[];
   operationalPaymentId?: string | null;
   c1TransactionId?: string | null;
@@ -33,7 +33,8 @@ export type ReconciliationResult = {
   groups: ReconciledEvent[];
   /** Events with trustworthy identities/facts only; consumers must also inspect complete. */
   events: FinanceEvent[];
-  complete: boolean;
+  complete: boolean; // source/fact completeness only, not attribution
+  attributionComplete: { customer: boolean; booking: boolean; vehicle: boolean };
   counts: Record<ReconciliationState, number>;
 };
 
@@ -42,10 +43,12 @@ export function providerIdentityKey(identity: ProviderIdentity): string {
   return JSON.stringify([identity.provider, identity.environment, identity.account, identity.object, identity.id]);
 }
 function keys(r: Representation): string[] {
-  // Event kind prevents an invoice's charge, refund and fee from collapsing together.
   const scope = r.event.kind;
-  const out = r.identities.map(i => `${scope}:provider:${providerIdentityKey(i)}`);
-  if (r.operationalPaymentId) out.push(`${scope}:operational:${r.operationalPaymentId}`);
+  // Validate all identities, including parent links, but parents cannot merge independent children.
+  for (const identity of r.identities) providerIdentityKey(identity);
+  const childObject = scope === "refund" ? "refund" : scope === "chargeback" ? "dispute" : scope === "processing_fee" ? "balance_transaction" : null;
+  const out = r.identities.filter(i => !childObject || i.object === childObject).map(i => `${scope}:provider:${providerIdentityKey(i)}`);
+  if (r.operationalPaymentId && !childObject) out.push(`${scope}:operational:${r.operationalPaymentId}`);
   if (r.c1TransactionId) out.push(`${scope}:c1:${r.c1TransactionId}`);
   if (r.manualIdentity) {
     const { method, account, reference } = r.manualIdentity;
@@ -56,7 +59,8 @@ function keys(r: Representation): string[] {
 }
 
 /** Deterministic connected components, not first-arrival-wins or amount/date matching. */
-export function reconcileFinance(rows: readonly Representation[]): ReconciliationResult {
+export function reconcileFinance(rows: readonly Representation[], options: { basis?: FinanceBasis } = {}): ReconciliationResult {
+  const basis = options.basis ?? "cash";
   const ordered = [...rows].sort((a, b) => a.id.localeCompare(b.id));
   const parent = ordered.map((_, i) => i);
   const root = (i: number): number => {
@@ -100,14 +104,24 @@ export function reconcileFinance(rows: readonly Representation[]): Reconciliatio
     if (charges.size > 1) { conflict = true; reasons.push("Multiple Charge identities claim the same event"); }
     const c1 = new Set(members.map(m => m.c1TransactionId).filter(Boolean));
     if (c1.size > 1) { conflict = true; reasons.push("Multiple C1 transactions claim the same event"); }
+    const childObject = merged.kind === "refund" ? "refund" : merged.kind === "chargeback" ? "dispute" : merged.kind === "processing_fee" ? "balance_transaction" : null;
+    const children = new Set(indexes.filter(i => !invalid.has(i)).flatMap(i => ordered[i].identities.filter(identity => identity.object === childObject).map(providerIdentityKey)));
+    if (children.size > 1) { conflict = true; reasons.push("Multiple child money-event identities claim the same event"); }
 
     // A corroborating verified representation may supply evidence, but no amount/date inference.
     merged.evidence = members.some(m => m.event.evidence === "verified") ? "verified" : members.some(m => m.event.evidence === "unverified") ? "unverified" : "missing";
     const identityKnown = members.some(m => {
       try { return keys(m).length > 0; } catch { return false; }
     });
-    const incomplete = indexes.some(i => invalid.has(i)) || !identityKnown || merged.amountCents === null || !Number.isSafeInteger(merged.amountCents) || (merged.amountCents ?? -1) < 0 || !merged.currency ||
-      merged.evidence !== "verified" || (!merged.cashDate && !merged.recognitionDate);
+    const date = eventDate(merged, basis);
+    const invalidDate = !date || !validFinanceDate(date) || [merged.cashDate, merged.recognitionDate].some(d => d != null && !validFinanceDate(d));
+    const invalidFee = merged.kind === "collection" && (merged.feeCents == null || !Number.isSafeInteger(merged.feeCents) || merged.feeCents < 0);
+    const missingParent = (merged.kind === "refund" || merged.kind === "chargeback") && !merged.relatedEventId?.trim();
+    const incomplete = indexes.some(i => invalid.has(i)) || !identityKnown || !merged.id.trim() || merged.amountCents === null || !Number.isSafeInteger(merged.amountCents) || (merged.amountCents ?? -1) < 0 || !merged.currency ||
+      merged.evidence !== "verified" || invalidDate || invalidFee || missingParent;
+    if (invalidDate) reasons.push(`No valid ${basis} reporting date or malformed supplied date`);
+    if (invalidFee) reasons.push("Actual collection processing fee unknown or invalid; explicit zero required");
+    if (missingParent) reasons.push("Adjustment collection relationship missing");
     if (!identityKnown) reasons.push("No authoritative event identity; similar amount/date/evidence hash is not proof");
     if (incomplete) reasons.push("Required identity, money, date or verification evidence incomplete");
     const state: ReconciliationState = conflict ? "Conflict" : incomplete ? "Incomplete" :
@@ -130,7 +144,14 @@ export function reconcileFinance(rows: readonly Representation[]): Reconciliatio
   }
   const counts: Record<ReconciliationState, number> = { Matched: 0, Unmatched: 0, Conflict: 0, Incomplete: 0 };
   for (const g of groups) counts[g.state]++;
-  return { groups, events: groups.flatMap(g => g.event ? [g.event] : []), complete: counts.Conflict === 0 && counts.Incomplete === 0, counts };
+  const complete = counts.Conflict === 0 && counts.Incomplete === 0;
+  const events = groups.flatMap(g => g.event ? [g.event] : []);
+  const attributionComplete = {
+    customer: complete && events.every(e => Boolean(e.customerId?.trim())),
+    booking: complete && events.every(e => Boolean(e.bookingId?.trim())),
+    vehicle: complete && events.every(e => Boolean(e.vehicleId?.trim())),
+  };
+  return { groups, events, complete, attributionComplete, counts };
 }
 
 export type DatedVehicleAllocation = { vehicleId: string; from: string; to: string; amountCents: number; swapId?: string | null };
