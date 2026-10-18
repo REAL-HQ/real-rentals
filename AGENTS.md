@@ -6,17 +6,17 @@
 - Read subdirectory AGENTS.md before editing there; src/lib owns Fleet Inbox ingestion/analysis/finance rules. AI proposes, never overwrites.
 - Vehicle readiness: status, Rental Ready (public.vehicle_rental_ready_missing: identity + valid VIN + positive rate), Listing Ready (+ explicitly published photo, vehicle_listing_ready_missing) and profile are separate; vehicle-readiness.ts only mirrors them; unknown rate/deposit stays null; only a human makes a car Available — invented values corrupt pricing.
 - Unit numbers: assigned only by the vehicles_assign_unit_number insert trigger from vehicle_unit_seq ; creation paths leave it blank unless a human typed one — because client max+1 suggestions collided.
-- UI casing: labels/titles/tabs/menus are Title Case in the strings, never CSS text-transform — it corrupts eSign/VIN/GPS.
+- UI labels/titles/tabs/menus: Title Case strings, never CSS text-transform; it corrupts eSign/VIN/GPS.
 - Maintenance: service writes only via maintenance.server.ts (one linked expense = net paid); mileage only in append-only odometer_readings (rental pickup/return via the rental tx, reusing inspection readings), current_odometer trigger-derived — no double counts.
 - Uploads: new upload UI uses components/FileUploader.tsx (validate only; caller keeps its storage/pipeline); FileDropBridge covers legacy inputs; file-upload-guard test blocks new raw inputs — so drop = Browse.
 - Owner-only finance: acquisition/lender/lien/payoff data (vehicle_finance, fleet_import_finance_facts, ownership-finance documents via private.is_ownership_finance_kind) is gated by private.is_owner() in RLS/storage and requireOwner/actor.tier==='owner' in server functions; Managers keep operating costs — because UI hiding is not a boundary. The Experience selector only changes layout, never access.
 - Driver Preview: staff view a driver only via portal reads carrying previewDriverId, checked in driver-preview.server.ts (Manager+, real driver, audited); driver write actions call refuseStaffPortalWrite; no driver tokens ever — so preview can never act as the driver.
 - Vehicle titles: title_number/title_status live only in Owner-only public.vehicle_titles (vehicles columns deprecated; a trigger diverts writes); staff see vehicles.title_on_file — because staff-readable vehicles rows leaked title identifiers.
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
-- Sticky chrome: admin.tsx owns it; filters use `admin-sticky-bar`, never per-page sticky code.
+- admin.tsx owns sticky chrome; filters use `admin-sticky-bar`, not per-page sticky code.
 - DriverOverviewCards only renders existing readiness/callbacks; no eligibility derivation or writes.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
 - Minimum rental holds: live-rental-release.ts, server-checked after authorization; pending DB writes stay off because UI is not a boundary.
-- Paper reads: paper-agreements.functions.ts, explicitly classified originals only; no backfill/inferred linkage because reads must not write.
+- Paper reads: paper-agreements.functions.ts; explicitly classified originals only, no backfill/inferred linkage; reads never write.
 - Revenue: collected-revenue.ts returns unknown on missing/error; agreement-retention.ts blocks generic original deletion. DB/storage protection still required.
 - Stripe: Manager+; shared client; no posting. src/lib/AGENTS.md owns reporting/partial-evidence contracts to prevent inconsistent financial boundaries.
