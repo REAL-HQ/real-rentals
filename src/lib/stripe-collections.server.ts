@@ -21,13 +21,22 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
   const linkedCharges = new Map<string, Set<string>>();
   let externalRecords = false;
   let collectionsComplete = true;
+  const incompletePortions: CollectionsReport["incompletePortions"] = [];
+  const incomplete = (source: "InvoicePayment" | "Charge" | "Refund", id: string, reason: string) => {
+    collectionsComplete = false;
+    incompletePortions.push({ source, id, reason });
+  };
+  const unresolvedIntents = new Set<string>(), unresolvedCharges = new Set<string>();
   for (const payment of invoicePayments) {
     const invoice = invoiceIndex.get(idOf(payment.invoice) || "");
     const subId = idOf(invoice?.parent?.subscription_details?.subscription);
     const subscription = subscriptionIndex.get(subId || "");
     const customer = idOf(subscription?.customer);
     if (!invoice || !subscription || !customer || idOf(invoice.customer) !== customer) {
-      collectionsComplete = false;
+      incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
+      const intent = idOf(payment.payment.payment_intent), charge = idOf(payment.payment.charge);
+      if (intent) unresolvedIntents.add(intent);
+      if (charge) unresolvedCharges.add(charge);
       continue;
     }
     if (payment.payment.type === "payment_record") externalRecords = true;
@@ -54,13 +63,13 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     const refundInRange = refunds.some(r => idOf(r.charge) === charge.id && r.status === "succeeded");
     const relevant = refundInRange || (collected && (!dated || (capturedAt >= window.gte && capturedAt < window.lt))) || (charge.status === "failed" && charge.created >= window.gte);
     const owners = new Set([...(linkedCharges.get(charge.id) || []), ...(linkedIntents.get(idOf(charge.payment_intent) || "") || [])]);
-    if (!customerId || owners.size !== 1 || !owners.has(customerId)) {
+    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolvedCharges.has(charge.id) || unresolvedIntents.has(idOf(charge.payment_intent) || "")) {
       // Never guess the ownership of unlinked cash or silently report zero.
-      if (relevant) collectionsComplete = false;
+      if (relevant) incomplete("Charge", charge.id, "Payment ownership or invoice relationship unverified");
       continue;
     }
     if (collected && (!dated || (balance && typeof balance !== "string" && balance.currency === charge.currency && balance.amount !== charge.amount_captured))) {
-      collectionsComplete = false;
+      if (relevant) incomplete("Charge", charge.id, "Capture date or settlement amount unverified");
       continue;
     }
     const fee = balance && typeof balance !== "string" && balance.currency === charge.currency ? balance.fee : null;
@@ -81,13 +90,15 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       scheduledAmount: complete ? items.reduce((sum, i) => sum + (i.price.unit_amount ?? 0) * (i.quantity ?? 1), 0) : null,
     };
   });
-  const report = aggregateCollections({ charges: verifiedCharges, refunds: refunds.map(r => ({
+  const normalizedRefunds = refunds.map(r => ({
     id: r.id, chargeId: idOf(r.charge) || "", created: r.created, amount: r.amount, currency: r.currency, status: r.status,
     fee: r.balance_transaction && typeof r.balance_transaction !== "string" && r.balance_transaction.currency === r.currency ? r.balance_transaction.fee : null,
-  })), subscriptions: normalizedSubs, window, now: Math.floor(Date.now() / 1000) });
-  if (refunds.some(r => r.status === "succeeded" && !verifiedCharges.some(c => c.id === idOf(r.charge) && c.captured && c.paid && c.amount > 0 && c.status === "succeeded" && c.currency === r.currency))) collectionsComplete = false;
+  }));
+  const verifiedRefunds = normalizedRefunds.filter(r => verifiedCharges.some(c => c.id === r.chargeId && c.captured && c.paid && c.amount > 0 && c.status === "succeeded" && c.currency === r.currency) && r.status === "succeeded");
+  const report = aggregateCollections({ charges: verifiedCharges, refunds: verifiedRefunds, subscriptions: normalizedSubs, window, now: Math.floor(Date.now() / 1000) });
+  for (const r of normalizedRefunds) if (r.status === "succeeded" && !verifiedRefunds.some(v => v.id === r.id)) incomplete("Refund", r.id, "Captured charge relationship or currency unverified");
   const warnings: string[] = ["Linked Failures covers verified invoice-linked Charge attempts only; attempts without a Charge or unavailable retry links are not included."];
-  if (!collectionsComplete) warnings.push("Some payment history or capture evidence could not be verified. Collection totals are unavailable; no missing amounts have been assumed to be zero.");
+  if (!collectionsComplete) warnings.push("Some payment history or capture evidence could not be verified. Complete collection totals are unavailable. Verified Only amounts exclude incomplete portions and must not be treated as complete totals.");
   if (normalizedSubs.some(s => s.scheduledAmount === null)) warnings.push("Some base rates are unavailable because subscription items are incomplete or use different billing periods.");
   warnings.push("Base Rate excludes discounts, tax and prorations; Next Billing is a renewal boundary, not a promised collection.");
   if (externalRecords) warnings.push("External payment records are excluded from Stripe collections.");
@@ -101,5 +112,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     }
     payouts = [...sums.values()];
   } catch { warnings.push("Account payouts are unavailable."); }
-  return { ...report, collectionsComplete, payouts, warnings, refreshedAt: new Date().toISOString() };
+  return { ...report, totals: collectionsComplete ? report.totals : null, customers: collectionsComplete ? report.customers : [], successful: collectionsComplete ? report.successful : null, failed: collectionsComplete ? report.failed : null,
+    verifiedCollections: { scope: "Verified Only", totals: report.totals, customers: report.customers, successful: report.successful, failed: report.failed, charges: verifiedCharges, refunds: verifiedRefunds },
+    incompletePortions, collectionsComplete, payouts, warnings, refreshedAt: new Date().toISOString() };
 }

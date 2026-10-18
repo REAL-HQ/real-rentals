@@ -1,11 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { aggregateCollections, assertCollectionsAccess, collectionsWindow, formatStripeAmount, readAllPages, type CollectionCharge, type CollectionSubscription } from "../src/lib/stripe-collections";
+import { aggregateCollections, assertCollectionsAccess, collectionsWindow, collectionsRefreshState, formatStripeAmount, readAllPages, type CollectionCharge, type CollectionSubscription } from "../src/lib/stripe-collections";
 
 const window = { gte: 100, lt: 200 };
 const sub: CollectionSubscription = { id: "sub_mock", customerId: "cus_mock", name: "Synthetic Renter", status: "active", cancelAtPeriodEnd: false, nextAt: 300, currency: "usd", scheduledAmount: 35000 };
 const charge: CollectionCharge = { id: "ch_mock", customerId: "cus_mock", created: 150, currency: "usd", amount: 35000, paid: true, captured: true, status: "succeeded", fee: 1045 };
 const run = (overrides = {}) => aggregateCollections({ charges: [charge], refunds: [], subscriptions: [sub], window, now: 180, ...overrides });
 describe("Stripe Collections rules", () => {
+  it("never invents currency when evidence is absent", () => { expect(formatStripeAmount(0, null)).toBe("—"); expect(formatStripeAmount(0, "")).toBe("—"); expect(formatStripeAmount(0, "eur")).toBe("€0.00"); });
+  it("distinguishes a failed refresh from last successful cached data", () => { expect(collectionsRefreshState({ valid: true, fetching: false, failed: true, stale: true, refreshedAt: "2026-10-15T12:00:00Z" })).toEqual({ status: "Refresh Failed", cached: true, lastSuccessfulAt: "2026-10-15T12:00:00Z" }); });
+  it("marks invalid ranges even when previous data remains cached", () => { expect(collectionsRefreshState({ valid: false, fetching: false, failed: false, stale: false, refreshedAt: "2026-10-15T12:00:00Z" }).status).toBe("Invalid Range"); });
+  it("distinguishes refreshing and stale cache from current success", () => {
+    const input = { valid: true, fetching: false, failed: false, stale: false, refreshedAt: "2026-10-15T12:00:00Z" };
+    expect(collectionsRefreshState(input).status).toBe("Current"); expect(collectionsRefreshState({ ...input, fetching: true }).status).toBe("Refreshing"); expect(collectionsRefreshState({ ...input, stale: true }).status).toBe("Cached");
+  });
   it("allows Owner and Manager only", () => { expect(() => assertCollectionsAccess(["admin"])).not.toThrow(); expect(() => assertCollectionsAccess(["team"])).not.toThrow(); });
   it.each([[], ["coordinator"], ["driver"], ["user"]])("denies unauthorized roles %j", (...roles) => { expect(() => assertCollectionsAccess(roles as string[])).toThrow("Forbidden"); });
   it("counts each charge once, not invoice or payment intent amounts", () => { expect(run({ charges: [charge, charge] }).totals[0].gross).toBe(35000); expect(run({ charges: [charge, charge] }).successful).toBe(1); });

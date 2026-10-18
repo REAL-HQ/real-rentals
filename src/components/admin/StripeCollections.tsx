@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
-import { formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { collectionsRefreshState, formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { resolveRange } from "@/lib/date-range";
 
@@ -28,15 +28,17 @@ export function StripeCollections() {
     retry: false, refetchOnWindowFocus: false, staleTime: 60000,
   });
   const report = query.isError || !valid ? undefined : query.data;
+  const refresh = collectionsRefreshState({ valid, fetching: query.isFetching, failed: query.isError, refreshedAt: query.data?.refreshedAt, stale: query.isStale });
+  const customers = report?.collectionsComplete ? report.customers : report?.verifiedCollections.customers;
   const money = (field: "gross" | "refunds" | "fees" | "net") => report?.collectionsComplete
-    ? report.totals.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : formatStripeAmount(0, "USD")
+    ? report.totals?.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : "—"
     : "—";
   return (
     <section aria-label="Stripe Collections" className="space-y-4 border-t border-border pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">Stripe Collections</h2>
-          <p className="text-xs text-muted-foreground mt-1">{query.data ? `Refreshed ${fmtDateTime(query.data.refreshedAt)}` : "Refreshed —"}</p>
+          <p role="status" className="text-xs text-muted-foreground mt-1">{refresh.status}{refresh.cached ? " · Cached Data" : ""} · Last Successful: {refresh.lastSuccessfulAt ? fmtDateTime(refresh.lastSuccessfulAt) : "—"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex gap-1" aria-label="Collections Mode">{(["live", "sandbox"] as const).map(mode => <Button key={mode} size="sm" variant={environment === mode ? "secondary" : "ghost"} aria-pressed={environment === mode} onClick={() => setEnvironment(mode)}>{mode === "live" ? "Live" : "Test"}</Button>)}</div>
@@ -56,19 +58,20 @@ export function StripeCollections() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>Subscription Collections · {fmtDate(from)} – {fmtDate(to)}</span>
-        <span>Paid Payouts: {report?.payouts ? report.payouts.length ? report.payouts.map(p => formatStripeAmount(p.amount, p.currency)).join(" · ") : "$0.00" : "—"} · Account-Wide</span>
+        <span>Paid Payouts: {report?.payouts?.length ? report.payouts.map(p => formatStripeAmount(p.amount, p.currency)).join(" · ") : "—"} · Account-Wide</span>
       </div>
       {report?.warnings.map(w => <p key={w} className="text-xs text-muted-foreground">{w}</p>)}
+      {report?.incompletePortions.map(p => <p key={`${p.source}:${p.id}`} className="text-xs text-muted-foreground">Incomplete · {p.source} {p.id} · {p.reason}</p>)}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Customer Collections</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Customer Collections{report && !report.collectionsComplete ? " · Verified Only" : ""}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="text-muted-foreground"><tr>{["Customer", "Gross", "Refunds", "Fees", "Net"].map(h => <th key={h} className="py-2 pr-3 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
-              <tbody>{report?.customers.map(c => <tr key={`${c.id}:${c.currency}`} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{c.name}</td>{([c.gross, c.refunds, c.fees, c.net]).map((v, i) => <td key={i} className="py-3 pr-3 whitespace-nowrap tabular-nums">{formatStripeAmount(report.collectionsComplete ? v : null, c.currency)}</td>)}</tr>)}</tbody>
+              <tbody>{customers?.map(c => <tr key={`${c.id}:${c.currency}`} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{c.name}</td>{([c.gross, c.refunds, c.fees, c.net]).map((v, i) => <td key={i} className="py-3 pr-3 whitespace-nowrap tabular-nums">{formatStripeAmount(v, c.currency)}</td>)}</tr>)}</tbody>
             </table>
           </div>
-          {!report?.customers.length && <p className="py-3 text-xs text-muted-foreground">{report?.collectionsComplete ? "No collections in this range." : "—"}</p>}
+          {!customers?.length && <p className="py-3 text-xs text-muted-foreground">{report?.collectionsComplete ? "No collections in this range." : "—"}</p>}
         </div>
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground mb-3">Subscriptions</h3>

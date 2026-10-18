@@ -51,8 +51,10 @@ export type CollectionSubscription = {
 type Totals = { currency: string; gross: number; refunds: number; fees: number | null; net: number | null; successful: number; failed: number };
 export type CollectionsReport = {
   collectionsComplete: boolean;
-  refreshedAt: string; totals: Totals[]; successful: number; failed: number; activeSubscriptions: number;
+  refreshedAt: string; totals: Totals[] | null; successful: number | null; failed: number | null; activeSubscriptions: number;
   customers: (Totals & { id: string; name: string })[];
+  verifiedCollections: { scope: "Verified Only"; totals: Totals[]; customers: (Totals & { id: string; name: string })[]; successful: number; failed: number; charges: CollectionCharge[]; refunds: CollectionRefund[] };
+  incompletePortions: { source: "InvoicePayment" | "Charge" | "Refund"; id: string; reason: string }[];
   subscriptions: CollectionSubscription[];
   payouts: { currency: string; amount: number; count: number }[] | null;
   warnings: string[];
@@ -61,7 +63,7 @@ export type CollectionsReport = {
 export function aggregateCollections(input: {
   charges: CollectionCharge[]; refunds: CollectionRefund[]; subscriptions: CollectionSubscription[];
   window: { gte: number; lt: number }; now: number;
-}): Omit<CollectionsReport, "refreshedAt" | "payouts" | "warnings" | "collectionsComplete"> {
+}): { totals: Totals[]; customers: (Totals & { id: string; name: string })[]; successful: number; failed: number; activeSubscriptions: number; subscriptions: CollectionSubscription[] } {
   const inRange = (n: number) => n >= input.window.gte && n < input.window.lt;
   const totals = new Map<string, Totals>();
   const customers = new Map<string, Totals & { id: string; name: string }>();
@@ -101,9 +103,17 @@ export function aggregateCollections(input: {
   };
 }
 
-export function formatStripeAmount(minor: number | null | undefined, currency: string) {
-  if (minor == null) return "—";
+export function formatStripeAmount(minor: number | null | undefined, currency: string | null | undefined) {
+  if (minor == null || !currency) return "—";
   const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
   const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
   return formatter.format(minor / 10 ** digits);
+}
+
+export function collectionsRefreshState(input: { valid: boolean; fetching: boolean; failed: boolean; refreshedAt?: string; stale: boolean }) {
+  return {
+    status: !input.valid ? "Invalid Range" : input.fetching ? "Refreshing" : input.failed ? "Refresh Failed" : input.refreshedAt ? input.stale ? "Cached" : "Current" : "Not Refreshed",
+    lastSuccessfulAt: input.refreshedAt ?? null,
+    cached: Boolean(input.refreshedAt) && (!input.valid || input.fetching || input.failed || input.stale),
+  };
 }
