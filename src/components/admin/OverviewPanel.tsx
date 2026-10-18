@@ -1,3 +1,4 @@
+import { StripeCollections } from "./StripeCollections";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -140,7 +141,7 @@ function appliedLine(iso?: string | null) {
   return `Applied ${fmtDate(d)} · ${rel}`;
 }
 
-export function OverviewPanel() {
+export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   // Null, not 0, until the read lands. A rendered 0 reads as "nobody
   // applied"; the truth before the answer arrives is "we do not know yet",
@@ -827,6 +828,7 @@ export function OverviewPanel() {
           </SectionCard>
         );
       })()}
+      {canSeeCollections && <StripeCollections />}
     </div>
   );
 }

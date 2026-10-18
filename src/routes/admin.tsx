@@ -764,7 +764,7 @@ function Admin() {
           </div>
 
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
-            {tab === "overview" && <OverviewPanel />}
+            {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
