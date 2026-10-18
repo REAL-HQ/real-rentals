@@ -18,19 +18,56 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - name: Verify Paper applicability against reviewed PR scope
+        id: paper_scope
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          policies = {'46': {'branch': 'codex/stripe-collections-isolated', 'files': {'src/components/admin/StripeCollections.tsx': 'b5da26aa335a62f3490f80aacc105ae2c068e1ea0127da0dff3046304db33bec', 'src/lib/stripe-collections.ts': '291ba61804be29e2123f0629f7dd683e73125838c57272d433a512c280581175', 'src/lib/stripe-collections.server.ts': 'd194280cf8bfd647256510877eb3e36f80be008aa4ed454b117e18d9a53fced7', 'src/lib/stripe-collections.functions.ts': '33b7a76eea988af75fbf79811681bff3d2d19408ff134f739749752985c1697a', 'scripts/stripe-collections.test.ts': '17196c4ec6f5eafcb4fbe291e2587eaf4285e0a91d7b980ea8d5ac0f29af7371', 'scripts/stripe-collections-server.test.ts': '2984daeb2198caed8aa00f903bb31d4f213e4b20dd55e82e61980142313ae1da', 'scripts/stripe-collections-auth.test.ts': 'aae8b1aaf052dda249374ddcd93674695ab9f6428481eeb13b711556628dab06', 'scripts/stripe-collections.vitest.config.ts': '386e0576d44eb8488b612d5e7a5c12e7c4e45564f5336fa8edc15107647e6cf5', 'src/components/admin/OverviewPanel.tsx': 'eadcd491a7ffb136030379d7cfb3afbe79d532e46449b52a15dd3757e90fe9ed', 'src/routes/admin.tsx': 'b7cd540647c07c134c00b6eeadfd701bb59dc4ad88564dd482d7d2de0ded14ad'}}, '47': {'branch': 'codex/stripe-collections-ci', 'files': {'.github/workflows/stripe-validation.yml': 'f0d9b824c443207d4328f5d3f1bf68b1a84fae8f4bd680bc1bcb55a95f5da586', 'scripts/ci/stripe/network-check.mjs': '9365f2b8985c5022afa7e61104acaeb3fa13c85de0f6672efb9e22c779600fdd', 'scripts/ci/stripe/regressions.mjs': '041e6d8e04be5e587c6e0f2112bb2877cd25ef7ee08f9a37402aa2d6ce4d5e13', 'scripts/ci/stripe/static-check.mjs': 'e20d7015678f0adb5dfa1f933f34b502fafa91d39ddd6191d02571efb691f248', 'scripts/ci/stripe/tooling/package-lock.json': 'ad38af5774e562acf3eae32868c9dc1fd24b71427f3ca994eae5a7580f3527b2', 'scripts/ci/stripe/tooling/package.json': '233b55879dbb0132cc85aff573cbb83d37dc0275594e321ee4710be0ebcbb96f', 'scripts/ci/stripe/validate.sh': '5d9529582207bb4e0bc38f248628a3580fd16bbc92a6cb89e1f19d03f4ee3d81'}}}
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          pr = event['pull_request']; number = str(event['number'])
+          assert pr['base']['repo']['full_name'] == 'REAL-HQ/real-rentals'
+          assert pr['base']['ref'] == 'release/paper-agreements-base'
+          base = pr['base']['sha']; head = pr['head']['sha']
+          assert all(len(v) == 40 and all(c in '0123456789abcdef' for c in v) for v in [base, head])
+          def git(*args): return subprocess.check_output(['git', *args])
+          ancestor = git('merge-base', base, head).decode().strip()
+          changed = set(filter(None, git('diff', '--name-only', '-z', ancestor, head).decode().split('\0')))
+          run_paper = True
+          if number in policies:
+              rule = policies[number]
+              assert pr['head']['repo']['full_name'] == 'REAL-HQ/real-rentals', 'Unexpected fork'
+              assert pr['head']['ref'] == rule['branch'], 'Unexpected branch'
+              assert changed == set(rule['files']), 'Unexpected or mixed PR scope: fail closed'
+              for path, expected in rule['files'].items():
+                  assert hashlib.sha256(git('show', head + ':' + path)).hexdigest() == expected, 'Unreviewed contents: ' + path
+              run_paper = False
+          else:
+              # Unknown/mixed Stripe work must not silently receive only Paper validation.
+              stripe_specific = set(policies['46']['files']) - {'src/components/admin/OverviewPanel.tsx', 'src/routes/admin.tsx'}
+              assert not (changed & stripe_specific) and not any(p.startswith('scripts/ci/stripe/') or p == '.github/workflows/stripe-validation.yml' for p in changed), 'Unreviewed Stripe or mixed scope: fail closed'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('run_paper=' + str(run_paper).lower() + '\n')
+          print('Paper validation required' if run_paper else 'Paper not applicable: PR identity, complete scope and reviewed content hashes verified')
+          PY
+      - if: steps.paper_scope.outputs.run_paper == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "24.21.0"
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      - if: steps.paper_scope.outputs.run_paper == 'true'
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
         with:
           bun-version: "1.3.3"
       - name: Install frozen dependencies without lifecycle scripts
+        if: steps.paper_scope.outputs.run_paper == 'true'
         run: |
           set -euo pipefail
           bun install --frozen-lockfile --ignore-scripts
           git diff --exit-code -- package.json bun.lock
           node -e 'if(require("esbuild/package.json").version!=="0.25.12")throw Error("Unexpected locked esbuild")'
       - name: Validate with loopback-only networking
+        if: steps.paper_scope.outputs.run_paper == 'true'
         run: |
           set -euo pipefail
           uid=$(id -u)
