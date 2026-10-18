@@ -22,7 +22,7 @@ export function StripeCollections() {
   const valid = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start && (end.getTime() - start.getTime()) <= 366 * 86400000;
   const query = useQuery({
     queryKey: ["stripe-collections", environment, from, to],
-    enabled: valid && STRIPE_COLLECTIONS_ENABLED,
+    enabled: valid && featureVisible,
     queryFn: async () => {
       const result = await load({ data: { environment, from: start.toISOString(), to: end.toISOString() } });
       if ("error" in result) throw new Error(result.error);
@@ -36,7 +36,7 @@ export function StripeCollections() {
   const money = (field: "gross" | "refunds" | "fees" | "net") => report?.collectionsComplete
     ? report.totals?.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : "—"
     : "—";
-  if (!STRIPE_COLLECTIONS_ENABLED) return null;
+  if (!featureVisible) return null;
   return (
     <section aria-label="Stripe Collections" className="space-y-4 border-t border-border pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
