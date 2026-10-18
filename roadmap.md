@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Final Stripe reporting corrections: isolate verified partial collections, remove assumed currency, distinguish refresh failures/cache/invalid ranges; mocked tests and desktop/mobile checks only; prepare Codex inventory, no release.
 - [x] Correct confirmed Stripe Collections defects locally; 59 mocked regressions and Owner live read/UI passed; isolated scope documented. Candidate approval, production validation and destructive-cleanup hold remain blockers; no release or live writes.
 - [x] Read-only Stripe Collections: 37 mocked tests, authorized live read and desktop/mobile date/refresh checks passed; no writes or publication. Isolated release approval remains separate.
 - [x] Minimum Live-Rental application preparation: disabled Paper/intake/approval/invites, unavailable revenue states, retention guard, synthetic and isolated UI checks; review report saved, no migrations/records/Stripe writes/publication.
