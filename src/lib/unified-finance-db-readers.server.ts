@@ -12,12 +12,15 @@ export async function readIsolatedDatabaseSource<S extends Exclude<FinanceSource
   const currentTier = requireSourceActor({ userId: actor.userId, roles: await client.readCurrentRoles(actor.userId) });
   if (currentTier !== tier) throw new Error("Authorization changed during source read");
   if (!raw.complete) return { rows: [], coverage: { state: raw.pages ? "incomplete" : "unavailable", reasons: raw.reasons, pages: raw.pages } };
+  const unknownVisibility = raw.rows.some(r => r.visibility !== "operating" && r.visibility !== "owner_only");
   // Owner facts never enter mapping, diagnostics, or returned DTOs for Managers.
   const visible = raw.rows.filter(r => r.visibility === "operating" || (tier === "owner" && r.visibility === "owner_only"));
   let mapped: MappedSource[];
   try { mapped = source === "ledger" ? mapLedgerBatch(visible as RawSources["ledger"][]) : visible.map(r => mapFinanceSource(source, r)); }
   catch { return { rows: [], coverage: { state: "incomplete", reasons: ["Malformed source facts"], pages: raw.pages } }; }
-  const reasons = mapped.flatMap(r => r.reasons);
+  // Known Owner exclusions are complete only for Manager operating scope. Unknown
+  // exclusions are never evidence of an authorized empty or complete source.
+  const reasons = [...(unknownVisibility ? ["Unknown or unverified source visibility"] : []), ...mapped.flatMap(r => r.reasons)];
   return { rows: mapped.flatMap(r => r.row ? [r.row] : []), coverage: { state: reasons.length ? "incomplete" : "complete", reasons, pages: raw.pages } };
 }
 export async function collectSourcePages<T extends { id: string }>(read: SourcePageReader<T>, signal?: AbortSignal): Promise<{ rows: T[]; complete: boolean; reasons: string[]; pages: number }> {
