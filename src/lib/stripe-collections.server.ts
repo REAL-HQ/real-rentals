@@ -71,12 +71,12 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     const items = s.items.data;
     const cadences = new Set(items.map(i => `${i.price.recurring?.interval}:${i.price.recurring?.interval_count}`));
     const periods = items.map(i => i.current_period_end).filter(n => Number.isFinite(n));
-    const complete = !s.items.has_more && items.length > 0 && cadences.size === 1 && new Set(periods).size === 1 && periods.length === items.length && items.every(i => i.price.unit_amount !== null && i.price.recurring?.interval && i.price.recurring.usage_type !== "metered" && i.price.currency === s.currency);
+    const complete = !s.items.has_more && items.length > 0 && cadences.size === 1 && new Set(periods).size === 1 && periods.length === items.length && items.every(i => i.price.unit_amount !== null && !i.price.transform_quantity && i.price.recurring?.interval && i.price.recurring.usage_type !== "metered" && i.price.currency === s.currency);
     const nextPeriod = !s.items.has_more && periods.length === items.length && periods.length > 0 ? Math.min(...periods) : null;
     const renews = ["active", "trialing", "past_due"].includes(s.status) && !s.cancel_at_period_end && !s.pause_collection && nextPeriod !== null && (!s.cancel_at || nextPeriod < s.cancel_at);
     return {
       id: s.id, customerId: idOf(customer) || "—", name: typeof customer !== "string" && !customer.deleted ? customer.name || customer.email || customer.id : idOf(customer) || "—",
-      status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end, currency: s.currency,
+      status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end || Boolean(s.cancel_at), currency: s.currency,
       nextAt: renews && nextPeriod !== null && nextPeriod > Date.now() / 1000 ? nextPeriod : null,
       scheduledAmount: complete ? items.reduce((sum, i) => sum + (i.price.unit_amount ?? 0) * (i.quantity ?? 1), 0) : null,
     };
