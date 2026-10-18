@@ -11,7 +11,7 @@ export function mockPlan(overrides: Partial<Record<typeof FINANCE_SOURCES[number
 export const duplicateRows = {
   stripe: [sourceRow({ id: "synthetic-provider", representation: duplicateRepresentations[0] })],
   payments: [sourceRow({ id: "synthetic-payment", representation: duplicateRepresentations[1] })],
-  ledger: [sourceRow({ id: "synthetic-ledger", representation: duplicateRepresentations[2], posting: "posted" })],
+  ledger: [sourceRow({ id: "synthetic-ledger", representation: syntheticRepresentation({ ...duplicateRepresentations[2], event: syntheticEvent({ id: "synthetic-c1-event", feeCents: 1045 }) }), posting: "posted" })],
 };
 export function refundRow(id: string, amountCents = 5000): FinanceSourceRow {
   return sourceRow({ id, representation: syntheticRepresentation({ id, identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id }],
