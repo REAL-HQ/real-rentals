@@ -316,8 +316,8 @@ export function VehiclesPanel({
 
   return (
     <div>
-      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
-        <div className="flex-1 flex flex-wrap gap-2">
+      <div className="admin-sticky-bar mb-4 pb-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -411,7 +411,7 @@ export function VehiclesPanel({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 self-start lg:self-auto">
+        <div className="ml-auto flex items-center gap-2">
           <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5" role="group" aria-label="View">
             <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
             <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
