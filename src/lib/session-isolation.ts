@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { clearResumeToken } from "@/lib/resume-token";
+import { createFinanceSessionObserver } from "@/lib/unified-finance-session";
 
 /**
  * One signed-in person's data must never be served to the next one.
@@ -57,13 +58,16 @@ export function useSessionIsolation(queryClient: QueryClient) {
       if (userId === null) clearResumeToken();
     };
 
-    supabase.auth.getSession().then(({ data }) => apply(data.session?.user?.id ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) =>
-      apply(session?.user?.id ?? null),
+    const observer = createFinanceSessionObserver(queryClient, apply);
+    const ticket = observer.initialTicket();
+    supabase.auth.getSession().then(({ data }) => observer.initial(ticket, data.session?.user?.id ?? null)).catch(() => {});
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) =>
+      observer.event(event, session?.user?.id ?? null),
     );
 
     return () => {
       active = false;
+      observer.dispose();
       sub.subscription.unsubscribe();
     };
   }, [queryClient]);
