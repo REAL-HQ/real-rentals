@@ -139,8 +139,28 @@ export function reconcileFinance(rows: readonly Representation[], options: { bas
       canonical.set(r.id, group.id);
     }
   }
+  // Resolve refund parent evidence by full provider scope, never by a bare Charge ID.
+  const providerParents = new Map<string, Set<string>>();
+  for (const group of groups) if (group.event?.kind === "collection") {
+    for (const r of ordered.filter(r => group.representationIds.includes(r.id))) {
+      for (const identity of r.identities.filter(i => i.object === "charge")) {
+        const key = providerIdentityKey(identity);
+        const ids = providerParents.get(key) ?? new Set<string>();
+        ids.add(group.id); providerParents.set(key, ids);
+      }
+    }
+  }
   for (const group of groups) if (group.event?.relatedEventId) {
-    group.event = { ...group.event, relatedEventId: canonical.get(group.event.relatedEventId) ?? group.event.relatedEventId };
+    const parentIdentities = group.event.kind === "refund"
+      ? ordered.filter(r => group.representationIds.includes(r.id)).flatMap(r => r.identities.filter(i => i.object === "charge")) : [];
+    if (parentIdentities.length) {
+      const matches = parentIdentities.map(i => providerParents.get(providerIdentityKey(i)));
+      const ids = new Set(matches.flatMap(m => [...(m ?? [])]));
+      if (matches.some(m => !m || m.size !== 1) || ids.size !== 1) {
+        group.state = "Incomplete"; group.event = null;
+        group.reasons.push("Referenced collection missing, incomplete or incompatible");
+      } else group.event = { ...group.event, relatedEventId: [...ids][0] };
+    } else group.event = { ...group.event, relatedEventId: canonical.get(group.event.relatedEventId) ?? group.event.relatedEventId };
   }
   // A nonblank parent reference is not proof: resolve aliases and require a compatible receipt.
   const collections = new Map(groups.flatMap(g => g.event?.kind === "collection" ? [[g.id, g.event] as const] : []));

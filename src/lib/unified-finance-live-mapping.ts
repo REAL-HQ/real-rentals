@@ -63,6 +63,8 @@ function mapSourceUnchecked<S extends FinanceSource>(source: S, input: RawSource
     if (p.object === "refund") {
       if (!p.parentChargeId?.trim()) reasons.push("Missing refund parent");
       rep.event.relatedEventId = p.parentChargeId;
+      // Parent identity is scoped evidence, never an alias used to merge refund children.
+      if (p.parentChargeId?.trim() && scope) rep.identities.push({ provider: "stripe", ...scope, object: "charge", id: p.parentChargeId });
     }
   } else if (source === "payments") {
     const p = input as RawSources["payments"]; row.visibility = p.visibility;

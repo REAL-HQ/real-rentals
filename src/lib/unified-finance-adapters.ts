@@ -9,7 +9,14 @@ export function adaptFinanceSnapshots(snapshots: FinanceSnapshots, request: Unif
     attributionComplete: { customer: true, rental: true, vehicle: true }, settlements: [] };
   const rows = FINANCE_SOURCES.flatMap(source => snapshots[source].rows.map(row => ({ source, row })));
   // Defense in depth: the mock readers also filter sensitive DTOs before returning them.
-  const visible = rows.filter(({ row }) => row.visibility === "operating" || tier === "owner");
+  const visible = rows.filter(({ row }) => {
+    if (row.visibility !== "operating" && row.visibility !== "owner_only") {
+      result.complete = false;
+      if (!issues.includes("Unknown source visibility")) issues.push("Unknown source visibility");
+      return false;
+    }
+    return row.visibility === "operating" || tier === "owner";
+  });
   const relationships = visible.flatMap(({ row }) => row.relationship ? [row.relationship] : []);
   const lookup = new Map<string, FinanceSourceRow>();
   for (const { source, row } of visible) if (source === "ledger" && row.representation) lookup.set(row.id, row);

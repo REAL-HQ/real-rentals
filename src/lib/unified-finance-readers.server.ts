@@ -11,6 +11,7 @@ export async function readFinancePages(read: FinancePageReader, tier: "owner" | 
       const page = await read(cursor, signal); pages++;
       signal?.throwIfAborted();
       for (const row of page.rows) {
+        if (row.visibility !== "operating" && row.visibility !== "owner_only") throw new Error("Unknown source visibility");
         if (row.visibility === "owner_only" && tier !== "owner") continue;
         if (!row.id.trim()) throw new Error("Missing source identity");
         const prior = rows.get(row.id);
