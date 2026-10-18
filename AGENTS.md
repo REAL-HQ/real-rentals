@@ -3,7 +3,7 @@
 - Payments: a payments row is a charge written before collection (payment-collection.server.ts only moves status); revenue = net_collected; refunds only via apply_payment_refund; the webhook never un-pays and claims notices via notified_status — no double charges/emails.
 - Agreements: buildMergeData blockers are the single readiness gate; prepareAgreement is the one generation step (optional templateKey per family in agreement-library.ts, in the fingerprint); Send carries the preview SHA-256, server re-renders and refuses on mismatch or non-Owner-approved version; fields are real data only — the driver gets exactly what was reviewed.
 - Vehicle photos: the vehicle-photos bucket is private (staff-only storage policies); the public site gets listing photos only via /api/public/vehicle-photos/*, which serves a path only if a published vehicle_media row names it, and staff galleries download bytes via loadStaffPhoto — because unpublished originals and AI retouches must never be publicly reachable.
-- Fleet Inbox: all fleet-file ingestion, analysis and financial-doc rules live in src/lib (see src/lib/AGENTS.md); AI only proposes, never overwrites fleet data.
+- Read subdirectory AGENTS.md before editing there; src/lib owns Fleet Inbox ingestion/analysis/finance rules. AI proposes, never overwrites.
 - Vehicle readiness: status, Rental Ready (public.vehicle_rental_ready_missing: identity + valid VIN + positive rate), Listing Ready (+ explicitly published photo, vehicle_listing_ready_missing) and profile are separate; vehicle-readiness.ts only mirrors them; unknown rate/deposit stays null; only a human makes a car Available — invented values corrupt pricing.
 - Unit numbers: assigned only by the vehicles_assign_unit_number insert trigger from vehicle_unit_seq ; creation paths leave it blank unless a human typed one — because client max+1 suggestions collided.
 - UI casing: labels/titles/tabs/menus are Title Case in the strings, never CSS text-transform — it corrupts eSign/VIN/GPS.
@@ -14,9 +14,9 @@
 - Vehicle titles: title_number/title_status live only in Owner-only public.vehicle_titles (vehicles columns deprecated; a trigger diverts writes); staff see vehicles.title_on_file — because staff-readable vehicles rows leaked title identifiers.
 - Photo enhancement: on-device only (photo-enhance.worker.ts, model loaded on request); results are review-pending ai_enhanced rows and a DB trigger blocks publishing until approved — no paid providers, no unapproved listings.
 - Sticky chrome: admin.tsx owns it; filters use `admin-sticky-bar`, never per-page sticky code.
-- DriverOverviewCards renders existing readiness/callbacks only; it never derives eligibility or writes records.
+- DriverOverviewCards only renders existing readiness/callbacks; no eligibility derivation or writes.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
 - Minimum rental holds: live-rental-release.ts, server-checked after authorization; pending DB writes stay off because UI is not a boundary.
 - Paper reads: paper-agreements.functions.ts, explicitly classified originals only; no backfill/inferred linkage because reads must not write.
 - Revenue: collected-revenue.ts returns unknown on missing/error; agreement-retention.ts blocks generic original deletion. DB/storage protection still required.
-- Stripe: Manager+; shared client; no posting. Reporting contracts and partial-evidence rules live in src/lib/AGENTS.md, so all consumers follow one financial boundary.
+- Stripe: Manager+; shared client; no posting. src/lib/AGENTS.md owns reporting/partial-evidence contracts to prevent inconsistent financial boundaries.
