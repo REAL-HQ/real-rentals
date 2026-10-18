@@ -19,4 +19,4 @@
 - Minimum rental holds: live-rental-release.ts, server-checked after authorization; pending DB writes stay off because UI is not a boundary.
 - Paper reads: paper-agreements.functions.ts, explicitly classified originals only; no backfill/inferred linkage because reads must not write.
 - Revenue: collected-revenue.ts returns unknown on missing/error; agreement-retention.ts blocks generic original deletion. DB/storage protection still required.
-- Stripe reporting: Manager+ session roles; shared client; unique charges; no posting.
+- Stripe: Manager+; shared client; no posting. See lib rules.

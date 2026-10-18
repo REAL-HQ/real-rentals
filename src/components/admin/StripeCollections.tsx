@@ -28,7 +28,7 @@ export function StripeCollections() {
     retry: false, refetchOnWindowFocus: false, staleTime: 60000,
   });
   const report = query.isError || !valid ? undefined : query.data;
-  const money = (field: "gross" | "refunds" | "fees" | "net") => report
+  const money = (field: "gross" | "refunds" | "fees" | "net") => report?.collectionsComplete
     ? report.totals.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : formatStripeAmount(0, "USD")
     : "—";
   return (
@@ -50,8 +50,8 @@ export function StripeCollections() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           ["Gross Collections", money("gross")], ["Refunds", money("refunds")], ["Stripe Fees", money("fees")], ["Net Collections", money("net")],
-          ["Successful Payments", report?.successful ?? "—"], ["Active Subscriptions", report?.activeSubscriptions ?? "—"],
-          ["Upcoming Billing", report?.subscriptions.filter(s => s.nextAt !== null).length ?? "—"], ["Failed Payments", report?.failed ?? "—"],
+          ["Successful Payments", report?.collectionsComplete ? report.successful : "—"], ["Active Subscriptions", report?.activeSubscriptions ?? "—"],
+          ["Upcoming Billing", report?.subscriptions.filter(s => s.nextAt !== null).length ?? "—"], ["Linked Failures", report?.collectionsComplete ? report.failed : "—"],
         ].map(([label, value]) => <div key={label} className="rounded-md border border-border bg-card p-3 min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-2 text-xl font-semibold text-card-foreground tabular-nums break-words">{value}</div></div>)}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -65,10 +65,10 @@ export function StripeCollections() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="text-muted-foreground"><tr>{["Customer", "Gross", "Refunds", "Fees", "Net"].map(h => <th key={h} className="py-2 pr-3 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
-              <tbody>{report?.customers.map(c => <tr key={`${c.id}:${c.currency}`} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{c.name}</td>{([c.gross, c.refunds, c.fees, c.net]).map((v, i) => <td key={i} className="py-3 pr-3 whitespace-nowrap tabular-nums">{formatStripeAmount(v, c.currency)}</td>)}</tr>)}</tbody>
+              <tbody>{report?.customers.map(c => <tr key={`${c.id}:${c.currency}`} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{c.name}</td>{([c.gross, c.refunds, c.fees, c.net]).map((v, i) => <td key={i} className="py-3 pr-3 whitespace-nowrap tabular-nums">{formatStripeAmount(report.collectionsComplete ? v : null, c.currency)}</td>)}</tr>)}</tbody>
             </table>
           </div>
-          {!report?.customers.length && <p className="py-3 text-xs text-muted-foreground">{report ? "No collections in this range." : "—"}</p>}
+          {!report?.customers.length && <p className="py-3 text-xs text-muted-foreground">{report?.collectionsComplete ? "No collections in this range." : "—"}</p>}
         </div>
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground mb-3">Subscriptions</h3>

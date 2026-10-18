@@ -37,7 +37,7 @@ export async function readAllPages<T extends { id: string }>(
 
 export type CollectionCharge = {
   id: string; customerId: string; created: number; currency: string;
-  amount: number; paid: boolean; status: string; fee: number | null;
+  amount: number; paid: boolean; captured: boolean; status: string; fee: number | null;
 };
 export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
@@ -50,6 +50,7 @@ export type CollectionSubscription = {
 };
 type Totals = { currency: string; gross: number; refunds: number; fees: number | null; net: number | null; successful: number; failed: number };
 export type CollectionsReport = {
+  collectionsComplete: boolean;
   refreshedAt: string; totals: Totals[]; successful: number; failed: number; activeSubscriptions: number;
   customers: (Totals & { id: string; name: string })[];
   subscriptions: CollectionSubscription[];
@@ -60,7 +61,7 @@ export type CollectionsReport = {
 export function aggregateCollections(input: {
   charges: CollectionCharge[]; refunds: CollectionRefund[]; subscriptions: CollectionSubscription[];
   window: { gte: number; lt: number }; now: number;
-}): Omit<CollectionsReport, "refreshedAt" | "payouts" | "warnings"> {
+}): Omit<CollectionsReport, "refreshedAt" | "payouts" | "warnings" | "collectionsComplete"> {
   const inRange = (n: number) => n >= input.window.gte && n < input.window.lt;
   const totals = new Map<string, Totals>();
   const customers = new Map<string, Totals & { id: string; name: string }>();
@@ -75,16 +76,16 @@ export function aggregateCollections(input: {
   const addFee = (b: Totals, fee: number | null) => { b.fees = b.fees === null || fee === null ? null : b.fees + fee; };
   const charges = new Map(input.charges.map(c => [c.id, c]));
   for (const charge of charges.values()) {
-    if (!inRange(charge.created)) continue;
+    if (!inRange(charge.created) || (charge.status !== "failed" && !(charge.paid && charge.captured && charge.amount > 0 && charge.status === "succeeded"))) continue;
     for (const b of bucket(charge.customerId, charge.currency)) {
-      if (charge.paid && charge.status === "succeeded") {
+      if (charge.paid && charge.captured && charge.amount > 0 && charge.status === "succeeded") {
         b.gross += charge.amount; b.successful++; addFee(b, charge.fee);
       } else if (charge.status === "failed") b.failed++;
     }
   }
   for (const refund of new Map(input.refunds.map(r => [r.id, r])).values()) {
     const charge = charges.get(refund.chargeId);
-    if (!charge || !charge.paid || refund.status !== "succeeded" || !inRange(refund.created)) continue;
+    if (!charge || !charge.paid || !charge.captured || charge.amount <= 0 || charge.status !== "succeeded" || refund.status !== "succeeded" || !inRange(refund.created) || refund.currency !== charge.currency) continue;
     for (const b of bucket(charge.customerId, refund.currency)) {
       b.refunds += refund.amount; addFee(b, refund.fee);
     }
