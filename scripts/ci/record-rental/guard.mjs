@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
 const hash=b=>createHash('sha256').update(b).digest('hex');
 export function checkPaths(changed){
- const app=manifest.application,allowed=new Set([...Object.keys(app),...manifest.ciFiles]);
+ const app={...manifest.application,...manifest.evidence},allowed=new Set([...Object.keys(app),...manifest.ciFiles]);
  assert.equal(new Set(changed).size,changed.length,'Duplicate paths');
  for(const path of changed)assert(allowed.has(path),'Unapproved path: '+path);
  for(const path of Object.keys(app))assert(changed.includes(path),'Required application path: '+path);
@@ -14,7 +14,7 @@ export function checkPaths(changed){
 export function checkDigest(bytes,expected){assert.equal(hash(bytes),expected,'Hash mismatch');}
 export function checkScope(changed, read){
  checkPaths(changed);
- const app=manifest.application;
+ const app={...manifest.application,...manifest.evidence};
  for(const [path,expected] of Object.entries({...app,...manifest.lockedFiles})){
   assert.equal(hash(read(path)),expected,'Source hash: '+path);
  }
@@ -38,6 +38,7 @@ export function inspect(){
  const git=(...a)=>execFileSync('git',a,{encoding:'utf8'}).trim();
  git('merge-base','--is-ancestor',manifest.baseline,'HEAD');
  git('merge-base','--is-ancestor',manifest.candidate,'HEAD');
+ git('merge-base','--is-ancestor',manifest.evidenceCandidate,'HEAD');
  const changed=git('diff','--name-only',manifest.baseline,'HEAD').split('\n').filter(Boolean);
  checkScope(changed,p=>readFileSync(p));
  assert.equal(git('diff','--name-only'),'','Unstaged tracked changes');
@@ -52,6 +53,6 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    checkOutput(suite,result);process.stdout.write(result.stdout);
    console.log(`VERIFIED ${suite.checks} ${suite.kind}: ${suite.file}`);
   }
-  console.log('PASS 126 application assertions plus 2 validation-recovery scenario groups');
+  console.log('PASS 126 application assertions plus 2 validation-recovery scenario groups plus 31 evidence assertions');
  }
 }
