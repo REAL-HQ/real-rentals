@@ -1,9 +1,12 @@
 import { validFinanceDate } from "./unified-finance";
+import { isOperatingExpense } from "./financial-ledger";
 import type { FinanceSource, FinanceSourceRow } from "./unified-finance-contract";
 import { providerIdentityKey, type Representation } from "./unified-finance-reconciliation";
 import type { C1Projection, C1SettlementProjection, LedgerRow, MappedSource, OperationalPaymentProjection, RawSources, SourceEvidence, SourceFacts, SourceScope, VehicleExpenseProjection } from "./unified-finance-source-contracts";
 
 /** Live-shaped, normalized input contracts only. No claimed raw DB/Stripe mapping or I/O. */
+const supportedKinds: readonly SourceFacts["kind"][] = ["collection", "earned_revenue", "refund", "chargeback", "processing_fee", "operating_expense", "customer_compensation", "deposit_received", "deposit_applied", "deposit_returned", "payout", "projected_renewal"];
+const knownKind = (kind: unknown): kind is SourceFacts["kind"] => typeof kind === "string" && supportedKinds.some(value => value === kind);
 function facts(row: SourceFacts): string[] {
   const reasons: string[] = [];
   if (!row.id.trim()) reasons.push("Missing immutable row identity");
@@ -32,6 +35,9 @@ export function mapFinanceSource<S extends FinanceSource>(source: S, input: RawS
   catch { return { row: null, reasons: ["Malformed source facts"] }; }
 }
 function mapSourceUnchecked<S extends FinanceSource>(source: S, input: RawSources[S], scope?: SourceScope): MappedSource {
+  if (source !== "stripe" && (!("visibility" in input) || (input.visibility !== "operating" && input.visibility !== "owner_only"))) {
+    return { row: null, reasons: ["Unknown or unverified source visibility"] };
+  }
   if (source === "settlements") {
     const s = input as RawSources["settlements"];
     const valid = Boolean(s.id && s.paymentId && s.obligationId && s.currency === "USD" && s.amountCents !== null && Number.isSafeInteger(s.amountCents) && s.amountCents > 0);
@@ -44,6 +50,7 @@ function mapSourceUnchecked<S extends FinanceSource>(source: S, input: RawSource
       reasons: r.id && r.relationship.eventId ? [] : ["Missing relationship identity"] };
   }
   const raw = input as SourceFacts;
+  if (!knownKind(raw.kind)) return { row: null, reasons: ["Unknown financial classification"] };
   const reasons = facts(raw);
   const rep = representation(raw, source === "stripe" ? "provider" : source === "ledger" ? "c1" : "operational");
   const row: FinanceSourceRow = { id: raw.id, visibility: "operating", representation: rep };
@@ -121,7 +128,7 @@ function sourceDate(value: string | null): string | null {
   return validFinanceDate(date) ? new Date(value).toISOString().slice(0, 10) : null;
 }
 function baseFacts(id: string, amount: string | number | null, evidence: SourceEvidence): SourceFacts {
-  if (!evidence.kind) throw new Error("Unsupported or unclassified financial kind");
+  if (!knownKind(evidence.kind)) throw new Error("Unsupported or unclassified financial kind");
   return { id, kind: evidence.kind, amountCents: decimalSourceCents(amount), currency: evidence.currency,
     cashDate: sourceDate(evidence.cashDate), recognitionDate: null, feeCents: evidence.feeCents, verified: evidence.verified,
     status: "pending", method: evidence.method, customerId: evidence.customerId, rentalId: null, identities: evidence.identities.map(i => ({ ...i })), relatedEventId: null };
@@ -133,6 +140,10 @@ export function operationalPaymentContract(p: OperationalPaymentProjection, evid
   return { ...f, paymentId: p.id, visibility: "operating" };
 }
 export function c1SourceContract(p: C1Projection, evidence: SourceEvidence): LedgerRow {
+  if (p.sensitivity !== "standard" && p.sensitivity !== "owner_only") throw new Error("Unknown or unverified C1 sensitivity");
+  if (p.txn_type === "expense" && (typeof p.category !== "string" || !p.category.trim() || !isOperatingExpense("expense", p.category))) {
+    throw new Error("Unsupported or unclassified C1 expense category");
+  }
   const kinds: Record<string, SourceFacts["kind"]> = { obligation: "earned_revenue", invoice: "earned_revenue", payment: "collection", expense: "operating_expense", refund: "refund",
     deposit_received: "deposit_received", deposit_returned: "deposit_returned", deposit_applied: "deposit_applied" };
   const kind = kinds[p.txn_type];

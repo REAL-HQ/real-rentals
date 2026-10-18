@@ -41,6 +41,8 @@ export type OperationalPaymentProjection = {
 };
 export type C1Projection = {
   id: string; amount: string | number | null; currency: string | null;
+  /** Required to classify expense rows; absent categories are never presumed operating. */
+  category?: string | null;
   txn_type: string; status: LedgerRow["posting"]; direction: LedgerRow["direction"];
   sensitivity: "standard" | "owner_only"; recognition_date: string | null; cash_date: string | null;
   rental_id: string | null; payment_id: string | null; expense_id: string | null;
