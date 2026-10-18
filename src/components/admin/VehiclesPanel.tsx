@@ -427,18 +427,6 @@ export function VehiclesPanel({
             </button>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5" role="group" aria-label="View">
-            <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
-            <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
-          </div>
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]">
-            Import / Fleet Inbox
-          </button>
-          <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
-            <Plus className="w-4 h-4" /> Add Vehicle
-          </button>
-        </div>
       </div>
 
       {view === "list" && rows.length > 0 && (
