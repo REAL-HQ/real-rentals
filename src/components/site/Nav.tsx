@@ -6,6 +6,7 @@ import { PhoneLink } from "./PhoneLink";
 import { Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -128,7 +129,11 @@ export function Nav() {
               )}
             </PhoneLink>
           )}
-          {authReady && session ? (
+          {authReady && session && location.pathname === "/" ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to={accountHref}>Dashboard</Link>
+            </Button>
+          ) : authReady && session ? (
             <>
               {(isPartner || isDriver) && (
                 <DropdownMenu>
