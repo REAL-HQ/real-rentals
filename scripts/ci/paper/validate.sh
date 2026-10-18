@@ -24,7 +24,7 @@ for file in scripts/agreement-authorization.test.mjs scripts/agreement-pdf-acces
   test -s "$file"
   echo "BEGIN $file"
   node "$file" 2>&1 | tee /tmp/paper-baseline-test.log
-  if grep -Eqi 'SKIPPED|BLOCKER|FAIL' /tmp/paper-baseline-test.log; then
+  if grep -Eq 'SKIPPED|BLOCKER|FAIL' /tmp/paper-baseline-test.log; then
     echo "Regression skipped or failed: $file" >&2; exit 1
   fi
   echo "PASS $file"
