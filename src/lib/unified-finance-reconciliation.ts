@@ -96,7 +96,7 @@ export function reconcileFinance(rows: readonly Representation[]): Reconciliatio
       else if (unique.length === 1) Object.assign(merged, { [field]: unique[0] });
     }
     // An invoice or PaymentIntent is not a safe merge key for multiple actual charges.
-    const charges = new Set(members.flatMap(m => m.identities.filter(i => i.object === "charge").map(providerIdentityKey)));
+    const charges = new Set(indexes.filter(i => !invalid.has(i)).flatMap(i => ordered[i].identities.filter(identity => identity.object === "charge").map(providerIdentityKey)));
     if (charges.size > 1) { conflict = true; reasons.push("Multiple Charge identities claim the same event"); }
     const c1 = new Set(members.map(m => m.c1TransactionId).filter(Boolean));
     if (c1.size > 1) { conflict = true; reasons.push("Multiple C1 transactions claim the same event"); }

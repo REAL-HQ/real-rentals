@@ -34,7 +34,7 @@ export type FinanceEvent = {
   recognitionDate?: string | null; // YYYY-MM-DD, when earned/incurred
   method?: PaymentMethod | null;
   evidence: EvidenceState;
-  /** Collection fee in cents; null = unknown; undefined = not applicable (non-provider method). */
+  /** Actual collection fee in cents, including explicit zero; null/undefined = unknown. */
   feeCents?: number | null;
   /** Refund/chargeback/fee/deposit links to the event they adjust. */
   relatedEventId?: string | null;
@@ -63,7 +63,7 @@ export type FinanceReport = {
   netCollections: Measure; // gross − refunds − lost chargebacks − fees
   operatingExpenses: Measure;
   customerCompensation: Measure;
-  operatingResult: Measure; // net collections − operating expenses − compensation
+  operatingResult: Measure; // cash: net collections less costs; accrual: earned revenue less adjustments/costs
   depositLiabilityChange: Measure; // received − applied − returned (never revenue)
   actualPayouts: Measure;
   payoutDifference: Measure; // actual payouts − calculated net (timing/settlement gap)
@@ -152,7 +152,7 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
   }
 
   for (const e of events) {
-    const t = target[e.kind];
+    const t = e.kind === "chargeback" && e.disputeStage === "open" ? a.disputes : target[e.kind];
     if (e.kind === "collection") {
       if (e.status === "failed" || e.status === "canceled") { counts.failedCollections++; continue; }
       if (e.status === "pending") { counts.pendingCollections++; continue; }
@@ -179,7 +179,8 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
 
     if (e.kind === "chargeback") {
       if (e.disputeStage === "open") { a.disputes.total += e.amountCents; continue; }
-      if (e.disputeStage !== "lost") continue; // won = no money withdrawn
+      if (e.disputeStage === "won") continue; // won = no money withdrawn
+      if (e.disputeStage !== "lost") { t.complete = false; flag(e.id, "missing_evidence", "Dispute outcome unknown"); continue; }
     }
 
     if (e.kind === "refund" || e.kind === "chargeback") {
@@ -221,6 +222,6 @@ export function summarizeFinance(input: { events: FinanceEvent[]; period: { from
     operatingResult, depositLiabilityChange, actualPayouts, payoutDifference, openDisputes: m(a.disputes),
     projectedRenewals: m(a.projected), unverifiedAmount, counts, complete: false, issues,
   };
-  report.complete = [grossCollected, refunds, chargebacksLost, processingFees, operatingExpenses, customerCompensation, depositLiabilityChange, actualPayouts].every(x => x.complete);
+  report.complete = [grossCollected, earnedRevenue, refunds, chargebacksLost, processingFees, operatingExpenses, customerCompensation, depositLiabilityChange, actualPayouts, operatingResult, report.openDisputes, report.projectedRenewals, unverifiedAmount].every(x => x.complete);
   return report;
 }
