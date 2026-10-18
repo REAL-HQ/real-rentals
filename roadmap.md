@@ -1,5 +1,5 @@
 # Roadmap
-- [ ] Unified Finance Phase 1 Acceptance: confirmed synthetic corrections pass 97 tests (69 existing + 28 regressions), automatic build OK; blocked on supported standalone TypeScript evidence. No live integration; Phase 2 awaits separate approval.
+- [ ] Unified Finance Phase 1 Acceptance: confirmed synthetic corrections pass 98 tests (69 existing + 29 regressions), automatic build OK; blocked on supported standalone TypeScript evidence. No live integration; Phase 2 awaits separate approval.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure
