@@ -125,8 +125,8 @@ describe("Unified finance synthetic reconciliation", () => {
     const rows = [0, 1].map(i => syntheticRepresentation({ id: `synthetic-${kind}-${i}`, identities: [
       ...syntheticRepresentation().identities,
       { provider: "stripe", environment: "synthetic", account: "synthetic-account", object: kind === "chargeback" ? "dispute" as const : "balance_transaction" as const, id: `synthetic-child-${i}` },
-    ], event: syntheticEvent({ id: `synthetic-event-${i}`, kind, relatedEventId: "synthetic-parent", disputeStage: "lost", amountCents: 1000, feeCents: undefined }) }));
-    expect(reconcileFinance(rows).events).toHaveLength(2);
+    ], event: syntheticEvent({ id: `synthetic-event-${i}`, kind, relatedEventId: "synthetic-receipt-a", disputeStage: "lost", amountCents: 1000, feeCents: undefined }) }));
+    expect(reconcileFinance([syntheticRepresentation(), ...rows]).events.filter(e => e.kind === kind)).toHaveLength(2);
   });
   it.each(["not-a-date", "2026-02-30", ""])("rejects malformed reconciliation date %s", cashDate => {
     expect(reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ cashDate }) })]).complete).toBe(false);
@@ -145,6 +145,12 @@ describe("Unified finance synthetic reconciliation", () => {
     const r = reconcileFinance([syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id: "synthetic-refund" }], event: syntheticEvent({ kind: "refund", relatedEventId: null }) })]);
     expect(r.complete).toBe(false);
     expect(r.groups[0]?.reasons).toContain("Adjustment collection relationship missing");
+  });
+  it("withholds refunds whose nonblank parent reference cannot be resolved", () => {
+    const r = reconcileFinance([syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id: "synthetic-refund" }], event: syntheticEvent({ kind: "refund", relatedEventId: "synthetic-absent-parent" }) })]);
+    expect(r.complete).toBe(false);
+    expect(r.events).toHaveLength(0);
+    expect(r.groups[0]?.reasons).toContain("Referenced collection missing, incomplete or incompatible");
   });
   it("separates aggregate source coverage from missing attribution", () => {
     const r = reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ customerId: null, bookingId: null, vehicleId: null }) })]);

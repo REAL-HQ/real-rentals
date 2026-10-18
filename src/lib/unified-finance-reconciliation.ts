@@ -142,6 +142,18 @@ export function reconcileFinance(rows: readonly Representation[], options: { bas
   for (const group of groups) if (group.event?.relatedEventId) {
     group.event = { ...group.event, relatedEventId: canonical.get(group.event.relatedEventId) ?? group.event.relatedEventId };
   }
+  // A nonblank parent reference is not proof: resolve aliases and require a compatible receipt.
+  const collections = new Map(groups.flatMap(g => g.event?.kind === "collection" ? [[g.id, g.event] as const] : []));
+  for (const group of groups) {
+    const e = group.event;
+    if (!e || (e.kind !== "refund" && e.kind !== "chargeback")) continue;
+    const parentEvent = e.relatedEventId ? collections.get(e.relatedEventId) : undefined;
+    if (!parentEvent || parentEvent.status !== "succeeded" || parentEvent.currency?.toUpperCase() !== e.currency?.toUpperCase()) {
+      group.state = "Incomplete";
+      group.event = null;
+      group.reasons.push("Referenced collection missing, incomplete or incompatible");
+    }
+  }
   const counts: Record<ReconciliationState, number> = { Matched: 0, Unmatched: 0, Conflict: 0, Incomplete: 0 };
   for (const g of groups) counts[g.state]++;
   const complete = counts.Conflict === 0 && counts.Incomplete === 0;
