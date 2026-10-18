@@ -3,7 +3,7 @@ import { aggregateCollections, assertCollectionsAccess, collectionsWindow, forma
 
 const window = { gte: 100, lt: 200 };
 const sub: CollectionSubscription = { id: "sub_mock", customerId: "cus_mock", name: "Synthetic Renter", status: "active", cancelAtPeriodEnd: false, nextAt: 300, currency: "usd", scheduledAmount: 35000 };
-const charge: CollectionCharge = { id: "ch_mock", customerId: "cus_mock", created: 150, currency: "usd", amount: 35000, paid: true, status: "succeeded", fee: 1045 };
+const charge: CollectionCharge = { id: "ch_mock", customerId: "cus_mock", created: 150, currency: "usd", amount: 35000, paid: true, captured: true, status: "succeeded", fee: 1045 };
 const run = (overrides = {}) => aggregateCollections({ charges: [charge], refunds: [], subscriptions: [sub], window, now: 180, ...overrides });
 describe("Stripe Collections rules", () => {
   it("allows Owner and Manager only", () => { expect(() => assertCollectionsAccess(["admin"])).not.toThrow(); expect(() => assertCollectionsAccess(["team"])).not.toThrow(); });
@@ -11,7 +11,10 @@ describe("Stripe Collections rules", () => {
   it("counts each charge once, not invoice or payment intent amounts", () => { expect(run({ charges: [charge, charge] }).totals[0].gross).toBe(35000); expect(run({ charges: [charge, charge] }).successful).toBe(1); });
   it("subtracts Stripe fees in minor units", () => { expect(run().totals[0].net).toBe(33955); });
   it("subtracts successful partial refunds once", () => { const r = { id: "re_mock", chargeId: charge.id, created: 170, amount: 5000, currency: "usd", status: "succeeded", fee: 0 }; const t = run({ refunds: [r, r] }).totals[0]; expect(t.refunds).toBe(5000); expect(t.net).toBe(28955); });
-  it("ignores failed and pending refunds", () => { expect(run({ refunds: [{ id: "re_mock", chargeId: charge.id, created: 170, amount: 35000, currency: "usd", status: "failed", fee: 0 }] }).totals[0].refunds).toBe(0); });
+  it.each(["failed", "pending"])("ignores %s refunds", status => { expect(run({ refunds: [{ id: "re_mock", chargeId: charge.id, created: 170, amount: 35000, currency: "usd", status, fee: 0 }] }).totals[0].refunds).toBe(0); });
+  it("does not count uncaptured authorizations as collections", () => { const r = run({ charges: [{ ...charge, captured: false, amount: 0 }] }); expect(r.successful).toBe(0); expect(r.totals).toEqual([]); });
+  it("counts only the actual partial capture", () => { expect(run({ charges: [{ ...charge, amount: 15000, fee: 465 }] }).totals[0].net).toBe(14535); });
+  it("keeps net unknown when refund fees are unavailable", () => { expect(run({ refunds: [{ id: "re_unknown", chargeId: charge.id, created: 170, amount: 5000, currency: "usd", status: "succeeded", fee: null }] }).totals[0].net).toBeNull(); });
   it("counts failures without adding revenue or fees", () => { const r = run({ charges: [{ ...charge, paid: false, status: "failed" }] }); expect(r.failed).toBe(1); expect(r.totals[0].gross).toBe(0); expect(r.totals[0].fees).toBe(0); });
   it("does not collect future renewals", () => { expect(run({ charges: [] }).totals).toEqual([]); expect(run({ charges: [] }).activeSubscriptions).toBe(1); });
   it("excludes canceled subscriptions from active counts", () => { expect(run({ subscriptions: [{ ...sub, status: "canceled", nextAt: null }] }).activeSubscriptions).toBe(0); });
@@ -23,4 +26,5 @@ describe("Stripe Collections rules", () => {
   it("rejects reversed and oversized ranges", () => { expect(() => collectionsWindow({ from: "2026-10-16T00:00:00Z", to: "2026-10-15T00:00:00Z" })).toThrow(); expect(() => collectionsWindow({ from: "2024-01-01T00:00:00Z", to: "2026-01-01T00:00:00Z" })).toThrow(); });
   it("reads every page and deduplicates rows", async () => { const cursors: (string | undefined)[] = []; const rows = await readAllPages(async c => { cursors.push(c); return c ? { data: [{ id: "a" }, { id: "b" }], has_more: false } : { data: [{ id: "a" }], has_more: true }; }); expect(cursors).toEqual([undefined, "a"]); expect(rows).toEqual([{ id: "a" }, { id: "b" }]); });
   it("fails closed on API errors and stalled pagination", async () => { await expect(readAllPages(async () => { throw new Error("API unavailable"); })).rejects.toThrow("API unavailable"); await expect(readAllPages(async () => ({ data: [{ id: "a" }], has_more: true }))).rejects.toThrow("incomplete"); });
+  it("fails closed at the safe page cap", async () => { let page = 0; await expect(readAllPages(async () => ({ data: [{ id: String(++page) }], has_more: true }))).rejects.toThrow("safe page limit"); expect(page).toBe(100); });
 });
