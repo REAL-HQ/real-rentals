@@ -74,6 +74,20 @@ describe("Phase 2 isolated reporting", () => {
     await expect(buildMockUnifiedFinanceReport(request, { userId: "synthetic-user", roles: [role] }, { stripe: read })).rejects.toThrow("Forbidden");
     expect(read).not.toHaveBeenCalled();
   });
+  it("settlements reject mismatched customer/rental relationships", async () => {
+    const payment = sourceRow({ id: "synthetic-pay", posting: "posted" });
+    const obligation = sourceRow({ id: "synthetic-obligation", posting: "posted", representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-obligation", event: syntheticEvent({ id: "synthetic-obligation-event", kind: "earned_revenue", customerId: "synthetic-different-customer" }) }) });
+    const settlement = sourceRow({ id: "synthetic-link", representation: undefined, settlement: { paymentId: payment.id, obligationId: obligation.id, amountCents: 1000, currency: "USD" } });
+    const r = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ ledger: [payment, obligation], settlements: [settlement] }));
+    expect(r.complete).toBe(false); expect(r.issues).toContain("Invalid settlement: synthetic-link");
+  });
+  it("conflicting customer relationships withhold scoped totals", async () => {
+    const customerId = "00000000-0000-4000-8000-000000000001";
+    const relation = { eventId: "synthetic-receipt-a", customerId, rentalId: "synthetic-booking-a", servicePeriod: null, allocations: [] };
+    const r = await buildMockUnifiedFinanceReport({ ...request, customerId }, identity, mockPlan({ stripe: [sourceRow()], relationships: [sourceRow({ id: "synthetic-link-a", representation: undefined, relationship: relation }),
+      sourceRow({ id: "synthetic-link-b", representation: undefined, relationship: { ...relation, customerId: "synthetic-different" } })] }));
+    expect(r.complete).toBe(false); expect(r.verifiedCollections.netCollections.value).toBeNull();
+  });
   it("denies anonymous and unavailable current role evidence", async () => {
     const read = vi.fn();
     await expect(buildMockUnifiedFinanceReport(request, { userId: null, roles: ["admin"] }, { stripe: read })).rejects.toThrow("Forbidden");
@@ -155,6 +169,13 @@ describe("Read-only pagination and session boundaries", () => {
   it("repeated cursors stop instead of looping", async () => {
     const read = vi.fn().mockResolvedValue({ rows: [sourceRow()], nextCursor: "synthetic-same" });
     expect((await readFinancePages(read, "owner")).coverage.state).toBe("incomplete"); expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("enforces page cap and aborted reads without complete totals", async () => {
+    let cursor = 0;
+    const read = vi.fn(async () => ({ rows: [], nextCursor: `synthetic-page-${cursor++}` }));
+    expect((await readFinancePages(read, "owner")).coverage.state).toBe("incomplete"); expect(read).toHaveBeenCalledTimes(100);
+    const controller = new AbortController(); controller.abort(); read.mockClear();
+    expect((await readFinancePages(read, "owner", controller.signal)).coverage.state).toBe("unavailable"); expect(read).not.toHaveBeenCalled();
   });
   it("rejects delayed responses after a session change and clears caches", async () => {
     const client = new QueryClient(); let session = { userId: "synthetic-a", revision: 1 };
