@@ -130,7 +130,7 @@ export function Nav() {
             </PhoneLink>
           )}
           {authReady && session && location.pathname === "/" ? (
-            <Button asChild variant="outline" size="sm" className="h-9 rounded-[10px] px-4 text-[13px]">
+            <Button asChild variant="outline" size="sm" className="h-9 rounded-[8px] px-4 text-[13px]">
               <Link to={accountHref}>Dashboard</Link>
             </Button>
           ) : authReady && session ? (
