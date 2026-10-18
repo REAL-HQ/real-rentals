@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Read-only Stripe Collections: isolated reporting, mocked tests and authorized live read; no writes or publication.
 - [x] Minimum Live-Rental application preparation: disabled Paper/intake/approval/invites, unavailable revenue states, retention guard, synthetic and isolated UI checks; review report saved, no migrations/records/Stripe writes/publication.
 - [ ] Minimum Live-Rental activation: blocked on separately approved secure approval/evidence, paper retention, atomic numbering/history/intake/provider reconciliation, 0031/journal prerequisite and production acceptance.
 - [x] Driver Overview cards/checklist: preview verified on desktop/mobile, existing navigation and focused readiness tests passed; rules/records unchanged, unpublished. Existing unrelated driver-access assertion remains outside this visual scope.
