@@ -36,7 +36,7 @@ export function StripeCollections() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">Stripe Collections</h2>
-          <p className="text-xs text-muted-foreground mt-1">{report ? `Refreshed ${fmtDateTime(report.refreshedAt)}` : "Refreshed —"}</p>
+          <p className="text-xs text-muted-foreground mt-1">{query.data ? `Refreshed ${fmtDateTime(query.data.refreshedAt)}` : "Refreshed —"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex gap-1" aria-label="Collections Mode">{(["live", "sandbox"] as const).map(mode => <Button key={mode} size="sm" variant={environment === mode ? "secondary" : "ghost"} aria-pressed={environment === mode} onClick={() => setEnvironment(mode)}>{mode === "live" ? "Live" : "Test"}</Button>)}</div>

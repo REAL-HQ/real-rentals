@@ -18,12 +18,14 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
   const invoiceIndex = new Map(invoices.map(i => [i.id, i]));
   const linkedIntents = new Map<string, Set<string>>();
   const linkedCharges = new Map<string, Set<string>>();
+  let externalRecords = false;
   for (const payment of invoicePayments) {
     const invoice = invoiceIndex.get(idOf(payment.invoice) || "");
     const subId = idOf(invoice?.parent?.subscription_details?.subscription);
     const subscription = subscriptionIndex.get(subId || "");
     const customer = idOf(subscription?.customer);
     if (!invoice || !subscription || !customer || idOf(invoice.customer) !== customer) continue;
+    if (payment.payment.type === "payment_record") externalRecords = true;
     const intent = idOf(payment.payment.payment_intent), charge = idOf(payment.payment.charge);
     const add = (map: Map<string, Set<string>>, id: string | undefined) => {
       if (!id) return;
@@ -54,7 +56,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     return {
       id: s.id, customerId: idOf(customer) || "—", name: typeof customer !== "string" && !customer.deleted ? customer.name || customer.email || customer.id : idOf(customer) || "—",
       status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end, currency: s.currency,
-      nextAt: renews && periods.length ? Math.min(...periods) : null,
+      nextAt: renews && periods.length && Math.min(...periods) > Date.now() / 1000 ? Math.min(...periods) : null,
       scheduledAmount: complete ? items.reduce((sum, i) => sum + (i.price.unit_amount ?? 0) * (i.quantity ?? 1), 0) : null,
     };
   });
@@ -63,6 +65,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     fee: r.balance_transaction && typeof r.balance_transaction !== "string" && r.balance_transaction.currency === r.currency ? r.balance_transaction.fee : null,
   })), subscriptions: normalizedSubs, window, now: Math.floor(Date.now() / 1000) });
   const warnings: string[] = [];
+  if (externalRecords) warnings.push("External payment records are excluded from Stripe collections.");
   if (report.totals.some(t => t.fees === null)) warnings.push("Some Stripe fees are unavailable; net collections remain unknown.");
   let payouts: CollectionsReport["payouts"] = null;
   try {

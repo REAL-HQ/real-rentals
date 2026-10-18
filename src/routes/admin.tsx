@@ -184,7 +184,15 @@ export const Route = createFileRoute("/admin")({
     return out;
   },
   head: () => ({
-    meta: [{ title: "Admin — REAL RENTALS" }, { name: "robots", content: "noindex" }],
+    meta: [
+      { title: "Operations — REAL RENTALS" },
+      { name: "description", content: "REAL RENTALS staff operations, fleet and authorized collections reporting." },
+      { property: "og:title", content: "Operations — REAL RENTALS" },
+      { property: "og:description", content: "REAL RENTALS staff operations and authorized collections reporting." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+      { name: "robots", content: "noindex" },
+    ],
   }),
   component: Admin,
 });
