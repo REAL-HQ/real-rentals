@@ -5,10 +5,13 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { collectionsRefreshState, formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { STRIPE_COLLECTIONS_TEST_MODE } from "@/lib/stripe-collections.test-mode";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { resolveRange } from "@/lib/date-range";
 
 export function StripeCollections() {
+  // Test-only synthetic mode is dev-server-only; production builds keep the feature hidden.
+  const featureVisible = STRIPE_COLLECTIONS_ENABLED || (import.meta.env.DEV && STRIPE_COLLECTIONS_TEST_MODE);
   const [initial] = useState(() => resolveRange("last_30"));
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
