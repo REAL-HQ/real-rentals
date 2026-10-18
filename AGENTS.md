@@ -19,4 +19,4 @@
 - Minimum rental holds: live-rental-release.ts, server-checked after authorization; pending DB writes stay off because UI is not a boundary.
 - Paper reads: paper-agreements.functions.ts, explicitly classified originals only; no backfill/inferred linkage because reads must not write.
 - Revenue: collected-revenue.ts returns unknown on missing/error; agreement-retention.ts blocks generic original deletion. DB/storage protection still required.
-- Stripe: Manager+; shared client; no posting. See lib rules.
+- Stripe: Manager+; shared client; no posting. Incomplete reports null complete totals/counts and expose partial evidence only under verifiedCollections with incompletePortions, so consumers cannot mistake partial cash for complete totals. See lib rules.
