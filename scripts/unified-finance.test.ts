@@ -174,4 +174,47 @@ describe("Unified finance synthetic reporting", () => {
     expect(r.customerCompensation.value).toBe(5000);
     expect(r.operatingResult.value).toBe(22955);
   });
+  it.each(["missing", "unverified"] as const)("preserves unavailable %s amounts instead of zero", evidence => {
+    const r = report([syntheticEvent({ evidence, amountCents: null })]);
+    expect(r.unverifiedAmount).toEqual({ value: null, complete: false });
+    expect(r.processingFees.value).toBeNull();
+    expect(r.netCollections.value).toBeNull();
+  });
+  it.each([{ currency: null }, { currency: "EUR" }, { cashDate: null }, { cashDate: "2026-02-30" }])("withholds unverified totals with missing/invalid facts %j", facts => {
+    expect(report([syntheticEvent({ ...facts, evidence: "unverified" })]).unverifiedAmount).toEqual({ value: null, complete: false });
+  });
+  it("keeps actual unverified zero distinct from unavailable amount", () => {
+    expect(report([syntheticEvent({ evidence: "unverified", amountCents: 0 })]).unverifiedAmount).toEqual({ value: 0, complete: true });
+  });
+  it("deduplicates a partial refund and recognizes only its own reporting dates", () => {
+    const parent = syntheticEvent({ cashDate: "2026-09-08", recognitionDate: "2026-09-08" });
+    const refund = adjustment("refund", 5000, { cashDate: "2026-10-12", recognitionDate: "2026-11-02" });
+    const events = [parent, refund, { ...refund }];
+    expect(report(events).netCollections.value).toBe(-5000);
+    expect(report(events, { basis: "accrual" }).refunds.value).toBe(0);
+    expect(report(events, { basis: "accrual", period: { from: "2026-11-01", to: "2026-12-01" } }).refunds.value).toBe(5000);
+  });
+  it("withholds refunds when movement evidence is missing", () => {
+    const r = report([syntheticEvent(), adjustment("refund", 5000, { evidence: "missing" })]);
+    expect(r.refunds.value).toBeNull();
+    expect(r.netCollections.value).toBeNull();
+    expect(r.complete).toBe(false);
+    expect(r.issues.some(i => i.code === "missing_evidence")).toBe(true);
+  });
+  it.each([null, -1, 0.5])("rejects invalid historical refund parent amount %s", amountCents => {
+    const r = report([syntheticEvent({ amountCents, cashDate: "2026-09-08" }), adjustment("refund", 5000)]);
+    expect(r.refunds.value).toBeNull();
+    expect(r.netCollections.value).toBeNull();
+  });
+  it("refuses anonymous money-event identities", () => {
+    const r = report([syntheticEvent({ id: "" })]);
+    expect(r.grossCollected.value).toBeNull();
+    expect(r.issues.some(i => i.code === "missing_identity")).toBe(true);
+  });
+  it("partial source evidence cannot yield complete totals", () => {
+    const r = report(weeklyPayments, { coverage: "incomplete" });
+    expect(r.netCollections).toEqual({ value: null, complete: false });
+    expect(r.complete).toBe(false);
+    expect(r.attributionComplete).toEqual({ customer: false, booking: false, vehicle: false });
+  });
 });
