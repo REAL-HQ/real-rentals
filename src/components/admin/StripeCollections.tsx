@@ -6,22 +6,22 @@ import { Button } from "@/components/ui/button";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { getStripeEnvironment } from "@/lib/stripe";
 import { resolveRange } from "@/lib/date-range";
 
 export function StripeCollections() {
   const [initial] = useState(() => resolveRange("last_30"));
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
+  const [environment, setEnvironment] = useState<"live" | "sandbox">("live");
   const load = useServerFn(getStripeCollections);
   const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T00:00:00`);
   end.setDate(end.getDate() + 1);
   const valid = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start && (end.getTime() - start.getTime()) <= 366 * 86400000;
   const query = useQuery({
-    queryKey: ["stripe-collections", from, to],
+    queryKey: ["stripe-collections", environment, from, to],
     enabled: valid && STRIPE_COLLECTIONS_ENABLED,
     queryFn: async () => {
-      const result = await load({ data: { environment: getStripeEnvironment(), from: start.toISOString(), to: end.toISOString() } });
+      const result = await load({ data: { environment, from: start.toISOString(), to: end.toISOString() } });
       if ("error" in result) throw new Error(result.error);
       return result.report;
     },
@@ -39,6 +39,7 @@ export function StripeCollections() {
           <p className="text-xs text-muted-foreground mt-1">{report ? `Refreshed ${fmtDateTime(report.refreshedAt)}` : "Refreshed —"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex gap-1" aria-label="Collections Mode">{(["live", "sandbox"] as const).map(mode => <Button key={mode} size="sm" variant={environment === mode ? "secondary" : "ghost"} aria-pressed={environment === mode} onClick={() => setEnvironment(mode)}>{mode === "live" ? "Live" : "Test"}</Button>)}</div>
           <label className="text-xs text-muted-foreground">From <input aria-label="Collections From" type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
           <label className="text-xs text-muted-foreground">To <input aria-label="Collections To" type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
           <Button aria-label="Refresh Collections" title="Refresh Collections" variant="outline" size="icon" disabled={!valid || query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : ""} /></Button>
