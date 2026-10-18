@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Unified Finance Phase 1: synthetic reporting/reconciliation modules and focused tests only; no live integration, pending validation and review.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure

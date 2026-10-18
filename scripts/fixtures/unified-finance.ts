@@ -8,7 +8,7 @@ export function syntheticEvent(overrides: Partial<FinanceEvent> = {}): FinanceEv
     cashDate: "2026-10-08", recognitionDate: "2026-10-08", evidence: "verified", method: "stripe", feeCents: 1045,
     customerId: "synthetic-customer-a", bookingId: "synthetic-booking-a", ...overrides };
 }
-export const weeklyPayments = ["a", "b", "c"].map((suffix, i) => syntheticEvent({ id: `synthetic-week-${suffix}`, cashDate: `2026-10-${8 + i * 7}`, recognitionDate: `2026-10-${8 + i * 7}` }));
+export const weeklyPayments = ["a", "b", "c"].map((suffix, i) => syntheticEvent({ id: `synthetic-week-${suffix}`, cashDate: `2026-10-${String(8 + i * 7).padStart(2, "0")}`, recognitionDate: `2026-10-${String(8 + i * 7).padStart(2, "0")}` }));
 export const compensation = syntheticEvent({ id: "synthetic-compensation", kind: "customer_compensation", amountCents: 5000, method: "zelle", feeCents: undefined });
 export function syntheticRepresentation(overrides: Partial<Representation> = {}): Representation {
   return { id: "synthetic-provider-row", source: "provider", event: syntheticEvent(),

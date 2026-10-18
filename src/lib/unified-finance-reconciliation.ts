@@ -1,4 +1,4 @@
-import type { FinanceEvent } from "./unified-finance";
+import { assertPeriod, validFinanceDate, type FinanceEvent } from "./unified-finance";
 
 /** Pure source-identity reconciliation; never creates or edits C1 or operational records. */
 export type ProviderIdentity = {
@@ -106,7 +106,7 @@ export function reconcileFinance(rows: readonly Representation[]): Reconciliatio
     const identityKnown = members.some(m => {
       try { return keys(m).length > 0; } catch { return false; }
     });
-    const incomplete = indexes.some(i => invalid.has(i)) || !identityKnown || merged.amountCents === null || !merged.currency ||
+    const incomplete = indexes.some(i => invalid.has(i)) || !identityKnown || merged.amountCents === null || !Number.isSafeInteger(merged.amountCents) || (merged.amountCents ?? -1) < 0 || !merged.currency ||
       merged.evidence !== "verified" || (!merged.cashDate && !merged.recognitionDate);
     if (!identityKnown) reasons.push("No authoritative event identity; similar amount/date/evidence hash is not proof");
     if (incomplete) reasons.push("Required identity, money, date or verification evidence incomplete");
@@ -136,6 +136,7 @@ export function reconcileFinance(rows: readonly Representation[]): Reconciliatio
 export type DatedVehicleAllocation = { vehicleId: string; from: string; to: string; amountCents: number; swapId?: string | null };
 /** Explicit allocations, never current-vehicle inference; half-open dates and exact cents. */
 export function validateVehicleAllocations(amountCents: number, period: { from: string; to: string }, allocations: readonly DatedVehicleAllocation[]): { state: ReconciliationState; reasons: string[] } {
+  assertPeriod(period);
   const reasons: string[] = [];
   const sorted = [...allocations].sort((a, b) => a.from.localeCompare(b.from));
   if (!sorted.length) return { state: "Incomplete", reasons: ["No dated allocations"] };
@@ -143,7 +144,7 @@ export function validateVehicleAllocations(amountCents: number, period: { from: 
   let cursor = period.from;
   let total = 0;
   for (const a of sorted) {
-    if (a.from < cursor || a.from >= a.to || a.to > period.to || !Number.isSafeInteger(a.amountCents) || a.amountCents < 0 || !a.vehicleId) reasons.push("Overlapping, out-of-range or invalid allocation");
+    if (!validFinanceDate(a.from) || !validFinanceDate(a.to) || a.from < cursor || a.from >= a.to || a.to > period.to || !Number.isSafeInteger(a.amountCents) || a.amountCents < 0 || !a.vehicleId) reasons.push("Overlapping, out-of-range or invalid allocation");
     if (a.from > cursor) reasons.push("Unallocated date gap");
     total += a.amountCents;
     cursor = a.to;
