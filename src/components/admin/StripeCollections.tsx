@@ -1,0 +1,85 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { getStripeEnvironment } from "@/lib/stripe";
+import { resolveRange } from "@/lib/date-range";
+
+export function StripeCollections() {
+  const [initial] = useState(() => resolveRange("last_30"));
+  const [from, setFrom] = useState(initial.from);
+  const [to, setTo] = useState(initial.to);
+  const load = useServerFn(getStripeCollections);
+  const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T00:00:00`);
+  end.setDate(end.getDate() + 1);
+  const valid = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start && (end.getTime() - start.getTime()) <= 366 * 86400000;
+  const query = useQuery({
+    queryKey: ["stripe-collections", from, to],
+    enabled: valid && STRIPE_COLLECTIONS_ENABLED,
+    queryFn: async () => {
+      const result = await load({ data: { environment: getStripeEnvironment(), from: start.toISOString(), to: end.toISOString() } });
+      if ("error" in result) throw new Error(result.error);
+      return result.report;
+    },
+    retry: false, refetchOnWindowFocus: false, staleTime: 60000,
+  });
+  const report = query.isError || !valid ? undefined : query.data;
+  const money = (field: "gross" | "refunds" | "fees" | "net") => report
+    ? report.totals.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : formatStripeAmount(0, "USD")
+    : "—";
+  return (
+    <section aria-label="Stripe Collections" className="space-y-4 border-t border-border pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Stripe Collections</h2>
+          <p className="text-xs text-muted-foreground mt-1">{report ? `Refreshed ${fmtDateTime(report.refreshedAt)}` : "Refreshed —"}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs text-muted-foreground">From <input aria-label="Collections From" type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+          <label className="text-xs text-muted-foreground">To <input aria-label="Collections To" type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+          <Button aria-label="Refresh Collections" title="Refresh Collections" variant="outline" size="icon" disabled={!valid || query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : ""} /></Button>
+        </div>
+      </div>
+      {!valid && <p role="alert" className="text-sm text-destructive">Choose a valid range of up to 366 days.</p>}
+      {query.isError && <p role="alert" className="text-sm text-destructive">Stripe collections unavailable. {query.error.message}</p>}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          ["Gross Collections", money("gross")], ["Refunds", money("refunds")], ["Stripe Fees", money("fees")], ["Net Collections", money("net")],
+          ["Successful Payments", report?.successful ?? "—"], ["Active Subscriptions", report?.activeSubscriptions ?? "—"],
+          ["Upcoming Billing", report?.subscriptions.filter(s => s.nextAt !== null).length ?? "—"], ["Failed Payments", report?.failed ?? "—"],
+        ].map(([label, value]) => <div key={label} className="rounded-md border border-border bg-card p-3 min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-2 text-xl font-semibold text-card-foreground tabular-nums break-words">{value}</div></div>)}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Subscription Collections · {fmtDate(from)} – {fmtDate(to)}</span>
+        <span>Paid Payouts: {report?.payouts ? report.payouts.length ? report.payouts.map(p => formatStripeAmount(p.amount, p.currency)).join(" · ") : "$0.00" : "—"} · Account-Wide</span>
+      </div>
+      {report?.warnings.map(w => <p key={w} className="text-xs text-muted-foreground">{w}</p>)}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Customer Collections</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="text-muted-foreground"><tr>{["Customer", "Gross", "Refunds", "Fees", "Net"].map(h => <th key={h} className="py-2 pr-3 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
+              <tbody>{report?.customers.map(c => <tr key={`${c.id}:${c.currency}`} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{c.name}</td>{([c.gross, c.refunds, c.fees, c.net]).map((v, i) => <td key={i} className="py-3 pr-3 whitespace-nowrap tabular-nums">{formatStripeAmount(v, c.currency)}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+          {!report?.customers.length && <p className="py-3 text-xs text-muted-foreground">{report ? "No collections in this range." : "—"}</p>}
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Subscriptions</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="text-muted-foreground"><tr>{["Customer", "Status", "Next Billing", "Base Rate"].map(h => <th key={h} className="py-2 pr-3 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
+              <tbody>{report?.subscriptions.map(s => <tr key={s.id} className="border-t border-border"><td className="py-3 pr-3 min-w-28">{s.name}</td><td className="py-3 pr-3 whitespace-nowrap">{s.status.split("_").map(w => w[0]?.toUpperCase() + w.slice(1)).join(" ")}{s.cancelAtPeriodEnd ? " · Ending" : ""}</td><td className="py-3 pr-3 whitespace-nowrap">{s.nextAt ? fmtDate(s.nextAt * 1000) : "—"}</td><td className="py-3 whitespace-nowrap tabular-nums">{formatStripeAmount(s.scheduledAmount, s.currency)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          {!report?.subscriptions.length && <p className="py-3 text-xs text-muted-foreground">{report ? "No subscriptions." : "—"}</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
