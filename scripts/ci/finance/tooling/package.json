@@ -1,0 +1,8 @@
+{
+  "name": "real-rentals-finance-ci-tooling",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "vitest": "3.2.4"
+  }
+}
