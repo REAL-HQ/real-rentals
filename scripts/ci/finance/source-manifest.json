@@ -1,6 +1,6 @@
 {
   "foundation": "e57edc40fb19797de4116221ae4c26f7aa559d02",
-  "candidate": "c8672d25f801cd776aaa2fdef64466923c7c6940",
+  "candidate": "f20190bf3dd832b9b16d2e6dc6210e9d65d8acf4",
   "files": {
     "AGENTS.md": "6ab05d272f7d355234345ec4a403293d859f57235ee48827370103ac416b392f",
     "roadmap.md": "069707b2bfdbbab7fa9779b57ace75d32f9bfdb698dcbbb7eb15346c2ab06f8c",
@@ -33,7 +33,10 @@
     "src/lib/unified-finance-source-contracts.ts": "896b0374e583318e6328e0713853c60d41a7847c3dd531b24662423ea1e99d2c",
     "src/lib/unified-finance-stripe.server.ts": "e7bfec7b9b96c921acf1ac448e178c7dae65342ccbf28cebb19d4018906ba010",
     "src/lib/unified-finance.functions.ts": "d2d44780e18ec5fe6e9054ea7781c894bb5b45efeed9502530e9938ade409722",
-    "src/lib/unified-finance.ts": "76cbf85524ab5e933373a008bc9ac46d04632ebd2de0e576c28dd51e6ce8504d"
+    "src/lib/unified-finance.ts": "76cbf85524ab5e933373a008bc9ac46d04632ebd2de0e576c28dd51e6ce8504d",
+    "src/lib/unified-finance-database-transport.server.ts": "d72b0f40baf33e52af8bdf9ce497d5c70e4aeafeb1384fb107343662fec04c30",
+    "src/lib/unified-finance-provider-events.server.ts": "82d47cc9a7c38fed3f04e662400b39894efbe207d012f8d441a52d73319f691e",
+    "scripts/unified-finance-data-adapters.test.ts": "43b10161009d6aeae1665714e6c310bcd7f6ed00c11779c5f1ae61f2fe351a67"
   },
   "ciFiles": [
     ".github/workflows/unified-finance-validation.yml",
