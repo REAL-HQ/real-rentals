@@ -1,9 +1,8 @@
-import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { collectionsRequestRange, type CollectionsReport } from "@/lib/stripe-collections";
 
 /** One query definition for every Collections reader, so identical periods share one cache entry and one request. */
 export function stripeCollectionsQuery(
-  load: typeof getStripeCollections,
+  load: (args: { data: { environment: "live" | "sandbox"; from: string; to: string } }) => Promise<{ report: CollectionsReport } | { error: string }>,
   environment: "live" | "sandbox",
   from: string,
   to: string,

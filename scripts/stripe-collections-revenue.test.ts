@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { collectionsRequestRange, stripeCollectedLabel, type CollectionsReport } from "../src/lib/stripe-collections";
 
-vi.mock("@/lib/stripe-collections.functions", () => ({ getStripeCollections: vi.fn() }));
+
 const { stripeCollectionsQuery } = await import("../src/lib/stripe-collections-query");
 
 const report = (over: Partial<CollectionsReport> = {}) => ({
