@@ -117,3 +117,46 @@ export function collectionsRefreshState(input: { valid: boolean; fetching: boole
     cached: Boolean(input.refreshedAt) && (!input.valid || input.fetching || input.failed || input.stale),
   };
 }
+/**
+ * Local calendar days (YYYY-MM-DD, browser timezone) → the exact instants the
+ * Collections endpoint takes: local midnight of `from` to local midnight after
+ * `to`. Shared by the Collections section and the Revenue card so both send
+ * identical requests (and share one cache entry) for the same period.
+ */
+export function collectionsRequestRange(from: string, to: string): { from: string; to: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
+  const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T00:00:00`);
+  end.setDate(end.getDate() + 1);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
+  if (end <= start || end.getTime() - start.getTime() > 366 * 86400000) return null;
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+/**
+ * The Revenue card's "Stripe Collected" figure: verified net after fees and
+ * refunds, or "—" whenever the report cannot establish it. Display-only; it is
+ * never added to the card's revenue total.
+ */
+export function stripeCollectedLabel(report: CollectionsReport | null | undefined): string {
+  if (!report || !report.collectionsComplete || !report.totals) return "—";
+  if (report.totals.length === 0) return formatStripeAmount(0, "usd");
+  if (report.totals.some(t => t.net === null || !Number.isFinite(t.net))) return "—";
+  return report.totals.map(t => formatStripeAmount(t.net, t.currency)).join(" · ");
+}
+
+/**
+ * The Revenue card's single figure: verified Stripe net (after refunds and
+ * fees) plus internal net_collected from rows NOT tied to a Stripe payment
+ * (those are already inside the Stripe figure — never counted twice).
+ * Returns null whenever Stripe cannot be established (never zero). Coverage
+ * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
+ */
+export function consolidatedRevenue(input: { internalNonStripe: number | null; report: CollectionsReport | null | undefined }):
+  { amount: number | null; coverage: "Partial" | "Unavailable" } {
+  if(input.internalNonStripe === null || !Number.isFinite(input.internalNonStripe)) return { amount: null, coverage: "Unavailable" };
+  const r = input.report;
+  if (!r || !r.collectionsComplete || !r.totals) return { amount: null, coverage: "Unavailable" };
+  if (r.totals.some(t => t.currency.toLowerCase() !== "usd" || t.net === null || !Number.isFinite(t.net))) return { amount: null, coverage: "Unavailable" };
+  const stripeNet = r.totals.reduce((s, t) => s + (t.net as number), 0) / 100;
+  return { amount: Math.round((stripeNet + input.internalNonStripe) * 100) / 100, coverage: "Partial" };
+}

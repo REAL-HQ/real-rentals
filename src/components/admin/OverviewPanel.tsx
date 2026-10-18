@@ -1,3 +1,5 @@
+import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
+import { tierFromRoles, tierAllows } from "@/lib/roles";
 import { StripeCollections } from "./StripeCollections";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,6 +62,12 @@ import {
   type DayRange,
 } from "@/lib/date-range";
 import { fmtDate } from "@/lib/date-format";
+import type React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { consolidatedRevenue } from "@/lib/stripe-collections";
+import { useNavigate } from "@tanstack/react-router";
+import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -142,6 +150,32 @@ function appliedLine(iso?: string | null) {
 }
 
 export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
+  const client=useQueryClient();
+  const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
+  useEffect(()=>{
+    let currentUser:string|null=null;
+    const gate=createRevenueBoundary(async userId=>{
+      const {data,error}=await supabase.from("user_roles").select("role").eq("user_id",userId);
+      if(error || !data) throw new Error("Revenue authorization unavailable");
+      const tier=tierFromRoles(data.map(r=>r.role));
+      return {allowed:!!tier,collections:tierAllows(tier,"manager")};
+    },()=>{void client.cancelQueries({queryKey:["stripe-collections"]});client.removeQueries({queryKey:["stripe-collections"]});},setBoundary);
+    const ticket=gate.ticket();
+    const {data:subscription}=supabase.auth.onAuthStateChange((_event,session)=>{
+      currentUser=session?.user.id??null;gate.change(currentUser);
+    });
+    void supabase.auth.getSession().then(({data})=>{
+      if(gate.ticket()===ticket){currentUser=data.session?.user.id??null;gate.change(currentUser);}
+    }).catch(()=>{if(gate.ticket()===ticket)gate.change(null);});
+    const recheck=()=>gate.change(currentUser);
+    window.addEventListener("focus",recheck);
+    return ()=>{subscription.subscription.unsubscribe();window.removeEventListener("focus",recheck);gate.dispose();};
+  },[client]);
+  if(!boundary.ready) return <div role="status">Revenue and overview unavailable until current access is verified.</div>;
+  return <OverviewContent key={`${boundary.epoch}:${canSeeCollections}`} canSeeCollections={canSeeCollections && boundary.collections} />;
+}
+
+function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   // Null, not 0, until the read lands. A rendered 0 reads as "nobody
   // applied"; the truth before the answer arrives is "we do not know yet",
@@ -155,9 +189,10 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
-  const [revenue, setRevenue] = useState(0);
-  const [priorRevenue, setPriorRevenue] = useState(0);
+  const [revenue, setRevenue] = useState<number | null>(null);
+  const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
+  const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -304,34 +339,38 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
     (async () => {
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected")
+          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
           .lte("paid_date", r.to);
       const [cur, prev] = await Promise.all([q(range), q(compare)]);
       if (!live) return;
-      const sum = (rows?: any[] | null) =>
-        (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
-      setRevenue(sum(cur.data));
-      setPriorRevenue(sum(prev.data));
+      const current=paymentRevenue(cur), previous=paymentRevenue(prev);
+      setRevenue(current?.total ?? null);
+      setInternalNonStripe(current?.nonStripe ?? null);
+      setPriorRevenue(previous?.total ?? null);
       setRevenueLoading(false);
-    })();
+    })().catch(()=>{
+      if(!live)return;
+      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+    });
     return () => {
       live = false;
     };
-  }, [range, compare]);
+  }, [range, compare, canSeeCollections]);
 
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
     // made, and saying so is more honest than printing a number.
-    if (priorRevenue === 0) return null;
+    if (priorRevenue === null || revenue === null || priorRevenue === 0) return null;
     return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
   }, [revenue, priorRevenue]);
 
@@ -487,6 +526,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
+          consolidated={canSeeCollections ? { internalNonStripe } : null}
         />
 
         <ActionCard
@@ -924,8 +964,9 @@ function RevenueCard({
   onRangeKey,
   custom,
   onCustom,
+  consolidated,
 }: {
-  amount: number;
+  amount: number | null;
   delta: number | null;
   loading: boolean;
   range: DayRange;
@@ -934,34 +975,68 @@ function RevenueCard({
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
+  consolidated?: { internalNonStripe: number | null } | null;
 }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  // Owner/Manager only (Coordinators never mount the request; server re-checks).
+  // Shares the Collections section's cache entry — no duplicate provider request.
+  const loadCollections = useServerFn(getStripeCollections);
+  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
+  const c = consolidated
+    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
+      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
+    : null;
+  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
+  const shownAmount = c ? c.amount : amount;
+  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
+  const coverageHint = coverage === "Unavailable"
+    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
+    : c
+      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
+  const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
   return (
-    <div className="relative rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label="Revenue — Open Payments"
+      onClick={goPayments}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
+      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4 hover:border-[#D03020] transition-colors"
+    >
       <div className="flex items-center justify-between">
         <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
           <Receipt className="w-4 h-4" strokeWidth={1.75} />
         </div>
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+          onKeyDown={(e) => e.stopPropagation()}
           className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
         >
           {label} <ChevronDown className="w-3 h-3" />
         </button>
       </div>
 
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
         Revenue
+        <span
+          title={coverageHint}
+          aria-label={`${coverage}: ${coverageHint}`}
+          className="normal-case tracking-normal rounded border border-[#EDEDF0] px-1 py-px text-[10px] font-medium text-[#55555E]"
+        >
+          {coverage}
+        </span>
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
-        {loading ? <span className="text-[#C7C7CC]">—</span> : usd(amount)}
+        {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {delta != null ? (
+        {c ? null : delta != null ? (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
             <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
