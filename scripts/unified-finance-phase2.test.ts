@@ -107,6 +107,28 @@ describe("Phase 2 isolated reporting", () => {
     expect(unifiedFinanceRequestSchema.safeParse({ ...request, currency: "EUR" }).success).toBe(false);
     expect(unifiedFinanceRequestSchema.safeParse({ ...request, period: { from: "2026-02-30", to: "2026-11-01" } }).success).toBe(false);
   });
+  it("payout transfers do not become rental revenue", async () => {
+    const payout = sourceRow({ id: "synthetic-payout", representation: syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "transfer", id: "synthetic-payout" }],
+      event: syntheticEvent({ id: "synthetic-payout-event", kind: "payout", amountCents: 30000, feeCents: undefined }) }) });
+    const r = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ stripe: [sourceRow(), payout] }));
+    expect(r.verifiedCollections.grossCollected.value).toBe(35000); expect(r.verifiedCollections.actualPayouts.value).toBe(30000);
+  });
+  it("lost chargeback and separate dispute fee are not refunds", async () => {
+    const dispute = sourceRow({ id: "synthetic-dispute", representation: syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "dispute", id: "synthetic-dispute" }],
+      event: syntheticEvent({ id: "synthetic-dispute-event", kind: "chargeback", disputeStage: "lost", amountCents: 5000, relatedEventId: "synthetic-receipt-a", feeCents: undefined }) }) });
+    const fee = sourceRow({ id: "synthetic-dispute-fee", representation: syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "balance_transaction", id: "synthetic-fee" }],
+      event: syntheticEvent({ id: "synthetic-dispute-fee-event", kind: "processing_fee", amountCents: 1500, relatedEventId: "synthetic-dispute-event", feeCents: undefined }) }) });
+    const r = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ stripe: [sourceRow(), dispute, fee] }));
+    expect(r.verifiedCollections.refunds.value).toBe(0); expect(r.verifiedCollections.chargebacksLost.value).toBe(5000);
+    expect(r.verifiedCollections.processingFees.value).toBe(2545); expect(r.verifiedCollections.netCollections.value).toBe(27455);
+  });
+  it("split historical vehicle evidence remains unavailable for vehicle totals", async () => {
+    const vehicleId = "00000000-0000-4000-8000-000000000001";
+    const r = await buildMockUnifiedFinanceReport({ ...request, vehicleId }, identity, mockPlan({ stripe: [sourceRow()], relationships: [sourceRow({ representation: undefined,
+      relationship: { eventId: "synthetic-receipt-a", customerId: "synthetic-customer-a", rentalId: "synthetic-booking-a", servicePeriod: request.period,
+        allocations: [{ vehicleId, from: request.period.from, to: "2026-10-15", amountCents: 17500 }, { vehicleId: "synthetic-other-vehicle", from: "2026-10-15", to: request.period.to, amountCents: 17500 }] } })] }));
+    expect(r.attributionComplete.vehicle).toBe(false); expect(r.verifiedCollections.grossCollected.value).toBeNull();
+  });
 });
 
 describe("Read-only pagination and session boundaries", () => {

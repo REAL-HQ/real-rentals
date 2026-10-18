@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ roles: ["admin"], error: null as unknown, from: vi.fn(), middleware: vi.fn(), financialRead: vi.fn() }));
+const state = vi.hoisted(() => ({ roles: ["admin"], error: null as unknown, from: vi.fn(), registeredMiddleware: [] as unknown[], financialRead: vi.fn() }));
 vi.mock("@tanstack/react-start", () => ({ createServerFn: () => {
-  const builder = { middleware: (value: unknown) => { state.middleware(value); return builder; }, inputValidator: () => builder, handler: (fn: unknown) => fn }; return builder;
+  const builder = { middleware: (value: unknown[]) => { state.registeredMiddleware = value; return builder; }, inputValidator: () => builder, handler: (fn: unknown) => fn }; return builder;
 } }));
 vi.mock("../src/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "synthetic-auth-middleware" }));
 import { getUnifiedFinanceReport } from "../src/lib/unified-finance.functions";
@@ -20,7 +20,7 @@ beforeEach(() => {
   });
 });
 describe("Disabled unified finance server endpoint", () => {
-  it("registers existing authenticated middleware", () => { expect(state.middleware).toHaveBeenCalledWith(["synthetic-auth-middleware"]); });
+  it("registers existing authenticated middleware", () => { expect(state.registeredMiddleware).toEqual(["synthetic-auth-middleware"]); });
   it.each(["admin", "team"])("current %s role gets disabled response with zero financial reads", async role => {
     state.roles = [role]; expect(await call()).toEqual({ status: "disabled", report: null });
     expect(state.from).toHaveBeenCalledExactlyOnceWith("user_roles"); expect(state.financialRead).not.toHaveBeenCalled();
