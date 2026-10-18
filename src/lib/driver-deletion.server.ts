@@ -1,25 +1,10 @@
-// Removes files queued by purge_application from private storage.
-// Missing files count as done; failures stay visible and retryable.
+// Destructive cleanup is disabled pending separate retention/Storage acceptance.
+// Keep this existing entry point so callers receive an explicit unresolved outcome.
 export async function processFileJobs(applicationId: string | null) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  let q = supabaseAdmin.from("deletion_file_jobs").select("id,bucket,path,attempts").neq("status", "done").limit(200);
-  if (applicationId) q = q.eq("application_id", applicationId);
-  const { data: jobs } = await q;
-  let done = 0;
-  let failed = 0;
-  for (const j of (jobs ?? []) as any[]) {
-    const { error } = await supabaseAdmin.storage.from(j.bucket).remove([j.path]);
-    const ok = !error || /not found/i.test(error.message);
-    await supabaseAdmin
-      .from("deletion_file_jobs")
-      .update({
-        status: ok ? "done" : "failed",
-        attempts: j.attempts + 1,
-        last_error: ok ? null : String(error?.message ?? "").slice(0, 300),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", j.id);
-    ok ? done++ : failed++;
-  }
-  return { done, failed };
+ const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+ let query=supabaseAdmin.from("deletion_file_jobs").select("id",{count:"exact",head:true}).neq("status","done");
+ if(applicationId)query=query.eq("application_id",applicationId);
+ const r=await query;
+ if(r.error||r.count===null)throw Error("Failed — cleanup inventory unavailable; nothing deleted.");
+ return {done:0,failed:0,pending:r.count,outcome:"Pending" as const,erasureComplete:false,message:"Cleanup disabled pending separate authorization; no files removed."};
 }
