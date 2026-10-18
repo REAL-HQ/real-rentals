@@ -487,6 +487,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
+          stripeCollected={canSeeCollections ? <StripeCollectedLine range={range} /> : null}
         />
 
         <ActionCard
