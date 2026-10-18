@@ -54,6 +54,6 @@ describe("Revenue card Stripe Collected", () => {
     expect(src).not.toContain("Stripe Collected");
     expect(src).toContain('search: { tab: "payments" }');
     expect(src).toContain("!r.stripe_payment_intent_id");
-    expect(src).toMatch(/\.from\("payments"\)\s*\.select\("net_collected"\)/);
+    expect(src).toMatch(/\.from\("payments"\)\s*\.select\("net_collected, stripe_payment_intent_id"\)/);
   });
 });
