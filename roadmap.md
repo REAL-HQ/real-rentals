@@ -1,5 +1,5 @@
 # Roadmap
-- [ ] Unified Finance Phase 2: seven isolated disabled reporting modules, mocked adapters/authorization/query tests and review diff; no live reads, integration, activation or release.
+- [x] Unified Finance Phase 2: seven isolated hard-disabled reporting modules and mocked tests implemented; 151 tests pass (98 preserved + 53 new). No live reads/integration/release; independent review awaits standalone TypeScript evidence and next approval.
 - [ ] Unified Finance Phase 1 Acceptance: confirmed synthetic corrections pass 98 tests (69 existing + 29 regressions), automatic build OK; blocked on supported standalone TypeScript evidence. No live integration; Phase 2 awaits separate approval.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
