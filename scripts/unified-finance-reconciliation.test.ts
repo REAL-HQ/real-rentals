@@ -80,7 +80,7 @@ describe("Unified finance synthetic reconciliation", () => {
   });
   it("does not collapse a refund into its original charge", () => {
     const row = syntheticRepresentation();
-    const refund = syntheticRepresentation({ id: "synthetic-refund-row", event: syntheticEvent({ id: "synthetic-refund", kind: "refund", amountCents: 5000, relatedEventId: row.event.id, feeCents: undefined }) });
+    const refund = syntheticRepresentation({ id: "synthetic-refund-row", identities: [...row.identities, { ...row.identities[0], provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id: "synthetic-refund-a" }], event: syntheticEvent({ id: "synthetic-refund", kind: "refund", amountCents: 5000, relatedEventId: row.event.id, feeCents: undefined }) });
     const r = reconcileFinance([row, refund]);
     expect(r.events).toHaveLength(2);
     expect(r.events.find(e => e.kind === "refund")?.relatedEventId).toBe(row.id);
@@ -95,6 +95,65 @@ describe("Unified finance synthetic reconciliation", () => {
     const before = JSON.stringify(duplicateRepresentations);
     reconcileFinance(duplicateRepresentations);
     expect(JSON.stringify(duplicateRepresentations)).toBe(before);
+  });
+
+  it.each([5000, 3000])("keeps independent partial refunds sharing a Charge, second amount %s", secondAmount => {
+    const parent = syntheticRepresentation();
+    const rows = [5000, secondAmount].map((amountCents, i) => syntheticRepresentation({
+      id: `synthetic-child-${i}`, operationalPaymentId: "synthetic-parent-payment", identities: [...parent.identities,
+        { provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id: `synthetic-refund-${i}` }],
+      event: syntheticEvent({ id: `synthetic-child-event-${i}`, kind: "refund", amountCents, feeCents: undefined, relatedEventId: parent.event.id }),
+    }));
+    const first = rows[0];
+    if (!first) throw new Error("Missing synthetic refund");
+    const all = [parent, ...rows, { ...first, id: "synthetic-refund-copy", source: "c1" as const }];
+    const result = reconcileFinance(all);
+    expect(reconcileFinance([...all].reverse())).toEqual(result);
+    expect(result.complete).toBe(true);
+    expect(result.events.filter(e => e.kind === "refund")).toHaveLength(2);
+    const report = summarizeFinance({ events: result.events, period, basis: "cash", currency: "USD", coverage: result.complete ? "complete" : "incomplete" });
+    expect(report.refunds.value).toBe(5000 + secondAmount);
+    expect(report.netCollections.value).toBe(33955 - 5000 - secondAmount);
+  });
+  it("does not treat a parent Charge/payment as authoritative refund identity", () => {
+    const r = reconcileFinance([syntheticRepresentation({ operationalPaymentId: "synthetic-parent-payment", event: syntheticEvent({ kind: "refund", relatedEventId: "synthetic-parent" }) })]);
+    expect(r.complete).toBe(false);
+    expect(r.events).toHaveLength(0);
+    expect(r.groups[0]?.reasons.join(" ")).toContain("No authoritative event identity");
+  });
+  it.each(["chargeback", "processing_fee"] as const)("keeps distinct %s children sharing one parent separate", kind => {
+    const rows = [0, 1].map(i => syntheticRepresentation({ id: `synthetic-${kind}-${i}`, identities: [
+      ...syntheticRepresentation().identities,
+      { provider: "stripe", environment: "synthetic", account: "synthetic-account", object: kind === "chargeback" ? "dispute" as const : "balance_transaction" as const, id: `synthetic-child-${i}` },
+    ], event: syntheticEvent({ id: `synthetic-event-${i}`, kind, relatedEventId: "synthetic-parent", disputeStage: "lost", amountCents: 1000, feeCents: undefined }) }));
+    expect(reconcileFinance(rows).events).toHaveLength(2);
+  });
+  it.each(["not-a-date", "2026-02-30", ""])("rejects malformed reconciliation date %s", cashDate => {
+    expect(reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ cashDate }) })]).complete).toBe(false);
+  });
+  it("requires the basis-specific date, not whichever date exists", () => {
+    expect(reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ cashDate: null }) })]).complete).toBe(false);
+    const expense = syntheticRepresentation({ event: syntheticEvent({ kind: "operating_expense", recognitionDate: null }) });
+    expect(reconcileFinance([expense], { basis: "accrual" }).complete).toBe(false);
+    expect(reconcileFinance([expense], { basis: "cash" }).complete).toBe(true);
+  });
+  it.each([null, undefined])("marks missing actual fees %s incomplete at reconciliation", feeCents => {
+    expect(reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ feeCents }) })]).complete).toBe(false);
+    expect(reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ feeCents: 0 }) })]).complete).toBe(true);
+  });
+  it("discloses missing refund relationships despite known refund identity", () => {
+    const r = reconcileFinance([syntheticRepresentation({ identities: [{ provider: "stripe", environment: "synthetic", account: "synthetic-account", object: "refund", id: "synthetic-refund" }], event: syntheticEvent({ kind: "refund", relatedEventId: null }) })]);
+    expect(r.complete).toBe(false);
+    expect(r.groups[0]?.reasons).toContain("Adjustment collection relationship missing");
+  });
+  it("separates aggregate source coverage from missing attribution", () => {
+    const r = reconcileFinance([syntheticRepresentation({ event: syntheticEvent({ customerId: null, bookingId: null, vehicleId: null }) })]);
+    expect(r.complete).toBe(true);
+    expect(r.attributionComplete).toEqual({ customer: false, booking: false, vehicle: false });
+    const report = summarizeFinance({ events: r.events, period, basis: "cash", currency: "USD", coverage: "complete" });
+    expect(report.grossCollected.value).toBe(35000);
+    expect(report.attributionComplete).toEqual(r.attributionComplete);
+    expect(report.issues.some(i => i.code === "missing_attribution")).toBe(true);
   });
 });
 
@@ -120,5 +179,8 @@ describe("Dated synthetic vehicle allocations", () => {
   });
   it("rejects fractional cents", () => {
     expect(validateVehicleAllocations(35000, period, allocations.map(a => ({ ...a, amountCents: 17500.5 }))).state).toBe("Conflict");
+  });
+  it("rejects impossible allocation dates", () => {
+    expect(validateVehicleAllocations(35000, period, allocations.map((a, i) => i ? a : { ...a, from: "2026-02-30" })).state).toBe("Conflict");
   });
 });
