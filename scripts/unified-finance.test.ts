@@ -156,4 +156,22 @@ describe("Unified finance synthetic reporting", () => {
     expect(report([e]).grossCollected.value).toBe(35000);
     expect(e.id).toBe("synthetic-receipt-a");
   });
+  it("marks unknown dispute outcomes unavailable", () => {
+    expect(report([syntheticEvent(), adjustment("chargeback", 5000, { disputeStage: null })]).chargebacksLost.value).toBeNull();
+  });
+  it("marks unknown open-dispute evidence unavailable without inventing a loss", () => {
+    const r = report([adjustment("chargeback", 5000, { disputeStage: "open", evidence: "missing" })]);
+    expect(r.openDisputes.value).toBeNull();
+    expect(r.chargebacksLost.value).toBe(0);
+    expect(r.complete).toBe(false);
+  });
+  it("marks missing collection dates unavailable", () => {
+    expect(report([syntheticEvent({ cashDate: null })]).grossCollected.value).toBeNull();
+  });
+  it("includes known operating costs separately from compensation", () => {
+    const r = report([syntheticEvent(), adjustment("operating_expense", 6000), compensation]);
+    expect(r.operatingExpenses.value).toBe(6000);
+    expect(r.customerCompensation.value).toBe(5000);
+    expect(r.operatingResult.value).toBe(22955);
+  });
 });
