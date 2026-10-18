@@ -63,7 +63,8 @@ import { fmtDate } from "@/lib/date-format";
 import type React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
-import { stripeCollectedLabel } from "@/lib/stripe-collections";
+import { consolidatedRevenue } from "@/lib/stripe-collections";
+import { useNavigate } from "@tanstack/react-router";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
@@ -163,6 +164,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
   const [revenue, setRevenue] = useState(0);
   const [priorRevenue, setPriorRevenue] = useState(0);
   const [revenueLoading, setRevenueLoading] = useState(true);
+  const [internalNonStripe, setInternalNonStripe] = useState(0);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -315,7 +317,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected")
+          .select("net_collected, stripe_payment_intent_id")
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
@@ -325,6 +327,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
       const sum = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
       setRevenue(sum(cur.data));
+      setInternalNonStripe(sum((cur.data ?? []).filter((r: any) => !r.stripe_payment_intent_id)));
       setPriorRevenue(sum(prev.data));
       setRevenueLoading(false);
     })();
@@ -492,7 +495,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-          stripeCollected={canSeeCollections ? <StripeCollectedLine range={range} /> : null}
+          consolidated={canSeeCollections ? { internalNonStripe } : null}
         />
 
         <ActionCard
@@ -930,7 +933,7 @@ function RevenueCard({
   onRangeKey,
   custom,
   onCustom,
-  stripeCollected,
+  consolidated,
 }: {
   amount: number;
   delta: number | null;
@@ -941,35 +944,68 @@ function RevenueCard({
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
-  stripeCollected?: React.ReactNode;
+  consolidated?: { internalNonStripe: number } | null;
 }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  // Owner/Manager only (Coordinators never mount the request; server re-checks).
+  // Shares the Collections section's cache entry — no duplicate provider request.
+  const loadCollections = useServerFn(getStripeCollections);
+  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
+  const c = consolidated
+    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
+      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
+    : null;
+  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
+  const shownAmount = c ? c.amount : amount;
+  const coverage = c ? c.coverage : "Partial";
+  const coverageHint = coverage === "Unavailable"
+    ? "Stripe collections could not be verified for this period, so no total is shown."
+    : c
+      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
+  const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
   return (
-    <div className="relative rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label="Revenue — Open Payments"
+      onClick={goPayments}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
+      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4 hover:border-[#D03020] transition-colors"
+    >
       <div className="flex items-center justify-between">
         <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
           <Receipt className="w-4 h-4" strokeWidth={1.75} />
         </div>
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+          onKeyDown={(e) => e.stopPropagation()}
           className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
         >
           {label} <ChevronDown className="w-3 h-3" />
         </button>
       </div>
 
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
         Revenue
+        <span
+          title={coverageHint}
+          aria-label={`${coverage}: ${coverageHint}`}
+          className="normal-case tracking-normal rounded border border-[#EDEDF0] px-1 py-px text-[10px] font-medium text-[#55555E]"
+        >
+          {coverage}
+        </span>
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
-        {loading ? <span className="text-[#C7C7CC]">—</span> : usd(amount)}
+        {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {delta != null ? (
+        {c ? null : delta != null ? (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
             <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
@@ -985,7 +1021,6 @@ function RevenueCard({
           </>
         )}
       </div>
-      {stripeCollected}
 
       {open && (
         <>
@@ -1119,23 +1154,6 @@ function SegmentedDonut({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/**
- * Verified Stripe net (after fees and refunds) for the card's own period.
- * Rendered only for Owner/Manager (canSeeCollections), so a Coordinator never
- * mounts it and never issues the request; the server re-checks the role.
- * Shown beside revenue, never added to it.
- */
-function StripeCollectedLine({ range }: { range: DayRange }) {
-  const load = useServerFn(getStripeCollections);
-  const q = useQuery(stripeCollectionsQuery(load, "live", range.from, range.to, true));
-  const value = q.isError || q.isFetching && !q.data ? "—" : stripeCollectedLabel(q.data);
-  return (
-    <div className="mt-1 text-[11px] text-[#55555E] truncate" aria-label="Stripe Collected">
-      Stripe Collected: <span className="font-medium text-[#111114] tabular-nums">{value}</span>
     </div>
   );
 }

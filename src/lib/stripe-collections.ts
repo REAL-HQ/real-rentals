@@ -143,3 +143,19 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
   if (report.totals.some(t => t.net === null || !Number.isFinite(t.net))) return "—";
   return report.totals.map(t => formatStripeAmount(t.net, t.currency)).join(" · ");
 }
+
+/**
+ * The Revenue card's single figure: verified Stripe net (after refunds and
+ * fees) plus internal net_collected from rows NOT tied to a Stripe payment
+ * (those are already inside the Stripe figure — never counted twice).
+ * Returns null whenever Stripe cannot be established (never zero). Coverage
+ * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
+ */
+export function consolidatedRevenue(input: { internalNonStripe: number; report: CollectionsReport | null | undefined }):
+  { amount: number | null; coverage: "Partial" | "Unavailable" } {
+  const r = input.report;
+  if (!r || !r.collectionsComplete || !r.totals) return { amount: null, coverage: "Unavailable" };
+  if (r.totals.some(t => t.currency.toLowerCase() !== "usd" || t.net === null || !Number.isFinite(t.net))) return { amount: null, coverage: "Unavailable" };
+  const stripeNet = r.totals.reduce((s, t) => s + (t.net as number), 0) / 100;
+  return { amount: Math.round((stripeNet + input.internalNonStripe) * 100) / 100, coverage: "Partial" };
+}
