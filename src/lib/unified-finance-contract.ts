@@ -33,6 +33,7 @@ export type AdapterResult = {
 };
 export type UnifiedFinanceReport = {
   request: UnifiedFinanceRequest; sources: Record<FinanceSource, SourceCoverage>;
+  financialScope: "operating_only" | "authorized_owner";
   verifiedCollections: FinanceReport; postedLedger: FinanceReport;
   reconciliation: { verified: ReconciliationResult; posted: ReconciliationResult };
   attributionComplete: AdapterResult["attributionComplete"];

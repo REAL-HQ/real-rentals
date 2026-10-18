@@ -12,7 +12,7 @@ export function adaptFinanceSnapshots(snapshots: FinanceSnapshots, request: Unif
   const visible = rows.filter(({ row }) => row.visibility === "operating" || tier === "owner");
   const relationships = visible.flatMap(({ row }) => row.relationship ? [row.relationship] : []);
   const lookup = new Map<string, FinanceSourceRow>();
-  for (const { row } of visible) if (row.representation) lookup.set(row.id, row);
+  for (const { source, row } of visible) if (source === "ledger" && row.representation) lookup.set(row.id, row);
   const reversed = new Set<string>();
   for (const { source, row } of visible) {
     if (source !== "ledger" || !row.reversesId) continue;
@@ -20,16 +20,23 @@ export function adaptFinanceSnapshots(snapshots: FinanceSnapshots, request: Unif
     const a = original?.representation?.event, b = row.representation?.event;
     // Cancellation is safe only for explicit equal-fact same-period reversal pairs.
     const ad = a ? eventDate(a, request.basis) : null, bd = b ? eventDate(b, request.basis) : null;
-    if (row.posting !== "posted" || original?.posting !== "reversed" || !a || !b || a.kind !== b.kind || a.amountCents !== b.amountCents || a.currency !== b.currency ||
+    if (row.posting !== "posted" || original?.posting !== "reversed" || !a || !b || (a.kind !== "operating_expense" && a.kind !== "earned_revenue") ||
+      b.relatedEventId !== a.id || a.evidence !== "verified" || b.evidence !== "verified" || a.status !== "succeeded" || b.status !== "succeeded" ||
+      a.customerId !== b.customerId || a.bookingId !== b.bookingId || a.kind !== b.kind || a.amountCents !== b.amountCents || a.currency !== b.currency ||
       !ad || !bd || ad < request.period.from || ad >= request.period.to || bd < request.period.from || bd >= request.period.to) {
       result.complete = false; issues.push(`Unsupported or inconsistent ledger reversal: ${row.id}`);
     } else { reversed.add(original.id); reversed.add(row.id); }
   }
+  const settlementClaims = new Set<string>();
   for (const { source, row } of visible) {
     if (row.settlement) {
       const s = row.settlement, payment = lookup.get(s.paymentId), obligation = lookup.get(s.obligationId);
       const pe = payment?.representation?.event, oe = obligation?.representation?.event;
+      const claim = JSON.stringify([s.paymentId, s.obligationId, s.amountCents, s.currency]);
+      const duplicate = settlementClaims.has(claim); settlementClaims.add(claim);
       if (!pe || !oe || payment?.posting !== "posted" || obligation?.posting !== "posted" || pe.kind !== "collection" || oe.kind !== "earned_revenue" ||
+        duplicate || pe.evidence !== "verified" || pe.status !== "succeeded" || oe.status !== "succeeded" ||
+        !pe.customerId || !pe.bookingId || pe.customerId !== oe.customerId || pe.bookingId !== oe.bookingId ||
         !Number.isSafeInteger(s.amountCents) || s.amountCents < 0 || s.currency !== "USD" || pe.currency !== s.currency || oe.currency !== s.currency ||
         pe.amountCents === null || oe.amountCents === null || s.amountCents > pe.amountCents || s.amountCents > oe.amountCents) {
         result.complete = false; issues.push(`Invalid settlement: ${row.id}`);
@@ -41,7 +48,13 @@ export function adaptFinanceSnapshots(snapshots: FinanceSnapshots, request: Unif
       if (row.posting === "reversed" && !reversed.has(row.id)) { result.complete = false; issues.push(`Missing reversal evidence: ${row.id}`); }
       continue;
     }
-    if (row.correctsId && !reversed.has(row.correctsId)) { result.complete = false; issues.push(`Unproven correction: ${row.id}`); continue; }
+    if (row.correctsId) {
+      const old = lookup.get(row.correctsId)?.representation?.event, replacement = row.representation.event;
+      if (!reversed.has(row.correctsId) || !old || replacement.relatedEventId !== old.id || replacement.kind !== old.kind ||
+        replacement.currency !== old.currency || replacement.customerId !== old.customerId || replacement.bookingId !== old.bookingId) {
+        result.complete = false; issues.push(`Unproven correction: ${row.id}`); continue;
+      }
+    }
     const original = row.representation;
     const rep: Representation = { ...original, id: `${source}:${row.id}`, event: { ...original.event }, identities: [...original.identities] };
     // Link expense/C1 representations through the same immutable expense UUID, never invoice text.

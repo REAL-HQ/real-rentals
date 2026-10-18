@@ -53,12 +53,14 @@ describe("Phase 2 isolated reporting", () => {
   it("explicit same-period reversal and correction replace rather than duplicate expense", async () => {
     const event = syntheticEvent({ kind: "operating_expense", amountCents: 5000, feeCents: undefined });
     const old = sourceRow({ id: "synthetic-old", posting: "reversed", representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-old", event }) });
-    const reversal = sourceRow({ id: "synthetic-reversal", posting: "posted", reversesId: old.id, representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-reversal", event: { ...event, id: "synthetic-reversal-event" } }) });
-    const corrected = sourceRow({ id: "synthetic-corrected", posting: "posted", correctsId: old.id, representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-corrected", event: { ...event, id: "synthetic-corrected-event", amountCents: 3000 } }) });
+    const reversal = sourceRow({ id: "synthetic-reversal", posting: "posted", reversesId: old.id, representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-reversal", event: { ...event, id: "synthetic-reversal-event", relatedEventId: event.id } }) });
+    const corrected = sourceRow({ id: "synthetic-corrected", posting: "posted", correctsId: old.id, representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-corrected", event: { ...event, id: "synthetic-corrected-event", amountCents: 3000, relatedEventId: event.id } }) });
     const r = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ ledger: [old, reversal, corrected] }));
     expect(r.postedLedger.operatingExpenses.value).toBe(3000);
     const missing = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ ledger: [old, corrected] }));
     expect(missing.complete).toBe(false);
+    const unlinked = { ...reversal, representation: syntheticRepresentation({ identities: [], c1TransactionId: "synthetic-reversal", event: { ...event, id: "synthetic-reversal-event" } }) };
+    expect((await buildMockUnifiedFinanceReport(request, identity, mockPlan({ ledger: [old, unlinked, corrected] }))).complete).toBe(false);
   });
   it("expense and its linked posted C1 record count once", async () => {
     const event = syntheticEvent({ kind: "operating_expense", amountCents: 6000, feeCents: undefined });
@@ -86,6 +88,7 @@ describe("Phase 2 isolated reporting", () => {
     const secret = sourceRow({ id: "synthetic-owner-only", visibility: "owner_only", representation: syntheticRepresentation({ event: syntheticEvent({ amountCents: 900000 }) }) });
     const manager = await buildMockUnifiedFinanceReport(request, { ...identity, roles: ["team"] }, mockPlan({ stripe: [secret] }));
     expect(manager.verifiedCollections.grossCollected.value).toBe(0);
+    expect(manager.financialScope).toBe("operating_only");
     expect(JSON.stringify(manager)).not.toContain("900000");
     const owner = await buildMockUnifiedFinanceReport(request, identity, mockPlan({ stripe: [secret] }));
     expect(owner.verifiedCollections.grossCollected.value).toBe(900000);

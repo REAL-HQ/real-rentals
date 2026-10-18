@@ -28,7 +28,7 @@ export async function buildMockUnifiedFinanceReport(requestInput: UnifiedFinance
   const coverage = sourceComplete && adapted.complete ? "complete" : "incomplete";
   const verifiedCollections = summarizeFinance({ events: verified.events, ...request, coverage: verified.complete ? coverage : "incomplete" });
   const postedLedger = summarizeFinance({ events: posted.events, ...request, coverage: posted.complete ? coverage : "incomplete" });
-  return { request, sources: Object.fromEntries(FINANCE_SOURCES.map(s => [s, snapshots[s].coverage])) as UnifiedFinanceReport["sources"],
+  return { request, financialScope: tier === "manager" ? "operating_only" : "authorized_owner", sources: Object.fromEntries(FINANCE_SOURCES.map(s => [s, snapshots[s].coverage])) as UnifiedFinanceReport["sources"],
     verifiedCollections, postedLedger, reconciliation: { verified, posted }, attributionComplete: adapted.attributionComplete,
     issues: adapted.issues, complete: sourceComplete && adapted.complete && verifiedCollections.complete && postedLedger.complete };
 }
