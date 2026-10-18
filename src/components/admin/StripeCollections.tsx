@@ -5,10 +5,13 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { collectionsRefreshState, formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { STRIPE_COLLECTIONS_TEST_MODE } from "@/lib/stripe-collections.test-mode";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { resolveRange } from "@/lib/date-range";
 
 export function StripeCollections() {
+  // Test-only synthetic mode is dev-server-only; production builds keep the feature hidden.
+  const featureVisible = STRIPE_COLLECTIONS_ENABLED || (import.meta.env.DEV && STRIPE_COLLECTIONS_TEST_MODE);
   const [initial] = useState(() => resolveRange("last_30"));
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -19,7 +22,7 @@ export function StripeCollections() {
   const valid = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start && (end.getTime() - start.getTime()) <= 366 * 86400000;
   const query = useQuery({
     queryKey: ["stripe-collections", environment, from, to],
-    enabled: valid && STRIPE_COLLECTIONS_ENABLED,
+    enabled: valid && featureVisible,
     queryFn: async () => {
       const result = await load({ data: { environment, from: start.toISOString(), to: end.toISOString() } });
       if ("error" in result) throw new Error(result.error);
@@ -33,7 +36,7 @@ export function StripeCollections() {
   const money = (field: "gross" | "refunds" | "fees" | "net") => report?.collectionsComplete
     ? report.totals?.length ? report.totals.map(t => formatStripeAmount(t[field], t.currency)).join(" · ") : "—"
     : "—";
-  if (!STRIPE_COLLECTIONS_ENABLED) return null;
+  if (!featureVisible) return null;
   return (
     <section aria-label="Stripe Collections" className="space-y-4 border-t border-border pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">

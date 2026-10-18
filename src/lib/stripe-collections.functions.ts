@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { assertCollectionsAccess, STRIPE_COLLECTIONS_ENABLED, type CollectionsReport } from "./stripe-collections";
 import { loadStripeCollections } from "./stripe-collections.server";
+import { STRIPE_COLLECTIONS_TEST_MODE } from "./stripe-collections.test-mode";
+import { syntheticCollectionsReport } from "./stripe-collections.synthetic";
 import { getStripeErrorMessage } from "./stripe.server";
 
 const input = z.object({ environment: z.enum(["sandbox", "live"]), from: z.string().datetime({ offset: true }), to: z.string().datetime({ offset: true }) });
@@ -15,7 +17,11 @@ export const getStripeCollections = createServerFn({ method: "POST" })
     const { data: roles, error } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
     if (error || !roles) throw new Error("Forbidden");
     assertCollectionsAccess(roles.map(r => r.role));
-    if (!STRIPE_COLLECTIONS_ENABLED) return { error: "Stripe reporting is disabled" };
+    if (!STRIPE_COLLECTIONS_ENABLED) {
+      // Test-only path: dev-server synthetic data, role-checked above, never in production builds.
+      if (import.meta.env.DEV && STRIPE_COLLECTIONS_TEST_MODE) return { report: syntheticCollectionsReport(data) };
+      return { error: "Stripe reporting is disabled" };
+    }
     try { return { report: await loadStripeCollections(data.environment, data) }; }
     catch (error) { return { error: getStripeErrorMessage(error) }; }
   });
