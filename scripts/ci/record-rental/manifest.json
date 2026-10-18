@@ -69,6 +69,20 @@
       "checks": 2,
       "kind": "scenario groups",
       "stdout": "PASS RecordRentalDialog multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks\nPASS RecordedRentalCloseout multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks"
+    },
+    {
+      "file": "scripts/record-rental-evidence.test.cjs",
+      "sha256": "39eea6eac431b5cdd07b8fb7d74c1e013e241fc545c80d8c7c2c243eea2056d2",
+      "checks": 31,
+      "kind": "evidence assertions",
+      "stdout": "PASS 31 mocked evidence checks; no DB replay/rollback claim"
     }
-  ]
+  ],
+  "evidenceCandidate": "7af91c401c50d7d81e2155003f1b71e9c513182a",
+  "evidence": {
+    "src/lib/record-rental-evidence.server.ts": "64009c1b9998df0d3654c346658c1d430559da1d2ea847772c04ca7261c6e3e2",
+    "scripts/record-rental-evidence.test.cjs": "39eea6eac431b5cdd07b8fb7d74c1e013e241fc545c80d8c7c2c243eea2056d2",
+    "proposed/evidence-v1.sql": "c27b49a46e55381eacbfc6f1bb2c246c9ee2c73ce549172d81d44bbadac9b665",
+    "tests/database.py": "f45373110966b1d7c9e034ec6a0ab0803587ee19c93d0afdfab33480541e2ad1"
+  }
 }

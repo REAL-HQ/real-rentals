@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {checkPaths,checkDigest,checkOutput} from './guard.mjs';
+import {checkPaths,checkDigest,checkOutput,checkScope} from './guard.mjs';
 const m=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
-const paths=Object.keys(m.application);let count=0;
+const paths=Object.keys({...m.application,...m.evidence});let count=0;
 function test(name,fn){fn();console.log('PASS '+name);count++;}
-test('ten approved application paths accepted',()=>checkPaths(paths));
+test('ten original plus four approved evidence paths accepted',()=>checkPaths(paths));
 test('application plus separate CI paths accepted',()=>checkPaths([...paths,...m.ciFiles]));
 for(const p of paths)test('missing application path rejected: '+p,()=>assert.throws(()=>checkPaths(paths.filter(x=>x!==p))));
 for(const p of ['drizzle/migrations/new.sql','src/lib/stripe-new.ts','package.json','.github/workflows/paper-validation.yml'])test('unapproved path rejected: '+p,()=>assert.throws(()=>checkPaths([...paths,p])));
@@ -25,4 +25,11 @@ test('specific successful esbuild progress accepted',()=>checkOutput(identity,bu
 test('additional error after progress rejected',()=>assert.throws(()=>checkOutput(identity,{...built,stderr:progress+'\nerror: failure'})));
 assert.equal(m.suites.filter(x=>x.kind==='application assertions').reduce((a,x)=>a+x.checks,0),126);
 assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,2);
+assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
+test('full source including evidence hashes accepted',()=>checkScope(paths,readFileSync));
+for(const p of Object.keys(m.evidence)) {
+ test('altered evidence hash rejected: '+p,()=>assert.throws(()=>checkScope(paths,f=>f===p?Buffer.from('altered'):readFileSync(f))));
+ test('missing evidence source rejected: '+p,()=>assert.throws(()=>checkScope(paths,f=>{if(f===p)throw Error('missing');return readFileSync(f)})));
+}
+for(const p of ['drizzle/migrations/evidence-v1.sql','supabase/migrations/evidence-v1.sql','proposed/extra.sql'])test('unapproved SQL path rejected: '+p,()=>assert.throws(()=>checkPaths([...paths,p])));
 console.log(`PASS ${count} CI guard controls`);
