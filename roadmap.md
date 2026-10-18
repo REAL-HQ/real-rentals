@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Isolated Reader Corrections: reproduce and correct confirmed category, unknown sensitivity/visibility and unknown-kind defects; preserve 214 tests and disabled reporting; local-only verification and review.
 - [x] Isolated Finance Reader Contracts: nine approved new files plus narrow session-isolation seam implemented; 214 tests pass (151 unchanged + 63 new), automatic build OK. Review-only; standalone TypeScript blocked by environment, no live integration/activation.
 - [x] Unified Finance Phase 2: seven isolated hard-disabled reporting modules and mocked tests implemented; 151 tests pass (98 preserved + 53 new). No live reads/integration/release; independent review awaits standalone TypeScript evidence and next approval.
 - [ ] Unified Finance Phase 1 Acceptance: confirmed synthetic corrections pass 98 tests (69 existing + 29 regressions), automatic build OK; blocked on supported standalone TypeScript evidence. No live integration; Phase 2 awaits separate approval.
