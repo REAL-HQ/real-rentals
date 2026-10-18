@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { c1SourceContract, mapFinanceSource } from "../src/lib/unified-finance-live-mapping";
 import { readIsolatedDatabaseSource } from "../src/lib/unified-finance-db-readers.server";
 import { actor, client, facts, ledger } from "./fixtures/unified-finance-live-readers";
+import { summarizeFinance } from "../src/lib/unified-finance";
 import type { C1Projection, SourceEvidence, RawSources } from "../src/lib/unified-finance-source-contracts";
 
 const evidence: SourceEvidence = { customerId: "synthetic-customer", verified: true, feeCents: 0, currency: "USD", method: "cash", identities: [], cashDate: "2026-10-18", kind: "collection" };
@@ -56,6 +57,28 @@ describe("Confirmed reader classification and completeness regressions", () => {
     const mapped = mapFinanceSource("payments", row); expect(mapped.row).toBeNull(); expect(mapped.reasons.length).toBeGreaterThan(0);
     const r = await readIsolatedDatabaseSource(client({ payments: { rows: [row], complete: true, nextCursor: null } }), actor, "payments");
     expect(r.coverage.state).toBe("incomplete"); expect(r.rows).toEqual([]);
+  });
+  it.each(["admin", "team"])("%s rejected category read cannot become empty complete coverage", async role => {
+    const c = client({}, [role]); c.readPage = async () => {
+      const row = c1SourceContract({ ...projection, category: "acquisition" }, evidence);
+      return { rows: [row], complete: true, nextCursor: null } as never;
+    };
+    const r = await readIsolatedDatabaseSource(c, actor, "ledger");
+    expect(r.coverage.state).toBe("unavailable"); expect(r.rows).toEqual([]);
+  });
+  it("mixed unknown visibility withholds complete totals through the unchanged finance core", async () => {
+    const known = ledger({ identities: [], paymentId: null });
+    const unknown = { ...ledger(), id: "unknown", visibility: undefined } as unknown as RawSources["ledger"];
+    const r = await readIsolatedDatabaseSource(client({ ledger: { rows: [known, unknown], complete: true, nextCursor: null } }), actor, "ledger");
+    const total = summarizeFinance({ events: r.rows.flatMap(row => row.representation ? [row.representation.event] : []), period: { from: "2026-10-01", to: "2026-11-01" }, basis: "cash", currency: "USD", coverage: r.coverage.state });
+    expect(total.complete).toBe(false); expect(total.grossCollected.complete).toBe(false);
+  });
+  it("direct mapping refuses unverified visibility before returning a representation", () => {
+    const row = { ...ledger(), visibility: "unknown" } as unknown as RawSources["ledger"];
+    expect(mapFinanceSource("ledger", row).row).toBeNull();
+  });
+  it.each(["constructor", "__proto__", "toString"])("prototype-like C1 type %s cannot become a financial kind", txn_type => {
+    expect(() => c1SourceContract({ ...projection, txn_type }, evidence)).toThrow();
   });
   it("outgoing payments remain explicitly incomplete, not invented collections", () => {
     const row = c1SourceContract({ ...projection, txn_type: "payment" }, evidence);
