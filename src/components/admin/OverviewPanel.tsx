@@ -39,6 +39,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
 import { applicationStage, wizardProgress } from "@/lib/application-stage";
 import { readCollectedRevenue } from "@/lib/collected-revenue";
+import { StripeCollections } from "./StripeCollections";
 
 /**
  * How many applicants the dashboard pulls in to derive readiness from.
@@ -141,7 +142,7 @@ function appliedLine(iso?: string | null) {
   return `Applied ${fmtDate(d)} · ${rel}`;
 }
 
-export function OverviewPanel() {
+export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   // Null, not 0, until the read lands. A rendered 0 reads as "nobody
   // applied"; the truth before the answer arrives is "we do not know yet",
@@ -830,6 +831,7 @@ export function OverviewPanel() {
           </SectionCard>
         );
       })()}
+      {canSeeCollections && <StripeCollections />}
     </div>
   );
 }
