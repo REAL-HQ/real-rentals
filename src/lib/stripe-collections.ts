@@ -1,6 +1,6 @@
 import { tierFromRoles, tierAllows } from "./roles";
 
-export const STRIPE_COLLECTIONS_ENABLED = false;
+export const STRIPE_COLLECTIONS_ENABLED = true;
 export function assertCollectionsAccess(roles: string[]) {
   if (!tierAllows(tierFromRoles(roles), "manager")) throw new Error("Forbidden");
 }
