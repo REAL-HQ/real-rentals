@@ -4,7 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
-import { collectionsRefreshState, formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { collectionsRefreshState, collectionsRequestRange, formatStripeAmount, STRIPE_COLLECTIONS_ENABLED } from "@/lib/stripe-collections";
+import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 import { STRIPE_COLLECTIONS_TEST_MODE } from "@/lib/stripe-collections.test-mode";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { resolveRange } from "@/lib/date-range";
@@ -17,19 +18,8 @@ export function StripeCollections() {
   const [to, setTo] = useState(initial.to);
   const [environment, setEnvironment] = useState<"live" | "sandbox">("live");
   const load = useServerFn(getStripeCollections);
-  const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T00:00:00`);
-  end.setDate(end.getDate() + 1);
-  const valid = Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && end > start && (end.getTime() - start.getTime()) <= 366 * 86400000;
-  const query = useQuery({
-    queryKey: ["stripe-collections", environment, from, to],
-    enabled: valid && featureVisible,
-    queryFn: async () => {
-      const result = await load({ data: { environment, from: start.toISOString(), to: end.toISOString() } });
-      if ("error" in result) throw new Error(result.error);
-      return result.report;
-    },
-    retry: false, refetchOnWindowFocus: false, staleTime: 60000,
-  });
+  const valid = collectionsRequestRange(from, to) !== null;
+  const query = useQuery(stripeCollectionsQuery(load, environment, from, to, featureVisible));
   const report = query.isError || !valid ? undefined : query.data;
   const refresh = collectionsRefreshState({ valid, fetching: query.isFetching, failed: query.isError, refreshedAt: query.data?.refreshedAt, stale: query.isStale });
   const customers = report?.collectionsComplete ? report.customers : report?.verifiedCollections.customers;

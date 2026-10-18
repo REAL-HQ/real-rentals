@@ -60,6 +60,11 @@ import {
   type DayRange,
 } from "@/lib/date-range";
 import { fmtDate } from "@/lib/date-format";
+import type React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { stripeCollectedLabel } from "@/lib/stripe-collections";
+import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -487,6 +492,7 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
+          stripeCollected={canSeeCollections ? <StripeCollectedLine range={range} /> : null}
         />
 
         <ActionCard
@@ -924,6 +930,7 @@ function RevenueCard({
   onRangeKey,
   custom,
   onCustom,
+  stripeCollected,
 }: {
   amount: number;
   delta: number | null;
@@ -934,6 +941,7 @@ function RevenueCard({
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
+  stripeCollected?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
@@ -977,6 +985,7 @@ function RevenueCard({
           </>
         )}
       </div>
+      {stripeCollected}
 
       {open && (
         <>
@@ -1110,6 +1119,23 @@ function SegmentedDonut({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Verified Stripe net (after fees and refunds) for the card's own period.
+ * Rendered only for Owner/Manager (canSeeCollections), so a Coordinator never
+ * mounts it and never issues the request; the server re-checks the role.
+ * Shown beside revenue, never added to it.
+ */
+function StripeCollectedLine({ range }: { range: DayRange }) {
+  const load = useServerFn(getStripeCollections);
+  const q = useQuery(stripeCollectionsQuery(load, "live", range.from, range.to, true));
+  const value = q.isError || q.isFetching && !q.data ? "—" : stripeCollectedLabel(q.data);
+  return (
+    <div className="mt-1 text-[11px] text-[#55555E] truncate" aria-label="Stripe Collected">
+      Stripe Collected: <span className="font-medium text-[#111114] tabular-nums">{value}</span>
     </div>
   );
 }
