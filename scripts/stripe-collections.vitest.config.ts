@@ -1,3 +1,2 @@
-import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
-export default defineConfig({ resolve: { alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) } }, test: { include: ["scripts/stripe-collections*.test.ts"] } });
+export default { resolve: { alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) } }, test: { include: ["scripts/stripe-collections*.test.ts"] } };
