@@ -14,7 +14,7 @@ export function verifyScope(paths) {
 export function verifyResults(report, root) {
   assert.equal(report.success, true);
   for (const k of ['numFailedTests','numPendingTests','numTodoTests','numFailedTestSuites','numPendingTestSuites']) assert.equal(report[k], 0, k);
-  assert.equal(report.numTotalTests, 257); assert.equal(report.numPassedTests, 257);
+  assert.equal(report.numTotalTests, 314); assert.equal(report.numPassedTests, 314);
   assert.equal(report.testResults.length, Object.keys(coverage).length);
   const actual = {};
   for (const suite of report.testResults) {
@@ -30,13 +30,17 @@ export function verifyResults(report, root) {
   }
   assert.deepEqual(actual, coverage, 'Exact assertion coverage differs');
 }
+export function verifyFileHash(path, bytes) {
+  assert(Object.hasOwn(manifest.files, path), 'Unapproved source path');
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), manifest.files[path], 'Unreviewed source: '+path);
+}
 export function verifySource(root) {
   const git = (...a) => execFileSync('git',a,{cwd:root,encoding:'utf8'}).trim();
   git('merge-base','--is-ancestor',manifest.foundation,'HEAD');
   git('merge-base','--is-ancestor',manifest.candidate,'HEAD');
   verifyScope(git('diff','--name-only',manifest.foundation,'HEAD').split('\n'));
-  for (const [p,h] of Object.entries(manifest.files)) {
-    assert.equal(createHash('sha256').update(readFileSync(resolve(root,p))).digest('hex'),h,'Unreviewed source: '+p);
+  for (const p of Object.keys(manifest.files)) {
+    verifyFileHash(p, readFileSync(resolve(root,p)));
   }
   // Pinning every changed byte plus excluding every other path protects the reviewed
   // disabled endpoint, synthetic-only adapters, dependencies, schemas and live screens.
