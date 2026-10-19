@@ -1015,7 +1015,7 @@ function RevenueCard({
           type="button"
           onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
           onKeyDown={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
+          className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-3 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
         >
           {label} <ChevronDown className="w-3 h-3" />
         </button>
