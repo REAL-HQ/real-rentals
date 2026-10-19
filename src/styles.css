@@ -178,6 +178,9 @@
   .border-real-red { border-color: #D03020; }
   .bg-soft { background-color: #F5F5F7; }
 
+  /* Shared dropdown caret: every native select gets the same custom caret,
+     12px from the right border, with reserved space so text never overlaps. */
+  select:not([multiple]):not([size]),
   .select-soft {
     appearance: none;
     -webkit-appearance: none;
@@ -185,13 +188,10 @@
     color-scheme: light;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1L6 6L11 1' stroke='%23111' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat: no-repeat;
-    background-position: right 1rem center;
-    padding-right: 2.5rem;
+    background-position: right 0.75rem center;
+    padding-right: 2rem !important;
   }
-  .select-soft option { background-color: #ffffff; color: #111111; }
-
-  select { color-scheme: light; }
-  select option { background-color: #ffffff; color: #111111; }
+  select option, .select-soft option { background-color: #ffffff; color: #111111; }
 
   .container-real {
     max-width: 1200px;
