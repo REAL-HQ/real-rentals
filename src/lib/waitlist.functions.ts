@@ -420,7 +420,11 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
           : r.reason === "email_match_phone_differs"
             ? "the email matches an existing driver but the phone number is different"
             : "the email and phone point to different existing drivers";
-      return { ok: false as const, error: `Needs manual review: ${why}. Nothing was created or merged.` };
+      return {
+        ok: false as const,
+        error: `Needs manual review: ${why}. Nothing was created or merged.`,
+        conflict: r.reason === "email_match_phone_differs" ? ("email_match_phone_differs" as const) : null,
+      };
     }
     if (r.already) return { ok: true as const, applicationId: r.application_id, token: null, reused: true };
 
