@@ -598,7 +598,7 @@ export const getWaitlistConflict = createServerFn({ method: "POST" })
       },
       application: {
         id: a.id, name: a.full_name, emailMasked: maskEmail(a.email), phone: a.phone,
-        status: a.status, signedUpAt: a.created_at, source: a.source,
+        status: a.status ?? "", signedUpAt: a.created_at, source: a.source,
         documentCount: docs.error ? null : docs.count ?? 0,
         rentalCount: rentals.error ? null : rentals.count ?? 0,
       },
