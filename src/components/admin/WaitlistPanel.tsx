@@ -291,7 +291,7 @@ export function WaitlistPanel({
                       {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {e.status !== "promoted" && conflictIds.has(e.id) ? (
+                      {e.status !== "promoted" && (conflictIds.has(e.id) || e.review_reason === "email_match_phone_differs") ? (
                         <button
                           type="button"
                           onClick={() => setReviewId(e.id)}

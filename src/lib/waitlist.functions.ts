@@ -150,6 +150,7 @@ export type WaitlistEntry = {
   status: string;
   notified_at: string | null;
   promoted_application_id: string | null;
+  review_reason: string | null;
   promoted_at: string | null;
   source: string | null;
   created_at: string;
@@ -196,7 +197,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
     const { data: rows, error: waitlistError } = await supabaseAdmin
       .from("waitlist")
       .select(
-        "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at",
+        "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at,review_reason",
       )
       .order("created_at", { ascending: true });
 
@@ -278,6 +279,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
         status: String(r.status ?? "waiting"),
         notified_at: r.notified_at,
         promoted_application_id: r.promoted_application_id,
+        review_reason: r.review_reason ?? null,
         promoted_at: r.promoted_at,
         source: r.source,
         created_at: r.created_at,
