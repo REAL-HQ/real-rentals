@@ -529,3 +529,129 @@ function escapeHtml(v: unknown): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// ------------------------------------------- phone conflict review (Manager+)
+//
+// Promotion refuses to guess when the email matches an existing applicant but
+// the phone differs. These two functions let an Owner/Manager compare the two
+// records and link them deliberately. The write goes through one database
+// function (resolve_waitlist_phone_conflict) that re-locks both rows, rejects
+// stale data, never creates an application/account/message, and writes the
+// audit row in the same transaction. Never use mergeDuplicateApplications here.
+
+export function maskEmail(email: string | null | undefined): string {
+  if (!email) return "—";
+  const [user, domain] = email.split("@");
+  if (!domain) return "•••";
+  return `${user.slice(0, 1)}${"•".repeat(Math.max(2, Math.min(6, user.length - 1)))}@${domain}`;
+}
+
+export type ConflictSide = {
+  id: string;
+  name: string;
+  emailMasked: string;
+  phone: string | null;
+  status: string;
+  signedUpAt: string;
+  source: string | null;
+  documentCount: number | null;
+  rentalCount: number | null;
+};
+
+export const getWaitlistConflict = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ entryId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<
+    | { ok: true; waitlist: ConflictSide; application: ConflictSide }
+    | { ok: false; error: string }
+  > => {
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: w, error } = await supabaseAdmin
+      .from("waitlist")
+      .select("id,full_name,email,phone,status,created_at,source,promoted_application_id")
+      .eq("id", data.entryId)
+      .maybeSingle();
+    if (error || !w) return { ok: false, error: "Waitlist entry not found." };
+    if (w.promoted_application_id) return { ok: false, error: "This entry is already linked to a driver." };
+    const { data: apps, error: aErr } = await supabaseAdmin
+      .from("applications")
+      .select("id,full_name,email,phone,status,created_at,source")
+      .ilike("email", w.email.trim())
+      .neq("status", "duplicate")
+      .is("deleted_at", null);
+    if (aErr) return { ok: false, error: "Could not load the matching driver." };
+    const matches = (apps ?? []).filter((a) => (a.email ?? "").trim().toLowerCase() === w.email.trim().toLowerCase());
+    if (matches.length !== 1) {
+      return { ok: false, error: matches.length === 0 ? "No matching driver was found." : "More than one driver uses this email — resolve those first." };
+    }
+    const a = matches[0];
+    const [docs, rentals] = await Promise.all([
+      supabaseAdmin.from("documents").select("id", { count: "exact", head: true }).eq("driver_id", a.id),
+      supabaseAdmin.from("rentals").select("id", { count: "exact", head: true }).eq("application_id", a.id),
+    ]);
+    return {
+      ok: true,
+      waitlist: {
+        id: w.id, name: w.full_name, emailMasked: maskEmail(w.email), phone: w.phone,
+        status: w.status, signedUpAt: w.created_at, source: w.source, documentCount: null, rentalCount: null,
+      },
+      application: {
+        id: a.id, name: a.full_name, emailMasked: maskEmail(a.email), phone: a.phone,
+        status: a.status, signedUpAt: a.created_at, source: a.source,
+        documentCount: docs.error ? null : docs.count ?? 0,
+        rentalCount: rentals.error ? null : rentals.count ?? 0,
+      },
+    };
+  });
+
+const CONFLICT_ERRORS: Record<string, string> = {
+  not_found: "Waitlist entry not found.",
+  already_linked_elsewhere: "This entry is already linked to a different driver.",
+  application_unavailable: "The existing driver record is no longer available.",
+  email_mismatch: "The emails no longer match. Nothing was changed.",
+  stale: "One of the records changed since you opened it. Reopen Review Conflict and check again.",
+  multiple_email_matches: "More than one driver uses this email — resolve those first.",
+  phone_belongs_to_other: "The waitlist phone belongs to a different driver. Nothing was changed.",
+  reason_required: "Write a reason for changing the phone number.",
+  no_waitlist_phone: "The waitlist entry has no phone number to use.",
+};
+
+export const resolveWaitlistConflict = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        entryId: z.string().uuid(),
+        applicationId: z.string().uuid(),
+        phoneChoice: z.enum(["existing", "waitlist"]),
+        reason: z.string().trim().max(500).optional().default(""),
+        affirmed: z.literal(true),
+        expectedWaitlistPhone: z.string().max(40).nullable(),
+        expectedApplicationPhone: z.string().max(40).nullable(),
+      })
+      .refine((v) => v.phoneChoice === "existing" || v.reason.length >= 5, { message: "Write a reason for changing the phone number." })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: res, error } = await supabaseAdmin.rpc("resolve_waitlist_phone_conflict", {
+      _entry: data.entryId,
+      _application: data.applicationId,
+      _use_waitlist_phone: data.phoneChoice === "waitlist",
+      _reason: data.reason,
+      _expected_waitlist_phone: data.expectedWaitlistPhone ?? "",
+      _expected_application_phone: data.expectedApplicationPhone ?? "",
+      _actor: actor.userId,
+      _actor_email: actor.email ?? "",
+      _actor_role: actor.role,
+    });
+    if (error || !res) {
+      console.error("[waitlist] resolve conflict failed", error?.message);
+      return { ok: false as const, error: "Could not link these records. Nothing was changed." };
+    }
+    const r = res as { ok: boolean; error?: string; already?: boolean; application_id?: string };
+    if (!r.ok) return { ok: false as const, error: CONFLICT_ERRORS[r.error ?? ""] ?? "Could not link these records." };
+    return { ok: true as const, applicationId: r.application_id!, already: !!r.already };
+  });
