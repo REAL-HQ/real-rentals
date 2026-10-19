@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Car, Hourglass, MailCheck, UserPlus } from "lucide-react";
+import { Car, Hourglass, MailCheck, ShieldAlert, UserPlus } from "lucide-react";
+import { WaitlistConflictDialog } from "./WaitlistConflictDialog";
 import {
   listWaitlist,
   setCarsAvailable,
@@ -51,6 +52,8 @@ export function WaitlistPanel({
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyCount, setNotifyCount] = useState("5");
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
+  const [reviewId, setReviewId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -131,7 +134,14 @@ export function WaitlistPanel({
     setPromotingId(entry.id);
     try {
       const res = await promote({ data: { entryId: entry.id } });
-      if (!res.ok) throw new Error(res.error);
+      if (!res.ok) {
+        if ("conflict" in res && res.conflict) {
+          setConflictIds((s) => new Set(s).add(entry.id));
+          toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
+          return;
+        }
+        throw new Error(res.error);
+      }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
       await refresh();
       onPromoted?.();
@@ -281,7 +291,16 @@ export function WaitlistPanel({
                       {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {e.status !== "promoted" ? (
+                      {e.status !== "promoted" && (conflictIds.has(e.id) || e.review_reason === "email_match_phone_differs") ? (
+                        <button
+                          type="button"
+                          onClick={() => setReviewId(e.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#D03020] px-3 py-1.5 text-xs font-medium text-[#D03020] transition hover:bg-[#D03020] hover:text-white"
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Review Conflict
+                        </button>
+                      ) : e.status !== "promoted" ? (
                         <button
                           type="button"
                           onClick={() => handlePromote(e)}
@@ -304,6 +323,17 @@ export function WaitlistPanel({
           </AdminTableScroll>
         )}
       </SectionCard>
+
+      <WaitlistConflictDialog
+        entryId={reviewId}
+        onClose={() => setReviewId(null)}
+        onResolved={(_appId) => {
+          const id = reviewId;
+          if (id) setConflictIds((s) => { const n = new Set(s); n.delete(id); return n; });
+          refresh().catch(() => {});
+          onPromoted?.();
+        }}
+      />
 
       <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
         <DialogContent className="sm:max-w-md">

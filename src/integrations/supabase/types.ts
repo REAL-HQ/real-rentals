@@ -6069,6 +6069,20 @@ export type Database = {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
       }
+      resolve_waitlist_phone_conflict: {
+        Args: {
+          _actor: string
+          _actor_email: string
+          _actor_role: string
+          _application: string
+          _entry: string
+          _expected_application_phone: string
+          _expected_waitlist_phone: string
+          _reason: string
+          _use_waitlist_phone: boolean
+        }
+        Returns: Json
+      }
       restore_application: { Args: { _id: string }; Returns: Json }
       set_legal_hold: { Args: { _id: string; _on: boolean }; Returns: Json }
       soft_delete_application: {
