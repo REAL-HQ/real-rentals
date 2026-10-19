@@ -42,13 +42,13 @@ export function RecentlyDeletedDialog({ onClose, onRestored }: { onClose: () => 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Recently Deleted</DialogTitle>
-          <DialogDescription>Deleted drivers stay recoverable until deleted permanently.</DialogDescription>
+          <DialogDescription>Deleted Drivers may retain agreements and audit evidence. A purged tombstone does not prove complete erasure.</DialogDescription>
         </DialogHeader>
         {d && (d.pendingFiles > 0 || d.failedFiles > 0) && (
           <div className="flex items-center justify-between rounded-md border p-2 text-sm">
             <span>File Cleanup: {d.pendingFiles} pending / {d.failedFiles} failed</span>
-            <Button size="sm" variant="outline" disabled={busy === "files"} onClick={() => act("files", async () => { await retryFn(); return { ok: true }; }, "Cleanup Retried")}>
-              Retry
+            <Button size="sm" variant="outline" disabled={busy === "files"} onClick={() => act("files", async () => { const r=await retryFn(); return { ok: false, error: r.message }; }, "Cleanup inspected")}>
+              Inspect Cleanup
             </Button>
           </div>
         )}
@@ -60,7 +60,7 @@ export function RecentlyDeletedDialog({ onClose, onRestored }: { onClose: () => 
               <div className="flex-1 min-w-[160px]">
                 <p className="font-medium">{r.full_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {r.purged_at ? "Permanently Deleted" : `Deleted ${fmtDate(r.deleted_at)}`}
+                  {r.purged_at ? "Tombstone purged — retained data requires review" : `Deleted ${fmtDate(r.deleted_at)}`}
                   {r.legal_hold ? " · Legal Hold" : ""}
                 </p>
               </div>

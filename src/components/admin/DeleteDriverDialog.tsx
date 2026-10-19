@@ -40,7 +40,7 @@ export function DeleteDriverDialog({
     try {
       const r = mode === "soft" ? await softFn({ data: { applicationId } }) : await purgeFn({ data: { applicationId } });
       if (!r.ok) return void toast.error(r.error);
-      toast.success(mode === "soft" ? "Driver Deleted" : "Personal Data Deleted");
+      toast.success(mode === "soft" ? "Driver Deleted" : "Retention reviewed");
       const failed = mode === "purge" ? Number((r as any).files?.failed ?? 0) : 0;
       if (failed) toast.error(`${failed} file(s) could not be removed yet. Retry in Recently Deleted.`);
       onDone();
@@ -59,9 +59,9 @@ export function DeleteDriverDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{mode === "soft" ? "Delete Driver" : "Delete Permanently"}</DialogTitle>
+          <DialogTitle>{mode === "soft" ? "Delete Driver" : "Review Retention"}</DialogTitle>
           <DialogDescription>
-            {mode === "soft" ? "Reversible. The Owner can restore this driver from Recently Deleted." : "Not reversible. Eligible personal information and identity files are erased."}
+            {mode === "soft" ? "Reversible. The Owner can restore this driver from Recently Deleted." : "Review retained data and cleanup status. No permanent deletion is enabled."}
           </DialogDescription>
         </DialogHeader>
         {err && <p className="text-sm text-destructive">{err}</p>}
@@ -80,7 +80,7 @@ export function DeleteDriverDialog({
               <dt className="text-muted-foreground">Legal Hold</dt><dd>{s.legalHold ? "On" : "Off"}</dd>
             </dl>
             <div>
-              <p className="font-medium">Will Be Removed</p>
+              <p className="font-medium">Deletion scope</p>
               <p className="text-muted-foreground">
                 {mode === "soft"
                   ? "Hidden from Drivers, Waitlist, counts and searches. Resume links, upload links and automated messages stop. Active Waitlist hold closes."
@@ -112,7 +112,7 @@ export function DeleteDriverDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="destructive" disabled={!canConfirm} onClick={confirm}>
-            {busy ? "Working…" : mode === "soft" ? "Delete Driver" : "Delete Permanently"}
+            {busy ? "Working…" : mode === "soft" ? "Delete Driver" : "Review Retention"}
           </Button>
         </DialogFooter>
       </DialogContent>

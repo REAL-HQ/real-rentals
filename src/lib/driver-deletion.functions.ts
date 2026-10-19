@@ -1,3 +1,4 @@
+import { staffDeletionMessage } from "./paper-retention";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -38,6 +39,7 @@ export const getDeletionSummary = createServerFn({ method: "POST" })
       supabaseAdmin.from("agreements").select("status").eq("application_id", id),
       supabaseAdmin.from("applications").select("id", { count: "exact", head: true }).eq("primary_application_id", id),
     ]);
+    if ([app,docs,wl,holds,rentals,pays,agr,dups].some(r=>r.error)) return {ok:false as const,error:"Retention summary unavailable"};
     if (!app.data) return { ok: false as const, error: ERRORS.not_found };
     const identity = new Set(["license_front", "license_back", "insurance", "insurance_card", "gig_profile", "trip_history"]);
     const cats = (docs.data ?? []).map((d: any) => String(d.category));
@@ -64,7 +66,7 @@ export const getDeletionSummary = createServerFn({ method: "POST" })
 
 async function run(context: any, fn: string, args: Record<string, unknown>) {
   const { data, error } = await context.supabase.rpc(fn, args);
-  if (error) return { ok: false as const, error: error.message === "Forbidden" ? "Forbidden" : "Could not complete. Please try again." };
+  if (error) return { ok: false as const, error: staffDeletionMessage(error.message === "Forbidden" ? "Forbidden" : error.message.includes("PAPER_AUDIT_ACTOR_RETENTION_HOLD") ? error.message : "Could not complete. Please try again.") };
   const r = data as any;
   if (!r?.ok) return { ok: false as const, error: ERRORS[r?.error] ?? "Could not complete. Please try again." };
   return { ok: true as const, already: !!r.already, result: r };
@@ -104,20 +106,14 @@ export const purgeDriver = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(idInput)
   .handler(async ({ data, context }) => {
-    const actor = await requireOwner(context.userId);
-    const res = await run(context, "purge_application", { _id: data.applicationId });
-    if (!res.ok) return res;
-    if (!res.already)
-      await logAudit(actor, {
-        action: "driver.purged",
-        summary: "Permanently deleted eligible personal data for a driver record",
-        entityType: "application",
-        entityId: data.applicationId,
-        metadata: { removed: res.result.removed, retained_documents: res.result.retained_documents },
-      });
-    const { processFileJobs } = await import("@/lib/driver-deletion.server");
-    const files = await processFileJobs(data.applicationId);
-    return { ...res, files };
+    await requireOwner(context.userId);
+    // Inspection only. Irreversible purge/redaction is not approved for this release.
+    try {
+      const { readPaperRetention } = await import("./paper-retention.server");
+      const status = await readPaperRetention(data.applicationId);
+      return { ok: false as const, error: `${status.outcome} — no data erased. Retention disposition requires separate approval.`, retention: status };
+    } catch { return { ok: false as const, error: "Failed — retention inventory unavailable. No data erased." }; }
+
   });
 
 export const retryFileCleanup = createServerFn({ method: "POST" })
@@ -133,18 +129,21 @@ export const listDeletedDrivers = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     await requireOwner(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: rows }, { data: jobs }] = await Promise.all([
+    const [driverResult, pendingResult, failedResult] = await Promise.all([
       supabaseAdmin
         .from("applications")
         .select("id,full_name,status,deleted_at,purged_at,legal_hold")
         .not("deleted_at", "is", null)
         .order("deleted_at", { ascending: false })
         .limit(200),
-      supabaseAdmin.from("deletion_file_jobs").select("status").neq("status", "done"),
+      supabaseAdmin.from("deletion_file_jobs").select("id", {count:"exact",head:true}).neq("status","done").neq("status","failed"),
+      supabaseAdmin.from("deletion_file_jobs").select("id", {count:"exact",head:true}).eq("status","failed"),
     ]);
+    if(driverResult.error || pendingResult.error || failedResult.error || pendingResult.count===null || failedResult.count===null) throw new Error("Deleted-driver inventory unavailable");
+    const rows=driverResult.data;
     return {
       drivers: (rows ?? []) as { id: string; full_name: string; status: string; deleted_at: string; purged_at: string | null; legal_hold: boolean }[],
-      pendingFiles: (jobs ?? []).filter((j: any) => j.status === "pending").length,
-      failedFiles: (jobs ?? []).filter((j: any) => j.status === "failed").length,
+      pendingFiles: pendingResult.count!,
+      failedFiles: failedResult.count!,
     };
   });
