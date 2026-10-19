@@ -51,6 +51,8 @@ export function WaitlistPanel({
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyCount, setNotifyCount] = useState("5");
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
+  const [reviewId, setReviewId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -131,7 +133,14 @@ export function WaitlistPanel({
     setPromotingId(entry.id);
     try {
       const res = await promote({ data: { entryId: entry.id } });
-      if (!res.ok) throw new Error(res.error);
+      if (!res.ok) {
+        if ("conflict" in res && res.conflict) {
+          setConflictIds((s) => new Set(s).add(entry.id));
+          toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
+          return;
+        }
+        throw new Error(res.error);
+      }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
       await refresh();
       onPromoted?.();
