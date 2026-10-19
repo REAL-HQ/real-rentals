@@ -126,7 +126,7 @@ export function ContactStatusCell({
             ? `Contact Status: ${contactStatusLabel(state.status)} — set ${fmtDate(state.changedAt)}`
             : `Contact Status: ${contactStatusLabel(state.status)}`
         }
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium hover:opacity-80 ${tone}`}
+        className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium hover:opacity-80 ${tone}`}
       >
         {contactStatusLabel(state.status)}
         <ChevronDown className="h-3 w-3 shrink-0" />
