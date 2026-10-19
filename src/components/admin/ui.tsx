@@ -121,7 +121,7 @@ export function StatusPill({
   const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? String(status).replace(/_/g, " ") : "—");
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full ${caret ? "pl-2.5 pr-3" : "px-2"} py-0.5 text-[11px] font-medium capitalize ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium capitalize ${className}`}
       style={{ backgroundColor: t.bg, color: t.fg }}
     >
       {label}
