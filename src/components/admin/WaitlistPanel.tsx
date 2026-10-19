@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Car, Hourglass, MailCheck, UserPlus } from "lucide-react";
+import { Car, Hourglass, MailCheck, ShieldAlert, UserPlus } from "lucide-react";
+import { WaitlistConflictDialog } from "./WaitlistConflictDialog";
 import {
   listWaitlist,
   setCarsAvailable,
@@ -290,7 +291,16 @@ export function WaitlistPanel({
                       {fmtDate(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {e.status !== "promoted" ? (
+                      {e.status !== "promoted" && conflictIds.has(e.id) ? (
+                        <button
+                          type="button"
+                          onClick={() => setReviewId(e.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#D03020] px-3 py-1.5 text-xs font-medium text-[#D03020] transition hover:bg-[#D03020] hover:text-white"
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          Review Conflict
+                        </button>
+                      ) : e.status !== "promoted" ? (
                         <button
                           type="button"
                           onClick={() => handlePromote(e)}
@@ -313,6 +323,17 @@ export function WaitlistPanel({
           </AdminTableScroll>
         )}
       </SectionCard>
+
+      <WaitlistConflictDialog
+        entryId={reviewId}
+        onClose={() => setReviewId(null)}
+        onResolved={(_appId) => {
+          const id = reviewId;
+          if (id) setConflictIds((s) => { const n = new Set(s); n.delete(id); return n; });
+          refresh().catch(() => {});
+          onPromoted?.();
+        }}
+      />
 
       <Dialog open={notifyOpen} onOpenChange={setNotifyOpen}>
         <DialogContent className="sm:max-w-md">
