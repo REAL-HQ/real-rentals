@@ -4,12 +4,15 @@ function load(file,imports){const exports={};vm.runInNewContext(ts.transpileModu
 const contract=load('src/lib/record-rental-contract.ts',{zod:require('zod')});
 assert.equal(contract.RECORD_RENTAL_CONTRACT_ENABLED,false);
 const modules={zod:require('zod'),'./record-rental-contract':{...contract,get RECORD_RENTAL_CONTRACT_ENABLED(){return enabled}},'@/integrations/supabase/auth-middleware':{requireSupabaseAuth:{}},'@tanstack/react-start':{createServerFn(){let parse;return {middleware(){return this},inputValidator(f){parse=f;return this},handler(fn){return async arg=>fn({...arg,data:parse(arg.data)})}}}},'./roles.server':{requireManager:async()=>{roleCalls++;if(!['admin','team'].includes(role))throw Error('forbidden')}}};
+modules['@tanstack/react-start/server']={getRequest:()=>new Request('https://synthetic.invalid',{headers:{authorization:'Bearer synthetic'}})};
+modules['./record-rental-runtime.server']={getRecordRentalTransportV2:(c,t)=>{assert.equal(t,'synthetic');return c.supabase}};
+modules['./record-rental-operation.server']={executeRecordRental:async(req,actor,transport)=>{const r=await transport.rpc('record_existing_rental_evidence_v1',{token:id(9),req});if(r.error)throw Error(r.error.message);return contract.recordResult.parse(r.data)}};
 const handler=load('src/lib/record-rental.functions.ts',modules).recordExistingRentalV3;
 const recovery=load('src/lib/record-rental-recovery.ts',{'./record-rental-contract':contract});
 const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const req={operationId:id(1),applicationId:id(2),vehicleId:id(3),startedAt:'2026-10-15T10:00:00-04:00',weeklyRate:350,deposit:null,pickupMileage:null,subscriptionEvidenceId:null,reason:'synthetic intake'};
 let response={data:{status:'recorded',rentalId:id(4),customerNumber:1,bookingNumber:2,recovered:false,billing:'unchanged',paymentsImported:0},error:null};
-const context={userId:id(5),supabase:{rpc:async(name,args)=>{calls++;assert.equal(name,'record_existing_rental_tx');assert.equal(args._deposit,null);assert.equal('_actor' in args,false);return response}}};
+const context={userId:id(5),supabase:{rpc:async(name,args)=>{calls++;assert.equal(name,'record_existing_rental_evidence_v1');assert.equal(args.req.deposit,null);assert.equal(args.req.operationId,req.operationId);assert.equal(args.token,id(9));assert.equal('_actor' in args,false);return response}}};
 const data={request:req,expectedActorId:id(5)};
 let pass=0;async function test(name,f){await f();pass++;console.log('PASS',name)}
 (async()=>{

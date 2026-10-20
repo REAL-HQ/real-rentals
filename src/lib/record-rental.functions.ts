@@ -9,8 +9,12 @@ export const recordExistingRentalV3 = createServerFn({method:'POST'})
    if (data.expectedActorId !== context.userId) throw new Error("Session changed; reconcile under the original staff account");
    const { requireManager } = await import('./roles.server');
    await requireManager(context.userId);
-   // Database revalidates actor, positive review, documents, allocation and evidence under locks.
-   const {data:result,error}=await (context.supabase as any).rpc('record_existing_rental_tx',recordRpcArgs(data.request));
-   if(error) throw new Error(error.message);
-   return recordResult.parse(result);
+   const { getRequest } = await import('@tanstack/react-start/server');
+   const request=getRequest();
+   const bearer=request.headers.get('authorization');
+   if(!bearer?.startsWith('Bearer ')) throw new Error('Authenticated session required');
+   const {getRecordRentalTransportV2}=await import('./record-rental-runtime.server');
+   const {executeRecordRental}=await import('./record-rental-operation.server');
+   return executeRecordRental(data.request,data.expectedActorId,
+     getRecordRentalTransportV2(context,bearer.slice(7)),request.signal);
  });

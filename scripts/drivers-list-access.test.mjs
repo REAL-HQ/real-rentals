@@ -222,13 +222,32 @@ ok(!/contact_statuses|driver_contacts|CREATE TABLE/i.test(RULES + FNSRC),
   "no parallel table, no duplicate contact-status store");
 ok(!/\.update\(|\.insert\(|\.upsert\(|\.delete\(/.test(FNSRC), "and the read writes nothing");
 
-console.log("\nthe lifecycle and Bookings are untouched by this change");
-const changed = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" })
+console.log("\nthe lifecycle stays Manager-gated; Bookings do not close rentals");
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const RENTALS = readFileSync("src/lib/rentals.functions.ts", "utf8");
+const assertStaffFn = RENTALS.match(/async function assertStaff\([\s\S]*?\n\}/);
+ok(Boolean(assertStaffFn) && /requireManager\(userId\)/.test(assertStaffFn[0]) && !/requireStaff\(/.test(assertStaffFn[0]),
+  "closing a rental still requires a Manager, so a Coordinator stays refused");
+const rentalsCode = strip(RENTALS);
+ok(!/coordinator/i.test(rentalsCode),
+  "rentals.functions.ts has no Coordinator shortcut");
+const lifecycleRpc = /\.rpc\(\s*["'](?:end_rental_tx|end_rental_safe_v1|close_recorded_rental_v2|activate_rental_tx)["']/;
+for (const fn of rentalsCode.split(/(?=export const )/)) {
+  const name = fn.match(/export const (\w+)/)?.[1];
+  const at = fn.search(lifecycleRpc);
+  if (!name || at < 0) continue;
+  ok(/assertStaff\(/.test(fn.slice(0, at)),
+    `${name} calls assertStaff before its lifecycle RPC`);
+}
+const BOOKINGS = strip(readFileSync("src/lib/bookings.functions.ts", "utf8"));
+ok(!/\.rpc\(\s*["'](?:end_rental_tx|end_rental_safe_v1|activate_rental_tx)["']/.test(BOOKINGS),
+  "bookings.functions.ts does not call rental lifecycle RPCs");
+const changed = execFileSync("git", ["diff", "--name-only", "origin/codex/revenue-publication...HEAD"], { encoding: "utf8" })
   .split("\n").filter(Boolean);
-for (const f of ["src/lib/rentals.functions.ts", "src/lib/bookings.functions.ts",
-  "src/lib/agreements.functions.ts", "src/lib/contact-status.functions.ts",
-  "src/lib/documents.functions.ts", "src/lib/applications.functions.ts"]) {
-  ok(!changed.includes(f), `  ${f.split("/").pop()} is untouched`);
+for (const f of ["src/lib/bookings.functions.ts", "src/lib/agreements.functions.ts",
+  "src/lib/contact-status.functions.ts", "src/lib/documents.functions.ts",
+  "src/lib/applications.functions.ts"]) {
+  ok(!changed.includes(f), `  ${f.split("/").pop()} is unchanged from the integration base`);
 }
 
 rmSync(OUT, { recursive: true, force: true });
