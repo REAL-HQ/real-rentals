@@ -1,0 +1,52 @@
+name: Record Rental V3 validation
+on:
+  pull_request:
+    branches: [release/record-rental-base]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: record-rental-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.21.0"
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+        with:
+          bun-version: "1.3.3"
+      - name: Guard controls and approved source gate
+        run: |
+          set -euo pipefail
+          node scripts/ci/record-rental/guard.test.mjs
+          node scripts/ci/record-rental/guard.mjs
+      - name: Install frozen dependencies without lifecycle scripts
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --ignore-scripts
+          git diff --exit-code -- package.json bun.lock
+          node -e 'if(require("esbuild/package.json").version!=="0.25.12")throw Error("Unexpected locked esbuild")'
+      - name: Validate with loopback-only networking and no privileges
+        run: |
+          set -euo pipefail
+          uid=$(id -u)
+          gid=$(id -g)
+          node_bin=$(dirname "$(command -v node)")
+          bun_bin=$(dirname "$(command -v bun)")
+          sudo env -i PATH="$node_bin:$bun_bin:/usr/local/bin:/usr/bin:/bin" \
+            HOME="$HOME" CI=true npm_config_offline=true \
+            unshare --net bash -c '
+              set -euo pipefail
+              ip link set lo up
+              exec setpriv --reuid="$1" --regid="$2" --clear-groups \
+                --bounding-set=-all --inh-caps=-all --ambient-caps=-all \
+                --no-new-privs bash scripts/ci/record-rental/validate.sh
+            ' isolated "$uid" "$gid"
