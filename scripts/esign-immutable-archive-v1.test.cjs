@@ -1,0 +1,12 @@
+const fs=require('fs'),ts=require('typescript'),assert=require('node:assert/strict'),{createHash}=require('node:crypto');
+require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);
+const {preserveCompletedPdfV1}=require('../src/lib/esign-immutable-archive-v1.server.ts');
+(async()=>{let n=0;const b=Buffer.from('synthetic signed PDF'),h=createHash('sha256').update(b).digest('hex'),id='10000000-0000-4000-8000-000000000001';let data=null,calls=0;
+ const store={upload:async(p,bytes,o)=>{calls++;assert.equal(o.upsert,false);if(data)return {error:'exists'};data=bytes;return {error:null}},download:async()=>({data,error:null})};
+ const r=await preserveCompletedPdfV1(store,id,b,h);assert.equal(r.path,`immutable-v1/${id}/${h}.pdf`);n++;
+ assert.deepEqual(await preserveCompletedPdfV1(store,id,b,h),r);n++;
+ const before=calls;await assert.rejects(preserveCompletedPdfV1(store,id,b,'b'.repeat(64)));assert.equal(calls,before);n++;
+ data=Buffer.from('changed');await assert.rejects(preserveCompletedPdfV1(store,id,b,h));n++;
+ await assert.rejects(preserveCompletedPdfV1({...store,download:async()=>({data:null,error:'denied'})},id,b,h));n++;
+ console.log(`PASS ${n} immutable archive mocked checks; no live Storage calls`);
+})().catch(e=>{console.error(e);process.exitCode=1});

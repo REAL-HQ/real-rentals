@@ -1,0 +1,101 @@
+{
+  "repository": "REAL-HQ/real-rentals",
+  "baseline": "445b5574820c0bc375c79714a03c69e8cb1bcfae",
+  "candidate": "47a99781967635889170ab1265cf7ef3dc3fd0f6",
+  "application": {
+    "scripts/drivers-list-access.test.mjs": "d4caf6b7d4ffc3b5d491d2abb53f2019e07e52de995bdeb29f9b7881c5c484bc",
+    "scripts/esign-immutable-archive-v1.test.cjs": "eb099d17a8824e4ce6f236cccb739440aceb59406db6ae9b367922da0419e35b",
+    "scripts/record-rental-closeout.test.cjs": "da092ffd12a432fd4ab354a00197926e1cef7520404d958814a25818d078d63f",
+    "scripts/record-rental-document-reader.test.cjs": "bb8ea2c04f8c365a3fd1ea127c0e0f273dbb0a30ff7de1858bba967b7bb0f580",
+    "scripts/record-rental-integration.test.cjs": "b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0",
+    "scripts/record-rental-operation.test.cjs": "e96a69019de56c115aa765ccd18b7c1234f91bdebad3e4ad84c570a3565fe0ad",
+    "scripts/record-rental-runtime.test.cjs": "6235b2a624f83fa6bea651081cba301b4194a45261a1f08e16474778a1b45472",
+    "scripts/record-rental-schema-compatibility.test.cjs": "4f3aae132afb7526cf2248086852b203d598bb50400e31b735b8c89443f4ec3a",
+    "scripts/record-rental-scope-v5.test.cjs": "e12f1198d2c91d3a6d314d4ea7706798e16715c8f745e3bf4a17b9725379fc33",
+    "scripts/record-rental-validation-recovery.test.cjs": "cc3022723adebf893bf99e892ab7741413f2d7ef8254a70b4c13fe58951d734c",
+    "src/components/admin/DriversPanel.tsx": "9c6cc91670d353b955c4337e8db9eed5a76c355c2036aaad04c9b6c09b13e07f",
+    "src/components/admin/RecordRentalDialog.tsx": "234aa8fcdce5ee01c21d0876283da3e11f069a7b053ab8eaac023d2f38bd1dd5",
+    "src/components/admin/RecordedRentalCloseout.tsx": "03287cad99ffb26aae0744197458d05d8ecb2776ea237db4af79f2138d94c06c",
+    "src/lib/esign-immutable-archive-v1.server.ts": "efe249d19586bd5f8c2cfba5b1cc792888f249b6a558aee906f58070f62043d6",
+    "src/lib/record-rental-contract.ts": "519f536b846c9ec47be234da44aab8c661bc574ff206871e76592bae561734c0",
+    "src/lib/record-rental-document-reader.server.ts": "a42ef84b1c5c9f020652f4d5a369673e82c4a8955c4b44361108adf2a372c45f",
+    "src/lib/record-rental-operation.server.ts": "6f53b3250b160c4e8a6d2be038391d55e6f68da58187f2fe5e778d990ddcdec9",
+    "src/lib/record-rental-readers.server.ts": "8fd4dc9849fce2b6bb9525ac92d8f486904701ba1f305d7a0a6f980fd5545dba",
+    "src/lib/record-rental-recovery.ts": "a58d7338c16384f92f6345c6d5190652ed849f31be5f4160e05dfcd160278de2",
+    "src/lib/record-rental-runtime.server.ts": "8905acd02161f6fa7822fccbfe23e10740552aa4ae4cec14fb30119eb06e400b",
+    "src/lib/record-rental-transport.server.ts": "1762071545760c15b0859ec13ca14e9d93d58d2f2a8b1ac10fb3c4981d794823",
+    "src/lib/record-rental.functions.ts": "f57639a3582312995c24a12db1d9d853da5abf20dc2416aa99bc4bb1673e3ed7",
+    "src/lib/rentals.functions.ts": "5303d4ca56beb3924275a41fec4c4ecf5c5522b79ac02653ed5840e995f97ba5"
+  },
+  "ciFiles": [
+    ".github/workflows/record-rental-validation.yml",
+    "scripts/ci/record-rental/validate.sh",
+    "scripts/ci/record-rental/guard.mjs",
+    "scripts/ci/record-rental/guard.test.mjs",
+    "scripts/ci/record-rental/manifest.json",
+    "scripts/ci/record-rental/network-check.mjs"
+  ],
+  "lockedFiles": {
+    "package.json": "5464637e84606efe9b165a3e276fc24843e8541123879cbb067be7206a265514",
+    "bun.lock": "bf1a5b1edfb91920d3be572a5a5614869c2c663fa799baeeb2edc5188a6afff6"
+  },
+  "suites": [
+    {
+      "file": "scripts/record-rental-integration.test.cjs",
+      "sha256": "b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0",
+      "checks": 15,
+      "kind": "application assertions",
+      "stdout": "PASS disabled before any database or role read\nPASS Owner uses exact authenticated RPC\nPASS Manager allowed\nPASS coordinator denied\nPASS driver denied\nPASS anonymous denied\nPASS account switch rejects request binding\nPASS missing RPC no fallback or retry\nPASS unknown and zero deposits distinct\nPASS timestamp must contain time and offset\nPASS recovery survives reload exact operation\nPASS recovery isolated from other actor and applicant\nPASS forged storage binding rejected\nPASS storage error prevents operation persistence\nPASS disabled UI and no Stripe/payment import path\n{\"pass\":15,\"fail\":0}"
+    },
+    {
+      "file": "scripts/record-rental-closeout.test.cjs",
+      "sha256": "da092ffd12a432fd4ab354a00197926e1cef7520404d958814a25818d078d63f",
+      "checks": 22,
+      "kind": "application assertions",
+      "stdout": "PASS proposed caller transpiles\nPASS authenticated RPC with exact timestamp and no actor override\nPASS recovery uses original operation before legacy closed shortcut\nPASS missing RPC fails without fallback\nPASS ambiguous transport does not automatically retry\nPASS mismatched operation response rejected\nPASS malformed response rejected\nPASS non-ISO infinite timestamp rejected before RPC\nPASS missing reason rejected before RPC\nPASS server role denial before RPC\nPASS nonledger exact named contract and actor\nPASS nonledger structured alreadyClosed response\nPASS nonledger rejects missing contract\nPASS nonledger rejects wrong contract\nPASS nonledger rejects missing disposition\nPASS nonledger rejects malformed reasons\nPASS nonledger rejects old string\nPASS nonledger denied RPC is not retried\nPASS ledger failure never falls back to legacy service client\nPASS nonledger already closed precheck no second mutation\nPASS disabled ledger endpoint refuses before RPC\nPASS disabled integration preserves legacy five-argument path\n{\"pass\":22,\"fail\":0}"
+    },
+    {
+      "file": "scripts/application-lifecycle.test.mjs",
+      "sha256": "401862a0907024ad7ff904a4d7475e56d05e73f1af62c28a3f49b7bc51d97062",
+      "checks": 31,
+      "kind": "application assertions",
+      "stdout": "PASS admin permitted lifecycle update\nPASS team permitted lifecycle update\nPASS coordinator permitted lifecycle update\nPASS driver denied before application read\nPASS null denied before application read\nPASS forged/privileged payload {\"status\":\"approved\"}\nPASS forged/privileged payload {\"status\":\"active\"}\nPASS forged/privileged payload {\"user_id\":\"11111111-1111-4111-8111-111111111111\"}\nPASS forged/privileged payload {\"license_front_path\":\"private\"}\nPASS forged/privileged payload {\"contact_status\":\"contacted\"}\nPASS forged/privileged payload {\"reviewed_at\":\"2026-10-12\"}\nPASS forged/privileged payload {\"identity_verified\":true}\nPASS Coordinator protected mutation {\"license_number\":\"X\"}\nPASS Coordinator protected mutation {\"notes\":\"private\"}\nPASS Coordinator protected mutation {\"weekly_rent\":350}\nPASS Coordinator protected mutation {\"background_check_status\":\"passed\"}\nPASS Coordinator protected mutation {\"vehicle_id\":\"11111111-1111-4111-8111-111111111111\"}\nPASS Coordinator protected mutation {\"status\":\"suspended\"}\nPASS Coordinator cannot undo approval\nPASS admin existing profile permissions\nPASS team existing profile permissions\nPASS failed write/read never successful {\"conflict\":true}\nPASS failed write/read never successful {\"zero\":true}\nPASS failed write/read never successful {\"writeError\":true}\nPASS failed write/read never successful {\"readError\":true}\nPASS failed write/read never successful {\"row\":null}\nPASS active rental prevents lifecycle rewrite\nPASS first contact time preserved\nPASS Coordinator permitted operational contact fields\nPASS active application cannot be rewritten by Manager\nPASS browser writer removed; saved callbacks do not write twice\nPASS negative control: removed guard is detected\n31 handler/security checks passed"
+    },
+    {
+      "file": "scripts/identity-authorization.test.mjs",
+      "sha256": "22fe5b33beb802b8fb0f9efb67baa16844951e95d15ba2a9441718598cd07e76",
+      "checks": 46,
+      "kind": "application assertions",
+      "stdout": "THE SIX IDENTITY ENDPOINTS ARE MANAGER AND ABOVE\n\nadminListDriverDocuments\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\ncreateDocumentUploadUrl\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (No application on file)\n\nconfirmDocumentUpload\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nupdateDocumentMeta\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nsetDocumentReview\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nreissueApplicantLink\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nTHE DRIVER'S OWN ACCESS IS NOT COLLATERAL DAMAGE\n  PASS  a driver can still ask for an upload url for their own application (allowed)\n  PASS    but not for somebody else's (No application on file)\n  PASS  a driver can still confirm their own upload (allowed)\n  PASS    and a path outside their own folder is still refused (Invalid upload path)\n\nTHE UPLOAD GATE IS TIERED, NOT FLAT\n  PASS  both upload endpoints use the staff-only-if-staff gate, so an applicant keeps their own path\n  PASS  and no identity endpoint in this module settles for requireStaff any more\n\nTHE REVIEWED AGREEMENT CORRECTION FROM PR #25 IS UNTOUCHED\n  PASS  getAgreementPdf still carries its Manager gate\n  PASS  and reissueApplicantLink checks the tier before it mints a link\n\nWHAT WAS NOT TIGHTENED, DELIBERATELY\n  PASS  acknowledging an applicant stays Coordinator work \u2014 it reads no document and mints no link\n  PASS  and a Coordinator keeps the handoff inspection permission Bookings R1 gave them\n\nall identity authorization checks pass",
+      "stderrKind": "identity-esbuild-progress"
+    },
+    {
+      "file": "scripts/agreement-authorization.test.mjs",
+      "sha256": "b23a0fcefdee8fdf3252d3e700723ef67ac62ac73a2b588db5b8b739e28bf194",
+      "checks": 12,
+      "kind": "application assertions",
+      "stdout": "PASS 12 synthetic handler assertions including guard-removal control; driver RLS is a fixture, not hosted verification."
+    },
+    {
+      "file": "scripts/record-rental-validation-recovery.test.cjs",
+      "sha256": "cc3022723adebf893bf99e892ab7741413f2d7ef8254a70b4c13fe58951d734c",
+      "checks": 2,
+      "kind": "scenario groups",
+      "stdout": "PASS RecordRentalDialog multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks\nPASS RecordedRentalCloseout multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks"
+    },
+    {
+      "file": "scripts/record-rental-evidence.test.cjs",
+      "sha256": "39eea6eac431b5cdd07b8fb7d74c1e013e241fc545c80d8c7c2c243eea2056d2",
+      "checks": 31,
+      "kind": "evidence assertions",
+      "stdout": "PASS 31 mocked evidence checks; no DB replay/rollback claim"
+    }
+  ],
+  "evidenceCandidate": "7af91c401c50d7d81e2155003f1b71e9c513182a",
+  "evidence": {
+    "src/lib/record-rental-evidence.server.ts": "64009c1b9998df0d3654c346658c1d430559da1d2ea847772c04ca7261c6e3e2",
+    "scripts/record-rental-evidence.test.cjs": "39eea6eac431b5cdd07b8fb7d74c1e013e241fc545c80d8c7c2c243eea2056d2",
+    "proposed/evidence-v1.sql": "c27b49a46e55381eacbfc6f1bb2c246c9ee2c73ce549172d81d44bbadac9b665",
+    "tests/database.py": "f45373110966b1d7c9e034ec6a0ab0803587ee19c93d0afdfab33480541e2ad1"
+  }
+}

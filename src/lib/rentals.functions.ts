@@ -1,3 +1,4 @@
+import { RECORD_RENTAL_CONTRACT_ENABLED } from "./record-rental-contract";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -438,6 +439,13 @@ export const endRental = createServerFn({ method: "POST" })
     z
       .object({
         rentalId: z.string().uuid(),
+        // Ledger-backed rentals require a stable operation ID and observed effective instant.
+        // Persist this request until reconciliation; never regenerate on timeout/reload.
+        closeoutV2: z.object({
+          operationId: z.string().uuid(),
+          expectedActorId: z.string().uuid().optional(),
+          endedAt: z.string().datetime({ offset: true }),
+        }).strict().optional(),
         endDate: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -452,6 +460,32 @@ export const endRental = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const actor = await assertStaff(context.supabase, context.userId);
+    if (data.closeoutV2) {
+      if (!RECORD_RENTAL_CONTRACT_ENABLED) throw new Error("Versioned closeout is disabled pending installation and acceptance");
+      if (data.closeoutV2.expectedActorId && data.closeoutV2.expectedActorId !== context.userId) throw new Error("Session changed; use the original staff account");
+      if (!data.reason || data.reason.trim().length < 5) throw new Error("A closeout reason is required");
+      // Authenticated RLS-bound RPC; no admin/service-role fallback and no actor parameter.
+      // A transport error is UNKNOWN, not rollback confirmation. Reconcile using the exact
+      // same operation/payload. No automatic retry and no external side effects.
+      const { data: result, error } = await (context.supabase as any).rpc("close_recorded_rental_v2", {
+        _operation_id: data.closeoutV2.operationId,
+        _rental_id: data.rentalId,
+        _ended_at: data.closeoutV2.endedAt,
+        _vehicle_status: data.vehicleStatus,
+        _return_miles: data.returnMileage ?? null,
+        _reason: data.reason,
+      });
+      if (error) throw new Error(error.message);
+      const parsed = z.object({
+        contract: z.literal("record-close-v2"), rentalId: z.string().uuid(),
+        operationId: z.string().uuid(), assignmentId: z.string().uuid(),
+        vehicleStatus: z.enum(["available", "maintenance"]), releaseReasons: z.array(z.string()),
+        recovered: z.boolean(), billing: z.literal("unchanged"),
+      }).strict().parse(result);
+      if (parsed.rentalId !== data.rentalId || parsed.operationId !== data.closeoutV2.operationId)
+        throw new Error("Closeout response binding mismatch; reconcile the original operation");
+      return { ok: true, alreadyClosed: parsed.recovered, closeout: parsed };
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: rental } = await supabaseAdmin
@@ -472,6 +506,7 @@ export const endRental = createServerFn({ method: "POST" })
       _vehicle_status: data.vehicleStatus,
       _return_miles: data.returnMileage ?? null,
       _actor: actor.userId,
+      ...(RECORD_RENTAL_CONTRACT_ENABLED ? { _release_contract: "safe-release-v1" } : {}),
     });
     if (error) {
       const m = String(error.message);
@@ -480,7 +515,16 @@ export const endRental = createServerFn({ method: "POST" })
       if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
       throw new Error(error.message);
     }
-    if (outcome === "already_closed") return { ok: true, alreadyClosed: true };
+    if (!RECORD_RENTAL_CONTRACT_ENABLED && outcome === "already_closed") return { ok: true, alreadyClosed: true };
+    const lifecycle = RECORD_RENTAL_CONTRACT_ENABLED ? z.discriminatedUnion("alreadyClosed", [
+      z.object({ contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(true) }).strict(),
+      z.object({
+        contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(false),
+        vehicleStatus: z.enum(["available", "maintenance"]), releaseReasons: z.array(z.string()),
+        billing: z.literal("unchanged_unverified"),
+      }).strict(),
+    ]).parse(outcome) : null;
+    if (lifecycle?.alreadyClosed) return { ok: true, alreadyClosed: true };
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor, {
@@ -491,7 +535,7 @@ export const endRental = createServerFn({ method: "POST" })
       metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
     });
 
-    return { ok: true, alreadyClosed: false };
+    return { ok: true, alreadyClosed: false, lifecycle };
   });
 
 /** Truthful messages for the reasons activate_rental_tx refuses. */
