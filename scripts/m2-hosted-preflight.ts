@@ -14,12 +14,16 @@
  * Function calls are an allowlist of the functions the shipped checklist
  * uses: exists, to_regprocedure, to_regclass, coalesce, string_agg,
  * pg_catalog.aclexplode, pg_catalog.acldefault, count, current_setting,
- * and to_jsonb. Any other function call is refused before connect. A U&
- * identifier or string is refused. The URL is refused when it sets
- * standard_conforming_strings, including through options. After connect
- * the script stops when that setting is not on, and when dblink or
- * postgres_fdw is installed, because those extensions can write from a
- * read-only transaction.
+ * and to_jsonb. Comments and newlines between a name and '(' still count
+ * as a call, including a quoted or parenthesized name. current_setting
+ * may read only server_version, transaction_read_only,
+ * default_transaction_read_only, and standard_conforming_strings.
+ * to_jsonb may read only the public.documents alias d. Any other call
+ * is refused before connect. A U& identifier or string is refused. The
+ * URL is refused when it sets standard_conforming_strings, including
+ * through options. After connect the script stops when that setting is
+ * not on, and when dblink or postgres_fdw is installed, because those
+ * extensions can write from a read-only transaction.
  *
  * PGUSER, PGPASSWORD, PGHOST, PGPORT, and PGDATABASE fill in parts the URL
  * leaves out. The script prints the host and port only. It does not read
@@ -31,6 +35,15 @@
  */
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
+import { ALLOWED_CALLS, assertSelectOnly as guardSelect, PREFLIGHT_POLICY } from "./select-only.mjs";
+
+export { ALLOWED_CALLS };
+
+export function assertSelectOnly(sql: string): void {
+  guardSelect(sql, PREFLIGHT_POLICY);
+}
+
+class ReadOnlyDone extends Error {}
 
 const ROOT = new URL("..", import.meta.url);
 
@@ -101,285 +114,6 @@ SELECT 3, 'count applications suspended', 'report',
   (SELECT count(*)::text FROM public.applications WHERE status = 'suspended'),
   true
 `;
-
-const WRITE_KEYWORD = /\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|merge|call|do|comment|vacuum|analyze|refresh|reindex|cluster|lock|set|begin|commit|rollback|execute|prepare|listen|notify|into)\b/i;
-
-/** Functions the shipped checklist calls. Any other call is refused. */
-export const ALLOWED_CALLS = new Set([
-  "exists",
-  "to_regprocedure",
-  "to_regclass",
-  "coalesce",
-  "string_agg",
-  "pg_catalog.aclexplode",
-  "pg_catalog.acldefault",
-  "count",
-  "current_setting",
-  "to_jsonb",
-]);
-
-const NOT_A_CALL = new Set([
-  "all",
-  "and",
-  "any",
-  "array",
-  "as",
-  "between",
-  "by",
-  "case",
-  "cast",
-  "collate",
-  "else",
-  "end",
-  "except",
-  "fetch",
-  "filter",
-  "for",
-  "from",
-  "group",
-  "having",
-  "ilike",
-  "in",
-  "intersect",
-  "into",
-  "isnull",
-  "join",
-  "lateral",
-  "like",
-  "limit",
-  "not",
-  "notnull",
-  "offset",
-  "on",
-  "or",
-  "order",
-  "over",
-  "placement",
-  "returning",
-  "row",
-  "select",
-  "similar",
-  "some",
-  "tablesample",
-  "then",
-  "union",
-  "using",
-  "values",
-  "when",
-  "where",
-  "window",
-  "with",
-  "within",
-]);
-
-class ReadOnlyDone extends Error {}
-
-/** Code with comments, strings, dollar quotes, and quoted identifiers removed. */
-export function visibleSql(sql: string): string {
-  return scanSql(sql).code;
-}
-
-export function assertSelectOnly(sql: string): void {
-  const scanned = scanSql(sql);
-  if (scanned.statements !== 1) {
-    throw new Error("Refusing to run: SQL is not a single statement.");
-  }
-  const code = scanned.code.trim();
-  if (!/^(select|with)\b/i.test(code)) {
-    throw new Error(`Refusing to run: statement is not a SELECT: ${code.slice(0, 80)}`);
-  }
-  const write = code.match(WRITE_KEYWORD);
-  if (write) throw new Error(`Refusing to run: SELECT contains ${write[1]}`);
-  for (const call of scanned.calls) {
-    if (!ALLOWED_CALLS.has(call)) throw new Error(`Refusing to run: SELECT calls ${call}`);
-  }
-}
-
-function scanSql(sql: string): { statements: number; code: string; names: string[]; calls: string[] } {
-  let code = "";
-  let statements = 0;
-  let saw = false;
-  let qualifier = "";
-  const names: string[] = [];
-  const calls: string[] = [];
-  let i = 0;
-  const len = sql.length;
-
-  const mark = () => {
-    saw = true;
-  };
-  const finish = () => {
-    if (saw) statements += 1;
-    saw = false;
-  };
-  const skipSpaceFrom = (at: number) => {
-    let j = at;
-    while (j < len && /\s/.test(sql[j])) j += 1;
-    return j;
-  };
-  const ident = (text: string) => {
-    mark();
-    code += text;
-    const lower = text.toLowerCase();
-    names.push(lower);
-    const after = skipSpaceFrom(i);
-    if (sql[after] === ".") {
-      qualifier = qualifier ? `${qualifier}.${lower}` : lower;
-      return;
-    }
-    const call = qualifier ? `${qualifier}.${lower}` : lower;
-    qualifier = "";
-    if (sql[after] === "(" && !NOT_A_CALL.has(call)) calls.push(call);
-  };
-  const refuseUnicode = (at: number) => {
-    if ((sql[at] !== "U" && sql[at] !== "u") || sql[at + 1] !== "&") return;
-    const quote = sql[at + 2];
-    if (quote !== "'" && quote !== "\"") return;
-    const prev = at > 0 ? sql[at - 1] : "";
-    if (/[A-Za-z0-9_]/.test(prev)) return;
-    throw new Error("Refusing to run: SQL uses a Unicode escape.");
-  };
-
-  while (i < len) {
-    const ch = sql[i];
-    if (ch === "-" && sql[i + 1] === "-") {
-      const end = sql.indexOf("\n", i + 2);
-      i = end < 0 ? len : end;
-      code += " ";
-      continue;
-    }
-    if (ch === "/" && sql[i + 1] === "*") {
-      i = skipBlockComment(sql, i);
-      code += " ";
-      continue;
-    }
-    if (ch === "'") {
-      const escape = i > 0 && (sql[i - 1] === "E" || sql[i - 1] === "e") && (i < 2 || !/[A-Za-z0-9_]/.test(sql[i - 2]));
-      i = escape ? skipEscapeString(sql, i) : skipStandardString(sql, i);
-      code += " ";
-      mark();
-      continue;
-    }
-    if (ch === "\"") {
-      const end = skipQuotedIdent(sql, i);
-      const text = unquoteIdent(sql.slice(i, end));
-      i = end;
-      ident(text);
-      continue;
-    }
-    const dollar = dollarTag(sql, i);
-    if (dollar) {
-      const close = sql.indexOf(dollar, i + dollar.length);
-      if (close < 0) throw new Error("Refusing to run: SQL has an unterminated dollar quote.");
-      i = close + dollar.length;
-      code += " ";
-      mark();
-      continue;
-    }
-    if (ch === ";") {
-      finish();
-      qualifier = "";
-      code += " ";
-      i += 1;
-      continue;
-    }
-    if (/[A-Za-z_]/.test(ch)) {
-      refuseUnicode(i);
-      const start = i;
-      i += 1;
-      while (i < len && /[A-Za-z0-9_]/.test(sql[i])) i += 1;
-      ident(sql.slice(start, i));
-      continue;
-    }
-    if (!/\s/.test(ch) && ch !== ".") qualifier = "";
-    if (!/\s/.test(ch)) mark();
-    code += ch;
-    i += 1;
-  }
-  finish();
-  return { statements, code, names, calls };
-}
-
-function dollarTag(sql: string, i: number): string | null {
-  if (sql[i] !== "$") return null;
-  if (sql.startsWith("$$", i)) return "$$";
-  const match = /^\$([A-Za-z_][A-Za-z0-9_]*)\$/.exec(sql.slice(i));
-  return match ? match[0] : null;
-}
-
-function skipBlockComment(sql: string, i: number): number {
-  let depth = 1;
-  let j = i + 2;
-  while (j < sql.length && depth > 0) {
-    if (sql[j] === "/" && sql[j + 1] === "*") {
-      depth += 1;
-      j += 2;
-      continue;
-    }
-    if (sql[j] === "*" && sql[j + 1] === "/") {
-      depth -= 1;
-      j += 2;
-      continue;
-    }
-    j += 1;
-  }
-  if (depth !== 0) throw new Error("Refusing to run: SQL has an unterminated comment.");
-  return j;
-}
-
-function skipStandardString(sql: string, i: number): number {
-  let j = i + 1;
-  while (j < sql.length) {
-    if (sql[j] === "'") {
-      if (sql[j + 1] === "'") {
-        j += 2;
-        continue;
-      }
-      return j + 1;
-    }
-    j += 1;
-  }
-  throw new Error("Refusing to run: SQL has an unterminated string.");
-}
-
-function skipEscapeString(sql: string, i: number): number {
-  let j = i + 1;
-  while (j < sql.length) {
-    if (sql[j] === "\\") {
-      if (j + 1 >= sql.length) break;
-      j += 2;
-      continue;
-    }
-    if (sql[j] === "'") {
-      if (sql[j + 1] === "'") {
-        j += 2;
-        continue;
-      }
-      return j + 1;
-    }
-    j += 1;
-  }
-  throw new Error("Refusing to run: SQL has an unterminated string.");
-}
-
-function skipQuotedIdent(sql: string, i: number): number {
-  let j = i + 1;
-  while (j < sql.length) {
-    if (sql[j] === "\"") {
-      if (sql[j + 1] === "\"") {
-        j += 2;
-        continue;
-      }
-      return j + 1;
-    }
-    j += 1;
-  }
-  throw new Error("Refusing to run: SQL has an unterminated identifier.");
-}
-
-function unquoteIdent(token: string): string {
-  return token.slice(1, -1).replace(/""/g, "\"");
-}
 
 export function hostedInstallSteps(markdown: string): InstallStep[] {
   const rows: InstallStep[] = [];
@@ -684,6 +418,7 @@ export async function executeReadOnly(
 export async function defaultConnect(url: string, statements: string[]): Promise<Record<string, unknown>[]> {
   assertNoStandardStringsOverride(url);
   assertSelectOnly(SESSION_PROBE);
+  for (const statement of statements) assertSelectOnly(statement);
   const target = connectionTarget(url);
   const sql = postgres(url, {
     max: 1,

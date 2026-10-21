@@ -139,6 +139,29 @@ const attacks = [
   "SELECT U&\"pg\\005fterminate\\005fbackend\"(1)",
   "SELECT U&\"pg\\005fnotify\"('c', 'm')",
   "SELECT U&'text'",
+  "SELECT pg_sleep/**/(1)",
+  "SELECT pg_catalog.pg_sleep/**/(1)",
+  "SELECT pg_advisory_lock/**/(99)",
+  "SELECT set_config/**/('x','y',false)",
+  "SELECT dblink_exec/**/('x','y')",
+  "SELECT pg_sleep--\n(1)",
+  "SELECT pg_sleep\n/**/(1)",
+  "SELECT pg_sleep\n--x\n(1)",
+  "SELECT pg_sleep/* outer /* inner */ still */(1)",
+  "SELECT \"pg_sleep\"/**/(1)",
+  "SELECT \"pg_catalog\".\"pg_sleep\"/**/(1)",
+  "SELECT (pg_sleep)(1)",
+  "SELECT (pg_sleep/**/)(1)",
+  "SELECT pg_catalog/**/.pg_sleep/**/(1)",
+  "SELECT current_setting/**/('data_directory')",
+  "SELECT current_setting('server_version'/**/'x')",
+  "SELECT current_setting(E'server_version')",
+  "SELECT current_setting($$server_version$$)",
+  "SELECT to_jsonb(d) FROM public.applications AS d",
+  "SELECT to_jsonb(d) FROM (SELECT 1) AS d",
+  "SELECT to_jsonb(a) FROM public.applications AS a",
+  "SELECT to_jsonb(d.*) FROM public.documents AS d",
+  "SELECT to_jsonb(d) FROM public.applications AS d WHERE \"from public.documents as d\" IS NOT NULL",
 ];
 for (const sql of attacks) {
   let refused = false;
@@ -159,6 +182,12 @@ for (const sql of attacks) {
 assertSelectOnly("SELECT 'set_config'");
 assertSelectOnly("SELECT 'public CREATE holders'");
 assertSelectOnly("SELECT count(*)");
+assertSelectOnly("SELECT count/**/(*)");
+assertSelectOnly("SELECT current_setting/**/('server_version')");
+assertSelectOnly("SELECT current_setting(\n-- name\n 'standard_conforming_strings' )");
+assertSelectOnly("SELECT to_jsonb/**/(d) FROM public.documents AS d");
+assertSelectOnly("SELECT to_jsonb( /* row */ d ) FROM public/**/.documents AS d");
+assertSelectOnly("SELECT pg_catalog.aclexplode/**/(NULL)");
 assertSelectOnly(EXTRA_SQL);
 for (const sql of [
   "postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable&standard_conforming_strings=off",
@@ -273,6 +302,24 @@ try {
       failed = true;
     }
     if (!failed) throw new Error(`multi-command was executed: ${sql}`);
+  }
+  if (!attacks[31].includes("pg_sleep/**/") || !attacks[44].includes("pg_catalog/**/.pg_sleep")) {
+    throw new Error("comment-call fixtures moved");
+  }
+  for (const sql of attacks.slice(31, 45)) {
+    let refused = false;
+    try {
+      await defaultConnect(readerUrl, [sql]);
+    } catch (error) {
+      refused = error instanceof Error && error.message.startsWith("Refusing to run:");
+    }
+    if (!refused) throw new Error(`comment call reached the reader: ${sql}`);
+  }
+  const allowedRead = await defaultConnect(readerUrl, [
+    "SELECT current_setting('server_version') AS version, to_jsonb(d) AS row FROM public.documents AS d",
+  ]);
+  if (!allowedRead.some((row) => String(row.version || "").length > 0)) {
+    throw new Error("allowed current_setting and to_jsonb(d) did not run");
   }
   const check = postgres(scratchUrl, { max: 1 });
   try {
