@@ -1,14 +1,12 @@
 // Closeout preview stays dark, manager-only, and read-only.
 // Run: bun scripts/closeout-preview.test.ts
 import { readFileSync } from "node:fs";
-import { CLOSEOUT_PREVIEW_ENABLED } from "../src/lib/closeout-preview-flag";
+import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "../src/lib/closeout-preview-flag";
+import { OUTSTANDING_STATUSES } from "../src/lib/payment-collection.server";
 import {
   CLOSEOUT_PREVIEW_NOTE,
-  OUTSTANDING_STATUSES,
   buildCloseoutPreview,
   easternCalendarDate,
-  owedOn,
-  showsCloseoutPreview,
   type CloseoutPreviewInput,
   type RowLoad,
 } from "../src/lib/closeout-preview";
@@ -65,26 +63,19 @@ ok(recorded.includes("endRental"), "RecordedRentalCloseout remains the versioned
 ok(endRental.includes("end_rental_tx"), "endRental remains the lifecycle writer");
 ok(!drawer.includes("endRental"), "the booking drawer still does not end a rental itself");
 
-function fnBody(src: string, name: string): string {
-  const start = src.indexOf(`function ${name}(`);
-  const brace = src.indexOf("{", start);
-  let depth = 0;
-  for (let i = brace; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}") {
-      depth--;
-      if (depth === 0) return src.slice(brace, i + 1).replace(/\s+/g, " ");
-    }
-  }
-  return "";
-}
-ok(fnBody(rules, "owedOn") === fnBody(payments, "owedOn") && fnBody(rules, "owedOn").length > 0, "owedOn matches the payments reader");
+ok(
+  /import\s*\{[^}]*\bOUTSTANDING_STATUSES\b[^}]*\bowedOn\b[^}]*\}\s*from\s*"@\/lib\/payment-collection\.server"/.test(rules) ||
+    /import\s*\{[^}]*\bowedOn\b[^}]*\bOUTSTANDING_STATUSES\b[^}]*\}\s*from\s*"@\/lib\/payment-collection\.server"/.test(rules),
+  "owedOn and outstanding statuses are imported from the payments reader",
+);
+ok(!/function owedOn\(/.test(rules) && !/export const OUTSTANDING_STATUSES/.test(rules), "owedOn and outstanding statuses are not copied");
 ok(
   payments.includes(
     'export const OUTSTANDING_STATUSES = ["pending", "failed", "late", "overdue", "past_due", "unpaid", "collections", "current"]',
   ) && OUTSTANDING_STATUSES.join() === "pending,failed,late,overdue,past_due,unpaid,collections,current",
   "outstanding statuses match the payments reader",
 );
+ok(drawer.includes('from "@/lib/closeout-preview-flag"') && !drawer.includes('from "@/lib/closeout-preview"'), "the booking drawer imports the preview gate from the flag module");
 const completed = phases.match(/completed: \[([^\]]+)\]/)?.[1] ?? "";
 for (const status of completed.match(/"([^"]+)"/g) ?? []) {
   ok(showsCloseoutPreview(status.slice(1, -1)), `ended status ${status} is in the preview`);
@@ -246,12 +237,15 @@ const money = buildCloseoutPreview(
 ok(figure(money, "unpaid-rent").value === "$80.00", "unpaid rent uses the balance due and stops at the recorded end date");
 ok(figure(money, "charges").value === "$155.00", "outstanding charges keep every unpaid recorded payment, including rent due after the end date");
 ok(figure(money, "tolls").value === "1 · $15.00", "open tolls add the admin fee and skip rebilled rows");
-ok(figure(money, "tickets").value === "1 · $40.00", "open tickets are separate from tolls");
-ok(figure(money, "other-charges").value === "1 · $8.00", "another open charge type is shown on its own line");
+ok(figure(money, "tickets").value === "2 · $48.00", "parking is a ticket, so the ticket line is the citation plus parking");
+ok(!money.figures.some((item) => item.key === "other-charges"), "parking is no longer an other charge");
 ok(figure(money, "incident-costs").value === "$250.00", "an unset actual cost falls through to the estimate, and a closed incident is excluded");
 ok(figure(money, "incidents").explanation.includes("not drivable"), "an incident marked not drivable is named");
 ok(figure(money, "billing").state === "Needs Attention" && figure(money, "billing").explanation.includes("No provider request was made."), "billing names autopay and does not call the provider");
-ok(figure(money, "proposed-refund").value === "$0.00" && figure(money, "balance-due").value === "$100.00", "deductions above the deposit propose a balance due, not a refund");
+ok(
+  figure(money, "proposed-refund").value === "$0.00" && figure(money, "balance-due").value === "$368.00",
+  "settlement subtracts the return-day balance, open tolls and tickets, and uncovered driver responsibility",
+);
 ok(figure(money, "balance-due").explanation.includes("Staff must settle manually."), "the balance due line says staff must settle manually");
 
 const settled = buildCloseoutPreview(
@@ -268,6 +262,7 @@ const badDate = buildCloseoutPreview(
   }),
 );
 ok(figure(badDate, "unpaid-rent").value === "Unknown", "rent with no due date is unknown rather than assumed due");
+ok(figure(badDate, "proposed-refund").value === "No Proposal", "a payment with no due date blocks a settlement proposal");
 
 const truncated = buildCloseoutPreview(input({ payments: { ok: true, rows: [], truncated: true } }));
 ok(figure(truncated, "charges").value === "Unknown", "a truncated payment read is unknown rather than a short total");
@@ -278,6 +273,99 @@ const weird = buildCloseoutPreview(
   }),
 );
 ok(figure(weird, "charges").state === "Unknown", "a payment status outside the outstanding list does not become a balance");
+
+const blankPayment = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: null, balance_due: null, type: "rent", due_date: "2026-10-21" }]),
+  }),
+);
+ok(figure(blankPayment, "charges").value === "Unknown", "a payment with both balance_due and amount null is unknown");
+ok(figure(blankPayment, "unpaid-rent").value === "Unknown", "unpaid rent is unknown when the rent row has no amount");
+ok(figure(blankPayment, "proposed-refund").value === "No Proposal", "a blank payment blocks a settlement proposal");
+
+const probe = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 375, balance_due: 375, type: "rent", due_date: "2026-10-21" }]),
+    tolls: loaded([
+      { status: "open", amount: 15, admin_fee: 0, charge_type: "toll" },
+      { status: "open", amount: 100, admin_fee: 0, charge_type: "speeding" },
+    ]),
+    rentalIncidents: loaded([
+      { id: "inc-probe", status: "open", actual_cost: 900, estimated_cost: 900, driver_responsible_amount: 200, drivable: true },
+    ]),
+    deductions: loaded([{ amount: 120 }]),
+  }),
+);
+ok(figure(probe, "charges").value === "$375.00", "the probe keeps unpaid rent inside the payment balance");
+ok(figure(probe, "tolls").value === "1 · $15.00", "the probe toll stays on the toll line");
+ok(figure(probe, "tickets").value === "1 · $100.00", "a speeding charge is a ticket");
+const namedTickets = buildCloseoutPreview(
+  input({
+    tolls: loaded([
+      { status: "open", amount: 1, admin_fee: 0, charge_type: "red_light" },
+      { status: "open", amount: 2, admin_fee: 0, charge_type: "impound" },
+    ]),
+  }),
+);
+ok(figure(namedTickets, "tickets").value === "2 · $3.00" && !namedTickets.figures.some((item) => item.key === "other-charges"), "red light and impound are tickets");
+ok(
+  figure(probe, "proposed-refund").value === "$0.00" && figure(probe, "balance-due").value === "$310.00",
+  "deposit 500 minus deductions 120, rent 375, toll 15, speeding 100, and driver amount 200 is balance due 310",
+);
+
+const rebilled = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 15, balance_due: 15, type: "toll", due_date: "2026-10-21" }]),
+    tolls: loaded([{ status: "rebilled", amount: 15, admin_fee: 0, charge_type: "toll", payment_id: "pay-toll" }]),
+  }),
+);
+ok(figure(rebilled, "tolls").value.startsWith("0"), "a rebilled toll is not an open toll");
+ok(
+  figure(rebilled, "proposed-refund").value === "$485.00" && figure(rebilled, "balance-due").value === "$0.00",
+  "a rebilled toll is subtracted once, through its payment row",
+);
+
+const postedOpen = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 15, balance_due: 15, type: "toll", due_date: "2026-10-21" }]),
+    tolls: loaded([{ status: "open", amount: 15, admin_fee: 0, charge_type: "toll", payment_id: "pay-toll" }]),
+  }),
+);
+ok(
+  figure(postedOpen, "proposed-refund").value === "$485.00",
+  "a toll that already has a payment id is not subtracted again",
+);
+
+const futureRent = buildCloseoutPreview(
+  input({
+    payments: loaded([
+      { status: "pending", amount: 100, balance_due: 100, type: "rent", due_date: "2026-10-21" },
+      { status: "pending", amount: 400, balance_due: 400, type: "rent", due_date: "2026-10-28" },
+    ]),
+  }),
+);
+ok(figure(futureRent, "charges").value === "$500.00", "outstanding charges still include rent due after the return day");
+ok(figure(futureRent, "unpaid-rent").value === "$100.00", "unpaid rent stops at the return day");
+ok(
+  figure(futureRent, "proposed-refund").value === "$400.00" && figure(futureRent, "balance-due").value === "$0.00",
+  "settlement excludes rent due after the return day",
+);
+
+const linked = buildCloseoutPreview(
+  input({
+    rentalIncidents: loaded([
+      { id: "inc-1", status: "open", actual_cost: 200, estimated_cost: 200, driver_responsible_amount: 200, drivable: true },
+    ]),
+    deductions: loaded([{ amount: 120, incident_id: "inc-1" }]),
+  }),
+);
+ok(
+  figure(linked, "proposed-refund").value === "$300.00" && figure(linked, "balance-due").value === "$0.00",
+  "a deduction linked to an incident covers that much of the driver amount",
+);
+
+const paymentsUnread = buildCloseoutPreview(input({ payments: failed() }));
+ok(figure(paymentsUnread, "proposed-refund").value === "No Proposal", "no settlement is proposed when payments could not be read");
 
 console.log(fails ? `\n${fails} failed` : "\ncloseout preview checks passed");
 process.exit(fails ? 1 : 0);

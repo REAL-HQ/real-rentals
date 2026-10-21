@@ -4,14 +4,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { CLOSEOUT_PREVIEW_ENABLED } from "@/lib/closeout-preview-flag";
-import {
-  buildCloseoutPreview,
-  easternCalendarDate,
-  showsCloseoutPreview,
-  type CloseoutPreviewInput,
-  type RowLoad,
-} from "@/lib/closeout-preview";
+import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
+import type { CloseoutPreviewInput, RowLoad } from "@/lib/closeout-preview";
 
 const PAGE = 1000;
 
@@ -36,6 +30,7 @@ export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ rentalId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     if (!CLOSEOUT_PREVIEW_ENABLED) throw new Error("Closeout Preview is off");
+    const { buildCloseoutPreview, easternCalendarDate } = await import("@/lib/closeout-preview");
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -90,12 +85,16 @@ export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
       rowsOf(() =>
         sb
           .from("toll_charges")
-          .select("status,amount,admin_fee,charge_type", { count: "exact" })
+          .select("status,amount,admin_fee,charge_type,payment_id", { count: "exact" })
           .eq("rental_id", data.rentalId)
           .limit(PAGE),
       ),
       rowsOf(() =>
-        sb.from("deposit_deductions").select("amount", { count: "exact" }).eq("rental_id", data.rentalId).limit(PAGE),
+        sb
+          .from("deposit_deductions")
+          .select("amount,incident_id", { count: "exact" })
+          .eq("rental_id", data.rentalId)
+          .limit(PAGE),
       ),
       rental.vehicle_id
         ? rowsOf(() =>

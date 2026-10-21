@@ -5,23 +5,21 @@
  * follow the Closeout Readiness reader (PR #63). RecordedRentalCloseout is
  * the versioned write screen and is not called from here. A missing or
  * unreadable source is Unknown. It is never reported as zero.
+ *
+ * The booking drawer imports `showsCloseoutPreview` from the flag module.
+ * This file imports the payments reader, so a client must not value-import it.
  */
+import { OUTSTANDING_STATUSES, owedOn } from "@/lib/payment-collection.server";
+import { isEndedRentalStatus, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
+
+export { showsCloseoutPreview };
 
 export const CLOSEOUT_PREVIEW_NOTE =
   "Staff must settle manually. This preview does not end the rental, change the deposit, or call billing.";
 
-/** Same charge states as payment-collection.server.ts `OUTSTANDING_STATUSES`. */
-export const OUTSTANDING_STATUSES = ["pending", "failed", "late", "overdue", "past_due", "unpaid", "collections", "current"] as const;
-
-/** Same balance rule as payment-collection.server.ts `owedOn`. */
-export function owedOn(row: { amount: unknown; balance_due: unknown }): number {
-  const bal = row.balance_due == null ? NaN : Number(row.balance_due);
-  return Number.isFinite(bal) && bal > 0 ? bal : Number(row.amount ?? 0);
-}
-
 const TERMINAL_PAYMENTS = ["paid", "refunded", "void", "waived"] as const;
 const SETTLED_TOLLS = ["rebilled", "paid", "written_off"] as const;
-const ENDED = new Set(["ended", "completed", "closed", "returned", "finished"]);
+const TICKET_TYPES = new Set(["ticket", "tickets", "citation", "citations", "red_light", "speeding", "parking", "impound"]);
 
 export type CloseoutState = "Ready" | "Needs Attention" | "Unknown";
 
@@ -78,8 +76,9 @@ export type CloseoutPreviewInput = {
     amount: unknown;
     admin_fee: unknown;
     charge_type: string | null;
+    payment_id?: string | null;
   }>;
-  deductions: RowLoad<{ amount: unknown }>;
+  deductions: RowLoad<{ amount: unknown; incident_id?: string | null }>;
   billing: { autopay: boolean | null; subscriptionLinked: boolean };
   deposit: {
     amount: unknown;
@@ -101,11 +100,6 @@ const unknown = (key: string, title: string, source: string): CloseoutFigure => 
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-
-export function showsCloseoutPreview(status: string | null | undefined): boolean {
-  const s = String(status ?? "").toLowerCase();
-  return s === "active" || ENDED.has(s);
-}
 
 export function easternCalendarDate(now: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -175,7 +169,7 @@ function incidentCost(row: { actual_cost: unknown; estimated_cost: unknown }): n
 function classifyCharge(type: string | null): "toll" | "ticket" | "other" {
   const s = String(type ?? "").trim().toLowerCase();
   if (s === "toll") return "toll";
-  if (s === "ticket" || s === "tickets" || s === "citation" || s === "citations") return "ticket";
+  if (TICKET_TYPES.has(s)) return "ticket";
   return "other";
 }
 
@@ -354,15 +348,42 @@ function incidentFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
   ];
 }
 
+type TollRow = {
+  status: string | null;
+  amount: unknown;
+  admin_fee: unknown;
+  charge_type: string | null;
+  payment_id?: string | null;
+};
+
+type DeductionRow = { amount: unknown; incident_id?: string | null };
+
+type PaymentRow = {
+  status: string | null;
+  amount: unknown;
+  balance_due: unknown;
+  type: string | null;
+  due_date: string | null;
+};
+
+function chargePosted(row: { status: string | null; payment_id?: string | null }): boolean {
+  return isSettledToll(row.status) || (row.payment_id != null && String(row.payment_id).length > 0);
+}
+
+/** A payment whose balance cannot be read. Matches Closeout Readiness: both fields null is Unknown, even though owedOn would return 0. */
+function paymentUnreadable(row: { status: string | null; amount: unknown; balance_due: unknown }): boolean {
+  return !isOutstanding(row.status) || (row.balance_due == null && row.amount == null) || !Number.isFinite(owedOn(row));
+}
+
 function tollFigure(
-  rows: Array<{ status: string | null; amount: unknown; admin_fee: unknown; charge_type: string | null }> | null,
+  rows: TollRow[] | null,
   kind: "toll" | "ticket" | "other",
   key: string,
   title: string,
 ): CloseoutFigure | null {
-  const source = "toll_charges for this rental; open means status is not rebilled, paid, or written_off";
+  const source = "toll_charges for this rental; open means status is not rebilled, paid, or written_off and no payment row is posted";
   if (!rows) return unknown(key, title, source);
-  const open = rows.filter((row) => !isSettledToll(row.status));
+  const open = rows.filter((row) => !chargePosted(row));
   const mine = open.filter((row) => classifyCharge(row.charge_type) === kind);
   if (kind === "other" && mine.length === 0) return null;
   const amounts = mine.map(chargeAmount);
@@ -388,13 +409,13 @@ function chargesFigure(input: CloseoutPreviewInput): CloseoutFigure {
   const tolls = usable(input.tolls);
   if (!payments || !tolls) return unknown("charges", "Outstanding Charges", source);
   const unpaid = payments.filter((row) => !isTerminalPayment(row.status));
-  if (unpaid.some((row) => !isOutstanding(row.status) || !Number.isFinite(owedOn(row)))) {
+  if (unpaid.some((row) => paymentUnreadable(row))) {
     return unknown("charges", "Outstanding Charges", source);
   }
   const balance = sumCents(unpaid.map((row) => owedOn(row)));
   if (balance == null) return unknown("charges", "Outstanding Charges", source);
   const pending = unpaid.filter((row) => row.status === "pending").length;
-  const unposted = tolls.filter((row) => !isSettledToll(row.status)).length;
+  const unposted = tolls.filter((row) => !chargePosted(row)).length;
   return {
     key: "charges",
     title: "Outstanding Charges",
@@ -407,7 +428,7 @@ function chargesFigure(input: CloseoutPreviewInput): CloseoutFigure {
 
 function returnDay(input: CloseoutPreviewInput): string | null {
   if (String(input.status ?? "").toLowerCase() === "active") return calendarDay(input.today);
-  if (ENDED.has(String(input.status ?? "").toLowerCase())) return calendarDay(input.endDate);
+  if (isEndedRentalStatus(input.status)) return calendarDay(input.endDate);
   return null;
 }
 
@@ -431,10 +452,7 @@ function unpaidRentFigure(input: CloseoutPreviewInput): CloseoutFigure {
   const rent = payments.filter((row) => String(row.type ?? "").toLowerCase() === "rent");
   const unpaid = rent.filter((row) => !isTerminalPayment(row.status));
   for (const row of unpaid) {
-    if (!isOutstanding(row.status)) {
-      return unknown("unpaid-rent", "Unpaid Rent", source);
-    }
-    if (!calendarDay(row.due_date) || !Number.isFinite(owedOn(row))) return unknown("unpaid-rent", "Unpaid Rent", source);
+    if (paymentUnreadable(row) || !calendarDay(row.due_date)) return unknown("unpaid-rent", "Unpaid Rent", source);
   }
   const due = unpaid.filter((row) => (row.due_date as string) <= day);
   const total = sumCents(due.map((row) => owedOn(row)));
@@ -460,6 +478,52 @@ function billingFigure(input: CloseoutPreviewInput): CloseoutFigure {
     source: "rentals autopay flag and whether a subscription link is present",
     explanation: `Local autopay: ${autopay == null ? "unknown" : autopay ? "on" : "off"}; subscription link: ${linked ? "present" : "absent"}. Provider cancellation is unverified. No provider request was made.`,
   };
+}
+
+/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. */
+function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string): number | null {
+  let total = 0;
+  for (const row of payments) {
+    if (isTerminalPayment(row.status)) continue;
+    const due = calendarDay(row.due_date);
+    if (!due) return null;
+    if (due > day) continue;
+    if (paymentUnreadable(row)) return null;
+    total += cents(owedOn(row));
+  }
+  return total;
+}
+
+function openChargeCents(rows: TollRow[], kind: "toll" | "ticket"): number | null {
+  let total = 0;
+  for (const row of rows) {
+    if (chargePosted(row) || classifyCharge(row.charge_type) !== kind) continue;
+    const amount = chargeAmount(row);
+    if (amount == null) return null;
+    total += cents(amount);
+  }
+  return total;
+}
+
+/** Driver responsibility left after deductions that name the incident. The deduction itself is still subtracted in full. */
+function uncoveredDriverCents(
+  incidents: Array<{ id: string; driver_responsible_amount: unknown }>,
+  deductions: DeductionRow[],
+): number | null {
+  const covered = new Map<string, number>();
+  for (const row of deductions) {
+    if (!row.incident_id) continue;
+    const amount = finite(row.amount);
+    if (amount == null || amount < 0) return null;
+    covered.set(row.incident_id, (covered.get(row.incident_id) ?? 0) + cents(amount));
+  }
+  let total = 0;
+  for (const row of incidents) {
+    const amount = finite(row.driver_responsible_amount);
+    if (amount == null || amount < 0) return null;
+    total += Math.max(0, cents(amount) - (covered.get(row.id) ?? 0));
+  }
+  return total;
 }
 
 function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
@@ -504,8 +568,26 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
             };
     }
   }
-  const proposalSource = `${depositSource}; ${deductionSource}`;
+  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day; open tolls and tickets that are not already a payment; incidents.driver_responsible_amount not covered by a linked deduction`;
   const canPropose = held === true && !settled && amount != null && deductionCents != null;
+  const noProposal = (why: string): [CloseoutFigure, CloseoutFigure] => [
+    {
+      key: "proposed-refund",
+      title: "Proposed Refund",
+      state: "Unknown",
+      value: "No Proposal",
+      source: proposalSource,
+      explanation: `${why} Staff must settle manually.`,
+    },
+    {
+      key: "balance-due",
+      title: "Balance Due",
+      state: "Unknown",
+      value: "No Proposal",
+      source: proposalSource,
+      explanation: `${why} Staff must settle manually.`,
+    },
+  ];
   let proposedRefund: CloseoutFigure;
   let balanceDue: CloseoutFigure;
   if (!canPropose) {
@@ -517,42 +599,56 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
           : amount == null || deductionCents == null
             ? "No proposal. A recorded deposit amount and a readable deductions list are both required."
             : "No proposal. Deposit held is unknown.";
-    proposedRefund = {
-      key: "proposed-refund",
-      title: "Proposed Refund",
-      state: "Unknown",
-      value: "No Proposal",
-      source: proposalSource,
-      explanation: `${why} Staff must settle manually.`,
-    };
-    balanceDue = {
-      key: "balance-due",
-      title: "Balance Due",
-      state: "Unknown",
-      value: "No Proposal",
-      source: proposalSource,
-      explanation: `${why} Staff must settle manually.`,
-    };
+    [proposedRefund, balanceDue] = noProposal(why);
   } else {
-    const depositCents = cents(amount as number);
-    const refund = Math.max(0, depositCents - (deductionCents as number));
-    const due = Math.max(0, (deductionCents as number) - depositCents);
-    proposedRefund = {
-      key: "proposed-refund",
-      title: "Proposed Refund",
-      state: refund > 0 ? "Needs Attention" : "Ready",
-      value: money(fromCents(refund)),
-      source: proposalSource,
-      explanation: "Recorded deposit minus recorded deductions, when that remainder is positive. Staff must settle manually. This is not a refund.",
-    };
-    balanceDue = {
-      key: "balance-due",
-      title: "Balance Due",
-      state: due > 0 ? "Needs Attention" : "Ready",
-      value: money(fromCents(due)),
-      source: proposalSource,
-      explanation: "Recorded deductions minus the recorded deposit, when deductions are larger. Staff must settle manually. This is not a charge.",
-    };
+    const day = returnDay(input);
+    const payments = usable(input.payments);
+    const tolls = usable(input.tolls);
+    const incidents = usable(input.rentalIncidents);
+    const paymentCents = day && payments ? paymentBalanceThroughReturnDay(payments, day) : null;
+    const tollCents = tolls ? openChargeCents(tolls, "toll") : null;
+    const ticketCents = tolls ? openChargeCents(tolls, "ticket") : null;
+    const driverCents = incidents && rows ? uncoveredDriverCents(incidents, rows) : null;
+    const why = !day
+      ? "No proposal. The return day is not recorded, so the payment balance through the return cannot be limited to a date."
+      : !payments
+        ? "No proposal. Outstanding payments could not be read."
+        : !tolls
+          ? "No proposal. Tolls and tickets could not be read."
+          : !incidents
+            ? "No proposal. Incidents could not be read."
+            : paymentCents == null
+              ? "No proposal. A payment that may be owed by the return day has no readable balance or due date."
+              : tollCents == null || ticketCents == null
+                ? "No proposal. An open toll or ticket has no readable amount."
+                : driverCents == null
+                  ? "No proposal. An incident is missing a driver-responsible amount."
+                  : null;
+    if (why || paymentCents == null || tollCents == null || ticketCents == null || driverCents == null) {
+      [proposedRefund, balanceDue] = noProposal(why ?? "No proposal. A recorded amount required for settlement could not be read.");
+    } else {
+      const net = cents(amount as number) - (deductionCents as number) - paymentCents - tollCents - ticketCents - driverCents;
+      const refund = Math.max(0, net);
+      const due = Math.max(0, -net);
+      const settledAgainst =
+        "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day, open tolls and tickets that are not already a payment, and driver responsibility not already covered by a linked deduction. Unpaid rent is included only inside that payment balance. Staff must settle manually.";
+      proposedRefund = {
+        key: "proposed-refund",
+        title: "Proposed Refund",
+        state: refund > 0 ? "Needs Attention" : "Ready",
+        value: money(fromCents(refund)),
+        source: proposalSource,
+        explanation: `${settledAgainst} This is not a refund.`,
+      };
+      balanceDue = {
+        key: "balance-due",
+        title: "Balance Due",
+        state: due > 0 ? "Needs Attention" : "Ready",
+        value: money(fromCents(due)),
+        source: proposalSource,
+        explanation: `${settledAgainst} This is not a charge.`,
+      };
+    }
   }
   return [deposit, deductions, proposedRefund, balanceDue];
 }
