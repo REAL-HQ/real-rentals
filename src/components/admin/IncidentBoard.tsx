@@ -8,9 +8,12 @@ import { createIncidentBoard, listIncidentBoard, setIncidentBoardStatus } from "
 import {
   INCIDENT_STATUSES,
   INCIDENT_TYPES,
+  formatCents,
   incidentStatusLabel,
   incidentTypeLabel,
   type IncidentBoardRow,
+  type IncidentClaimPhoto,
+  type IncidentClaimTotal,
   type IncidentStatus,
   type IncidentType,
 } from "@/lib/incident-board";
@@ -22,6 +25,10 @@ export function IncidentBoard() {
   const create = useServerFn(createIncidentBoard);
   const saveStatus = useServerFn(setIncidentBoardStatus);
   const [rows, setRows] = useState<IncidentBoardRow[]>([]);
+  const [claimsVisible, setClaimsVisible] = useState(false);
+  const [recoveryInstalled, setRecoveryInstalled] = useState<boolean | null>(null);
+  const [vehicleTotals, setVehicleTotals] = useState<IncidentClaimTotal[] | null>(null);
+  const [driverTotals, setDriverTotals] = useState<IncidentClaimTotal[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
@@ -38,6 +45,10 @@ export function IncidentBoard() {
     try {
       const res = await fetchList();
       setRows(res.rows);
+      setClaimsVisible(res.claimsVisible);
+      setRecoveryInstalled(res.recoveryInstalled);
+      setVehicleTotals(res.vehicleTotals);
+      setDriverTotals(res.driverTotals);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load the Incident Board");
     } finally {
@@ -185,6 +196,9 @@ export function IncidentBoard() {
                 <th className="px-3 py-2 font-medium">Date</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Roadside</th>
+                {claimsVisible && <th className="px-3 py-2 font-medium">Claim Number</th>}
+                {claimsVisible && <th className="px-3 py-2 font-medium">Estimated Cost</th>}
+                {claimsVisible && <th className="px-3 py-2 font-medium">Actual Cost</th>}
                 <th className="px-3 py-2 font-medium">Details</th>
               </tr>
             </thead>
@@ -197,6 +211,9 @@ export function IncidentBoard() {
                   <td className="px-3 py-2 whitespace-nowrap">{row.occurredEt}</td>
                   <td className="px-3 py-2">{row.statusLabel}</td>
                   <td className="px-3 py-2">{row.roadside}</td>
+                  {claimsVisible && <td className="px-3 py-2">{row.claims?.claimNumber ?? "No Claim Number"}</td>}
+                  {claimsVisible && <td className="px-3 py-2 whitespace-nowrap">{formatCents(row.claims?.estimatedCostCents ?? null)}</td>}
+                  {claimsVisible && <td className="px-3 py-2 whitespace-nowrap">{formatCents(row.claims?.actualCostCents ?? null)}</td>}
                   <td className="px-3 py-2">
                     <button type="button" onClick={() => setOpenId(row.id === openId ? null : row.id)} className="text-xs font-semibold text-[#D03020]">
                       {row.id === openId ? "Hide" : "Open"}
@@ -214,6 +231,7 @@ export function IncidentBoard() {
           <h2 className="text-sm font-semibold">{open.typeLabel} · {open.vehicle}</h2>
           <dl className="grid gap-2 sm:grid-cols-2 text-sm">
             <Fact label="Driver" value={open.driver} />
+            <Fact label="Rental" value={open.rental} />
             <Fact label="Date" value={open.occurredEt} />
             <Fact label="Reported" value={open.reportedEt} />
             <Fact label="Status" value={open.statusLabel} />
@@ -228,6 +246,18 @@ export function IncidentBoard() {
           </dl>
           <Fact label="Description" value={open.description} />
           <Fact label="Notes" value={open.notes} />
+          {open.claims && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Amount Recovered is a recorded number. It does not create a charge or deduct a deposit.</p>
+              <dl className="grid gap-2 sm:grid-cols-2 text-sm">
+                <Fact label="Claim Number" value={open.claims.claimNumber ?? "No Claim Number"} />
+                <Fact label="Estimated Cost" value={formatCents(open.claims.estimatedCostCents)} />
+                <Fact label="Actual Cost" value={formatCents(open.claims.actualCostCents)} />
+                <Fact label="Amount Recovered" value={recoveryInstalled ? formatCents(open.claims.amountRecoveredCents) : "Not Recorded"} />
+              </dl>
+              <PhotoLinks photos={open.claims.photos} />
+            </div>
+          )}
           <label className="block text-sm max-w-xs">
             <span className="mb-1 block text-xs text-muted-foreground">Status</span>
             <select
@@ -243,8 +273,54 @@ export function IncidentBoard() {
           </label>
         </section>
       )}
+
+      {claimsVisible && rows.length > 0 && vehicleTotals && driverTotals && (
+        <div className="space-y-4">
+          <ClaimTotals title="Vehicle Totals" rows={vehicleTotals} recoveryInstalled={recoveryInstalled === true} />
+          <ClaimTotals title="Driver Totals" rows={driverTotals} recoveryInstalled={recoveryInstalled === true} />
+        </div>
+      )}
     </div>
   );
+}
+
+function PhotoLinks({ photos }: { photos: IncidentClaimPhoto[] | null }) {
+  if (photos == null) return <p className="text-sm text-muted-foreground">Photo Links Not Installed</p>;
+  if (photos.length === 0) return <p className="text-sm text-muted-foreground">No Photo Links</p>;
+  return (
+    <ul className="space-y-1 text-sm">
+      {photos.map((photo) => (
+        <li key={photo.id}>
+          {photo.kind === "document" ? "Document" : "Inspection"}: {photo.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ClaimTotals({ title, rows, recoveryInstalled }: { title: string; rows: IncidentClaimTotal[]; recoveryInstalled: boolean }) {
+  return (
+    <section className="rounded-xl border border-[#EDEDF0] bg-white p-4">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">None</p>
+      ) : (
+        <ul className="mt-2 space-y-2 text-sm">
+          {rows.map((row) => (
+            <li key={row.id}>
+              {row.label} · {row.incidents} {row.incidents === 1 ? "Incident" : "Incidents"} · Estimated {formatCents(row.estimatedCostCents)} · Actual {formatCents(row.actualCostCents)} · Recovered {recoveredText(row, recoveryInstalled)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function recoveredText(total: IncidentClaimTotal, installed: boolean): string {
+  if (!installed || total.recoveredCostCents == null) return "Not Recorded";
+  if (total.recoveredUnknown === 0) return formatCents(total.recoveredCostCents);
+  return `${formatCents(total.recoveredCostCents)} · ${total.recoveredUnknown} Not Recorded`;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

@@ -6,6 +6,13 @@
 //
 // Roadside issues live in public.issues. Neither table stores the other's id,
 // so a link is Unknown until proposed/incident-board-v1.sql is installed.
+//
+// Claim columns from the incidents log (estimated cost, actual cost, claim
+// number, amount recovered, photo links) are folded onto this board. Money is
+// integer cents. Null is not recorded, never zero. Recovery and photo links
+// exist only when proposed/incident-board-claims-v1.sql is installed. A missing
+// table is only Postgres 42P01 or PostgREST PGRST205. Coordinators do not
+// receive the claim fields.
 
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { formatIssueTimeEt } from "@/lib/driver-issues";
@@ -65,6 +72,38 @@ export function assertIncidentBoardEnabled(): void {
 /** Owner, Manager, and Coordinator. A missing tier is refused. */
 export function incidentBoardTierAllowed(tier: StaffTier | null): boolean {
   return tierAllows(tier, "coordinator");
+}
+
+/** Claim costs stay with Owner and Manager. Coordinators keep the operational board. */
+export function incidentBoardShowsClaims(tier: StaffTier | null): boolean {
+  return tierAllows(tier, "manager");
+}
+
+/** Postgres undefined_table, or PostgREST's schema-cache miss for a table. Nothing else. */
+export function proposedTableMissing(error: { code?: string | null } | null | undefined): boolean {
+  const code = error?.code;
+  return code === "42P01" || code === "PGRST205";
+}
+
+/** Non-negative source dollars with at most two decimal places, as integer cents. */
+export function incidentCostCents(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+  const text = String(value);
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+  const [whole, fraction = ""] = text.split(".");
+  const cents = BigInt(whole ?? "0") * 100n + BigInt(fraction.padEnd(2, "0"));
+  return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) : null;
+}
+
+export function formatCents(cents: number | null): string {
+  if (cents == null || !Number.isSafeInteger(cents)) return "Not Recorded";
+  const negative = cents < 0;
+  const abs = Math.abs(cents);
+  const whole = Math.floor(abs / 100).toLocaleString("en-US");
+  const fraction = String(abs % 100).padStart(2, "0");
+  return `${negative ? "-" : ""}$${whole}.${fraction}`;
 }
 
 export function isIncidentStatus(value: string): value is IncidentStatus {
@@ -144,6 +183,10 @@ export type IncidentBoardSource = {
   driverLabel: string | null;
   linkColumn: boolean;
   issueTitle: string | null;
+  vehicleId?: string | null;
+  driverId?: string | null;
+  rentalId?: string | null;
+  claims?: IncidentClaimFacts | null;
 };
 
 export type IncidentBoardRow = {
@@ -166,6 +209,10 @@ export type IncidentBoardRow = {
   otherParty: string;
   notes: string;
   reportedEt: string;
+  vehicleId: string;
+  driverId: string | null;
+  rental: string;
+  claims: IncidentClaimFacts | null;
 };
 
 export function toIncidentBoardRow(source: IncidentBoardSource): IncidentBoardRow {
@@ -191,5 +238,207 @@ export function toIncidentBoardRow(source: IncidentBoardSource): IncidentBoardRo
     otherParty: text(source.otherParty),
     notes: text(source.notes),
     reportedEt: incidentWhenEt(source.reportedAt),
+    vehicleId: source.vehicleId?.trim() ? source.vehicleId.trim() : "",
+    driverId: source.driverId?.trim() ? source.driverId.trim() : null,
+    rental: source.rentalId?.trim() ? source.rentalId.trim() : "No Rental",
+    claims: source.claims ?? null,
   };
+}
+
+export type IncidentCostSource = {
+  id: string;
+  estimated_cost: unknown;
+  actual_cost: unknown;
+  claim_number: string | null;
+};
+
+export type IncidentRecoverySource = {
+  incident_id: string;
+  amount_recovered: unknown;
+};
+
+export type IncidentPhotoLinkSource = {
+  id: string;
+  incident_id: string;
+  document_id: string | null;
+  inspection_id: string | null;
+};
+
+export type IncidentDocumentSource = {
+  id: string;
+  file_name: string | null;
+  category: string | null;
+};
+
+export type IncidentInspectionSource = {
+  id: string;
+  inspection_type: string | null;
+  status: string | null;
+};
+
+export type IncidentClaimPhoto = {
+  id: string;
+  kind: "document" | "inspection";
+  label: string;
+};
+
+export type IncidentClaimFacts = {
+  claimNumber: string | null;
+  estimatedCostCents: number | null;
+  actualCostCents: number | null;
+  amountRecoveredCents: number | null;
+  photos: IncidentClaimPhoto[] | null;
+};
+
+export type IncidentClaimTotal = {
+  id: string;
+  label: string;
+  incidents: number;
+  estimatedCostCents: number | null;
+  actualCostCents: number | null;
+  recoveredCostCents: number | null;
+  recoveredUnknown: number;
+};
+
+export type IncidentBoardList = {
+  rows: IncidentBoardRow[];
+  claimsVisible: boolean;
+  recoveryInstalled: boolean | null;
+  photoLinksInstalled: boolean | null;
+  vehicleTotals: IncidentClaimTotal[] | null;
+  driverTotals: IncidentClaimTotal[] | null;
+};
+
+export function incidentClaimFacts(input: {
+  ids: string[];
+  costs: IncidentCostSource[];
+  recoveryInstalled: boolean;
+  photoLinksInstalled: boolean;
+  recovery: IncidentRecoverySource[];
+  links: IncidentPhotoLinkSource[];
+  documents: IncidentDocumentSource[];
+  inspections: IncidentInspectionSource[];
+}): Map<string, IncidentClaimFacts> {
+  const costById = new Map(input.costs.map((row) => [row.id, row]));
+  const recoveryById = new Map<string, number | null>();
+  if (input.recoveryInstalled) {
+    for (const row of input.recovery) recoveryById.set(row.incident_id, incidentCostCents(row.amount_recovered));
+  }
+  const linksById = new Map<string, IncidentPhotoLinkSource[]>();
+  if (input.photoLinksInstalled) {
+    for (const link of input.links) {
+      const list = linksById.get(link.incident_id) ?? [];
+      list.push(link);
+      linksById.set(link.incident_id, list);
+    }
+  }
+  const documents = new Map(input.documents.map((row) => [row.id, row]));
+  const inspections = new Map(input.inspections.map((row) => [row.id, row]));
+  const byId = new Map<string, IncidentClaimFacts>();
+  for (const id of input.ids) {
+    const cost = costById.get(id);
+    byId.set(id, {
+      claimNumber: cost?.claim_number?.trim() ? cost.claim_number.trim() : null,
+      estimatedCostCents: cost ? incidentCostCents(cost.estimated_cost) : null,
+      actualCostCents: cost ? incidentCostCents(cost.actual_cost) : null,
+      amountRecoveredCents: input.recoveryInstalled ? (recoveryById.get(id) ?? null) : null,
+      photos: input.photoLinksInstalled ? claimPhotos(linksById.get(id) ?? [], documents, inspections) : null,
+    });
+  }
+  return byId;
+}
+
+export function incidentClaimTotals(
+  rows: Array<Pick<IncidentBoardRow, "vehicleId" | "vehicle" | "driverId" | "driver" | "claims">>,
+): { vehicleTotals: IncidentClaimTotal[]; driverTotals: IncidentClaimTotal[] } {
+  const claimed = rows.filter((row) => row.claims);
+  return {
+    vehicleTotals: groupClaimTotals(claimed, (row) => row.vehicleId, (row) => row.vehicle),
+    driverTotals: groupClaimTotals(
+      claimed.filter((row) => row.driverId),
+      (row) => row.driverId as string,
+      (row) => row.driver,
+    ),
+  };
+}
+
+function claimLabel(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return fallback;
+  return trimmed
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function claimPhotos(
+  links: IncidentPhotoLinkSource[],
+  documents: Map<string, IncidentDocumentSource>,
+  inspections: Map<string, IncidentInspectionSource>,
+): IncidentClaimPhoto[] {
+  const photos: IncidentClaimPhoto[] = [];
+  for (const link of links) {
+    const hasDocument = Boolean(link.document_id);
+    const hasInspection = Boolean(link.inspection_id);
+    if (hasDocument === hasInspection) continue;
+    if (link.document_id) {
+      const document = documents.get(link.document_id);
+      if (!document) continue;
+      const name = document.file_name?.trim();
+      photos.push({ id: link.id, kind: "document", label: name || claimLabel(document.category, "Document") });
+      continue;
+    }
+    const inspection = inspections.get(link.inspection_id as string);
+    if (!inspection) continue;
+    const typeLabel = claimLabel(inspection.inspection_type, "Inspection");
+    const statusLabel = claimLabel(inspection.status, "");
+    photos.push({
+      id: link.id,
+      kind: "inspection",
+      label: [typeLabel, statusLabel].filter(Boolean).join(" · "),
+    });
+  }
+  return photos;
+}
+
+function sumKnownCents(values: Array<number | null>): number | null {
+  let total = 0;
+  let known = false;
+  for (const value of values) {
+    if (value == null) continue;
+    known = true;
+    const next = total + value;
+    if (!Number.isSafeInteger(next)) return null;
+    total = next;
+  }
+  return known ? total : null;
+}
+
+function groupClaimTotals<T extends { claims: IncidentClaimFacts | null }>(
+  rows: T[],
+  idOf: (row: T) => string,
+  labelOf: (row: T) => string,
+): IncidentClaimTotal[] {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const id = idOf(row);
+    const list = groups.get(id) ?? [];
+    list.push(row);
+    groups.set(id, list);
+  }
+  return [...groups.entries()]
+    .map(([id, list]) => {
+      const recovered = list.map((row) => row.claims?.amountRecoveredCents ?? null);
+      return {
+        id,
+        label: labelOf(list[0]),
+        incidents: list.length,
+        estimatedCostCents: sumKnownCents(list.map((row) => row.claims?.estimatedCostCents ?? null)),
+        actualCostCents: sumKnownCents(list.map((row) => row.claims?.actualCostCents ?? null)),
+        recoveredCostCents: sumKnownCents(recovered),
+        recoveredUnknown: recovered.filter((value) => value == null).length,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

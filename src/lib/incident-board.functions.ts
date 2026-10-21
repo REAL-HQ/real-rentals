@@ -1,9 +1,13 @@
 // Incident Board reads and writes. Owners, managers, and coordinators.
 //
 // supabaseAdmin bypasses RLS. incidents is manager-only in RLS because the
-// claim screen carries costs; this board repeats the staff check here, the
-// same way Contact Status does, and it never selects those cost columns.
+// claim screen carries costs. Coordinators can open this board, so the
+// operational read never selects estimated_cost, actual_cost, or claim_number.
+// Those columns, plus the proposed recovery and photo-link tables, are read
+// only after the flag check and only for a manager or owner. A missing
+// proposed table is only 42P01 or PGRST205. Any other error fails the read.
 // It does not enroll incident_logged and does not notify the driver.
+// It does not read deposit deductions or write a cost.
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -12,13 +16,22 @@ import {
   INCIDENT_TYPES,
   OPEN_INCIDENT_STATUSES,
   assertIncidentBoardEnabled,
+  incidentBoardShowsClaims,
+  incidentClaimFacts,
+  incidentClaimTotals,
   incidentCreateBlockers,
   incidentStatusLabel,
   incidentStatusMove,
   incidentTypeLabel,
+  proposedTableMissing,
   toIncidentBoardRow,
-  type IncidentBoardRow,
+  type IncidentBoardList,
   type IncidentBoardSource,
+  type IncidentCostSource,
+  type IncidentDocumentSource,
+  type IncidentInspectionSource,
+  type IncidentPhotoLinkSource,
+  type IncidentRecoverySource,
   type IncidentStatus,
 } from "@/lib/incident-board";
 
@@ -37,38 +50,52 @@ function missingIssueColumn(err: { code?: string | null; message?: string | null
 
 export const listIncidentBoard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: IncidentBoardRow[] }> => {
+  .handler(async ({ context }): Promise<IncidentBoardList> => {
     const { requireStaff } = await import("@/lib/roles.server");
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
     assertIncidentBoardEnabled();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const loaded = await loadOpen(supabaseAdmin);
     const issueTitles = await titlesFor(supabaseAdmin, loaded.rows, loaded.linkColumn);
     const vehicles = await labelsFor(supabaseAdmin, "vehicles", loaded.rows.map((row) => row.vehicle_id).filter(Boolean), vehicleLabel);
     const apps = await labelsFor(supabaseAdmin, "applications", loaded.rows.map((row) => row.application_id).filter(Boolean), (row) => String(row.full_name ?? "").trim());
+    const claimsVisible = incidentBoardShowsClaims(actor.tier);
+    const claimRead = claimsVisible && loaded.rows.length ? await loadIncidentClaims(supabaseAdmin, loaded.rows) : null;
+    const facts = claimRead ? incidentClaimFacts(claimRead) : null;
+    const rows = loaded.rows.map((row) =>
+      toIncidentBoardRow({
+        id: String(row.id),
+        incidentType: String(row.incident_type ?? ""),
+        occurredAt: String(row.occurred_at ?? ""),
+        reportedAt: (row.reported_at as string | null) ?? null,
+        status: String(row.status ?? ""),
+        location: (row.location as string | null) ?? null,
+        description: (row.description as string | null) ?? null,
+        severity: (row.severity as string | null) ?? null,
+        atFault: (row.at_fault as string | null) ?? null,
+        injuries: typeof row.injuries === "boolean" ? row.injuries : null,
+        drivable: typeof row.drivable === "boolean" ? row.drivable : null,
+        policeReportNumber: (row.police_report_number as string | null) ?? null,
+        otherParty: (row.other_party as string | null) ?? null,
+        notes: (row.notes as string | null) ?? null,
+        vehicleLabel: vehicles.get(String(row.vehicle_id)) ?? null,
+        driverLabel: row.application_id ? apps.get(String(row.application_id)) ?? null : null,
+        linkColumn: loaded.linkColumn,
+        issueTitle: loaded.linkColumn && row.issue_id ? issueTitles.get(String(row.issue_id)) ?? null : null,
+        vehicleId: row.vehicle_id ? String(row.vehicle_id) : null,
+        driverId: row.application_id ? String(row.application_id) : null,
+        rentalId: (row.rental_id as string | null) ?? null,
+        claims: facts ? (facts.get(String(row.id)) ?? null) : null,
+      } satisfies IncidentBoardSource),
+    );
+    const totals = facts ? incidentClaimTotals(rows) : null;
     return {
-      rows: loaded.rows.map((row) =>
-        toIncidentBoardRow({
-          id: String(row.id),
-          incidentType: String(row.incident_type ?? ""),
-          occurredAt: String(row.occurred_at ?? ""),
-          reportedAt: (row.reported_at as string | null) ?? null,
-          status: String(row.status ?? ""),
-          location: (row.location as string | null) ?? null,
-          description: (row.description as string | null) ?? null,
-          severity: (row.severity as string | null) ?? null,
-          atFault: (row.at_fault as string | null) ?? null,
-          injuries: typeof row.injuries === "boolean" ? row.injuries : null,
-          drivable: typeof row.drivable === "boolean" ? row.drivable : null,
-          policeReportNumber: (row.police_report_number as string | null) ?? null,
-          otherParty: (row.other_party as string | null) ?? null,
-          notes: (row.notes as string | null) ?? null,
-          vehicleLabel: vehicles.get(String(row.vehicle_id)) ?? null,
-          driverLabel: row.application_id ? apps.get(String(row.application_id)) ?? null : null,
-          linkColumn: loaded.linkColumn,
-          issueTitle: loaded.linkColumn && row.issue_id ? issueTitles.get(String(row.issue_id)) ?? null : null,
-        } satisfies IncidentBoardSource),
-      ),
+      rows,
+      claimsVisible,
+      recoveryInstalled: claimRead ? claimRead.recoveryInstalled : null,
+      photoLinksInstalled: claimRead ? claimRead.photoLinksInstalled : null,
+      vehicleTotals: totals ? totals.vehicleTotals : null,
+      driverTotals: totals ? totals.driverTotals : null,
     };
   });
 
@@ -161,6 +188,89 @@ export const setIncidentBoardStatus = createServerFn({ method: "POST" })
     });
     return { ok: true, status: data.status };
   });
+
+async function loadIncidentClaims(
+  sb: any,
+  rows: any[],
+): Promise<{
+  ids: string[];
+  costs: IncidentCostSource[];
+  recoveryInstalled: boolean;
+  photoLinksInstalled: boolean;
+  recovery: IncidentRecoverySource[];
+  links: IncidentPhotoLinkSource[];
+  documents: IncidentDocumentSource[];
+  inspections: IncidentInspectionSource[];
+}> {
+  const ids = rows.map((row) => String(row.id));
+  const costs: IncidentCostSource[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    const { data, error } = await sb.from("incidents").select("id,estimated_cost,actual_cost,claim_number").in("id", slice);
+    if (error) throw new Error(error.message);
+    costs.push(...((data ?? []) as IncidentCostSource[]));
+  }
+  const recovery = await readProposed(sb, "incidents_log_v1", "incident_id,amount_recovered", ids);
+  const links = await readProposed(sb, "incidents_log_v1_links", "id,incident_id,document_id,inspection_id", ids);
+  const linkRows = (links.installed ? links.rows : []) as IncidentPhotoLinkSource[];
+  const documents = links.installed
+    ? await rowsById(sb, "documents", "id,file_name,category", uniqueIds(linkRows.map((row) => row.document_id)))
+    : [];
+  const inspections = links.installed
+    ? await rowsById(sb, "inspections", "id,inspection_type,status", uniqueIds(linkRows.map((row) => row.inspection_id)))
+    : [];
+  return {
+    ids,
+    costs,
+    recoveryInstalled: recovery.installed,
+    photoLinksInstalled: links.installed,
+    recovery: (recovery.installed ? recovery.rows : []) as IncidentRecoverySource[],
+    links: linkRows,
+    documents: documents as IncidentDocumentSource[],
+    inspections: inspections as IncidentInspectionSource[],
+  };
+}
+
+async function readProposed(
+  sb: any,
+  table: "incidents_log_v1" | "incidents_log_v1_links",
+  columns: string,
+  ids: string[],
+): Promise<{ installed: boolean; rows: any[] }> {
+  const probe = await sb.from(table).select(columns).limit(1);
+  if (probe.error) {
+    if (proposedTableMissing(probe.error)) return { installed: false, rows: [] };
+    throw new Error(probe.error.message);
+  }
+  const loaded: any[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    const { data, error } = await sb.from(table).select(columns).in("incident_id", slice);
+    if (error) {
+      if (proposedTableMissing(error)) return { installed: false, rows: [] };
+      throw new Error(error.message);
+    }
+    loaded.push(...(data ?? []));
+  }
+  return { installed: true, rows: loaded };
+}
+
+async function rowsById(sb: any, table: "documents" | "inspections", columns: string, ids: string[]): Promise<any[]> {
+  const loaded: any[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const slice = ids.slice(index, index + 100);
+    const { data, error } = await sb.from(table).select(columns).in("id", slice);
+    if (error) throw new Error(error.message);
+    loaded.push(...(data ?? []));
+  }
+  return loaded;
+}
+
+function uniqueIds(values: Array<string | null>): string[] {
+  const ids: string[] = [];
+  for (const value of values) if (value && !ids.includes(value)) ids.push(value);
+  return ids;
+}
 
 async function loadOpen(sb: any): Promise<{ rows: any[]; linkColumn: boolean }> {
   const withLink = await sb.from("incidents").select(`${COLUMNS},issue_id`).in("status", OPEN).order("occurred_at", { ascending: false }).limit(200);
