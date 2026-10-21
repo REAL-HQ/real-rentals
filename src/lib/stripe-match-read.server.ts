@@ -87,7 +87,7 @@ export async function readStripeMatchWindow(
 }
 
 export async function readLiveStripeMatch(): Promise<{ ok: true; customers: StripeMatchCustomer[] } | { ok: false; reason: string }> {
-  return readStripeMatchWindow(createReadOnlyStripe("live"));
+  return readStripeMatchWindow(createReadOnlyStripe("live", { cache: true }));
 }
 
 type Person = { id: string; name: string | null; email: string | null; phone: string | null };

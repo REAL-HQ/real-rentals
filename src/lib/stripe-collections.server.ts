@@ -8,6 +8,7 @@ const idOf = (v: string | { id: string } | null | undefined) => typeof v === "st
 /** GET/list/retrieve only. Invoices prove linkage, but never contribute money. */
 export async function loadStripeCollections(environment: StripeEnv, range: CollectionsRange): Promise<CollectionsReport> {
   const window = collectionsWindow(range);
+  // Live collections stay uncached. A payment must show on the next refresh.
   const stripe = createReadOnlyStripe(environment);
   const [subscriptions, invoices, invoicePayments, charges, refunds] = await Promise.all([
     readAllPages(cursor => stripe.subscriptions.list({ status: "all", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.customer"] })),

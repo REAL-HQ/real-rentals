@@ -46,7 +46,7 @@ export async function readDepositsLedger(
 }
 
 export function readLiveDepositsLedger(window: { gte: number; lt: number }, signal?: AbortSignal) {
-  return readDepositsLedger(createReadOnlyStripe("live"), window, { signal });
+  return readDepositsLedger(createReadOnlyStripe("live", { cache: true }), window, { signal });
 }
 
 function remaining(deadline: number, now: () => number): number {

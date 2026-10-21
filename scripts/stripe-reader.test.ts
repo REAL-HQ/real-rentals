@@ -88,9 +88,14 @@ describe("shared Stripe reader", () => {
     expect(other).toEqual({ ok: false, reason: "Stripe evidence was incomplete or timed out" });
   });
 
-  it("reuses a list response for 60 seconds and refuses a write", async () => {
+  it("reuses a list response for 60 seconds only when a reader opts in", async () => {
     stripeMock.list.mockResolvedValue({ data: [{ id: "ch_1" }], has_more: false });
-    const stripe = createReadOnlyStripe("live");
+    const fresh = createReadOnlyStripe("live");
+    await fresh.charges.list({ limit: 100 });
+    await fresh.charges.list({ limit: 100 });
+    expect(stripeMock.list).toHaveBeenCalledTimes(2);
+    stripeMock.list.mockClear();
+    const stripe = createReadOnlyStripe("live", { cache: true });
     await stripe.charges.list({ limit: 100 }, { timeout: 500 });
     await stripe.charges.list({ limit: 100 }, { timeout: 9_000 });
     expect(stripeMock.list).toHaveBeenCalledTimes(1);
@@ -112,6 +117,10 @@ describe("shared Stripe reader", () => {
       const source = readFileSync(file, "utf8");
       expect(source, file).toContain("createReadOnlyStripe");
       expect(source, file).not.toContain("createStripeClient");
+    }
+    expect(readFileSync("src/lib/stripe-collections.server.ts", "utf8")).not.toContain("cache: true");
+    for (const file of READERS.filter((path) => path !== "src/lib/stripe-collections.server.ts")) {
+      expect(readFileSync(file, "utf8"), file).toContain("cache: true");
     }
   });
 

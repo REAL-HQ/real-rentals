@@ -9,9 +9,12 @@ import {
 
 /**
  * The only Stripe client the readers use. list and retrieve only.
- * Identical queries reuse an in-memory response for 60 seconds.
+ * A reader opts into the 60 second query cache. Stripe Collections does not:
+ * paid and unpaid status must not stay stale after a payment.
  * HTTP 429 and timeouts become "Stripe temporarily unavailable".
  */
+
+export type ReadOnlyStripeOptions = { cache?: boolean };
 
 const READ_METHODS = new Set(["list", "retrieve"]);
 const cache = new Map<string, { at: number; value: unknown }>();
@@ -22,8 +25,9 @@ export function clearStripeReaderCache(): void {
   inflight.clear();
 }
 
-export function createReadOnlyStripe(env: StripeEnv): Stripe {
+export function createReadOnlyStripe(env: StripeEnv, options?: ReadOnlyStripeOptions): Stripe {
   const stripe = createStripeClient(env, { timeout: STRIPE_READER_TIMEOUT_MS });
+  const useCache = options?.cache === true;
   return new Proxy(stripe, {
     get(target, prop, receiver) {
       if (prop === "then") return undefined;
@@ -36,11 +40,14 @@ export function createReadOnlyStripe(env: StripeEnv): Stripe {
           if (!READ_METHODS.has(method)) throw new Error(`Stripe reader refuses ${prop}.${method}`);
           const fn = Reflect.get(raw, method, methodReceiver);
           if (typeof fn !== "function") return fn;
-          return (...args: unknown[]) =>
-            cachedCall(env, `${prop}.${method}`, args, () => Reflect.apply(fn, raw, args)).catch((error: unknown) => {
+          return (...args: unknown[]) => {
+            const run = () => Reflect.apply(fn, raw, args);
+            const call = useCache ? cachedCall(env, `${prop}.${method}`, args, run) : run();
+            return call.catch((error: unknown) => {
               if (isStripeTemporarilyUnavailable(error)) throw new StripeTemporarilyUnavailable();
               throw error;
             });
+          };
         },
       });
     },

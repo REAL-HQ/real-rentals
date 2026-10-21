@@ -42,7 +42,7 @@ export async function readWeeklyCashFlow(
 }
 
 export function readLiveWeeklyCashFlow(window: { gte: number; lt: number }, signal?: AbortSignal) {
-  return readWeeklyCashFlow(createReadOnlyStripe("live"), window, { signal });
+  return readWeeklyCashFlow(createReadOnlyStripe("live", { cache: true }), window, { signal });
 }
 
 function remaining(deadline: number, now: () => number): number {

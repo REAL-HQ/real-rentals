@@ -114,7 +114,7 @@ export async function readDriverStatement(
 }
 
 export function readLiveDriverStatement(signal?: AbortSignal) {
-  return readDriverStatement(createReadOnlyStripe("live"), { signal });
+  return readDriverStatement(createReadOnlyStripe("live", { cache: true }), { signal });
 }
 
 type MappedCharge = {

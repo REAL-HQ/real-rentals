@@ -135,7 +135,7 @@ export async function readCollectionsWatch(
 }
 
 export function readLiveCollectionsWatch(window: { failedGte: number; dueGte: number; dueLt: number; now: number }, signal?: AbortSignal) {
-  return readCollectionsWatch(createReadOnlyStripe("live"), window, { signal });
+  return readCollectionsWatch(createReadOnlyStripe("live", { cache: true }), window, { signal });
 }
 
 type MappedSub = {
