@@ -1,6 +1,6 @@
 /**
- * Dark gate for a real waitlist claim link and for Coming Soon signups
- * that go through joinWaitlist.
+ * Dark gate for a real waitlist claim link.
+ * Coming Soon stays on its browser insert and does not follow this flag.
  *
  * false: the opening email is the current /apply link, and a failed send still
  * marks the row Notified.
