@@ -1,10 +1,13 @@
 import { tierAllows, type StaffTier } from "./roles";
 import { DEPOSIT_LEDGER_OFF } from "./deposit-ledger-flag";
 import {
+  applyDepositStripe,
   buildDepositLedger,
   cappedDepositLedger,
   dollarsToCents,
+  markStripeUnavailable,
   type DepositLedgerReport,
+  type DepositStripeRead,
   type LedgerDeduction,
   type LedgerPayment,
   type LedgerPerson,
@@ -14,7 +17,8 @@ import {
 
 /**
  * Owners and managers. The flag is checked here again so a direct call still
- * throws before any read. Database reads only. No writes and no Stripe list.
+ * throws before any read. This file only reads the database. Stripe, when the
+ * caller supplies it, runs after that read and cannot change a row's money.
  */
 
 export type DepositLedgerResponse =
@@ -38,6 +42,7 @@ export async function runDepositLedger(input: {
   tier: StaffTier | null;
   today: string;
   load: () => Promise<DepositLoad>;
+  stripe?: (payments: LedgerPayment[]) => Promise<DepositStripeRead>;
 }): Promise<DepositLedgerResponse> {
   if (!input.enabled) throw new Error(DEPOSIT_LEDGER_OFF);
   if (!input.userId || !tierAllows(input.tier, "manager")) throw new Error("Forbidden");
@@ -50,7 +55,14 @@ export async function runDepositLedger(input: {
   }
   const report = buildDepositLedger({ ...loaded, today: input.today });
   if (!report) return { status: "unavailable", reason: "The deposit date could not be read" };
-  return { status: "ready", report };
+  if (!input.stripe) return { status: "ready", report };
+  try {
+    const checked = await input.stripe(loaded.payments);
+    if (!checked.ok) return { status: "ready", report: markStripeUnavailable(report) };
+    return { status: "ready", report: applyDepositStripe(report, loaded.payments, checked.checks) };
+  } catch {
+    return { status: "ready", report: markStripeUnavailable(report) };
+  }
 }
 
 type QueryResult = { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
@@ -66,7 +78,7 @@ export type DepositDirectoryClient = {
 };
 
 const RENTAL_COLUMNS = "id,application_id,vehicle_id,status,end_date,deposit_amount,deposit_held,deposit_status,deposit_refund_amount,deposit_settled_at";
-const PAYMENT_COLUMNS = "id,rental_id,driver_id,type,status,amount,net_collected,refunded_amount";
+const PAYMENT_COLUMNS = "id,rental_id,driver_id,type,status,amount,net_collected,refunded_amount,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id";
 const DEDUCTION_COLUMNS = "id,rental_id,amount";
 const PERSON_COLUMNS = "id,full_name";
 const VEHICLE_COLUMNS = "id,unit_number,year,make,model,license_plate";
@@ -197,6 +209,9 @@ function mapPayment(row: Record<string, unknown>): LedgerPayment | null {
     netCollectedCents: net.cents,
     refundedCents: refunded.cents,
     unreadable,
+    stripePaymentIntentId: text(row.stripe_payment_intent_id),
+    stripeInvoiceId: text(row.stripe_invoice_id),
+    stripeSubscriptionId: text(row.stripe_subscription_id),
   };
 }
 

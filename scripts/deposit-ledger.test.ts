@@ -45,6 +45,9 @@ function payment(over: Partial<LedgerPayment> = {}): LedgerPayment {
     netCollectedCents: 50000,
     refundedCents: 0,
     unreadable: false,
+    stripePaymentIntentId: null,
+    stripeInvoiceId: null,
+    stripeSubscriptionId: null,
     ...over,
   };
 }
@@ -64,17 +67,21 @@ it("throws before any read when the flag is off", async () => {
   const load = vi.fn(async () => {
     throw new Error("load");
   });
-  await expect(runDepositLedger({ enabled: false, userId: "owner", tier: "owner", today: TODAY, load })).rejects.toThrow(DEPOSIT_LEDGER_OFF);
+  const stripe = vi.fn(async () => ({ ok: true as const, checks: [] }));
+  await expect(runDepositLedger({ enabled: false, userId: "owner", tier: "owner", today: TODAY, load, stripe })).rejects.toThrow(DEPOSIT_LEDGER_OFF);
   expect(load).not.toHaveBeenCalled();
+  expect(stripe).not.toHaveBeenCalled();
 });
 
 it("refuses a coordinator and a missing user before any read", async () => {
   const load = vi.fn(async () => {
     throw new Error("load");
   });
-  await expect(runDepositLedger({ enabled: true, userId: "coord", tier: "coordinator", today: TODAY, load })).rejects.toThrow("Forbidden");
-  await expect(runDepositLedger({ enabled: true, userId: null, tier: "owner", today: TODAY, load })).rejects.toThrow("Forbidden");
+  const stripe = vi.fn(async () => ({ ok: true as const, checks: [] }));
+  await expect(runDepositLedger({ enabled: true, userId: "coord", tier: "coordinator", today: TODAY, load, stripe })).rejects.toThrow("Forbidden");
+  await expect(runDepositLedger({ enabled: true, userId: null, tier: "owner", today: TODAY, load, stripe })).rejects.toThrow("Forbidden");
   expect(load).not.toHaveBeenCalled();
+  expect(stripe).not.toHaveBeenCalled();
 });
 
 it("lets an owner and a manager read an empty ledger", async () => {
@@ -85,7 +92,8 @@ it("lets an owner and a manager read an empty ledger", async () => {
     if (result.status === "ready") {
       expect(result.report.heldCents).toBe(0);
       expect(result.report.dueBackCents).toBe(0);
-      expect(result.report.omitted[0]).toContain("no Stripe list is called");
+      expect(result.report.omitted[0]).toContain("stripe_payment_intent_id");
+      expect(result.report.stripeCheck).toBe("unavailable");
     }
   }
   expect(load).toHaveBeenCalledTimes(2);
@@ -195,13 +203,16 @@ it("does not treat a rent payment or a payment with no rental as held", () => {
 });
 
 it("withholds totals when the read is capped", async () => {
+  const stripe = vi.fn(async () => ({ ok: true as const, checks: [] }));
   const result = await runDepositLedger({
     enabled: true,
     userId: "manager",
     tier: "manager",
     today: TODAY,
     load: async () => ({ ok: false, capped: true }),
+    stripe,
   });
+  expect(stripe).not.toHaveBeenCalled();
   expect(result.status).toBe("ready");
   if (result.status === "ready") {
     expect(result.report.rows).toEqual([]);
@@ -220,7 +231,8 @@ it("escapes commas, quotes, and formula text in the csv", () => {
   const csv = depositLedgerToCsv(report!);
   expect(csv).toContain(`"'=Ada, ""Bee"""`);
   expect(csv).toContain("Deposits Held,500.00");
-  expect(csv).toContain("no Stripe list is called");
+  expect(csv).toContain("Stripe check unavailable");
+  expect(csv).toContain("stripe_payment_intent_id");
 });
 
 it("reads Eastern Time, not the UTC date, around midnight", () => {
@@ -237,13 +249,17 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   const nav = readFileSync("src/components/admin/nav-config.ts", "utf8");
   const admin = readFileSync("src/routes/admin.tsx", "utf8");
   const tabs = nav.slice(nav.indexOf("export const TABS"), nav.indexOf("export const LEGACY_TABS"));
+  const stripeFile = readFileSync("src/lib/deposit-ledger-stripe.server.ts", "utf8");
   const disabled = fn.indexOf("if (!DEPOSIT_LEDGER_ENABLED) throw new Error(DEPOSIT_LEDGER_OFF);");
   const manager = fn.indexOf("await requireManager(context.userId)");
   const table = fn.indexOf("loadDepositLedger(");
+  const stripeRead = fn.indexOf("readLiveDepositStripe(");
   expect(flag).toContain("export const DEPOSIT_LEDGER_ENABLED = false");
   expect(disabled).toBeGreaterThan(-1);
   expect(manager).toBeGreaterThan(disabled);
   expect(table).toBeGreaterThan(manager);
+  expect(stripeRead).toBeGreaterThan(manager);
+  expect(fn.indexOf('import("./deposit-ledger-stripe.server")')).toBeGreaterThan(manager);
   expect(tabs).not.toMatch(/id: "deposit_ledger"/);
   expect(TABS.some((tab) => tab.id === "deposit_ledger")).toBe(false);
   for (const tier of ["owner", "manager", "coordinator"] as const) {
@@ -254,9 +270,16 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   expect(admin.indexOf('urlTab === "deposit_ledger"')).toBeLessThan(admin.indexOf("TABS.some"));
   expect(admin).toContain('DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger"');
   expect(server).toContain("deposit_amount,deposit_held,deposit_status,deposit_refund_amount");
-  expect(server).not.toContain("stripe_");
-  for (const source of [flag, fn, server, pure, panel]) {
-    expect(source).not.toMatch(/from ["'].*stripe/);
+  expect(server).toContain("stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id");
+  expect(server).not.toContain("createReadOnlyStripe");
+  expect(server).not.toContain("createStripeClient");
+  expect(stripeFile).toContain('createReadOnlyStripe("live", { cache: true })');
+  expect(stripeFile).not.toContain("createStripeClient");
+  expect(panel).toContain("STRIPE_CHECK_UNAVAILABLE");
+  expect(panel).toContain("Stripe Captured");
+  for (const source of [flag, fn, server, pure, panel, stripeFile]) {
+    expect(source).not.toMatch(/from ["']stripe["']/);
     expect(source).not.toMatch(/\.(insert|update|delete|upsert)\(/);
   }
+  expect(pure).toContain('export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable"');
 });

@@ -6,8 +6,10 @@
 export const DEPOSIT_PAGE_CAP =
   "Deposit records passed the page cap. Totals are withheld so a partial read cannot understate deposits held or refunds due.";
 
+export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable";
+
 export const DEPOSIT_OMITTED = [
-  "Stripe is not compared. This branch has no read-only Stripe reader, so no Stripe list is called and a database row is not matched to a Stripe charge.",
+  "Stripe is compared only for a deposit payment with stripe_payment_intent_id, through list and retrieve of charges, payment intents, and refunds. An invoice id or a subscription id is not used to call Stripe.",
   "Collected uses payments.net_collected for a paid or refunded deposit. That column is already the amount after the payment refund, so the payment refund is not subtracted again. A blank net collected uses the payment amount minus the payment refund.",
   "The rental deposit refund amount is subtracted from what remains. When the payment and the rental both record a refund, the row says so. Neither record is changed.",
   "A blank rental deposit refund amount counts as no refund recorded, unless the deposit status is refunded or partly refunded. Then the row is Unknown.",
@@ -61,6 +63,9 @@ export type LedgerPayment = {
   netCollectedCents: number | null;
   refundedCents: number | null;
   unreadable: boolean;
+  stripePaymentIntentId: string | null;
+  stripeInvoiceId: string | null;
+  stripeSubscriptionId: string | null;
 };
 
 export type LedgerDeduction = {
@@ -87,7 +92,18 @@ export type DepositRow = {
   remainingCents: number | null;
   state: DepositState;
   evidence: string[];
+  paymentIds: string[];
+  stripeCapturedCents: number | null;
+  stripeRefundedCents: number | null;
 };
+
+export type DepositStripeCheck = {
+  paymentId: string;
+  capturedCents: number;
+  refundedCents: number;
+};
+
+export type DepositStripeRead = { ok: true; checks: DepositStripeCheck[] } | { ok: false };
 
 export type DepositLedgerReport = {
   today: string;
@@ -97,6 +113,7 @@ export type DepositLedgerReport = {
   dueBackCents: number | null;
   warnings: string[];
   omitted: string[];
+  stripeCheck: "ready" | "unavailable";
 };
 
 const EXCLUDED = new Set(["void", "waived", "cancelled", "canceled"]);
@@ -202,7 +219,7 @@ export function buildDepositLedger(input: {
     if (row.state === "held") heldCents += row.remainingCents;
     if (row.state === "due_back") dueBackCents += row.remainingCents;
   }
-  return { today, dueThrough, rows, heldCents, dueBackCents, warnings: [], omitted: [...DEPOSIT_OMITTED] };
+  return { today, dueThrough, rows, heldCents, dueBackCents, warnings: [], omitted: [...DEPOSIT_OMITTED], stripeCheck: "unavailable" };
 }
 
 export function cappedDepositLedger(today: string): DepositLedgerReport | null {
@@ -217,7 +234,58 @@ export function cappedDepositLedger(today: string): DepositLedgerReport | null {
     dueBackCents: null,
     warnings: [DEPOSIT_PAGE_CAP],
     omitted: [...DEPOSIT_OMITTED],
+    stripeCheck: "unavailable",
   };
+}
+
+export function markStripeUnavailable(report: DepositLedgerReport): DepositLedgerReport {
+  return {
+    ...report,
+    stripeCheck: "unavailable",
+    rows: report.rows.map((row) => ({ ...row, stripeCapturedCents: null, stripeRefundedCents: null })),
+  };
+}
+
+export function applyDepositStripe(report: DepositLedgerReport, payments: LedgerPayment[], checks: DepositStripeCheck[]): DepositLedgerReport {
+  const byPayment = new Map(checks.map((check) => [check.paymentId, check]));
+  const rows = report.rows.map((row) => {
+    const evidence = [...row.evidence];
+    let captured = 0;
+    let refunded = 0;
+    let saw = false;
+    for (const payment of payments) {
+      if (!row.paymentIds.includes(payment.id) || payment.type !== "deposit") continue;
+      if (!payment.stripePaymentIntentId) {
+        if (payment.stripeInvoiceId || payment.stripeSubscriptionId) {
+          evidence.push("This deposit payment has a Stripe invoice or subscription id and no payment intent id, so it was not matched.");
+        }
+        continue;
+      }
+      const check = byPayment.get(payment.id);
+      if (!check) {
+        evidence.push("Stripe returned no captured charge for this payment intent.");
+        continue;
+      }
+      saw = true;
+      captured += check.capturedCents;
+      refunded += check.refundedCents;
+      const dbRefund = payment.refundedCents ?? 0;
+      if (payment.amountCents == null) evidence.push("The payment amount could not be compared with Stripe. This is evidence only.");
+      else if (payment.amountCents !== check.capturedCents) {
+        evidence.push(`Stripe captured ${dollars(check.capturedCents)} and the payment amount is ${dollars(payment.amountCents)}. This is evidence only.`);
+      }
+      if (dbRefund !== check.refundedCents) {
+        evidence.push(`Stripe refunded ${dollars(check.refundedCents)} and the payment refund amount is ${dollars(dbRefund)}. This is evidence only.`);
+      }
+    }
+    return {
+      ...row,
+      evidence: [...new Set(evidence)],
+      stripeCapturedCents: saw ? captured : null,
+      stripeRefundedCents: saw ? refunded : null,
+    };
+  });
+  return { ...report, stripeCheck: "ready", rows };
 }
 
 export function depositLedgerToCsv(report: DepositLedgerReport): string {
@@ -229,9 +297,10 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
     ["Refunds Due In The Next 7 Days", moneyCell(report.dueBackCents)],
   ];
   for (const warning of report.warnings) lines.push([warning]);
+  if (report.stripeCheck === "unavailable") lines.push([STRIPE_CHECK_UNAVAILABLE]);
   lines.push(
     [],
-    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", "Evidence"],
+    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", "Stripe Captured", "Stripe Refunded", "Evidence"],
     ...report.rows.map((row) => [
       row.renter,
       row.vehicle,
@@ -242,6 +311,8 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
       moneyCell(row.refundCents),
       moneyCell(row.remainingCents),
       DEPOSIT_STATE_LABEL[row.state],
+      moneyCell(row.stripeCapturedCents),
+      moneyCell(row.stripeRefundedCents),
       row.evidence.join("; "),
     ]),
     [],
@@ -307,6 +378,9 @@ function rowForRental(
     remainingCents: classified.remainingCents,
     state: classified.state,
     evidence: classified.evidence,
+    paymentIds: payments.map((payment) => payment.id),
+    stripeCapturedCents: null,
+    stripeRefundedCents: null,
   };
 }
 
@@ -460,6 +534,9 @@ function orphanPaymentRows(payments: LedgerPayment[], people: Map<string, string
         namedRental ? "This deposit payment names a rental that is not on file." : "This deposit payment has no rental.",
         ...collected.evidence,
       ],
+      paymentIds: group.map((payment) => payment.id),
+      stripeCapturedCents: null,
+      stripeRefundedCents: null,
     };
   });
 }
@@ -479,6 +556,9 @@ function orphanDeductionRows(deductions: LedgerDeduction[]): DepositRow[] {
     remainingCents: null,
     state: "unknown" as const,
     evidence: ["A deposit deduction has no rental."],
+    paymentIds: [],
+    stripeCapturedCents: null,
+    stripeRefundedCents: null,
   }));
 }
 
@@ -495,6 +575,10 @@ function dateOnly(value: string | null | undefined): string | null {
 
 function moneyCell(cents: number | null): string {
   return cents == null ? "" : (cents / 100).toFixed(2);
+}
+
+function dollars(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function escapeCsvCell(value: string): string {
