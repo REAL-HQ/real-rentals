@@ -47,9 +47,12 @@ ok(hook.includes("window.history.replaceState"), "stripping still replaces histo
 const thanks = readFileSync("src/routes/thank-you.tsx", "utf8");
 ok(/const raw = useResumeToken\(t\);/.test(thanks), "/thank-you still stashes and strips through useResumeToken");
 ok(!thanks.includes("allowStashed: false"), "/thank-you still reads the token it just stashed");
-ok(thanks.includes('if (token === "")'), "a token the server refuses is the recovery state");
-ok(thanks.includes("<WelcomeBack expired />"), "that recovery state still renders the new-link screen");
-ok(readFileSync("src/components/site/WelcomeBack.tsx", "utf8").includes("Get A New Secure Link"), "that screen says Get A New Secure Link");
+ok(thanks.includes("thankYouView(token)"), "a refused token and a missing token are chosen before the page renders");
+ok(thanks.includes('expired={view === "expired"}'), "a token the server refuses still opens the recovery screen");
+const copy = readFileSync("src/lib/secure-link-copy.ts", "utf8");
+ok(copy.includes('if (token === "") return "expired"'), "a token the server refuses is the recovery state");
+ok(copy.includes("Get A New Secure Link"), "that screen says Get A New Secure Link");
+ok(readFileSync("src/components/site/WelcomeBack.tsx", "utf8").includes("secureLinkHeading(kind)"), "the recovery heading still comes from the secure-link copy");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall apply token redirect checks pass");
 process.exit(fails ? 1 : 0);
