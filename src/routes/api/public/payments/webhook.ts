@@ -249,7 +249,23 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .eq('stripe_invoice_id', invoice.id)
     .neq('status', 'paid').neq('status', 'refunded')
     .select('id'));
-  if (!(r.data?.length)) return; // duplicate / out-of-order event
+  if (!(r.data?.length)) {
+    // The row was already paid, usually because staff marked a failed invoice
+    // paid in cash. A later Stripe success (retry or hosted invoice) must
+    // count in the Stripe figure only. Clear the failure reason and record
+    // the Stripe ids. Do not change status or paid_date, and do not notify.
+    if (status === 'paid') {
+      const paymentIntent = invoice.payment_intent;
+      const paymentIntentId = typeof paymentIntent === 'string' ? paymentIntent : paymentIntent?.id;
+      must(await admin.from('payments').update({
+        failure_reason: null,
+        stripe_invoice_id: invoice.id,
+        stripe_subscription_id: subId,
+        ...(typeof paymentIntentId === 'string' && paymentIntentId ? { stripe_payment_intent_id: paymentIntentId } : {}),
+      }).eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
+    }
+    return;
+  }
 
   must(await admin.from('rentals').update({
     payment_status: status === 'paid' ? 'current' : 'past_due',

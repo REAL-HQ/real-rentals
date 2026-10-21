@@ -24,8 +24,8 @@ describe('Revenue error recovery',()=>{
   expect(consolidatedRevenue({internalNonStripe:rows!.nonStripe,report}).amount).toBe(150);
  });
  it('a failed invoice later marked paid stays non-Stripe while a Stripe-settled invoice does not',()=>{
-  // Mark as Paid writes status and paid_date only, so failure_reason survives.
-  // invoice.paid clears failure_reason and will not update a row already paid.
+  // Mark as Paid writes status and paid_date only, so failure_reason survives
+  // until a later Stripe success clears it.
   const rows=paymentRevenue({data:[
    {net_collected:40,stripe_payment_intent_id:null,stripe_invoice_id:null,failure_reason:null},
    {net_collected:75,stripe_payment_intent_id:null,stripe_invoice_id:'in_cash',failure_reason:'Weekly rent charge failed'},
@@ -34,6 +34,36 @@ describe('Revenue error recovery',()=>{
    {net_collected:5,stripe_payment_intent_id:null,stripe_invoice_id:'in_blank',failure_reason:'   '},
   ],count:5,error:null});
   expect(rows).toEqual({total:225,nonStripe:115});
+ });
+ it('a Stripe success after Mark as Paid leaves the non-Stripe total once failure_reason is cleared',()=>{
+  const marked={net_collected:75,stripe_payment_intent_id:null,stripe_invoice_id:'in_cash',failure_reason:'Weekly rent charge failed'};
+  expect(paymentRevenue({data:[marked],count:1,error:null})).toEqual({total:75,nonStripe:75});
+  expect(paymentRevenue({data:[{...marked,failure_reason:null}],count:1,error:null})).toEqual({total:75,nonStripe:0});
+  expect(paymentRevenue({data:[{...marked,failure_reason:null,stripe_payment_intent_id:'pi_retry'}],count:1,error:null})).toEqual({total:75,nonStripe:0});
+  const webhook=readFileSync(new URL('../src/routes/api/public/payments/webhook.ts',import.meta.url),'utf8');
+  const invoiceFn=webhook.slice(webhook.indexOf('async function upsertPaymentFromInvoice'), webhook.indexOf('async function handleChargeRefunded'));
+  const settle=invoiceFn.slice(invoiceFn.indexOf('if (!(r.data?.length))'), invoiceFn.indexOf("must(await admin.from('rentals')"));
+  expect(settle).toContain('failure_reason: null');
+  expect(settle).toContain('stripe_invoice_id: invoice.id');
+  expect(settle).toContain('stripe_subscription_id: subId');
+  expect(settle).toContain("eq('status', 'paid')");
+  expect(settle).toContain('stripe_payment_intent_id: paymentIntentId');
+  expect(settle).not.toMatch(/paid_date:/);
+  expect(settle).not.toMatch(/status:\s*['"]paid['"]/);
+  expect(invoiceFn.indexOf('if (!(r.data?.length))')).toBeLessThan(invoiceFn.indexOf("from('notifications')"));
+ });
+ it('an unresolved combined charge keeps the failure reason, so Mark as Paid still counts',()=>{
+  const src=readFileSync(new URL('../src/lib/payment-collection.server.ts',import.meta.url),'utf8');
+  const fn=src.slice(src.indexOf('export async function collectRows'), src.indexOf('export async function markUncollectable'));
+  const pending=fn.slice(0, fn.indexOf('paymentIntents.create'));
+  expect(pending).not.toContain('failure_reason:');
+  const outcome=fn.slice(fn.indexOf('const paid = pi.status'), fn.indexOf('} catch'));
+  expect(outcome).toContain('failure_reason: null');
+  expect(outcome).toContain('single ? { stripe_payment_intent_id: pi.id }');
+  const rows=paymentRevenue({data:[
+   {net_collected:40,stripe_payment_intent_id:null,stripe_invoice_id:'in_combined',failure_reason:'Weekly rent charge failed'},
+  ],count:1,error:null});
+  expect(rows).toEqual({total:40,nonStripe:40});
  });
  it('a sandbox invoice row (?env=sandbox writes the same stripe_invoice_id) is excluded',()=>{
   const webhook=readFileSync(new URL('../src/routes/api/public/payments/webhook.ts',import.meta.url),'utf8');

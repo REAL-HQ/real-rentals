@@ -58,9 +58,13 @@ export async function collectRows(
   const attempt = Math.max(0, ...rows.map((r) => r.attempt_count ?? 0)) + 1;
   const single = ids.length === 1;
 
+  // Leave failure_reason in place until the charge succeeds. An unresolved
+  // combined charge does not store a payment intent, and Mark as Paid does
+  // not write one, so clearing the reason here would drop that cash payment
+  // from the non-Stripe total.
   await admin
     .from("payments")
-    .update({ attempt_count: attempt, last_attempt_at: new Date().toISOString(), status: "pending", failure_reason: null })
+    .update({ attempt_count: attempt, last_attempt_at: new Date().toISOString(), status: "pending" })
     .in("id", ids)
     .neq("status", "paid");
 
@@ -83,7 +87,7 @@ export async function collectRows(
       .from("payments")
       .update({
         status: paid ? "paid" : "pending",
-        ...(paid ? { paid_date: today(), balance_due: 0 } : {}),
+        ...(paid ? { paid_date: today(), balance_due: 0, failure_reason: null } : {}),
         // A single charge keeps a pointer to its latest attempt; a combined
         // balance payment is matched by metadata.paymentIds instead.
         ...(single ? { stripe_payment_intent_id: pi.id } : {}),
