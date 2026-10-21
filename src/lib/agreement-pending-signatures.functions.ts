@@ -21,12 +21,11 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
     if (AGREEMENT_PENDING_SIGNATURE_ENABLED !== true) throw new Error("Pending signatures are not enabled.");
     const { requireOwner } = await import("@/lib/roles.server");
     await requireOwner(context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const page = await supabaseAdmin
+    const page = await context.supabase
       .from("agreements")
-      .select("id,application_id,title,status,sent_at,signed_at,signer_name")
-      .in("status", ["sent", "viewed"])
+      .select("id,application_id,title,status,sent_at,signed_at,signer_name,token_expires_at")
+      .in("status", ["sent", "viewed", "signing"])
       .is("signed_at", null)
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: true })
@@ -39,17 +38,17 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
     const applicationIds = [...new Set(agreements.map((row) => row.application_id).filter((id): id is string => !!id))];
     const drivers: PendingDriver[] = [];
     const namesUnchecked: string[] = [];
-    let namesTruncated = false;
+    let namesFailed = false;
     for (let index = 0; index < applicationIds.length; index += PENDING_SIGNATURE_NAME_CHUNK) {
       const group = applicationIds.slice(index, index + PENDING_SIGNATURE_NAME_CHUNK);
-      const names = await supabaseAdmin
+      const names = await context.supabase
         .from("applications")
         .select("id,full_name")
         .in("id", group)
         .limit(PENDING_SIGNATURE_NAME_CHUNK + 1);
       if (names.error || (names.data?.length ?? 0) > PENDING_SIGNATURE_NAME_CHUNK) {
         namesUnchecked.push(...group);
-        namesTruncated = true;
+        namesFailed = true;
         continue;
       }
       for (const driver of names.data ?? []) {
@@ -62,6 +61,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
       agreements,
       drivers,
       namesUnchecked,
-      truncated: truncatedRead || namesTruncated,
+      namesFailed,
+      truncated: truncatedRead,
     });
   });

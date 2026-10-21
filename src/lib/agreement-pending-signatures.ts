@@ -12,7 +12,7 @@ const NY_DAY = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
 });
 
-const OPEN_STATUSES = ["sent", "viewed"] as const;
+const OPEN_STATUSES = ["sent", "viewed", "signing"] as const;
 
 export type PendingAgreementRow = {
   id: string;
@@ -22,6 +22,7 @@ export type PendingAgreementRow = {
   sent_at: string | null;
   signed_at: string | null;
   signer_name: string | null;
+  token_expires_at?: string | null;
 };
 
 export type PendingDriver = {
@@ -42,7 +43,10 @@ export type PendingSignatureRow = {
 export type PendingSignatureList = {
   today: string;
   rows: PendingSignatureRow[];
+  /** The agreement page itself stopped at the read cap. */
   truncated: boolean;
+  /** A driver-name query failed or was capped. The agreement list can still be complete. */
+  namesFailed: boolean;
 };
 
 /** Calendar day in America/New_York, as a UTC day serial. Not elapsed 24-hour periods. */
@@ -94,10 +98,16 @@ export function lastSentLabel(sentAt: string | null): string {
   }).format(date);
 }
 
-function statusLabel(status: string | null): string {
-  if (status === "sent") return "Sent";
-  if (status === "viewed") return "Viewed";
-  return status && status.trim() !== "" ? status : "Unknown";
+function statusLabel(row: PendingAgreementRow, now: Date): string {
+  const expiresAt = row.token_expires_at;
+  if (typeof expiresAt === "string" && expiresAt.trim() !== "") {
+    const expires = new Date(expiresAt);
+    if (!Number.isNaN(expires.getTime()) && expires.getTime() <= now.getTime()) return "Expired";
+  }
+  if (row.status === "sent") return "Sent";
+  if (row.status === "viewed") return "Viewed";
+  if (row.status === "signing") return "Signing";
+  return row.status && row.status.trim() !== "" ? row.status : "Unknown";
 }
 
 function isOpenUnsigned(row: PendingAgreementRow): boolean {
@@ -112,6 +122,7 @@ export function buildPendingSignatures(input: {
   agreements: readonly PendingAgreementRow[];
   drivers: readonly PendingDriver[];
   truncated?: boolean;
+  namesFailed?: boolean;
   namesUnchecked?: readonly string[];
 }): PendingSignatureList {
   const drivers = new Map(input.drivers.map((driver) => [driver.id, driver]));
@@ -133,7 +144,7 @@ export function buildPendingSignatures(input: {
           : name || signer || "Unnamed Driver",
       driverSearch: applicationId ? { tab: "drivers", id: applicationId } : null,
       title: agreement.title?.trim() || "Rental Agreement",
-      statusLabel: statusLabel(agreement.status),
+      statusLabel: statusLabel(agreement, input.now),
       daysWaiting: waiting,
       lastSentLabel: lastSentLabel(agreement.sent_at),
     });
@@ -147,5 +158,6 @@ export function buildPendingSignatures(input: {
     today: easternCalendarDate(input.now) ?? "",
     rows,
     truncated: input.truncated === true,
+    namesFailed: input.namesFailed === true,
   };
 }

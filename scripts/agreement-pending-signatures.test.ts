@@ -26,6 +26,7 @@ function agreement(over: Partial<PendingAgreementRow> & { id: string }): Pending
     sent_at: "2026-10-19T15:00:00.000Z",
     signed_at: null,
     signer_name: "Ada Lopez",
+    token_expires_at: null,
     ...over,
   };
 }
@@ -45,20 +46,29 @@ describe("pending signatures", () => {
     const handler = fn.slice(fn.indexOf(".handler"));
     const thrown = handler.indexOf("if (AGREEMENT_PENDING_SIGNATURE_ENABLED !== true) throw new Error(\"Pending signatures are not enabled.\")");
     const role = handler.indexOf("requireOwner");
-    const read = handler.indexOf("supabaseAdmin");
+    const read = handler.indexOf("context.supabase");
     assert.ok(thrown !== -1 && role !== -1 && read !== -1 && thrown < role && role < read);
+    assert.doesNotMatch(fn, /supabaseAdmin|client\.server/);
     assert.ok(thrown < handler.indexOf("import("));
     assert.doesNotMatch(fn.slice(0, fn.indexOf("export const getPendingSignatures")), /roles\.server|client\.server/);
     assert.match(fn, /\.limit\(PENDING_SIGNATURE_READ_CAP \+ 1\)/);
     assert.match(fn, /\.limit\(PENDING_SIGNATURE_NAME_CHUNK \+ 1\)/);
     assert.match(fn, /PENDING_SIGNATURE_NAME_CHUNK/);
     assert.equal(PENDING_SIGNATURE_READ_CAP, 999);
-    assert.match(fn, /\.in\("status", \["sent", "viewed"\]\)/);
+    assert.match(fn, /\.in\("status", \["sent", "viewed", "signing"\]\)/);
+    assert.match(fn, /token_expires_at/);
+    assert.match(fn, /namesFailed/);
+    assert.match(fn, /truncated: truncatedRead,/);
+    assert.doesNotMatch(fn, /namesTruncated|truncatedRead \|\| /);
     assert.match(fn, /\.is\("signed_at", null\)/);
     assert.doesNotMatch(fn, /resend|sendAgreement|sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
     assert.doesNotMatch(panel, /resend|Resend|reason\.message|text-transform|uppercase/);
     assert.match(panel, /if \(AGREEMENT_PENDING_SIGNATURE_ENABLED !== true\) return null/);
     assert.match(panel, /Could Not Load Pending Signatures/);
+    assert.match(panel, /Some Pending Signatures Were Not Loaded/);
+    assert.match(panel, /Some Driver Names Were Not Checked/);
+    assert.match(panel, /list\.truncated/);
+    assert.match(panel, /list\.namesFailed/);
     assert.match(panel, /Days Waiting/);
     assert.match(panel, /Last Sent/);
     assert.match(settings, /current\.id === "esign" && AGREEMENT_PENDING_SIGNATURE_ENABLED === true \? <PendingSignatures \/> : null/);
@@ -78,19 +88,27 @@ describe("pending signatures", () => {
         agreement({ id: "signed", status: "signed", signed_at: "2026-10-20T12:00:00.000Z" }),
         agreement({ id: "draft", status: "draft", sent_at: null }),
         agreement({ id: "void", status: "voided" }),
-        agreement({ id: "signing", status: "signing" }),
+        agreement({ id: "signing", status: "signing", sent_at: "2026-10-20T15:00:00.000Z" }),
+        agreement({ id: "expired", status: "viewed", sent_at: "2026-10-18T15:00:00.000Z", token_expires_at: "2026-10-20T15:00:00.000Z" }),
         agreement({ id: "blank-name", application_id: null, signer_name: "  " }),
       ],
       drivers: [{ id: "app-1", full_name: "Ada Lopez" }],
     });
     assert.equal(list.today, "2026-10-21");
+    assert.equal(list.namesFailed, false);
     assert.deepEqual(
       list.rows.map((row) => `${row.agreementId}:${row.daysWaiting}:${row.statusLabel}:${row.driverName}`),
-      ["blank-name:2:Sent:No Driver", "old:2:Sent:Unnamed Driver", "new:0:Viewed:Ada Lopez"],
+      [
+        "expired:3:Expired:Ada Lopez",
+        "blank-name:2:Sent:No Driver",
+        "old:2:Sent:Unnamed Driver",
+        "signing:1:Signing:Ada Lopez",
+        "new:0:Viewed:Ada Lopez",
+      ],
     );
-    assert.equal(list.rows[2].lastSentLabel, "Oct 21, 2026, 11:00 AM EDT");
-    assert.equal(list.rows[2].driverSearch?.id, "app-1");
-    assert.equal(list.rows[0].driverSearch, null);
+    assert.equal(list.rows.find((row) => row.agreementId === "new")?.lastSentLabel, "Oct 21, 2026, 11:00 AM EDT");
+    assert.equal(list.rows.find((row) => row.agreementId === "new")?.driverSearch?.id, "app-1");
+    assert.equal(list.rows.find((row) => row.agreementId === "blank-name")?.driverSearch, null);
     assert.equal(daysWaiting("not-a-date", now), null);
     assert.equal(lastSentLabel("not-a-date"), "Unknown");
     assert.equal(daysWaiting("2026-10-21T03:30:00.000Z", now), 1);
@@ -111,9 +129,20 @@ describe("pending signatures", () => {
       agreements: [agreement({ id: "gone", application_id: "missing", signer_name: "Ada Lopez" })],
       drivers: [],
       namesUnchecked: ["missing"],
+      namesFailed: true,
+    });
+    assert.equal(unchecked.truncated, false);
+    assert.equal(unchecked.namesFailed, true);
+    assert.equal(unchecked.rows[0].driverName, "Driver Not Checked");
+    const both = buildPendingSignatures({
+      now,
+      agreements: [agreement({ id: "gone", application_id: "missing", signer_name: "Ada Lopez" })],
+      drivers: [],
+      namesUnchecked: ["missing"],
+      namesFailed: true,
       truncated: true,
     });
-    assert.equal(unchecked.truncated, true);
-    assert.equal(unchecked.rows[0].driverName, "Driver Not Checked");
+    assert.equal(both.truncated, true);
+    assert.equal(both.namesFailed, true);
   });
 });

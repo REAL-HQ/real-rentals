@@ -41,6 +41,9 @@ function PendingSignaturesLive() {
       {list.truncated ? (
         <p className="text-[12px] text-[#55555E]">Some Pending Signatures Were Not Loaded.</p>
       ) : null}
+      {list.namesFailed ? (
+        <p className="text-[12px] text-[#55555E]">Some Driver Names Were Not Checked.</p>
+      ) : null}
       {list.rows.length === 0 ? (
         <p className="text-[13px] text-[#9A9AA3]">No Agreements Waiting For A Signature</p>
       ) : (
