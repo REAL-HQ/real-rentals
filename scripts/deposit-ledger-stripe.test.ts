@@ -115,11 +115,11 @@ it("matches a captured charge and a zero refund to the payment row", async () =>
   expect(stripeMock.createStripeClient).toHaveBeenCalledWith("live", { timeout: 20_000 });
   expect(stripeMock.paymentIntentsRetrieve).toHaveBeenCalledWith("pi_1", {}, expect.objectContaining({ timeout: expect.any(Number) }));
   expect(stripeMock.chargesRetrieve).toHaveBeenCalledWith("ch_1", {}, expect.objectContaining({ timeout: expect.any(Number) }));
-  expect(stripeMock.refundsList).toHaveBeenCalledWith({ payment_intent: "pi_1", limit: 100 }, expect.objectContaining({ timeout: expect.any(Number) }));
+  expect(stripeMock.refundsList).not.toHaveBeenCalled();
   expect(stripeMock.chargesCreate).not.toHaveBeenCalled();
   expect(stripeMock.refundsCreate).not.toHaveBeenCalled();
   expect(depositLedgerToCsv(report)).not.toContain(STRIPE_CHECK_UNAVAILABLE);
-  expect(depositLedgerToCsv(report)).toContain("Held,100.00,0.00");
+  expect(depositLedgerToCsv(report)).toContain("Held,,100.00,0.00");
 });
 
 it("keeps the database totals when Stripe captured a different amount", async () => {
@@ -155,7 +155,7 @@ it("records a Stripe refund that matches the payment refund amount", async () =>
   expect(report.rows[0].stripeRefundedCents).toBe(4000);
   expect(report.rows[0].collectedCents).toBe(6000);
   expect(report.heldCents).toBe(6000);
-  expect(stripeMock.refundsList).toHaveBeenCalledTimes(1);
+  expect(stripeMock.refundsList).not.toHaveBeenCalled();
 });
 
 it("names a Stripe refund that differs from the payment refund amount", async () => {
@@ -173,7 +173,7 @@ it("names a Stripe refund that differs from the payment refund amount", async ()
   expect(report.stripeCheck).toBe("ready");
 });
 
-it("shows Stripe check unavailable and keeps the database view when Stripe errors or the refund list is capped", async () => {
+it("shows Stripe check unavailable and keeps the database view when Stripe errors", async () => {
   stripeMock.paymentIntentsRetrieve.mockRejectedValue(new Error("Stripe unavailable"));
   const failed = ready((await crossCheck([payment()])).result);
   expect(failed.stripeCheck).toBe("unavailable");
@@ -212,21 +212,19 @@ it("shows Stripe check unavailable and keeps the database view when Stripe error
   expect(thrownResult.rows[0].collectedCents).toBe(10000);
 
   clearStripeReaderCache();
-  stripeMock.paymentIntentsRetrieve.mockResolvedValue({ id: "pi_1", latest_charge: "ch_1" });
-  stripeMock.chargesRetrieve.mockResolvedValue({ id: "ch_1", amount: 10000, amount_captured: 10000, amount_refunded: 0 });
-  let page = 0;
-  stripeMock.refundsList.mockImplementation(async () => ({ data: [{ id: `re_${++page}` }], has_more: true }));
+  stripeMock.paymentIntentsRetrieve.mockResolvedValue({ id: "pi_1", livemode: false, latest_charge: "ch_1" });
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   expect(await readLiveDepositStripe([payment()])).toEqual({ ok: false });
-  const capped = ready((await crossCheck([payment()])).result);
-  expect(capped.stripeCheck).toBe("unavailable");
-  expect(capped.rows[0].state).toBe("held");
-  expect(capped.rows[0].collectedCents).toBe(10000);
-  expect(capped.heldCents).toBe(10000);
-  expect(capped.rows[0].stripeCapturedCents).toBeNull();
-  expect(capped.warnings).toEqual([]);
-  expect(depositLedgerToCsv(capped)).toContain(STRIPE_CHECK_UNAVAILABLE);
-  expect(warn).toHaveBeenCalledWith("Stripe reader page cap reached (100) for deposit refunds");
+  expect(stripeMock.refundsList).not.toHaveBeenCalled();
+  expect(warn).not.toHaveBeenCalled();
+  const testMode = ready((await crossCheck([payment()])).result);
+  expect(testMode.stripeCheck).toBe("unavailable");
+  expect(testMode.rows[0].state).toBe("held");
+  expect(testMode.rows[0].collectedCents).toBe(10000);
+  expect(testMode.heldCents).toBe(10000);
+  expect(testMode.rows[0].stripeCapturedCents).toBeNull();
+  expect(testMode.warnings).toEqual([]);
+  expect(depositLedgerToCsv(testMode)).toContain(STRIPE_CHECK_UNAVAILABLE);
   warn.mockRestore();
 });
 

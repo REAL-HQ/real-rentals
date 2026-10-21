@@ -9,9 +9,9 @@ export const DEPOSIT_PAGE_CAP =
 export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable";
 
 export const DEPOSIT_OMITTED = [
-  "Stripe is compared only for a deposit payment with stripe_payment_intent_id, through list and retrieve of charges, payment intents, and refunds. An invoice id or a subscription id is not used to call Stripe.",
+  "Stripe is compared only for a deposit payment with stripe_payment_intent_id that is on a listed row, through retrieve of that payment intent and its charge. An invoice id or a subscription id is not used to call Stripe.",
   "Collected uses payments.net_collected for a paid or refunded deposit. That column is already the amount after the payment refund, so the payment refund is not subtracted again. A blank net collected uses the payment amount minus the payment refund.",
-  "The rental deposit refund amount is subtracted from what remains. When the payment and the rental both record a refund, the row says so. Neither record is changed.",
+  "The rental deposit refund amount is subtracted from what remains. When the payment refund and the rental refund are the same amount, the row says both were recorded. When those two amounts differ, the row is Unknown and neither amount is chosen. Neither record is changed.",
   "A blank rental deposit refund amount counts as no refund recorded, unless the deposit status is refunded or partly refunded. Then the row is Unknown.",
   "Applications deposit amount and deposit status are not used.",
   "The vehicle listed deposit is not the renter's expected deposit. Expected comes from the rental.",
@@ -90,6 +90,7 @@ export type DepositRow = {
   deductionCents: number | null;
   refundCents: number | null;
   remainingCents: number | null;
+  daysSinceClose: number | null;
   state: DepositState;
   evidence: string[];
   paymentIds: string[];
@@ -118,6 +119,7 @@ export type DepositLedgerReport = {
 
 const EXCLUDED = new Set(["void", "waived", "cancelled", "canceled"]);
 const ENDED = new Set(["completed", "ended", "closed", "returned", "cancelled", "canceled"]);
+const CLOSED = new Set(["completed", "ended", "closed", "returned", "finished", "cancelled", "canceled"]);
 const ACTIVE = new Set(["active", "pending", "reserved"]);
 const OPEN_STATUS = new Set(["", "none", "held", "pending_disposition"]);
 const STATUS_LABEL: Record<string, string> = {
@@ -130,6 +132,7 @@ const STATUS_LABEL: Record<string, string> = {
   returned: "Returned",
   cancelled: "Cancelled",
   canceled: "Cancelled",
+  finished: "Finished",
 };
 
 export function rentalStatusLabel(status: string): string {
@@ -143,6 +146,26 @@ export function etToday(now = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
+}
+
+function daysSinceClose(endDate: string | null, today: string): number | null {
+  if (endDate == null || endDate.trim() === "") return null;
+  const closeDate = endDate.includes("T") ? etDay(endDate) : dateOnly(endDate);
+  if (!closeDate || closeDate > today) return null;
+  return daysBetween(closeDate, today);
+}
+
+function etDay(iso: string): string | null {
+  const instant = new Date(iso);
+  if (Number.isNaN(instant.getTime())) return null;
+  return etToday(instant);
+}
+
+function daysBetween(earlier: string, later: string): number | null {
+  const [ay, am, ad] = earlier.split("-").map(Number);
+  const [by, bm, bd] = later.split("-").map(Number);
+  const days = Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+  return Number.isSafeInteger(days) && days >= 0 ? days : null;
 }
 
 export function addCalendarDays(iso: string, days: number): string | null {
@@ -169,6 +192,8 @@ export function buildDepositLedger(input: {
   deductions: LedgerDeduction[];
   people: LedgerPerson[];
   vehicles: LedgerVehicle[];
+  includeDaysSinceClose?: boolean;
+  closedOnly?: boolean;
 }): DepositLedgerReport | null {
   const today = dateOnly(input.today);
   const dueThrough = today ? addCalendarDays(today, 7) : null;
@@ -206,11 +231,17 @@ export function buildDepositLedger(input: {
     const payments = paymentsByRental.get(rental.id) ?? [];
     const deductions = deductionsByRental.get(rental.id) ?? [];
     if (!hasDepositFact(rental) && payments.length === 0 && deductions.length === 0) continue;
-    rows.push(rowForRental(rental, payments, deductions, people, vehicles, today, dueThrough));
+    rows.push(rowForRental(rental, payments, deductions, people, vehicles, today, dueThrough, input.includeDaysSinceClose === true));
   }
   rows.push(...orphanPaymentRows(orphanPayments, people));
   rows.push(...orphanDeductionRows(orphanDeductions));
-  rows.sort((a, b) => a.renter.localeCompare(b.renter) || String(a.rentalId).localeCompare(String(b.rentalId)));
+  const visible = (input.closedOnly
+    ? rows.filter((row) => row.state === "due_back" && row.rentalId != null && closedIds(input.rentals).has(row.rentalId))
+    : rows
+  ).slice();
+  visible.sort((a, b) => a.renter.localeCompare(b.renter) || String(a.rentalId).localeCompare(String(b.rentalId)));
+  rows.length = 0;
+  rows.push(...visible);
 
   let heldCents = 0;
   let dueBackCents = 0;
@@ -300,7 +331,7 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
   if (report.stripeCheck === "unavailable") lines.push([STRIPE_CHECK_UNAVAILABLE]);
   lines.push(
     [],
-    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", "Stripe Captured", "Stripe Refunded", "Evidence"],
+    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", "Days Since Close", "Stripe Captured", "Stripe Refunded", "Evidence"],
     ...report.rows.map((row) => [
       row.renter,
       row.vehicle,
@@ -311,6 +342,7 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
       moneyCell(row.refundCents),
       moneyCell(row.remainingCents),
       DEPOSIT_STATE_LABEL[row.state],
+      row.daysSinceClose == null ? "" : String(row.daysSinceClose),
       moneyCell(row.stripeCapturedCents),
       moneyCell(row.stripeRefundedCents),
       row.evidence.join("; "),
@@ -336,6 +368,10 @@ function hasDepositFact(rental: LedgerRental): boolean {
   );
 }
 
+function closedIds(rentals: LedgerRental[]): Set<string> {
+  return new Set(rentals.filter((rental) => CLOSED.has(rental.status.trim().toLowerCase())).map((rental) => rental.id));
+}
+
 function rowForRental(
   rental: LedgerRental,
   payments: LedgerPayment[],
@@ -344,6 +380,7 @@ function rowForRental(
   vehicles: Map<string, string>,
   today: string,
   dueThrough: string,
+  includeDaysSinceClose: boolean,
 ): DepositRow {
   const applicationIds = new Set(payments.map((payment) => payment.applicationId).filter((id): id is string => !!id));
   const applicationId = rental.applicationId ?? (applicationIds.size === 1 ? [...applicationIds][0] : null);
@@ -376,6 +413,9 @@ function rowForRental(
     deductionCents: deduction.unreadable ? null : deduction.cents,
     refundCents: rental.refundUnreadable ? null : rental.refundCents,
     remainingCents: classified.remainingCents,
+    daysSinceClose: includeDaysSinceClose && classified.state === "due_back" && CLOSED.has(rental.status.trim().toLowerCase())
+      ? daysSinceClose(rental.endDate, today)
+      : null,
     state: classified.state,
     evidence: classified.evidence,
     paymentIds: payments.map((payment) => payment.id),
@@ -401,6 +441,10 @@ function classify(input: {
   }
   const rental = input.rental;
   if (rental.refundCents != null && rental.refundCents > 0 && input.paymentRefundCents > 0) {
+    if (rental.refundCents !== input.paymentRefundCents) {
+      evidence.push("The payment refund and the rental refund differ. Neither amount was chosen.");
+      return { state: "unknown", remainingCents: null, evidence };
+    }
     evidence.push("The payment row and the rental both record a deposit refund. Collected is already net of the payment refund, and the rental refund amount is also subtracted. This is evidence only.");
   }
   if ((rental.depositStatus === "refunded" || rental.depositStatus === "partially_refunded") && rental.refundCents == null) {
@@ -529,6 +573,7 @@ function orphanPaymentRows(payments: LedgerPayment[], people: Map<string, string
       deductionCents: 0,
       refundCents: null,
       remainingCents: null,
+      daysSinceClose: null,
       state: "unknown",
       evidence: [
         namedRental ? "This deposit payment names a rental that is not on file." : "This deposit payment has no rental.",
@@ -554,6 +599,7 @@ function orphanDeductionRows(deductions: LedgerDeduction[]): DepositRow[] {
     deductionCents: deduction.unreadable ? null : deduction.amountCents,
     refundCents: null,
     remainingCents: null,
+    daysSinceClose: null,
     state: "unknown" as const,
     evidence: ["A deposit deduction has no rental."],
     paymentIds: [],

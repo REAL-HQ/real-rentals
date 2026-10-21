@@ -10,7 +10,7 @@ import {
   type LedgerPayment,
   type LedgerRental,
 } from "../src/lib/deposit-ledger";
-import { DEPOSIT_LEDGER_OFF } from "../src/lib/deposit-ledger-flag";
+import { DEPOSIT_LEDGER_OFF, DEPOSIT_RETURNS_DUE_OFF } from "../src/lib/deposit-ledger-flag";
 import { runDepositLedger } from "../src/lib/deposit-ledger.server";
 
 const TODAY = "2026-10-21";
@@ -149,6 +149,135 @@ it("keeps a database mismatch as evidence and does not change the input", () => 
   expect(disagreedReport!.dueBackCents).toBe(0);
 });
 
+it("shows Unknown when the payment refund and the rental refund differ", () => {
+  const report = ledger(
+    [rental({ status: "completed", endDate: "2026-10-11", refundCents: 15000 })],
+    [payment({ amountCents: 50000, netCollectedCents: 50000, refundedCents: 10000 })],
+  );
+  const row = report!.rows[0];
+  expect(row.collectedCents).toBe(50000);
+  expect(row.refundCents).toBe(15000);
+  expect(row.state).toBe("unknown");
+  expect(row.remainingCents).toBeNull();
+  expect(row.daysSinceClose).toBeNull();
+  expect(row.evidence.join(" ")).toContain("The payment refund and the rental refund differ. Neither amount was chosen.");
+  expect(report!.heldCents).toBe(0);
+  expect(report!.dueBackCents).toBe(0);
+});
+
+it("counts Eastern days since close only for a closed Due Back row", () => {
+  const report = buildDepositLedger({
+    today: TODAY,
+    rentals: [
+      rental({ id: "closed", status: "completed", endDate: "2026-10-11" }),
+      rental({ id: "stamped", status: "ended", endDate: "2026-10-21T03:00:00Z" }),
+      rental({ id: "blank", status: "closed", endDate: null }),
+      rental({ id: "future", status: "returned", endDate: "2026-10-22" }),
+      rental({ id: "open", status: "active", endDate: "2026-10-22" }),
+    ],
+    payments: [
+      payment({ id: "pay-closed", rentalId: "closed" }),
+      payment({ id: "pay-stamped", rentalId: "stamped" }),
+      payment({ id: "pay-blank", rentalId: "blank" }),
+      payment({ id: "pay-future", rentalId: "future" }),
+      payment({ id: "pay-open", rentalId: "open" }),
+    ],
+    deductions: [],
+    people,
+    vehicles,
+    includeDaysSinceClose: true,
+  });
+  const row = (id: string) => report!.rows.find((item) => item.rentalId === id);
+  expect(row("closed")?.state).toBe("due_back");
+  expect(row("closed")?.daysSinceClose).toBe(10);
+  expect(row("stamped")?.daysSinceClose).toBe(1);
+  expect(row("blank")?.state).toBe("due_back");
+  expect(row("blank")?.daysSinceClose).toBeNull();
+  expect(row("future")?.daysSinceClose).toBeNull();
+  expect(row("open")?.state).toBe("due_back");
+  expect(row("open")?.daysSinceClose).toBeNull();
+  expect(depositLedgerToCsv(report!)).toContain("Days Since Close");
+  expect(depositLedgerToCsv(report!)).toContain(",10,");
+});
+
+it("keeps only closed Due Back rows when the closed filter is on", () => {
+  const report = buildDepositLedger({
+    today: TODAY,
+    rentals: [
+      rental({ id: "closed", status: "finished", endDate: "2026-10-11" }),
+      rental({ id: "open", status: "active", endDate: "2026-10-22" }),
+    ],
+    payments: [
+      payment({ id: "pay-closed", rentalId: "closed" }),
+      payment({ id: "pay-open", rentalId: "open" }),
+    ],
+    deductions: [],
+    people,
+    vehicles,
+    includeDaysSinceClose: true,
+    closedOnly: true,
+  });
+  expect(report!.rows.map((row) => row.rentalId)).toEqual(["closed"]);
+  expect(report!.rows[0].state).toBe("due_back");
+  expect(report!.rows[0].rentalStatus).toBe("Finished");
+  expect(report!.rows[0].daysSinceClose).toBe(10);
+  expect(report!.dueBackCents).toBe(50000);
+  expect(report!.heldCents).toBe(0);
+});
+
+it("checks Stripe only for payments on the listed rows", async () => {
+  const stripe = vi.fn(async (payments: LedgerPayment[]) => {
+    expect(payments.map((payment) => payment.id)).toEqual(["pay-closed"]);
+    return { ok: true as const, checks: [] };
+  });
+  const result = await runDepositLedger({
+    enabled: true,
+    returnsEnabled: true,
+    includeDaysSinceClose: true,
+    closedOnly: true,
+    userId: "manager",
+    tier: "manager",
+    today: TODAY,
+    load: async () => ({
+      ok: true as const,
+      rentals: [
+        rental({ id: "closed", status: "completed", endDate: "2026-10-11" }),
+        rental({ id: "open", status: "active", endDate: "2026-10-22" }),
+      ],
+      payments: [
+        payment({ id: "pay-closed", rentalId: "closed", stripePaymentIntentId: "pi_closed" }),
+        payment({ id: "pay-open", rentalId: "open", stripePaymentIntentId: "pi_open" }),
+        payment({ id: "pay-rent", rentalId: "closed", type: "rent", stripePaymentIntentId: "pi_rent" }),
+      ],
+      deductions: [],
+      people,
+      vehicles,
+    }),
+    stripe,
+  });
+  expect(stripe).toHaveBeenCalledTimes(1);
+  expect(result.status).toBe("ready");
+});
+
+it("refuses a closed-only request before any read while Deposit Returns Due is off", async () => {
+  const load = vi.fn(async () => {
+    throw new Error("load");
+  });
+  const stripe = vi.fn(async () => ({ ok: true as const, checks: [] }));
+  await expect(runDepositLedger({
+    enabled: true,
+    returnsEnabled: false,
+    closedOnly: true,
+    userId: "owner",
+    tier: "owner",
+    today: TODAY,
+    load,
+    stripe,
+  })).rejects.toThrow(DEPOSIT_RETURNS_DUE_OFF);
+  expect(load).not.toHaveBeenCalled();
+  expect(stripe).not.toHaveBeenCalled();
+});
+
 it("uses net collected once and notes when the rental also records a refund", () => {
   const report = ledger(
     [rental({ expectedCents: 10000, refundCents: 4000, endDate: "2026-12-01" })],
@@ -251,12 +380,15 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   const tabs = nav.slice(nav.indexOf("export const TABS"), nav.indexOf("export const LEGACY_TABS"));
   const stripeFile = readFileSync("src/lib/deposit-ledger-stripe.server.ts", "utf8");
   const disabled = fn.indexOf("if (!DEPOSIT_LEDGER_ENABLED) throw new Error(DEPOSIT_LEDGER_OFF);");
+  const returnsOff = fn.indexOf("if (data.closedOnly && !DEPOSIT_RETURNS_DUE_ENABLED) throw new Error(DEPOSIT_RETURNS_DUE_OFF);");
   const manager = fn.indexOf("await requireManager(context.userId)");
   const table = fn.indexOf("loadDepositLedger(");
   const stripeRead = fn.indexOf("readLiveDepositStripe(");
   expect(flag).toContain("export const DEPOSIT_LEDGER_ENABLED = false");
+  expect(flag).toContain("export const DEPOSIT_RETURNS_DUE_ENABLED = false");
   expect(disabled).toBeGreaterThan(-1);
-  expect(manager).toBeGreaterThan(disabled);
+  expect(returnsOff).toBeGreaterThan(disabled);
+  expect(manager).toBeGreaterThan(returnsOff);
   expect(table).toBeGreaterThan(manager);
   expect(stripeRead).toBeGreaterThan(manager);
   expect(fn.indexOf('import("./deposit-ledger-stripe.server")')).toBeGreaterThan(manager);
@@ -275,8 +407,13 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   expect(server).not.toContain("createStripeClient");
   expect(stripeFile).toContain('createReadOnlyStripe("live", { cache: true })');
   expect(stripeFile).not.toContain("createStripeClient");
+  expect(stripeFile).not.toContain("refunds.list");
+  expect(stripeFile).not.toContain("paginateStripeList");
   expect(panel).toContain("STRIPE_CHECK_UNAVAILABLE");
   expect(panel).toContain("Stripe Captured");
+  expect(panel).toContain("DEPOSIT_RETURNS_DUE_ENABLED");
+  expect(panel).toContain("Days Since Close");
+  expect(panel).toContain("Closed Rentals Only");
   for (const source of [flag, fn, server, pure, panel, stripeFile]) {
     expect(source).not.toMatch(/from ["']stripe["']/);
     expect(source).not.toMatch(/\.(insert|update|delete|upsert)\(/);
