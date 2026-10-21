@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { PHASE_STATUSES, bookingPhase } from "../src/lib/bookings-list.ts";
 import { OVERVIEW_TODAY_ENABLED } from "../src/lib/overview-today-flag.ts";
 import { OUTSTANDING_STATUSES, owedOn } from "../src/lib/payment-collection.server.ts";
 import {
   OVERVIEW_TODAY_LIMIT,
+  PICKUP_STATUSES,
+  RETURN_STATUSES,
   assembleOverviewToday,
   dateOnly,
   disabledOverviewToday,
@@ -57,8 +60,29 @@ check(!/\.(insert|update|delete|upsert)\(/.test(fn), "today reads do not write")
 check(!fn.includes("vin"), "today reads do not select a VIN");
 check(!fn.includes("stripe_"), "today reads do not select Stripe ids");
 check(fn.includes("notes") === false, "today reads do not select payment notes");
-check(panel.includes("<OverviewToday />"), "overview mounts the today list");
+check(
+  /OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday \/>/.test(panel),
+  "overview mounts today only for a manager while the flag is on",
+);
 check(panel.split("<OverviewToday />").length === 2, "overview mounts it once");
+check(panel.includes('from "@/lib/overview-today-flag"'), "the panel reads the flag without the payments reader");
+check(/from "@\/lib\/bookings-list"/.test(lib), "pickup and return statuses come from bookings-list");
+check(!lib.includes('["active", "reserved", "pending", "upcoming"]'), "pickup statuses are not a handwritten list");
+for (const status of PHASE_STATUSES.active) {
+  check(PICKUP_STATUSES.includes(status) && bookingPhase(status) === "active", `${status} is an active pickup`);
+}
+for (const status of ["reserved", "pending", "upcoming"]) {
+  check(
+    bookingPhase(status) === "reserved" && PICKUP_STATUSES.includes(status) && RETURN_STATUSES.includes(status),
+    `${status} is a pickup and a return`,
+  );
+}
+for (const status of PHASE_STATUSES.completed) {
+  check(RETURN_STATUSES.includes(status) && !PICKUP_STATUSES.includes(status), `${status} is a return and not a pickup`);
+}
+for (const status of PHASE_STATUSES.cancelled) {
+  check(!PICKUP_STATUSES.includes(status) && !RETURN_STATUSES.includes(status), `${status} is neither a pickup nor a return`);
+}
 const effect = ui.slice(ui.indexOf("useEffect"), ui.indexOf("if (!OVERVIEW_TODAY_ENABLED) return null"));
 check(effect.indexOf("if (!OVERVIEW_TODAY_ENABLED) return;") < effect.indexOf("load("), "flag-off UI does not call the server");
 
@@ -95,6 +119,7 @@ check(!isOverduePayment({ ...pastDue, due_date: TODAY }, TODAY), "due today is n
 check(!isOverduePayment({ ...pastDue, due_date: "2026-10-22" }, TODAY), "a later due date is not overdue");
 check(!isOverduePayment({ ...pastDue, due_date: null }, TODAY), "a missing due date is not overdue");
 check(!isOverduePayment({ ...pastDue, type: "deposit" }, TODAY), "a deposit is not an overdue payment");
+check(!isOverduePayment({ ...pastDue, type: "Deposit" }, TODAY), "Deposit is not an overdue payment");
 check(owedOn({ amount: 80, balance_due: 95 }) === 95, "owedOn uses the balance when it includes late fees");
 
 const lead = (patch: Partial<TodayLead>): TodayLead => ({
@@ -129,6 +154,7 @@ const assembled = assembleOverviewToday({
       { id: "bad", status: "paid", type: "rent", amount: 10, balance_due: 0, due_date: "2026-10-19", application_id: "dana" },
       { id: "soon", status: "pending", type: "rent", amount: 80, balance_due: 80, due_date: TODAY, application_id: "dana" },
       { id: "dep", status: "unpaid", type: "deposit", amount: 500, balance_due: 500, due_date: "2026-10-01", application_id: "dana" },
+      { id: "dep-cap", status: "failed", type: "Deposit", amount: 250, balance_due: 250, due_date: "2026-10-02", application_id: "dana" },
     ],
     total: 1,
   },
@@ -146,6 +172,7 @@ if (assembled.enabled) {
   check(assembled.returns.rows[0].title === "Marcus Hall", "return name comes from the application");
   check(assembled.overduePayments.rows.length === 1, "paid, not-yet-due, and deposit rows are not overdue");
   check(assembled.overduePayments.rows[0].detail.includes("late_fee") && assembled.overduePayments.rows[0].detail.includes("55"), "overdue detail uses owedOn, including the late-fee balance");
+  check(assembled.overduePayments.rows[0].detail.includes("2 days overdue"), "overdue detail names the age in Eastern calendar days");
   check(assembled.newLeads.rows.length === 1 && assembled.newLeads.rows[0].href?.includes("id=sam"), "only the new lead is linked");
 }
 
@@ -206,6 +233,10 @@ function memoryAdmin(tables: Record<string, Record<string, unknown>[]>, failTabl
           state.filters.push({ op: "neq", k, v });
           return api;
         },
+        not(k: string, operator: string, v: unknown) {
+          state.filters.push({ op: "not", k, v, expr: operator });
+          return api;
+        },
         or(expr: string) {
           state.filters.push({ op: "or", expr });
           return api;
@@ -231,6 +262,10 @@ function memoryAdmin(tables: Record<string, Record<string, unknown>[]>, failTabl
               if (filter.op === "gte") return row[filter.k!] != null && String(row[filter.k!]) >= String(filter.v);
               if (filter.op === "lt") return row[filter.k!] != null && String(row[filter.k!]) < String(filter.v);
               if (filter.op === "neq") return row[filter.k!] !== filter.v;
+              if (filter.op === "not" && filter.expr === "ilike") {
+                const raw = row[filter.k!];
+                return raw != null && String(raw).toLowerCase() !== String(filter.v ?? "").toLowerCase();
+              }
               if (filter.op === "or" && String(filter.expr).includes("contact_follow_up_on.gte.")) {
                 const day = String(filter.expr).split("contact_follow_up_on.gte.")[1];
                 return row.contact_follow_up_on == null || String(row.contact_follow_up_on) >= day;
@@ -260,6 +295,7 @@ const tables = {
     { id: "paid", status: "paid", type: "rent", amount: 80, balance_due: 0, due_date: "2026-10-18", driver_id: "dana" },
     { id: "open", status: "current", type: "rent", amount: 80, balance_due: 80, due_date: TODAY, driver_id: "marcus" },
     { id: "deposit", status: "failed", type: "deposit", amount: 500, balance_due: 500, due_date: "2026-10-01", driver_id: "dana" },
+    { id: "deposit-cap", status: "failed", type: "Deposit", amount: 250, balance_due: 250, due_date: "2026-10-02", driver_id: "dana" },
     { id: "future", status: "pending", type: "rent", amount: 70, balance_due: 70, due_date: "2026-10-28", driver_id: "marcus" },
     { id: "fees", status: "late", type: "rent", amount: 40, balance_due: 55, due_date: "2026-10-10", driver_id: "dana" },
   ],
@@ -296,15 +332,20 @@ if (loaded.enabled) {
   check(loaded.pickups.rows.length === 1 && loaded.pickups.rows[0].title === "Dana Reyes", "the read keeps today's active pickup");
   check(loaded.pickups.rows[0].detail.includes("Camry") && !loaded.pickups.rows[0].detail.includes("SECRET"), "the pickup names the car and not the VIN");
   check(loaded.returns.rows.length === 1 && loaded.returns.rows[0].title === "Marcus Hall", "the read keeps today's active return and drops the cancelled row");
-  check(loaded.overduePayments.rows.length === 2, "paid, deposit, due-today, and future rows stay out of overdue");
+  check(loaded.overduePayments.rows.length === 2, "paid, deposit, Deposit, due-today, and future rows stay out of overdue");
   check(
-    loaded.overduePayments.rows.some((row) => row.detail.includes("95")) && loaded.overduePayments.rows.some((row) => row.detail.includes("55")),
-    "overdue amounts come from owedOn",
+    loaded.overduePayments.rows.some((row) => row.detail.includes("95") && row.detail.includes("3 days overdue")) &&
+      loaded.overduePayments.rows.some((row) => row.detail.includes("55") && row.detail.includes("11 days overdue")),
+    "overdue amounts come from owedOn and name the age",
   );
   check(loaded.newLeads.rows.length === 2 && loaded.newLeads.rows.some((row) => row.title === "Sam Lee"), "a follow-up today stays, and deleted or overdue follow-ups stay out");
   const paymentRead = live.calls.find((call) => call.table === "payments" && call.head);
   check(paymentRead?.filters.some((filter) => filter.op === "lt" && filter.k === "due_date" && filter.v === TODAY), "overdue payments are due before today");
-  check(paymentRead?.filters.some((filter) => filter.op === "neq" && filter.k === "type" && filter.v === "deposit"), "deposit rows are excluded in the query");
+  check(
+    paymentRead?.filters.some((filter) => filter.op === "not" && filter.expr === "ilike" && filter.k === "type" && filter.v === "deposit"),
+    "deposit rows are excluded without regard to case",
+  );
+  check(!fn.includes('.neq("type", "deposit")'), "the deposit filter is not a case-sensitive neq");
   check(!live.calls.some((call) => call.filters.some((filter) => filter.op === "or")), "lead follow-ups are not one interpolated or filter");
 }
 check(live.calls.some((call) => call.table === "rentals" && !call.head && call.limit === OVERVIEW_TODAY_LIMIT), "rental reads are capped");

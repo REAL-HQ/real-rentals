@@ -1,4 +1,5 @@
-import { leadBucket, type LeadRow } from "@/lib/lead-priorities";
+import { PHASE_STATUSES, bookingPhase } from "@/lib/bookings-list";
+import { leadBucket, overdueAge, type LeadRow } from "@/lib/lead-priorities";
 import { OUTSTANDING_STATUSES, owedOn } from "@/lib/payment-collection.server";
 import { disabledOverviewToday, overviewToday, recordedAmount } from "@/lib/overview-today-flag";
 
@@ -7,18 +8,14 @@ export { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 
 export const OVERVIEW_TODAY_LIMIT = 25;
 
-/** Rentals that can still go out today. Ended and cancelled rows are not pickups. */
-export const PICKUP_STATUSES = ["active", "reserved", "pending", "upcoming"] as const;
+/** bookingPhase reads these as reserved. PHASE_STATUSES has no reserved filter yet. */
+const RESERVED_STATUSES = ["reserved", "pending", "upcoming"].filter((status) => bookingPhase(status) === "reserved");
 
-/** Still out, or already brought back on this calendar day. Cancelled rows are not returns. */
-export const RETURN_STATUSES = [
-  ...PICKUP_STATUSES,
-  "ended",
-  "completed",
-  "closed",
-  "returned",
-  "finished",
-] as const;
+/** Still able to go out today. Completed and cancelled phases are not pickups. */
+export const PICKUP_STATUSES = [...PHASE_STATUSES.active, ...RESERVED_STATUSES];
+
+/** Still out, or already brought back today. Cancelled phases are not returns. */
+export const RETURN_STATUSES = [...PICKUP_STATUSES, ...PHASE_STATUSES.completed];
 
 export type TodayRental = {
   id: string;
@@ -189,10 +186,12 @@ export function assembleOverviewToday(input: {
     overduePayments: section(
       overdue.map((row) => {
         const owed = owedOn(row);
+        const due = dateOnly(row.due_date);
+        const age = due ? overdueAge(due, input.today) : null;
         return {
           id: row.id,
           title: personTitle(row.application_id ? names.get(row.application_id) : null),
-          detail: `${row.type?.trim() || "Payment"} · ${Number.isFinite(owed) ? String(owed) : "Amount Unavailable"} · ${dateOnly(row.due_date) ?? "No Due Date"}`,
+          detail: `${row.type?.trim() || "Payment"} · ${Number.isFinite(owed) ? String(owed) : "Amount Unavailable"} · ${due ?? "No Due Date"}${age ? ` · ${age}` : ""}`,
           href: null,
         };
       }),

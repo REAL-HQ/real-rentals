@@ -82,7 +82,7 @@ export async function loadOverviewToday(
           .select(head ? "id" : PAYMENT_SELECT, head ? { count: "exact", head: true } : undefined)
           .in("status", [...OUTSTANDING_STATUSES])
           .lt("due_date", today)
-          .neq("type", "deposit");
+          .not("type", "ilike", "deposit");
         if (!head) query = query.order("due_date", { ascending: true }).order("id", { ascending: true }).limit(OVERVIEW_TODAY_LIMIT);
         return query;
       },
