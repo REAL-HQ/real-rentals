@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
+import { STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
+import { listStalledApplications, type StalledApplicationRow } from "@/lib/stalled-applications.functions";
+import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -342,21 +345,23 @@ export function DriversPanel({
    */
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
+  const stalledOn = STALLED_APPLICATIONS_ENABLED === true && canManageWaitlist;
   const setOpenId = useCallback(
     (id: string | null) => {
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
-      // Opening a driver from either manager list comes back to that list.
+      // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
       if (canManageWaitlist && (urlFilter === "documents-expiring" || urlFilter === "approved-not-renting")) {
         search.filter = urlFilter;
       }
+      if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
       void navigate({ to: "/admin", search });
     },
-    [navigate, urlFilter, canManageWaitlist],
+    [navigate, urlFilter, canManageWaitlist, stalledOn],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -378,12 +383,12 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
-  // Waitlist, Documents Expiring, and Approved, Not Yet Renting live in the URL
-  // so a chip, a bookmark, and the back button agree. The two manager lists
-  // are ignored for a coordinator.
+  // Waitlist and the manager lists live in the URL so a chip, a bookmark,
+  // and the back button agree. Manager lists are ignored for a coordinator.
   const urlListFilter =
     urlFilter === "waitlist" ||
-    ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist)
+    ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
+    (urlFilter === "stalled" && stalledOn)
       ? urlFilter
       : null;
   const filter = urlListFilter ?? localFilter;
@@ -397,12 +402,22 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "approved-not-renting" } });
         return;
       }
+      if (f === "stalled") {
+        if (!stalledOn) return;
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "stalled" } });
+        return;
+      }
       setLocalFilter(f);
-      if (urlFilter === "waitlist" || urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") {
+      if (
+        urlFilter === "waitlist" ||
+        urlFilter === "documents-expiring" ||
+        urlFilter === "approved-not-renting" ||
+        urlFilter === "stalled"
+      ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
     },
-    [navigate, urlFilter, canManageWaitlist],
+    [navigate, urlFilter, canManageWaitlist, stalledOn],
   );
   const loadExpiring = useServerFn(listExpiringRenterDocuments);
   const [expiringDocs, setExpiringDocs] = useState<ExpiringRenterDocuments | null>(null);
@@ -437,6 +452,22 @@ export function DriversPanel({
   }, [loadWaitlist]);
   // Drivers held on the waitlist. A display status only: the application
   // stage underneath is never changed, so Remove restores it automatically.
+  const loadStalled = useServerFn(listStalledApplications);
+  const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  useEffect(() => {
+    if (!stalledOn) return;
+    let cancelled = false;
+    loadStalled()
+      .then((result) => {
+        if (!cancelled) setStalledRows(result.rows);
+      })
+      .catch(() => {
+        if (!cancelled) setStalledRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStalled, stalledOn]);
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
@@ -926,6 +957,38 @@ setDocCounts(requiredDocCounts(rows));
       {FILTER_LABEL[s]} ({filterCount(s)})
     </button>
   ));
+  if (stalledOn) {
+    filterButtons.push(
+      <button
+        key="stalled"
+        type="button"
+        data-stalled-filter
+        onClick={() => setFilter("stalled")}
+        className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "stalled" ? "bg-black text-white" : "bg-white border border-border"}`}
+      >
+        Stalled ({stalledRows == null ? "…" : stalledRows.length})
+      </button>,
+    );
+  }
+  function saveStalledContact(applicationId: string, state: ContactStatusState) {
+    setStalledRows(
+      (rows) =>
+        rows?.map((row) =>
+          row.id === applicationId
+            ? {
+                ...row,
+                contact: {
+                  contact_status: state.status,
+                  contact_status_note: state.note,
+                  contact_follow_up_on: state.followUpOn,
+                  contact_status_at: state.changedAt,
+                  contact_status_by: state.changedBy,
+                },
+              }
+            : row,
+        ) ?? rows,
+    );
+  }
 
   return (
     <div>
@@ -1014,6 +1077,8 @@ setDocCounts(requiredDocCounts(rows));
           }}
           onContactSaved={applyFunnelContact}
         />
+      ) : filter === "stalled" && stalledOn ? (
+        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} onContactSaved={saveStalledContact} />
       ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
