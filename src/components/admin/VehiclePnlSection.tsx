@@ -61,8 +61,9 @@ export function VehiclePnlSection() {
         <div>
           <h2 className="text-lg font-semibold">Vehicle Profit</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            One Eastern Time month. Verified revenue matches Overview: Stripe net after refunds and
-            fees, plus recorded non-Stripe payments. Unknown stays Unknown.
+            One Eastern Time month. Verified revenue is Stripe net after refunds and fees, plus
+            recorded payments with no Stripe id. Deposits are excluded. This is not the Overview total.
+            Unknown stays Unknown.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

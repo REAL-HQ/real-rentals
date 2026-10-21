@@ -12,11 +12,12 @@ import {
 import type { VehiclePnlCharge, VehiclePnlRefund, VehiclePnlStripeRead } from "./vehicle-pnl";
 
 /**
- * List and retrieve only. Verification is verifyCollectedCharges, the same
- * function Overview uses: capture time, invoice customer ownership,
+ * List and retrieve only, uncached, matching Overview. Verification is
+ * verifyCollectedCharges: capture time, invoice customer ownership,
  * balance.amount against amount_captured, and bad refunds. An incomplete
- * relevant charge withholds the month. The caller already checked the flag
- * and the role.
+ * relevant charge withholds the month. Charge has no invoice field on API
+ * 2026-03-25.dahlia, so the invoice id comes from invoicePayments. The
+ * caller already checked the flag and the role.
  */
 
 type IdRef = string | { id: string } | null | undefined;
@@ -31,7 +32,6 @@ type ChargeRow = {
   status?: unknown;
   customer?: IdRef;
   payment_intent?: IdRef;
-  invoice?: IdRef;
   balance_transaction?: string | Balance | null;
 };
 type RefundRow = {
@@ -57,7 +57,7 @@ type SubscriptionRow = { id?: string; customer?: IdRef };
 
 export async function readVehiclePnlStripe(window: { gte: number; lt: number }): Promise<VehiclePnlStripeRead> {
   try {
-    const stripe = createReadOnlyStripe("live", { cache: true });
+    const stripe = createReadOnlyStripe("live");
     const [subscriptions, invoices, invoicePayments, charges, refunds] = await Promise.all([
       paginateStripeList(
         (cursor) => stripe.subscriptions.list({ status: "all", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.customer"] }),
@@ -100,7 +100,10 @@ export async function readVehiclePnlStripe(window: { gte: number; lt: number }):
       const mapped = unverifiedCharge(charge);
       if (!mapped) return { ok: false, truncated: false };
       unverified.push(mapped);
-      meta.set(mapped.id, { paymentIntentId: idOf(charge.payment_intent), invoiceId: idOf(charge.invoice) });
+      meta.set(mapped.id, {
+        paymentIntentId: idOf(charge.payment_intent),
+        invoiceId: invoiceIdForCharge(charge, invoicePayments.rows as InvoicePaymentRow[]),
+      });
     }
     const normalizedRefunds: CollectionRefund[] = [];
     for (const refund of refunds.rows as RefundRow[]) {
@@ -222,6 +225,20 @@ function feeOf(balance: string | Balance | null | undefined, currency: string): 
 
 function integer(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+}
+
+/** One invoice for this charge, from an invoice payment that names the charge or its payment intent. */
+export function invoiceIdForCharge(charge: { id: string; payment_intent?: IdRef }, invoicePayments: InvoicePaymentRow[]): string | null {
+  const intent = idOf(charge.payment_intent);
+  const invoices = new Set<string>();
+  for (const row of invoicePayments) {
+    const invoice = idOf(row.invoice);
+    if (!invoice || !row.payment) continue;
+    const namedCharge = idOf(row.payment.charge);
+    const namedIntent = idOf(row.payment.payment_intent);
+    if ((namedCharge && namedCharge === charge.id) || (intent && namedIntent === intent)) invoices.add(invoice);
+  }
+  return invoices.size === 1 ? [...invoices][0]! : null;
 }
 
 function idOf(value: IdRef): string | null {

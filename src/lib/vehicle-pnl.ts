@@ -6,12 +6,15 @@ import { validFinanceDate } from "./unified-finance";
 
 /**
  * Read-only profit for one vehicle and one Eastern Time month.
- * Verified revenue is Overview combined revenue: aggregateCollections and
- * consolidatedRevenue, with the vehicle id as the grouping key. Stripe net
- * is after refunds and fees. Recorded non-Stripe net_collected is added for
- * rent, late fee, and other. Deposit payments and deposit charges are
- * excluded. A payment with a Stripe payment intent or invoice id is not
- * added again, including when that charge was captured in another month.
+ * Verified revenue uses Overview's aggregateCollections and
+ * consolidatedRevenue helpers, with the vehicle id as the grouping key. It
+ * is not the Overview total: Overview includes Stripe deposit charges and
+ * refunds, and it also adds payments that have only a Stripe invoice id.
+ * Stripe net is after refunds and fees. Recorded payments with no Stripe
+ * payment intent or invoice id are added for rent, late fee, and other.
+ * Deposit payments and deposit charges are excluded. A payment with a
+ * Stripe payment intent or invoice id is not added again, including when
+ * that charge was captured in another month.
  * Tolls and tickets are toll charges, separate from expenses. Maintenance
  * company share is the cost, or total cost when the share is blank, and a
  * service already on an in-month expense is one cost. An amount that cannot
@@ -22,7 +25,7 @@ export const VEHICLE_PNL_PAGE = 100;
 export const VEHICLE_PNL_MAX_PAGES = 20;
 
 export const VEHICLE_PNL_REVENUE_NOTE =
-  "Verified revenue is Stripe net after refunds and fees, plus recorded non-Stripe payments, for rent, late fee, and other. Deposit payments and deposit charges are excluded. A missing amount stays Unknown.";
+  "Verified revenue is Stripe net after refunds and fees, plus recorded payments with no Stripe payment intent or invoice, for rent, late fee, and other. Deposit payments and deposit charges are excluded. This is not the Overview total: Overview includes Stripe deposits and also counts invoice-only rent rows in the non-Stripe sum. A missing amount stays Unknown.";
 export const VEHICLE_PNL_ONCE_NOTE =
   "A maintenance row linked to an expense in this month is counted once, on the expense.";
 export const VEHICLE_PNL_TOLLS_NOTE =
@@ -326,12 +329,12 @@ export function buildVehiclePnl(input: {
         continue;
       }
       if (!inDay(placed.date, window)) continue;
+      if (expense.maintenanceRecordId) linkedMaintenance.add(expense.maintenanceRecordId);
       if (target.expense === null) {
         const key = (expense.category ?? "").trim().toLowerCase() || "uncategorized";
         target.categories.set(key, null);
         continue;
       }
-      if (expense.maintenanceRecordId) linkedMaintenance.add(expense.maintenanceRecordId);
       const cents = centsOf(expense.amount);
       const key = (expense.category ?? "").trim().toLowerCase() || "uncategorized";
       target.categories.set(key, add(target.categories.get(key) ?? 0, cents));

@@ -14,6 +14,7 @@ import {
   type VehiclePnlWindow,
 } from "../src/lib/vehicle-pnl";
 import { loadVehiclePnl, readPages, runVehiclePnl, type VehiclePnlClient } from "../src/lib/vehicle-pnl.server";
+import { invoiceIdForCharge } from "../src/lib/vehicle-pnl-stripe.server";
 
 const window = monthWindow("2026-10");
 if (!window) throw new Error("October window");
@@ -221,6 +222,31 @@ describe("vehicle profit amounts", () => {
     expect(result.rows[0]?.expenseCents).toBe(1000);
     expect(result.rows[0]?.maintenanceCents).toBe(0);
     expect(result.rows[0]?.netCents).toBe(-1000);
+    const unknownExpense = report({
+      expenses: [
+        {
+          id: "e-bad",
+          vehicleId: "veh-1",
+          category: "maintenance",
+          amount: "nope",
+          incurredOn: "2026-10-04",
+          maintenanceRecordId: "m-1",
+        },
+      ],
+      maintenance: [
+        {
+          id: "m-1",
+          vehicleId: "veh-1",
+          companyShare: "4.00",
+          totalCost: "4.00",
+          performedOn: "2026-10-04",
+          completedAt: null,
+          createdAt: null,
+        },
+      ],
+    });
+    expect(unknownExpense.rows[0]?.expenseCents).toBeNull();
+    expect(unknownExpense.rows[0]?.maintenanceCents).toBe(0);
   });
 
   it("excludes a deposit and a fee payment from verified revenue", () => {
@@ -262,17 +288,36 @@ describe("vehicle profit amounts", () => {
     expect(result.unattributed.revenueCents).toBe(0);
   });
 
-  it("does not add a payment that shares only a Stripe invoice with the charge", () => {
+  it("attributes an invoice-only rent row from the invoice payment, not from charge.invoice", () => {
+    const apiCharge = { id: "ch_1", payment_intent: { id: "pi_other" } };
+    const invoicePayments = [
+      { id: "ip_1", invoice: { id: "in_1" }, payment: { type: "payment_intent", payment_intent: "pi_other" } },
+    ];
+    expect("invoice" in apiCharge).toBe(false);
+    expect(invoiceIdForCharge(apiCharge, invoicePayments)).toBe("in_1");
+    expect(
+      invoiceIdForCharge(
+        { id: "ch_only" },
+        [{ id: "ip_2", invoice: "in_charge", payment: { type: "charge", charge: "ch_only" } }],
+      ),
+    ).toBe("in_charge");
+    expect(
+      invoiceIdForCharge(apiCharge, [
+        ...invoicePayments,
+        { id: "ip_other", invoice: "in_other", payment: { type: "payment_intent", payment_intent: "pi_other" } },
+      ]),
+    ).toBeNull();
     const matched = report({
       payments: [payment({ id: "p-1", stripePaymentIntentId: null, stripeInvoiceId: "in_1", netCollected: "100.00" })],
       stripe: {
         ok: true,
         truncated: false,
-        charges: [charge({ invoiceId: "in_1", paymentIntentId: "pi_other" })],
+        charges: [charge({ id: "ch_1", invoiceId: invoiceIdForCharge(apiCharge, invoicePayments), paymentIntentId: "pi_other" })],
         refunds: [],
       },
     });
     expect(matched.rows[0]?.revenueCents).toBe(9700);
+    expect(matched.unattributed.revenueCents).toBe(0);
     const earlier = report({
       payments: [payment({ id: "p-2", stripePaymentIntentId: null, stripeInvoiceId: "in_old", netCollected: "100.00" })],
     });
@@ -634,12 +679,17 @@ describe("vehicle profit access", () => {
     expect(section).toContain("Unknown");
     expect(section).not.toMatch(/text-transform/);
     expect(section).toContain("Verified Revenue");
+    expect(section).toContain("This is not the Overview total");
+    expect(section).not.toContain("matches Overview");
     expect(section).toContain("Tolls And Tickets");
     const admin = readFileSync(new URL("../src/routes/admin.tsx", import.meta.url), "utf8");
     expect(admin).not.toContain("VEHICLE_PNL_ENABLED");
     expect(admin).not.toContain("vehicle_pnl");
     const stripe = readFileSync(new URL("../src/lib/vehicle-pnl-stripe.server.ts", import.meta.url), "utf8");
-    expect(stripe).toContain("createReadOnlyStripe");
+    expect(stripe).toContain('createReadOnlyStripe("live")');
+    expect(stripe).not.toContain("cache: true");
+    expect(stripe).not.toMatch(/charge\.invoice\b/);
+    expect(stripe).toContain("invoiceIdForCharge");
     expect(stripe).toContain("verifyCollectedCharges");
     expect(stripe).toContain("lt: window.lt");
     expect(stripe).not.toMatch(/\.create\(/);
@@ -647,6 +697,8 @@ describe("vehicle profit access", () => {
     const formula = readFileSync(new URL("../src/lib/vehicle-pnl.ts", import.meta.url), "utf8");
     expect(formula).toContain("aggregateCollections");
     expect(formula).toContain("consolidatedRevenue");
+    expect(formula).toContain("This is not the Overview total");
+    expect(formula).not.toContain("Verified revenue is Overview combined revenue");
     expect(formula).not.toContain("add(target.revenue, charge.amount)");
     const shared = readFileSync(new URL("../src/lib/stripe-collections.ts", import.meta.url), "utf8");
     expect(shared).toContain("export function verifyCollectedCharges");
