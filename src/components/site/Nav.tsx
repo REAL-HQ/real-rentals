@@ -118,7 +118,7 @@ export function Nav() {
           {!session && !isCityPage && (
             <PhoneLink
               placement="header"
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
             >
               {(d) => (
                 <>
@@ -134,7 +134,7 @@ export function Nav() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className="inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition"
+                      className="inline-flex items-center justify-center min-h-11 min-w-11 text-muted-foreground hover:text-foreground transition"
                       aria-label="Help"
                     >
                       <HelpCircle className="w-[18px] h-[18px]" strokeWidth={1.8} />
@@ -161,7 +161,7 @@ export function Nav() {
                 </DropdownMenu>
               )}
               {isAdmin ? (
-                <Link to="/admin" search={{ tab: "messages" }} className="relative inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition" aria-label={`Messages${unreadMessages > 0 ? ` (${unreadMessages} unread)` : ""}`}>
+                <Link to="/admin" search={{ tab: "messages" }} className="relative inline-flex items-center justify-center min-h-11 min-w-11 text-muted-foreground hover:text-foreground transition" aria-label={`Messages${unreadMessages > 0 ? ` (${unreadMessages} unread)` : ""}`}>
                   <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.8} />
                   {unreadMessages > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-real-red text-white text-[11px] font-semibold flex items-center justify-center leading-none">
@@ -180,7 +180,7 @@ export function Nav() {
               <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-full border-2 border-real-red bg-white text-muted-foreground hover:text-foreground transition"
+                  className="hidden sm:inline-flex items-center justify-center min-h-11 min-w-11 rounded-full border-2 border-real-red bg-white text-muted-foreground hover:text-foreground transition"
                   aria-label="Profile"
                 >
                   <User className="w-[18px] h-[18px]" strokeWidth={1.8} />
@@ -221,14 +221,14 @@ export function Nav() {
           {!session && (
             <Link
               to="/apply"
-              className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
+              className="inline-flex min-h-11 items-center rounded-lg bg-real-red px-4 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
             >
               Book Now
             </Link>
           )}
           {!session && !isCityPage && (
             <button
-              className="p-2 -mr-2"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center -mr-2"
               onClick={() => setOpen((o) => !o)}
               aria-label="Menu"
             >
@@ -250,7 +250,7 @@ export function Nav() {
                 <Link
                   key={l.to}
                   to={l.to}
-                  className="px-4 py-2.5 text-sm text-foreground hover:bg-soft transition-colors"
+                  className="inline-flex min-h-11 items-center px-4 text-sm text-foreground hover:bg-soft transition-colors"
                   onClick={() => setOpen(false)}
                 >
                   {l.label}
@@ -261,7 +261,7 @@ export function Nav() {
                   <Link
                     to="/apply"
                     onClick={() => setOpen(false)}
-                    className="inline-flex w-full justify-center rounded-lg bg-real-red px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition active:scale-95"
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-real-red px-4 text-sm font-medium text-white hover:bg-red-700 transition active:scale-95"
                   >
                     Book Now
                   </Link>
@@ -291,7 +291,7 @@ function IconBadgeButton({
       type="button"
       onClick={onClick}
       aria-label={`${ariaLabel}${count > 0 ? ` (${count} unread)` : ""}`}
-      className="relative inline-flex items-center justify-center h-9 w-9 text-muted-foreground hover:text-foreground transition"
+      className="relative inline-flex items-center justify-center min-h-11 min-w-11 text-muted-foreground hover:text-foreground transition"
     >
       {children}
       {count > 0 && (

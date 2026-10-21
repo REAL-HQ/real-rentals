@@ -177,7 +177,7 @@ function Index() {
                 <p className="mt-2 text-sm font-medium text-real-red">{availabilityNote}</p>
               )}
             </div>
-            <Link to="/fleet" className="text-sm underline-offset-4 hover:underline">View All →</Link>
+            <Link to="/fleet" className="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">View All →</Link>
           </FadeUp>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
             {cards.map((model, i) => (
@@ -212,7 +212,7 @@ function Index() {
                     <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-real-red/10 text-real-red transition-colors">
                       <s.I className="w-7 h-7" strokeWidth={1.75} />
                     </div>
-                    <div className="text-5xl font-bold text-foreground/5 group-hover:text-real-red/20 transition-colors leading-none">{s.n}</div>
+                    <div aria-hidden="true" className="text-5xl font-bold text-foreground/5 group-hover:text-real-red/20 transition-colors leading-none">{s.n}</div>
                   </div>
                   <div className="mt-6 text-real-red text-[11px] font-semibold tracking-[0.2em]">STEP {s.n}</div>
                   <div className="mt-2 text-xl font-semibold">{s.t}</div>
@@ -321,7 +321,7 @@ function Index() {
           <div className="max-w-3xl mx-auto divide-y divide-border bg-white rounded-2xl">
             {FAQS.map((f) => (
               <details key={f.q} className="group p-6">
-                <summary className="cursor-pointer flex items-center justify-between text-base font-medium list-none">
+                <summary className="cursor-pointer flex min-h-11 items-center justify-between text-base font-medium list-none">
                   {f.q}
                   <span className="text-muted-foreground group-open:rotate-45 transition-transform text-xl leading-none">+</span>
                 </summary>
@@ -330,7 +330,7 @@ function Index() {
             ))}
           </div>
           <div className="mt-8 text-center">
-            <Link to="/faq" className="text-sm underline-offset-4 hover:underline">See All FAQs →</Link>
+            <Link to="/faq" className="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">See All FAQs →</Link>
           </div>
         </div>
       </section>

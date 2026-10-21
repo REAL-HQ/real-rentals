@@ -1,0 +1,83 @@
+# Driver Page Accessibility And Mobile Audit
+
+Audited on `7e3e6eb` (the live driver site), locally, at a 390×844 phone viewport. Not run against production.
+
+Tooling: axe-core 4.14.0 injected into the local Vite app through Chrome, plus a layout pass for tap targets, labels, alt text, horizontal overflow, and resource timing. Keyboard: 18 Tab presses per page. Pages: `/`, `/fleet`, `/apply`, `/portal` (signed out).
+
+Severity:
+
+- **Critical** — a control has no accessible name, so a screen reader cannot identify it.
+- **Serious** — a WCAG A/AA failure on content a driver sees or hears.
+- **Moderate** — landmarks, target size, or focus behavior that makes the page harder to use.
+- **Low** — performance notes, incomplete axe checks, or an allowed exception.
+
+## Counts
+
+axe violation rules are counted per page (the same rule on two pages counts twice). Nodes are the individual elements.
+
+| Page | Before rules | Before nodes | After rules | After nodes |
+| --- | ---: | ---: | ---: | ---: |
+| `/` | 3 | 16 | 1 | 12 |
+| `/fleet` | 3 | 7 | 1 | 4 |
+| `/apply` | 0 | 0 | 0 | 0 |
+| `/portal` | 3 | 3 | 0 | 0 |
+| **Total** | **9** | **26** | **2** | **16** |
+
+The 16 nodes that remain are color contrast. This pass does not recolor the comparison table, the fleet category chips, or the footer band.
+
+Manual tap targets under 44px: 27 on `/`, 17 on `/fleet`, 9 on `/apply`, 3 on `/portal` before. After: 0, 0, 4, 0. The four left on `/apply` are inline legal links inside sentences.
+
+Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizontal overflow: none before or after (`scrollWidth` 390). No keyboard trap on any of the four pages.
+
+## Findings
+
+### Critical
+
+**Fleet Make menu had no accessible name.** The Radix combobox button on `/fleet` exposed neither the word Make nor the selected value. Fixed with `aria-label` that includes both (`Make, All`, or `Make` plus the chosen make). No change to what the menu filters.
+
+### Serious
+
+**Logo accessible name dropped the visible wordmark.** Header and footer marks used `aria-label="REAL RENTALS home"`, which replaced the visible text `REAL` / `RENTALS`. axe reported that the visible text was not in the name (`/`, `/fleet`, `/portal`). Fixed by removing the overriding label and adding a screen-reader-only “home” after the wordmark, so the visible words stay in the name.
+
+**Sticky call button name did not include its visible label.** On `/`, the bottom bar shows “Call Now” but the accessible name was only “Call REAL RENTALS”. Fixed so the name starts with “Call Now” and still includes the phone number.
+
+**Comparison table could not be scrolled from the keyboard.** The home comparison is a horizontal scroller with no focusable control inside it. Fixed with `tabIndex={0}`, `role="region"`, and `aria-label="Compare Rental Options"`, plus a visible focus outline. The table still scrolls sideways on a phone. That scroll is inside the region, not a page overflow.
+
+**Decorative step numbers fail contrast (deferred).** Home steps 01–04 are `#f3f3f3` on white, ratio 1.1:1. They repeat the “STEP 01” text already next to them. `aria-hidden` is set so a screen reader does not announce them twice. axe still measures the painted color, so these four nodes remain. Raising the contrast would make the watermark read as real text. Left for a design pass.
+
+**Comparison “yes” cells fail contrast (deferred).** Positive cells use green `#00a63e` on yellow `#fef9c2`, ratio 2.99:1 (needs 4.5:1). Seven cells on `/`. Recoloring the table is a design change, not part of this polish.
+
+**Fleet category taglines fail contrast (deferred).** “Great MPG · Uber & Lyft” and the two sibling lines are 10px white at 90% opacity on `#d03020`, ratio 4.36:1 (needs 4.5:1).
+
+**Footer band subtitle fails contrast (deferred).** “Get A Quote In Minutes…” is `text-white/90` on the red band, ratio 4.36:1. It is on `/` and `/fleet`.
+
+### Moderate
+
+**Signed-out portal had no main landmark.** `/portal` rendered the sign-in prompt outside `<main>`, so axe reported a missing main landmark and content outside landmarks. The loading state had the same shape. Both are wrapped in `<main>`. The signed-in dashboard was not exercised (no driver session).
+
+**Tap targets under 44px.** Measured border boxes at 390px. Fixed with `min-h-11` / `min-w-11` (44px) and, for the two checkboxes a driver taps, a 44px box:
+
+- Header phone icon (16×16), Book Now (36px tall), menu button (36×36)
+- Location scroll buttons (40×40)
+- Home FAQ summaries (24px tall), “View All”, “See All FAQs”
+- Footer links, phone, and email (about 16–20px tall; short labels were also under 44px wide)
+- Fleet Make trigger (`h-9`, 36px) and the Available Now Only checkbox (13px)
+- Apply name, email, and phone fields (38px), the SMS consent checkbox (16px), and the help phone link (38px tall)
+
+**Inline legal links left as they are.** On `/apply`, “Terms” and “Privacy Policy” sit inside the submission sentence and the SMS disclosure. They are still under 44px (four links). Padding them would break the sentence. WCAG 2.5.8 treats inline text links as an exception.
+
+**Focus indicator.** Tab order on all four pages walks the page and returns to the start. Nothing trapped focus. Several fields use `outline-none` and show focus by changing the border color (`focus:border-real-red`). That is a visible indicator, not a missing one. Not changed.
+
+### Low
+
+**No missing alt text** on images rendered on these four pages.
+
+**No page overflow.** `documentElement.scrollWidth` equals the 390px layout width. The comparison table and the city row scroll inside their own regions.
+
+**Render-blocking and third-party assets (not changed).** Each page loads `styles.css` and the Poppins stylesheet from the head without `async`. Google tag (`gtag/js`) is `async`. On this dev server the slowest calls were Supabase reads (about 90–250ms) and, on `/portal`, Stripe.js (about 30ms) even on the signed-out screen. Dev module loads are not production timings. Removing fonts, the tag, or Stripe would change behavior, so they are out of this pass.
+
+**Incomplete contrast.** axe left one incomplete color-contrast result on `/` (it could not decide). Not counted as a violation.
+
+## What this change does not do
+
+No queries, validation, submission, auth, or copy changes. Contrast colors above stay as they are until a separate design approval. The inline Terms and Privacy links stay inline.
