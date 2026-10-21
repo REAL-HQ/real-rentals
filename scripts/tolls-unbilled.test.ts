@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   buildUnbilledTolls,
   formatUnbilledAge,
@@ -12,7 +12,8 @@ import {
   type UnbilledCaps,
   type UnbilledLoad,
 } from "../src/lib/tolls-unbilled";
-import { ID_CHUNK, MAX_PAGES, PAGE, loadUnbilledTolls, readPages, runUnbilledTolls } from "../src/lib/tolls-unbilled.server";
+import { ID_CHUNK, MAX_PAGES, PAGE, loadUnbilledTolls, readPages } from "../src/lib/tolls-unbilled.server";
+import { SKIP_TOLL_STATUSES, UNBILLED_TOLL_STATUS_FILTER } from "../src/lib/tolls-unbilled";
 
 const AS_OF = new Date("2026-10-22T15:00:00.000Z");
 const QUIET: UnbilledCaps = {
@@ -444,26 +445,6 @@ describe("unbilled tolls", () => {
     expect(result.truncated).toBe(false);
   });
 
-  it("refuses before the loader when the flag is off or the tier is below manager", async () => {
-    const load = vi.fn(async () => bundle());
-    const disabled = await runUnbilledTolls({ enabled: false, userId: "u", tier: "owner", load });
-    expect(disabled).toEqual({ status: "disabled", report: null });
-    await expect(runUnbilledTolls({ enabled: true, userId: "u", tier: "coordinator", load })).rejects.toThrow("Forbidden");
-    await expect(runUnbilledTolls({ enabled: true, userId: null, tier: "manager", load })).rejects.toThrow("Forbidden");
-    await expect(runUnbilledTolls({ enabled: true, userId: "u", tier: null, load })).rejects.toThrow("Forbidden");
-    expect(load).not.toHaveBeenCalled();
-
-    const manager = await runUnbilledTolls({ enabled: true, userId: "u", tier: "manager", now: AS_OF, load });
-    const owner = await runUnbilledTolls({ enabled: true, userId: "u", tier: "owner", now: AS_OF, load });
-    expect(manager.status).toBe("ready");
-    expect(owner.status).toBe("ready");
-    expect(load).toHaveBeenCalledTimes(2);
-
-    load.mockResolvedValueOnce(null);
-    const missing = await runUnbilledTolls({ enabled: true, userId: "u", tier: "manager", load });
-    expect(missing.status).toBe("unavailable");
-    expect(missing.report).toBeNull();
-  });
 });
 
 describe("unbilled toll reads", () => {
@@ -521,15 +502,31 @@ describe("unbilled toll reads", () => {
     expect(inconsistentCap).toBeNull();
   });
 
-  it("stops after a failed toll page and checks the active-rental read", async () => {
-    const failed = failingDb("toll_charges");
+  it("stops after a failed rental or toll page and checks the active-rental read", async () => {
+    const failed = failingDb("rentals");
     expect(await loadUnbilledTolls(failed)).toBeNull();
-    expect(failed.calls).toEqual(["toll_charges"]);
+    expect(failed.calls).toEqual(["rentals"]);
     expect(failed.limits).toEqual([PAGE + 1]);
+
+    const tollsFailed = failingDb("toll_charges", {
+      rentals: [
+        {
+          id: "r1",
+          vehicle_id: "v1",
+          driver_id: "d1",
+          application_id: "d1",
+          status: "active",
+          start_date: "2026-10-01",
+          end_date: null,
+        },
+      ],
+    });
+    expect(await loadUnbilledTolls(tollsFailed)).toBeNull();
+    expect(tollsFailed.calls).toEqual(["rentals", "toll_charges"]);
 
     const mismatch = mismatchDb();
     expect(await loadUnbilledTolls(mismatch)).toBeNull();
-    expect(mismatch.calls).toEqual(["toll_charges"]);
+    expect(mismatch.calls).toEqual(["rentals", "toll_charges"]);
   });
 
   it("maps amount plus fee and chunks payment ids", async () => {
@@ -574,7 +571,7 @@ describe("unbilled toll reads", () => {
     });
     const loaded = await loadUnbilledTolls(db);
     expect(loaded).not.toBeNull();
-    expect(db.calls[0]).toBe("toll_charges");
+    expect(db.calls[0]).toBe("rentals");
     expect(db.limits.every((limit) => limit === PAGE + 1)).toBe(true);
     expect(db.eqs).toContain("rentals.status=active");
     expect(db.nots).toContain("deposit_deductions.toll_charge_id is null");
@@ -614,6 +611,97 @@ describe("unbilled toll reads", () => {
     });
     expect(openReport.totalCents).toBe(1030);
   });
+
+  it("filters status and active-rental vehicles before the page cap", async () => {
+    expect(UNBILLED_TOLL_STATUS_FILTER).toBe("status.is.null,status.not.in.(written_off,disputed)");
+    for (const status of SKIP_TOLL_STATUSES) expect(UNBILLED_TOLL_STATUS_FILTER).toContain(status);
+    const skipped = Array.from({ length: PAGE * MAX_PAGES + 5 }, (_, index) => ({
+      id: `a-${String(index).padStart(5, "0")}`,
+      vehicle_id: "v1",
+      rental_id: null,
+      occurred_at: "2026-10-01T15:00:00.000Z",
+      amount: "9.00",
+      admin_fee: "0.00",
+      status: index % 2 === 0 ? "written_off" : "disputed",
+      payment_id: null,
+    }));
+    const db = memoryDb({
+      toll_charges: [
+        ...skipped,
+        {
+          id: "m-null",
+          vehicle_id: "v1",
+          rental_id: null,
+          occurred_at: "2026-10-02T15:00:00.000Z",
+          amount: "1.00",
+          admin_fee: "0.00",
+          status: null,
+          payment_id: null,
+        },
+        {
+          id: "z-kept",
+          vehicle_id: "v1",
+          rental_id: null,
+          occurred_at: "2026-10-10T15:00:00.000Z",
+          amount: "3.00",
+          admin_fee: "0.00",
+          status: "new",
+          payment_id: null,
+        },
+        {
+          id: "z-other",
+          vehicle_id: "v-other",
+          rental_id: null,
+          occurred_at: "2026-10-10T15:00:00.000Z",
+          amount: "4.00",
+          admin_fee: "0.00",
+          status: "new",
+          payment_id: null,
+        },
+      ],
+      rentals: [
+        {
+          id: "r1",
+          vehicle_id: "v1",
+          driver_id: "d1",
+          application_id: "d1",
+          status: "active",
+          start_date: "2026-10-01",
+          end_date: null,
+        },
+      ],
+      deposit_deductions: [],
+      vehicles: [{ id: "v1", year: 2020, make: "Honda", model: "Civic", license_plate: "ABC" }],
+      payments: [],
+      applications: [{ id: "d1", full_name: "Ada Lovelace" }],
+    });
+    const loaded = await loadUnbilledTolls(db);
+    expect(loaded?.caps.tolls).toBe(false);
+    expect(loaded?.tolls.map((row) => row.id).sort()).toEqual(["m-null", "z-kept"]);
+    expect(db.ors).toContain(`toll_charges:${UNBILLED_TOLL_STATUS_FILTER}`);
+    expect(db.calls.filter((table) => table === "toll_charges")).toHaveLength(1);
+
+    const manyRentals = Array.from({ length: PAGE * MAX_PAGES + 1 }, (_, index) => ({
+      id: `r-${String(index).padStart(5, "0")}`,
+      vehicle_id: `v-${String(index).padStart(5, "0")}`,
+      driver_id: "d1",
+      application_id: "d1",
+      status: "active",
+      start_date: "2026-10-01",
+      end_date: null,
+    }));
+    const truncated = memoryDb({
+      toll_charges: [],
+      rentals: manyRentals,
+      deposit_deductions: [],
+      vehicles: [],
+      payments: [],
+      applications: [],
+    });
+    const capped = await loadUnbilledTolls(truncated);
+    expect(capped?.caps.rentals).toBe(true);
+    expect(capped?.caps.tolls).toBe(true);
+  });
 });
 
 describe("unbilled tolls source", () => {
@@ -628,15 +716,26 @@ describe("unbilled tolls source", () => {
     const handler = readFileSync("src/lib/tolls-unbilled.functions.ts", "utf8");
     const gate = handler.indexOf("if (!TOLLS_UNBILLED_ENABLED)");
     expect(gate).toBeGreaterThan(-1);
+    const middleware = handler.slice(handler.indexOf(".middleware(["), handler.indexOf("])"));
+    expect(middleware.indexOf("gateUnbilledTolls")).toBeGreaterThan(-1);
+    expect(middleware.indexOf("gateUnbilledTolls")).toBeLessThan(middleware.indexOf("requireSupabaseAuth"));
+    expect(handler).toContain('return { result: { status: "disabled", report: null } }');
     expect(handler.indexOf("roles.server")).toBeGreaterThan(gate);
+    expect(handler.indexOf("requireManager")).toBeGreaterThan(handler.indexOf("requireSupabaseAuth"));
     expect(handler.indexOf("tolls-unbilled.server")).toBeGreaterThan(gate);
     expect(handler.indexOf("client.server")).toBeGreaterThan(gate);
+    expect(handler).not.toContain("runUnbilledTolls");
 
     const server = readFileSync("src/lib/tolls-unbilled.server.ts", "utf8");
     expect(server).not.toMatch(/\.(insert|update|delete|upsert)\s*\(/);
     expect(server).not.toContain("createReadOnlyStripe");
+    expect(server).not.toContain("runUnbilledTolls");
     expect(server).toContain('count: "exact"');
     expect(server).toContain('.eq("status", "active")');
+    expect(server.indexOf('.eq("status", "active")')).toBeLessThan(server.indexOf("toll_charges"));
+    expect(server).toContain("UNBILLED_TOLL_STATUS_FILTER");
+    expect(server).toContain('.in("vehicle_id", ids)');
+    expect(server).toContain("tollsPage.truncated || rentalsPage.truncated");
     expect(server).toContain("limit(PAGE + 1)");
     expect(server).toContain('.not("toll_charge_id", "is", null)');
 
@@ -660,11 +759,13 @@ function memoryDb(tables: Record<string, Record<string, unknown>[]>) {
   const limits: number[] = [];
   const eqs: string[] = [];
   const nots: string[] = [];
+  const ors: string[] = [];
   return {
     calls,
     limits,
     eqs,
     nots,
+    ors,
     from(table: string) {
       calls.push(table);
       const filters: Array<(row: Record<string, unknown>) => boolean> = [];
@@ -698,6 +799,14 @@ function memoryDb(tables: Record<string, Record<string, unknown>[]>) {
           if (operator === "is" && value === null) filters.push((row) => row[column] != null);
           return api;
         },
+        or(expression: string) {
+          ors.push(`${table}:${expression}`);
+          if (expression === UNBILLED_TOLL_STATUS_FILTER) {
+            const skipped = new Set<string>(SKIP_TOLL_STATUSES);
+            filters.push((row) => row.status == null || !skipped.has(String(row.status)));
+          }
+          return api;
+        },
         limit(n: number) {
           limits.push(n);
           let rows = (tables[table] ?? []).filter((row) => filters.every((filter) => filter(row)));
@@ -712,7 +821,7 @@ function memoryDb(tables: Record<string, Record<string, unknown>[]>) {
   };
 }
 
-function failingDb(failTable: string) {
+function failingDb(failTable: string, tables: Record<string, Record<string, unknown>[]> = {}) {
   const calls: string[] = [];
   const limits: number[] = [];
   return {
@@ -739,10 +848,14 @@ function failingDb(failTable: string) {
         not() {
           return api;
         },
+        or() {
+          return api;
+        },
         limit(n: number) {
           limits.push(n);
           if (table === failTable) return Promise.resolve({ data: null, error: { message: "no" }, count: null });
-          return Promise.resolve({ data: [], error: null, count: 0 });
+          const rows = tables[table] ?? [];
+          return Promise.resolve({ data: rows.slice(0, n), error: null, count: rows.length });
         },
       };
       return api;
@@ -775,7 +888,27 @@ function mismatchDb() {
         not() {
           return api;
         },
+        or() {
+          return api;
+        },
         limit() {
+          if (table === "rentals") {
+            return Promise.resolve({
+              data: [
+                {
+                  id: "r1",
+                  vehicle_id: "v1",
+                  driver_id: "d1",
+                  application_id: "d1",
+                  status: "active",
+                  start_date: "2026-10-01",
+                  end_date: null,
+                },
+              ],
+              error: null,
+              count: 1,
+            });
+          }
           return Promise.resolve({
             data: [
               {

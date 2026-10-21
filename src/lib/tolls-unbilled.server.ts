@@ -1,13 +1,11 @@
-import { tierAllows, type StaffTier } from "./roles";
 import {
-  buildUnbilledTolls,
+  UNBILLED_TOLL_STATUS_FILTER,
   type DeductionInput,
   type DriverInput,
   type PaymentInput,
   type RentalInput,
   type TollInput,
   type UnbilledLoad,
-  type UnbilledTollsResponse,
   type VehicleInput,
 } from "./tolls-unbilled";
 
@@ -159,26 +157,35 @@ function mapDriver(row: Record<string, unknown>): DriverInput {
 }
 
 /**
- * Reads only. Tolls first; a failed toll page never opens a later table.
- * No charge is created here.
+ * Reads only. Active rentals first, then tolls on those vehicles that are
+ * not written off or disputed. Both filters run inside the paged query so
+ * the page cap counts candidate rows. A truncated rental read also marks
+ * the toll read truncated. No charge is created here.
  */
 export async function loadUnbilledTolls(db: Db): Promise<UnbilledLoad | null> {
   try {
-    const tollsPage = await readFiltered(
+    const rentalsPage = await readFiltered(
       db,
-      "toll_charges",
-      "id,vehicle_id,rental_id,occurred_at,amount,admin_fee,status,payment_id",
-      (query) => query,
+      "rentals",
+      "id,vehicle_id,driver_id,application_id,status,start_date,end_date",
+      (query) => query.eq("status", "active"),
     );
+    if (!rentalsPage) return null;
+    const rentals = rentalsPage.rows.map(mapRental);
+    const vehicleIds = [...new Set(rentals.map((rental) => rental.vehicleId).filter(Boolean))];
+    const tollsPage = vehicleIds.length
+      ? await readIdChunks(
+          db,
+          "toll_charges",
+          "id,vehicle_id,rental_id,occurred_at,amount,admin_fee,status,payment_id",
+          vehicleIds,
+          (query, ids) => query.in("vehicle_id", ids).or(UNBILLED_TOLL_STATUS_FILTER),
+        )
+      : { rows: [], truncated: false };
     if (!tollsPage) return null;
     const tolls = tollsPage.rows.map(mapToll);
     const tollIds = tolls.map((toll) => toll.id);
-    const rentalsPage = tollIds.length
-      ? await readFiltered(db, "rentals", "id,vehicle_id,driver_id,application_id,status,start_date,end_date", (query) =>
-          query.eq("status", "active"),
-        )
-      : { rows: [], truncated: false };
-    if (!rentalsPage) return null;
+    const tollsTruncated = tollsPage.truncated || rentalsPage.truncated;
     const deductionsPage = tollIds.length
       ? await readIdChunks(db, "deposit_deductions", "id,rental_id,toll_charge_id", tollIds, (query, ids) =>
           query.not("toll_charge_id", "is", null).in("toll_charge_id", ids),
@@ -186,9 +193,8 @@ export async function loadUnbilledTolls(db: Db): Promise<UnbilledLoad | null> {
       : { rows: [], truncated: false };
     if (!deductionsPage) return null;
 
-    const rentals = rentalsPage.rows.map(mapRental);
-    const vehicleIds = [...new Set([...tolls.map((toll) => toll.vehicleId), ...rentals.map((rental) => rental.vehicleId)])];
-    const vehiclesPage = await readIdChunks(db, "vehicles", "id,year,make,model,license_plate", vehicleIds, (query, ids) =>
+    const labelVehicleIds = [...new Set([...tolls.map((toll) => toll.vehicleId), ...rentals.map((rental) => rental.vehicleId)])];
+    const vehiclesPage = await readIdChunks(db, "vehicles", "id,year,make,model,license_plate", labelVehicleIds, (query, ids) =>
       query.in("id", ids),
     );
     const paymentIds = tolls.map((toll) => toll.paymentId).filter((id): id is string => Boolean(id));
@@ -209,7 +215,7 @@ export async function loadUnbilledTolls(db: Db): Promise<UnbilledLoad | null> {
       vehicles: vehiclesPage ? vehiclesPage.rows.map(mapVehicle) : [],
       drivers: driversPage ? driversPage.rows.map(mapDriver) : [],
       caps: {
-        tolls: tollsPage.truncated,
+        tolls: tollsTruncated,
         rentals: rentalsPage.truncated,
         payments: paymentsPage.truncated,
         deductions: deductionsPage.truncated,
@@ -220,18 +226,4 @@ export async function loadUnbilledTolls(db: Db): Promise<UnbilledLoad | null> {
   } catch {
     return null;
   }
-}
-
-export async function runUnbilledTolls(args: {
-  enabled: boolean;
-  userId: string | null;
-  tier: StaffTier | null;
-  now?: Date;
-  load: () => Promise<UnbilledLoad | null>;
-}): Promise<UnbilledTollsResponse> {
-  if (!args.enabled) return { status: "disabled", report: null };
-  if (!args.userId || !tierAllows(args.tier, "manager")) throw new Error("Forbidden");
-  const loaded = await args.load();
-  if (!loaded) return { status: "unavailable", reason: "The toll read did not complete.", report: null };
-  return { status: "ready", report: buildUnbilledTolls(loaded, args.now ?? new Date()) };
 }

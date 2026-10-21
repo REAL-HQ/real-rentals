@@ -5,7 +5,11 @@ export const TOLLS_TIME_ZONE = "America/New_York";
 
 const BILLED = new Set(["pending", "paid", "succeeded", "processing"]);
 const NOT_A_BILL = new Set(["void", "cancelled", "canceled", "waived", "refunded", "failed", "written_off"]);
-const SKIP_TOLL = new Set(["written_off", "disputed"]);
+/** Statuses the report skips. The toll read uses the same list so those rows do not fill the page cap. */
+export const SKIP_TOLL_STATUSES = ["written_off", "disputed"] as const;
+const SKIP_TOLL = new Set<string>(SKIP_TOLL_STATUSES);
+/** PostgREST `or` filter. Null status stays; written_off and disputed do not. */
+export const UNBILLED_TOLL_STATUS_FILTER = `status.is.null,status.not.in.(${SKIP_TOLL_STATUSES.join(",")})`;
 
 export const NOTE_AMBIGUOUS = "An Ambiguous Rental Match Withholds The Total";
 export const NOTE_AMOUNT = "An Unreadable Amount Withholds The Total";
