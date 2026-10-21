@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   Truck,
   Receipt,
+  Banknote,
   ShieldAlert,
   AlertTriangle,
   Wallet,
@@ -53,6 +54,7 @@ export const TABS: readonly TabDef[] = [
   },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
+  { id: "deposits_ledger", label: "Deposits & Refunds", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
   { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
@@ -126,7 +128,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }],
+  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "deposits_ledger", label: "Deposits & Refunds" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
   partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
 };
