@@ -1,5 +1,8 @@
 // The one eSign engine. Rental agreements (and later standalone documents)
 // consume these helpers; nothing else signs, voids or archives.
+import { preserveCompletedPdfV1 } from "@/lib/esign-immutable-archive-v1.server";
+import { SIGNED_ARCHIVE_V1_ENABLED } from "@/lib/record-rental-live-path";
+import { assertSignedArchiveBytes } from "@/lib/signed-archive-protection.server";
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 import { renderCompletedPdf, sha256Hex } from "@/lib/esign-pdf.server";
@@ -14,7 +17,7 @@ export function randomToken(): string {
 export const hashToken = (t: string) => sha256Hex(t);
 
 const DOC_COLS =
-  "id,application_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,metadata,archive_attempts,document_id";
+  "id,application_id,vehicle_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,metadata,archive_attempts,document_id";
 
 /** Atomic claim + signature commit. Exactly one concurrent caller wins. */
 export async function completeSigning(
@@ -97,7 +100,133 @@ export async function completeSigning(
  * one transaction, so failure is recorded as archive_status='failed' (visible
  * to staff, retried by cron) instead of a silent null.
  */
+async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
+  // Verification of an already finalized PDF stays outside the failure writer.
+  // A mismatch throws and does not mark the archived row failed. retryArchive
+  // re-enters this check instead of treating archived as success.
+  if (ag.archive_status === "archived") {
+    const { data: doc, error } = await admin.from("documents").select("id,storage_bucket,storage_path,content_sha256").eq("id", ag.document_id).maybeSingle();
+    if (error || !doc) throw new Error("Signed PDF record missing");
+    const file = await admin.storage.from(doc.storage_bucket).download(doc.storage_path);
+    if (file.error || !file.data) throw new Error("Signed PDF unavailable");
+    await assertSignedArchiveBytes(doc, ag, new Uint8Array(await file.data.arrayBuffer()));
+    return true;
+  }
+  const wasFailed = ag.archive_status === "failed";
+  try {
+    const bodySha = await sha256Hex(ag.body as string);
+    const pdf = await renderCompletedPdf({
+      id: ag.id,
+      title: ag.title,
+      body: ag.body,
+      bodySha256: bodySha,
+      signerName: ag.signer_name,
+      signerEmail: ag.signer_email,
+      signedAt: ag.signed_at,
+      createdAt: ag.created_at,
+      sentAt: ag.sent_at,
+      viewedAt: ag.viewed_at,
+      ip: ag.signer_ip,
+      userAgent: ag.signer_user_agent,
+      authMethod: ag.auth_method ?? "email_link",
+      companySignerName: ag.company_signer_name || "REAL RENTALS",
+      companySignerTitle: ag.company_signer_title ?? null,
+      adoption: (ag.metadata as any)?.signature?.adoption ?? null,
+      adoptionSha256: (ag.metadata as any)?.signature?.sha256 ?? null,
+    });
+    const fileSha = await sha256Hex(pdf);
+    const identity = await sha256Hex(`completed-v1:${ag.id}:${fileSha}`);
+    let documentId: string = ag.document_id ?? `${identity.slice(0, 8)}-${identity.slice(8, 12)}-5${identity.slice(13, 16)}-a${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
+    const path = `completed-v1/${documentId}/${fileSha}.pdf`;
+    const bucket = admin.storage.from("rental-agreements");
+    await preserveCompletedPdfV1({
+      upload: (key, bytes, options) => bucket.upload(key, new Blob([bytes as BlobPart], { type: "application/pdf" }), options),
+      download: async (key) => {
+        const r = await bucket.download(key);
+        return { error: r.error, data: r.data ? new Uint8Array(await r.data.arrayBuffer()) : null };
+      },
+    }, documentId, pdf, fileSha, "completed-v1");
+    if (ag.document_id) {
+      const { data: current, error } = await admin.from("documents").select("id,storage_path,content_sha256").eq("id", documentId).maybeSingle();
+      if (error || !current || current.storage_path !== path || current.content_sha256 !== fileSha) throw new Error("Existing archive identity mismatch");
+    }
+    if (!ag.document_id) {
+      const { data: doc, error: docErr } = await admin
+        .from("documents")
+        .insert({
+          id: documentId,
+          content_sha256: fileSha,
+          driver_id: ag.application_id,
+          kind: "rental_agreement",
+          category: "agreement",
+          label: ag.source === "rental" ? "Signed rental agreement" : ag.title,
+          storage_bucket: "rental-agreements",
+          storage_path: path,
+          visibility: ["driver", "admin"],
+          file_name: `signed-agreement-${String(ag.id).slice(0, 8)}.pdf`,
+          mime_type: "application/pdf",
+          uploaded_by_role: "system",
+        })
+        .select("id")
+        .single();
+      if (docErr || !doc) {
+        if (docErr?.code !== "23505") throw new Error(`documents: ${docErr?.message ?? "no row"}`);
+        const existing = await admin.from("documents").select("id,driver_id,storage_bucket,storage_path,content_sha256").eq("id", documentId).maybeSingle();
+        if (existing.error || !existing.data || existing.data.driver_id !== ag.application_id || existing.data.storage_bucket !== "rental-agreements" || existing.data.storage_path !== path || existing.data.content_sha256 !== fileSha)
+          throw new Error("ARCHIVE_CONFLICT: document identity");
+      } else if (doc.id !== documentId) throw new Error("ARCHIVE_CONFLICT: inserted document identity");
+    }
+
+    const { data: finalized, error: finErr } = await admin
+      .from("agreements")
+      .update({
+        archive_status: "archived",
+        archive_error: null,
+        archive_attempts: (ag.archive_attempts ?? 0) + 1,
+        archive_last_attempt_at: new Date().toISOString(),
+        document_id: documentId,
+        completed_document_id: documentId,
+        sha256: fileSha,
+        body_sha256: bodySha,
+      })
+      .eq("id", ag.id)
+      .neq("archive_status", "archived")
+      .select(`${DOC_COLS},archive_status,completed_document_id,sha256,body_sha256`)
+      .maybeSingle();
+    const recovered = finalized ? { data: finalized, error: null } : await admin.from("agreements")
+      .select(`${DOC_COLS},archive_status,completed_document_id,sha256,body_sha256`).eq("id", ag.id).maybeSingle();
+    const canonical = recovered.data;
+    if (recovered.error || !canonical || canonical.archive_status !== "archived")
+      throw new Error(`ARCHIVE_INCOMPLETE: ${finErr ? "finalization response failed" : "finalization not confirmed"}`);
+    const fields = ["id", "application_id", "vehicle_id", "body", "signed_at", "signer_name", "signer_email", "auth_method"];
+    if (fields.some((key) => (canonical[key] ?? null) !== (ag[key] ?? null)) || canonical.document_id !== documentId || canonical.completed_document_id !== documentId || canonical.sha256 !== fileSha || canonical.body_sha256 !== bodySha)
+      throw new Error("ARCHIVE_CONFLICT: finalized evidence differs");
+    const committedDoc = await admin.from("documents").select("id,driver_id,storage_bucket,storage_path,content_sha256").eq("id", documentId).maybeSingle();
+    const d = committedDoc.data;
+    if (committedDoc.error || !d || d.driver_id !== ag.application_id || d.storage_bucket !== "rental-agreements" || d.storage_path !== path || d.content_sha256 !== fileSha)
+      throw new Error("ARCHIVE_CONFLICT: finalized document version differs");
+    const downloaded = await bucket.download(path);
+    if (downloaded.error || !downloaded.data) throw new Error("ARCHIVE_INCOMPLETE: finalized bytes unavailable");
+    await assertSignedArchiveBytes(d, canonical, new Uint8Array(await downloaded.data.arrayBuffer()));
+    if (wasFailed)
+      await logAudit(actor, { action: "document.archive_recovered", summary: "Signed document archived after retry", entityType: "esign_document", entityId: ag.id });
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[esign] archive failed", ag.id, msg);
+    await admin
+      .from("agreements")
+      .update({ archive_status: "failed", archive_error: JSON.stringify({ code: msg.startsWith("ARCHIVE_CONFLICT:") ? "ARCHIVE_CONFLICT" : "ARCHIVE_INCOMPLETE", message: msg.slice(0, 350) }), archive_attempts: (ag.archive_attempts ?? 0) + 1, archive_last_attempt_at: new Date().toISOString() })
+      .eq("id", ag.id).neq("archive_status", "archived");
+    await logAudit(actor, { action: "document.archive_failed", summary: "Signed document could not be archived", entityType: "esign_document", entityId: ag.id, metadata: { error: msg.slice(0, 200) } });
+    return false;
+  }
+}
+
 export async function archiveDocument(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
+  // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
+  // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
+  if (SIGNED_ARCHIVE_V1_ENABLED) return archiveCompletedV1(admin, ag, actor);
   const wasFailed = ag.archive_status === "failed";
   try {
     const bodySha = await sha256Hex(ag.body as string);
@@ -195,7 +324,14 @@ const ARCHIVE_LOCK_MS = 60_000;
 export async function retryArchive(admin: any, id: string, actor: Actor | null): Promise<boolean> {
   const { data: cur } = await admin.from("agreements").select("id,status,archive_status").eq("id", id).maybeSingle();
   if (!cur || cur.status !== "signed") throw new Error("Only signed documents can be archived");
-  if (cur.archive_status === "archived") return true;
+  if (cur.archive_status === "archived") {
+    if (!SIGNED_ARCHIVE_V1_ENABLED) return true;
+    // A post-commit hash failure leaves the row archived and returns false.
+    // The next retry must verify the stored bytes instead of reporting success.
+    const { data: full, error } = await admin.from("agreements").select(`${DOC_COLS},archive_status,completed_document_id,sha256`).eq("id", id).maybeSingle();
+    if (error || !full) throw new Error("Signed PDF record missing");
+    return archiveDocument(admin, full, actor);
+  }
   const now = new Date();
   const staleBefore = new Date(now.getTime() - ARCHIVE_LOCK_MS).toISOString();
   // failed -> pending claims immediately; a pending row is only re-claimed

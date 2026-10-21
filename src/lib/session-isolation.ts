@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { clearResumeToken } from "@/lib/resume-token";
+import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { createFinanceSessionObserver } from "@/lib/unified-finance-session";
 
 /**
  * One signed-in person's data must never be served to the next one.
@@ -56,6 +58,23 @@ export function useSessionIsolation(queryClient: QueryClient) {
       // applicant is mid-way through using.
       if (userId === null) clearResumeToken();
     };
+
+    // Finance epochs are not part of the live listener. The constant is false, so
+    // this branch is never taken: getSession, onAuthStateChange, cache clearing
+    // and resume-token cleanup below are the production path, unchanged.
+    if (UNIFIED_FINANCE_ENDPOINT_ENABLED) {
+      const observer = createFinanceSessionObserver(queryClient, apply);
+      const ticket = observer.initialTicket();
+      supabase.auth.getSession().then(({ data }) => observer.initial(ticket, data.session?.user?.id ?? null)).catch(() => {});
+      const { data: sub } = supabase.auth.onAuthStateChange((event, session) =>
+        observer.event(event, session?.user?.id ?? null),
+      );
+      return () => {
+        active = false;
+        observer.dispose();
+        sub.subscription.unsubscribe();
+      };
+    }
 
     supabase.auth.getSession().then(({ data }) => apply(data.session?.user?.id ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) =>

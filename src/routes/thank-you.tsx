@@ -55,7 +55,7 @@ function ThankYouPage() {
         if (r.token && r.token !== raw) storeResumeToken(r.token);
         setToken(r.token ?? "");
       })
-      .catch(() => live && setToken(raw));
+      .catch(() => live && setToken(""));
     return () => {
       live = false;
     };

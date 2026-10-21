@@ -12,7 +12,8 @@ import {
 } from "@/lib/incidents.functions";
 import { fmtDate } from "@/lib/date-format";
 
-function money(n: number) {
+function money(n: number | null | undefined) {
+  if (n == null) return "Not Set";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
@@ -82,6 +83,7 @@ export function DepositDialog({
 
   async function doSettle() {
     if (!summary) return;
+    if (summary.refundDue == null) { toast.error("Deposit is Not Set. Verify it before settlement."); return; }
     if (
       !confirm(
         `Settle this deposit? ${money(summary.refundDue)} will be refunded and the renter emailed an itemised breakdown.`,
@@ -91,6 +93,7 @@ export function DepositDialog({
     setBusy(true);
     try {
       const res = await settle({ data: { rentalId, notes: notes.trim() || null } });
+      if ("error" in res && res.error) { toast.error(res.error.message); return; }
       toast.success(`Deposit settled — ${money(res.refund)} refunded`);
       await load();
       onSettled?.();
@@ -130,7 +133,7 @@ export function DepositDialog({
                 <span className="font-semibold">Refund due</span>
                 <span className="font-semibold tabular-nums">{money(summary.refundDue)}</span>
               </div>
-              {summary.deductionTotal > summary.depositAmount ? (
+              {summary.depositAmount != null && summary.deductionTotal > summary.depositAmount ? (
                 <p className="text-xs text-[#8A1C10]">
                   Deductions exceed the deposit by{" "}
                   {money(summary.deductionTotal - summary.depositAmount)} — bill the difference
@@ -274,7 +277,7 @@ export function DepositDialog({
           {!settled && summary ? (
             <button
               onClick={doSettle}
-              disabled={busy}
+              disabled={busy || summary.refundDue == null}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

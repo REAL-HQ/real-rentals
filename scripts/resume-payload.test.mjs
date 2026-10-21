@@ -138,6 +138,16 @@ const patch = conflictUpdates.join("\n") + "\n" + recoveryUpdate + "\n" + extraA
 ok(!/data\.(full_name|phone|email|sms_consent|city|state|market_id|pickup_date|source|referrer|landing_page|gclid|utm_)/.test(patch),
    "  no submitted field reaches the matched row");
 ok(/submitted_full_name|submitted_email/.test(dedupe), "  but recorded in resubmission_history");
+const recoveryMod = readFileSync("src/lib/application-recovery.server.ts", "utf8");
+const recoverySql = readFileSync("drizzle/migrations/0023_application_resume_atomic_security.sql", "utf8");
+ok(/applicationResumeAtomicEnabled\(\)/.test(recovery) && /sendAtomicRecoveryLink\(/.test(src),
+   "atomic recovery runs only when the flag is on");
+ok(!/reserve_application_recovery|finish_application_recovery/.test(src),
+   "the history module does not name the reservation RPCs");
+ok(/to: attempt\.email/.test(recoveryMod) && /'email', a\.email/.test(recoverySql),
+   "atomic delivery mails the address on the locked record");
+ok(/APPLICATION_RESUME_ATOMIC_ENABLED === "true"/.test(recoveryMod),
+   "atomic delivery stays off unless the flag is exactly true");
 
 console.log("\nUPLOAD AUTHORIZATION");
 const upRaw = src.slice(src.indexOf("export const requestUploadUrl"), src.indexOf("export const reissueApplicantLink"));
