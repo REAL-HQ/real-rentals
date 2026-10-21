@@ -27,6 +27,9 @@ import {
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
+import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
+import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
+import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
   listConditionMedia,
@@ -1353,6 +1356,19 @@ function PreRentalPanel({
   );
 }
 
+function PortalPaymentHistory() {
+  const previewId = usePreviewDriver();
+  const fetchHistory = usePortalRead(getPortalPaymentHistory);
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ["portal-payment-history", previewId ?? "self"],
+    queryFn: () => fetchHistory(),
+    enabled: PORTAL_PAYMENT_HISTORY_ENABLED === true,
+  });
+  if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) return null;
+  if (isLoading || isError || !data) return null;
+  return <PaymentHistoryCard items={data} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1367,6 +1383,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      <PortalPaymentHistory />
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
