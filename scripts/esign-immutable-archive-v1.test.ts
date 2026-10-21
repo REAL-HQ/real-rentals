@@ -145,7 +145,7 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
       insert(next: Record<string, unknown>) { op = "insert"; payload = { ...next }; return b; },
       update(next: Record<string, unknown>) { op = "update"; payload = { ...next }; return b; },
       delete() { op = "delete"; return b; },
-      maybeSingle: () => exec(true),
+      maybeSingle: () => exec(false),
       single: () => exec(false),
       then(resolve: (v: unknown) => void, reject: (e: unknown) => void) {
         return exec(true).then(resolve, reject);
@@ -193,7 +193,9 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
         return Promise.resolve({ data: match(agreement, filters) ? { ...agreement } : null, error: null });
       }
       if (op === "select" && table === "documents") {
-        const hit = [...docs.values()].find((row) => match(row, filters)) ?? null;
+        const hits = [...docs.values()].filter((row) => match(row, filters));
+        if (many) return Promise.resolve({ data: hits.map((row) => ({ ...row })), error: null });
+        const hit = hits[0] ?? null;
         return Promise.resolve({ data: hit ? { ...hit } : null, error: null });
       }
       return Promise.resolve({ data: null, error: { message: `unhandled ${op} ${table}` } });
@@ -459,6 +461,23 @@ shown.docs.set(hiddenId, {
 ok(await archiveImmutableV1(shown.admin, { ...agreement, archive_status: "archived", document_id: hiddenId, sha256: onSha }, null) === true, "an archived agreement reveals a hidden document");
 ok(JSON.stringify(shown.docs.get(hiddenId)?.visibility) === JSON.stringify(["driver", "admin"]), "the archived short-circuit shows the document to the driver");
 ok(shown.calls.every((c) => c.op !== "upload"), "the archived short-circuit does not upload again");
+
+const changed = openArchive({ ...agreement, body: "First PDF body" });
+changed.docs.set("ffffffff-ffff-4fff-8fff-ffffffffffff", {
+  id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+  driver_id: agreement.application_id,
+  storage_bucket: "rental-agreements",
+  storage_path: "immutable-v1/ffffffff-ffff-4fff-8fff-ffffffffffff/old.pdf",
+  visibility: ["admin"],
+  is_current: true,
+  content_sha256: "11".repeat(32),
+});
+ok(await archiveImmutableV1(changed.admin, { ...agreement, body: "Second PDF body" }, null) === true, "a changed PDF still archives");
+const orphan = changed.docs.get("ffffffff-ffff-4fff-8fff-ffffffffffff");
+ok(orphan?.is_current === false, "the earlier admin-only orphan is marked not current");
+ok(changed.docs.size === 2, "the earlier orphan is kept");
+ok(!changed.calls.some((c) => c.op === "delete") && !changed.calls.some((c) => c.op === "remove"), "a changed PDF does not delete the earlier row or object");
+ok(writer.includes("SET is_current = false") && !/\bDELETE\s+FROM\b/.test(writer), "the staff cleanup marks unclaimed immutable rows not current and does not delete");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall immutable archive checks pass");
 process.exit(fails ? 1 : 0);

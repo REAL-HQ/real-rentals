@@ -29,8 +29,46 @@ function alreadyStored(error: { message?: string; statusCode?: string | number }
 }
 
 async function revealToDriver(admin: any, documentId: string): Promise<void> {
-  const revealed = await admin.from("documents").update({ visibility: ["driver", "admin"] }).eq("id", documentId);
+  const revealed = await admin.from("documents").update({ visibility: ["driver", "admin"], is_current: true }).eq("id", documentId);
   if (revealed?.error) throw new Error(`reveal: ${revealed.error.message}`);
+}
+
+/**
+ * A retry whose PDF inputs changed stores a new immutable-v1 object. The
+ * earlier attempt's admin-only row is not the archived document. Mark it
+ * not current. Do not delete the row or the object.
+ *
+ * Staff can run the same rule when no later attempt archived a replacement:
+ * UPDATE public.documents AS d
+ * SET is_current = false
+ * WHERE d.is_current = true
+ *   AND d.storage_bucket = 'rental-agreements'
+ *   AND d.storage_path LIKE 'immutable-v1/%'
+ *   AND d.visibility = ARRAY['admin']::text[]
+ *   AND NOT EXISTS (
+ *     SELECT 1 FROM public.agreements AS a
+ *     WHERE a.document_id = d.id OR a.completed_document_id = d.id
+ *   );
+ */
+async function retireUnclaimedImmutableOrphans(admin: any, applicationId: string, documentId: string): Promise<void> {
+  const listed = await admin
+    .from("documents")
+    .select("id,storage_path,visibility,is_current,driver_id,storage_bucket")
+    .eq("driver_id", applicationId)
+    .eq("storage_bucket", BUCKET)
+    .eq("is_current", true);
+  const rows = Array.isArray(listed?.data) ? listed.data : listed?.data ? [listed.data] : [];
+  for (const row of rows) {
+    if (!row || row.id === documentId || row.is_current !== true) continue;
+    if (typeof row.storage_path !== "string" || !row.storage_path.startsWith("immutable-v1/")) continue;
+    const visibility = Array.isArray(row.visibility) ? row.visibility : [];
+    if (visibility.length !== 1 || visibility[0] !== "admin") continue;
+    const claimed = await admin.from("agreements").select("id").eq("document_id", row.id).maybeSingle();
+    if (claimed?.data) continue;
+    const completed = await admin.from("agreements").select("id").eq("completed_document_id", row.id).maybeSingle();
+    if (completed?.data) continue;
+    await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+  }
 }
 
 export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
@@ -170,6 +208,7 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
       }
     }
     await revealToDriver(admin, documentId);
+    await retireUnclaimedImmutableOrphans(admin, ag.application_id, documentId);
     if (wasFailed)
       await logAudit(actor, { action: "document.archive_recovered", summary: "Signed document archived after retry", entityType: "esign_document", entityId: ag.id });
     return true;
@@ -186,6 +225,7 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
       if (row.document_id === documentId && row.sha256 === fileSha) {
         try {
           await revealToDriver(admin, documentId);
+          await retireUnclaimedImmutableOrphans(admin, ag.application_id, documentId);
         } catch {
           // The agreement is already archived. A later call reveals the document.
         }
