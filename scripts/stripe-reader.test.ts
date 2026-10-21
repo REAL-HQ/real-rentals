@@ -33,6 +33,7 @@ const READERS = [
   "src/lib/driver-statement-read.server.ts",
   "src/lib/weekly-cash-flow-read.server.ts",
   "src/lib/stripe-collections.server.ts",
+  "src/lib/rent-reconciliation-stripe.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
