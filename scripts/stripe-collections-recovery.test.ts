@@ -14,6 +14,15 @@ describe('Revenue error recovery',()=>{
  it('capped/missing count cannot imply full internal coverage',()=>{expect(paymentRevenue({data:[],count:3,error:null})).toBeNull();expect(paymentRevenue({data:[],count:null,error:null})).toBeNull();});
  it('unknown amounts remain unknown',()=>{for(const n of [null,undefined,'',NaN,Infinity])expect(paymentRevenue({data:[{net_collected:n}],count:1,error:null})).toBeNull();});
  it('known Stripe PI rows are excluded from internal contribution',()=>expect(paymentRevenue({data:[{net_collected:'35.50',stripe_payment_intent_id:null},{net_collected:100,stripe_payment_intent_id:'pi_1'}],count:2,error:null})).toEqual({total:135.5,nonStripe:35.5}));
+ it('an invoice id with no payment intent is not added on top of Stripe',()=>{
+  const rows=paymentRevenue({data:[
+   {net_collected:50,stripe_payment_intent_id:null,stripe_invoice_id:null},
+   {net_collected:100,stripe_payment_intent_id:null,stripe_invoice_id:'in_1'},
+   {net_collected:80,stripe_payment_intent_id:'pi_1',stripe_invoice_id:'in_2'},
+  ],count:3,error:null});
+  expect(rows).toEqual({total:230,nonStripe:50});
+  expect(consolidatedRevenue({internalNonStripe:rows!.nonStripe,report}).amount).toBe(150);
+ });
  it('internal failure suppresses combined total without modifying Stripe report',()=>{const before=JSON.stringify(report);expect(consolidatedRevenue({report,internalNonStripe:null})).toEqual({amount:null,coverage:'Unavailable'});expect(JSON.stringify(report)).toBe(before);});
 });
 function boundary(){const states:RevenueSession[]=[];const resolvers:Array<(v:{allowed:boolean;collections:boolean})=>void>=[];const authorize=vi.fn(()=>new Promise<{allowed:boolean;collections:boolean}>(r=>resolvers.push(r)));const invalidate=vi.fn();const gate=createRevenueBoundary(authorize,invalidate,v=>states.push(v));return {states,resolvers,authorize,invalidate,gate};}
