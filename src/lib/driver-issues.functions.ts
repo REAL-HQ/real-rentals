@@ -162,9 +162,12 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       metadata: { from: existing.status, to: data.status },
     });
     if (DRIVER_NOTIFICATIONS_ENABLED === true) {
-      void import("@/lib/driver-notifications.server")
-        .then((m) => m.notifyIssueStatusChanged(data.id))
-        .catch((err) => console.error("[driver-notifications] issue_status", err));
+      try {
+        const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
+        await notifyIssueStatusChanged(data.id);
+      } catch (err) {
+        console.error("[driver-notifications] issue_status", err);
+      }
     }
     return { ok: true, status: data.status };
   });

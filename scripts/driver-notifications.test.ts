@@ -10,6 +10,7 @@ import {
   type DriverNotice,
 } from "../src/lib/driver-notifications";
 import {
+  deliverDriverNoticeChannels,
   notifyIncidentOpened,
   notifyIssueStatusChanged,
   notifyRentalEnded,
@@ -82,6 +83,10 @@ describe("driver notifications flag", () => {
     }
     const sendStart = server.indexOf("export async function sendDriverNoticeChannels");
     const sendBody = server.slice(sendStart);
+    const channelGuard = sendBody.indexOf("if (DRIVER_NOTIFICATIONS_ENABLED !== true) return noticeHeld()");
+    const channelSend = sendBody.indexOf("deliverDriverNoticeChannels(notice, deps)");
+    assert.ok(channelGuard !== -1 && channelSend !== -1 && channelGuard < channelSend);
+    assert.match(sendBody, /deps\.sendSms \?\? \(await import\("@\/lib\/sms\.server"\)\)\.sendSms/);
     assert.match(sendBody, /import\("@\/lib\/email\.server"\)/);
     assert.match(sendBody, /sendEmail\(\{/);
     assert.match(sendBody, /import\("@\/lib\/sms\.server"\)/);
@@ -99,9 +104,11 @@ describe("driver notifications flag", () => {
 
     const hook = issues.indexOf('import("@/lib/driver-notifications.server")');
     assert.ok(hook !== -1);
-    assert.match(issues.slice(Math.max(0, hook - 280), hook), /DRIVER_NOTIFICATIONS_ENABLED === true/);
-    assert.equal(issues.slice(hook - 5, hook), "void ");
-    assert.doesNotMatch(issues, /await import\("@\/lib\/driver-notifications\.server"\)/);
+    assert.match(issues.slice(Math.max(0, hook - 400), hook), /DRIVER_NOTIFICATIONS_ENABLED === true/);
+    assert.match(issues.slice(Math.max(0, hook - 80), hook), /try \{/);
+    assert.match(issues, /await import\("@\/lib\/driver-notifications\.server"\)/);
+    assert.match(issues, /await notifyIssueStatusChanged\(data\.id\)/);
+    assert.doesNotMatch(issues, /void import\("@\/lib\/driver-notifications\.server"\)/);
     assert.doesNotMatch(issues, /from ["']@\/lib\/driver-notifications\.server["']/);
   });
 
@@ -120,11 +127,35 @@ describe("driver notifications flag", () => {
     assert.match(hostile.emailHtml, /&lt;script&gt;/);
   });
 
+  it("does not call channel stubs while the flag is off", async () => {
+    const notice = rentalEndedNotice({ ...sample, vehicleLabel: "2020 Toyota Camry" });
+    let calls = 0;
+    const result = await sendDriverNoticeChannels(notice, {
+      sendEmail: async () => {
+        calls += 1;
+        return { ok: true };
+      },
+      sendSms: async () => {
+        calls += 1;
+        return { ok: true };
+      },
+      insertInApp: async () => {
+        calls += 1;
+        return { error: null };
+      },
+    });
+    assert.equal(result.skipped, "flag");
+    assert.equal(calls, 0);
+  });
+
   it("marks email failed when sendEmail returns ok false", async () => {
     const notice = rentalEndedNotice({ ...sample, phone: null, vehicleLabel: "2020 Toyota Camry" });
     let channels: string[] | null = null;
-    const result = await sendDriverNoticeChannels(notice, {
+    const result = await deliverDriverNoticeChannels(notice, {
       sendEmail: async () => ({ ok: false, error: "rejected" }),
+      sendSms: async () => {
+        throw new Error("sms stub should not run");
+      },
       insertInApp: async (row) => {
         channels = [...row.channels];
         return { error: null };
@@ -134,5 +165,20 @@ describe("driver notifications flag", () => {
     assert.equal(result.sms, "skipped");
     assert.equal(result.inApp, "sent");
     assert.deepEqual(channels, ["in_app"]);
+  });
+
+  it("uses the injected SMS sender", async () => {
+    const notice = rentalEndedNotice({ ...sample, email: null, vehicleLabel: "2020 Toyota Camry" });
+    let smsArgs: { to: string; applicationId: string } | null = null;
+    const result = await deliverDriverNoticeChannels(notice, {
+      sendSms: async (args) => {
+        smsArgs = { to: args.to, applicationId: args.applicationId };
+        return { ok: false, skipped: true };
+      },
+      insertInApp: async () => ({ error: null }),
+    });
+    assert.equal(result.sms, "skipped");
+    assert.equal(result.email, "skipped");
+    assert.deepEqual(smsArgs, { to: sample.phone, applicationId: sample.applicationId });
   });
 });

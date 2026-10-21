@@ -162,6 +162,13 @@ export async function notifyIssueStatusChanged(issueId: string): Promise<DriverN
 
 type NoticeChannelDeps = {
   sendEmail?: (args: { to: string; subject: string; html: string }) => Promise<{ ok: boolean; error?: string }>;
+  sendSms?: (args: {
+    to: string;
+    body: string;
+    kind: DriverNotice["kind"];
+    applicationId: string;
+    rentalId: string | null;
+  }) => Promise<{ ok: boolean; skipped?: boolean }>;
   insertInApp?: (row: {
     driver_id: string;
     kind: DriverNotice["kind"];
@@ -171,8 +178,21 @@ type NoticeChannelDeps = {
   }) => Promise<{ error: { message: string } | null }>;
 };
 
-/** Activation's three channels. Consent for SMS stays inside sendSms. */
+/**
+ * Activation's three channels. Consent for SMS stays inside sendSms.
+ * The flag is checked here as well as in the loaders, so a direct call
+ * does not send while notifications are off.
+ */
 export async function sendDriverNoticeChannels(
+  notice: DriverNotice,
+  deps: NoticeChannelDeps = {},
+): Promise<DriverNoticeResult> {
+  if (DRIVER_NOTIFICATIONS_ENABLED !== true) return noticeHeld();
+  return deliverDriverNoticeChannels(notice, deps);
+}
+
+/** Channel delivery after the flag has already allowed it. Tests call this with stubs. */
+export async function deliverDriverNoticeChannels(
   notice: DriverNotice,
   deps: NoticeChannelDeps = {},
 ): Promise<DriverNoticeResult> {
@@ -196,7 +216,7 @@ export async function sendDriverNoticeChannels(
 
   if (notice.phone && notice.applicationId) {
     try {
-      const { sendSms } = await import("@/lib/sms.server");
+      const sendSms = deps.sendSms ?? (await import("@/lib/sms.server")).sendSms;
       const sms = await sendSms({
         to: notice.phone,
         body: notice.smsBody,
