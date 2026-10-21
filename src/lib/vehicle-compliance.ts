@@ -216,10 +216,35 @@ function docBucket(kind: string): DocBucket | null {
   return null;
 }
 
+/** The newest calendar date wins. A renewal overrides a stale column or an older document. */
 function statusFromDates(today: string, dates: unknown[], required: boolean): ComplianceStatus | "skip" {
-  const known = dates.map((date) => parseIsoDate(date)).filter((date): date is string => date != null);
-  if (!known.length) return required ? "unknown" : "skip";
-  return worstStatus(known.map((date) => complianceStatus(today, date)));
+  let latest: string | null = null;
+  for (const date of dates) {
+    const parsed = parseIsoDate(date);
+    if (parsed && (latest === null || parsed > latest)) latest = parsed;
+  }
+  if (!latest) return required ? "unknown" : "skip";
+  return complianceStatus(today, latest);
+}
+
+export type ComplianceListFilter = "all" | ComplianceStatus;
+
+/**
+ * Ids for the Vehicles list filter. Unknown is withheld when the read is
+ * truncated: vehicles that were not loaded are not Unknown, so a partial id
+ * list would hide them.
+ */
+export function complianceFilterIds(input: {
+  enabled: boolean;
+  filter: ComplianceListFilter;
+  truncated: boolean;
+  loaded: boolean;
+  rows: readonly { vehicleId: string; status: ComplianceStatus }[];
+}): string[] | undefined {
+  if (!input.enabled || input.filter === "all") return undefined;
+  if (!input.loaded) return [];
+  if (input.filter === "unknown" && input.truncated) return undefined;
+  return input.rows.filter((row) => row.status === input.filter).map((row) => row.vehicleId);
 }
 
 export function buildVehicleCompliance(today: string, directory: ComplianceDirectory): VehicleComplianceRow[] {
@@ -256,12 +281,19 @@ export function buildVehicleCompliance(today: string, directory: ComplianceDirec
       const status = statusFromDates(today, buckets[key], true);
       items.push({ key, label: ITEM_LABEL[key], status: status === "skip" ? "unknown" : status });
     }
-    const inspection = directory.inspectionDegraded ? "unknown" : statusFromDates(today, buckets.inspection, true);
+    const inspection = directory.inspectionDegraded
+      ? "unknown"
+      : statusFromDates(today, buckets.inspection, directory.inspectionInstalled);
     items.push({ key: "inspection", label: ITEM_LABEL.inspection, status: inspection === "skip" ? "unknown" : inspection });
     const emissions = statusFromDates(today, buckets.emissions, false);
     if (emissions !== "skip") items.push({ key: "emissions", label: ITEM_LABEL.emissions, status: emissions });
 
-    let status = worstStatus(items.map((item) => item.status));
+    // A not-installed inspection is Unknown on the item only. Unknown must not
+    // outrank OK. A failed inspection read still withholds a vehicle-level OK.
+    const rollup = items.filter(
+      (item) => item.key !== "inspection" || directory.inspectionInstalled || directory.inspectionDegraded,
+    );
+    let status = worstStatus(rollup.map((item) => item.status));
     if (directory.documentsIncomplete && status === "ok") status = "unknown";
     return { vehicleId: vehicle.id, status, items };
   });

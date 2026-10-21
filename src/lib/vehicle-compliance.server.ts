@@ -4,11 +4,10 @@
  * buildVehicleCompliance. This module does not write.
  */
 import { tierAllows, type StaffTier } from "./roles";
+import { loadVehicleDocPresence } from "./vehicle-doc-presence.server";
 import {
   COMPLIANCE_DISABLED,
-  COMPLIANCE_PAGE,
   COMPLIANCE_UNAVAILABLE,
-  COMPLIANCE_DOCUMENT_KINDS,
   buildVehicleCompliance,
   complianceNotes,
   readCappedPages,
@@ -84,48 +83,36 @@ export async function loadVehicleCompliance(reader: ComplianceReader): Promise<C
     );
     if (vehicles.failed || vehicles.missing) return empty;
 
-    const direct = await readCappedPages((from, to) =>
-      reader
-        .from("documents")
-        .select("id,vehicle_id,kind,expires_at")
-        .not("vehicle_id", "is", null)
-        .not("expires_at", "is", null)
-        .eq("is_current", true)
-        .in("kind", COMPLIANCE_DOCUMENT_KINDS)
-        .order("id", { ascending: true })
-        .range(from, to),
-    );
-    const linked = await readCappedPages((from, to) =>
-      reader
-        .from("documents")
-        .select("id,kind,expires_at")
-        .is("vehicle_id", null)
-        .not("expires_at", "is", null)
-        .eq("is_current", true)
-        .in("kind", COMPLIANCE_DOCUMENT_KINDS)
-        .order("id", { ascending: true })
-        .range(from, to),
-    );
-    const linkRead = await readLinks(reader, linked.rows);
+    const vehicleRows = vehicles.rows.map(asVehicle).filter((row): row is ComplianceVehicle => row != null);
+    const documents: ComplianceDocument[] = [];
+    let documentsIncomplete = false;
+    const docs = docClient(reader);
+    for (const vehicle of vehicleRows) {
+      try {
+        // includeFinance is false: coordinators must not receive finance kinds.
+        // The loader merges direct documents and document_vehicle_links.
+        const presence = await loadVehicleDocPresence(docs, vehicle.id, false);
+        for (const doc of [...presence.direct, ...presence.linked]) {
+          documents.push({ vehicle_id: vehicle.id, kind: String(doc.kind ?? ""), expires_at: doc.expires_at ?? null });
+        }
+      } catch {
+        documentsIncomplete = true;
+      }
+    }
     const due = await readInspectionTable(reader, "maintenance_due_v1");
     const log = await readInspectionTable(reader, "maintenance_log_v1");
 
-    const documents = [
-      ...asDocuments(direct.rows, true),
-      ...linkRead.documents,
-    ];
-    const documentsIncomplete = direct.failed || direct.missing || direct.truncated || linked.failed || linked.missing || linked.truncated || linkRead.incomplete;
     const inspectionInstalled = due.installed || log.installed;
     const inspectionDegraded = due.degraded || log.degraded;
     return {
       failed: false,
-      vehicles: vehicles.rows.map(asVehicle).filter((row): row is ComplianceVehicle => row != null),
+      vehicles: vehicleRows,
       documents,
       inspections: inspectionDegraded ? [] : [...due.rows, ...log.rows],
       inspectionInstalled,
       inspectionDegraded,
       documentsIncomplete,
-      truncated: vehicles.truncated || direct.truncated || linked.truncated || linkRead.truncated || due.truncated || log.truncated,
+      truncated: vehicles.truncated || due.truncated || log.truncated,
     };
   } catch {
     return empty;
@@ -136,8 +123,15 @@ async function readInspectionTable(
   reader: ComplianceReader,
   table: "maintenance_due_v1" | "maintenance_log_v1",
 ): Promise<{ rows: ComplianceInspection[]; installed: boolean; degraded: boolean; truncated: boolean }> {
+  // vehicle_id is the primary key. inspection_due_on is the tie-break so a
+  // repeated vehicle id cannot make range() skip or repeat a row.
   const page = await readCappedPages((from, to) =>
-    reader.from(table).select("vehicle_id,inspection_due_on").order("vehicle_id", { ascending: true }).range(from, to),
+    reader
+      .from(table)
+      .select("vehicle_id,inspection_due_on")
+      .order("vehicle_id", { ascending: true })
+      .order("inspection_due_on", { ascending: true })
+      .range(from, to),
   );
   if (page.missing) return { rows: [], installed: false, degraded: false, truncated: false };
   if (page.failed) return { rows: [], installed: false, degraded: true, truncated: false };
@@ -149,49 +143,52 @@ async function readInspectionTable(
   };
 }
 
-async function readLinks(
-  reader: ComplianceReader,
-  documents: unknown[],
-): Promise<{ documents: ComplianceDocument[]; incomplete: boolean; truncated: boolean }> {
-  const byId = new Map<string, { kind: string; expires_at: unknown }>();
-  for (const row of documents) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as { id?: unknown; kind?: unknown; expires_at?: unknown };
-    if (typeof record.id !== "string") continue;
-    byId.set(record.id, { kind: String(record.kind ?? ""), expires_at: record.expires_at });
-  }
-  const ids = [...byId.keys()];
-  if (!ids.length) return { documents: [], incomplete: false, truncated: false };
-  const documentsOut: ComplianceDocument[] = [];
-  let incomplete = false;
-  let truncated = false;
-  try {
-    for (let index = 0; index < ids.length; index += 100) {
-      const chunk = ids.slice(index, index + 100);
-      const result = await reader
-        .from("document_vehicle_links")
-        .select("document_id,vehicle_id")
-        .in("document_id", chunk)
-        .limit(COMPLIANCE_PAGE + 1);
-      if (result.error) return { documents: documentsOut, incomplete: true, truncated };
-      const rows = result.data ?? [];
-      if (rows.length > COMPLIANCE_PAGE) {
-        truncated = true;
-        incomplete = true;
-      }
-      for (const row of rows.slice(0, COMPLIANCE_PAGE)) {
-        if (!row || typeof row !== "object") continue;
-        const link = row as { document_id?: unknown; vehicle_id?: unknown };
-        if (typeof link.document_id !== "string" || typeof link.vehicle_id !== "string") continue;
-        const document = byId.get(link.document_id);
-        if (!document) continue;
-        documentsOut.push({ vehicle_id: link.vehicle_id, kind: document.kind, expires_at: document.expires_at });
-      }
-    }
-  } catch {
-    incomplete = true;
-  }
-  return { documents: documentsOut, incomplete, truncated };
+/**
+ * The presence loader awaits the query builder. Replay its filters onto the
+ * reader and surface a PostgREST error as a throw so the caller can mark the
+ * document read incomplete instead of treating a failure as no documents.
+ */
+function docClient(reader: ComplianceReader) {
+  return {
+    from(table: string) {
+      let columns = "*";
+      const steps: Array<(query: ComplianceQuery) => ComplianceQuery> = [];
+      const api = {
+        select(next: string) {
+          columns = next;
+          return api;
+        },
+        eq(column: string, value: unknown) {
+          steps.push((query) => query.eq(column, value));
+          return api;
+        },
+        is(column: string, value: null) {
+          steps.push((query) => query.is(column, value));
+          return api;
+        },
+        in(column: string, values: readonly string[]) {
+          steps.push((query) => query.in(column, values));
+          return api;
+        },
+        order(column: string, options?: { ascending?: boolean }) {
+          steps.push((query) => query.order(column, options));
+          return api;
+        },
+        then(resolve: (value: PageResult) => unknown, reject: (reason: unknown) => unknown) {
+          let query = reader.from(table).select(columns);
+          for (const step of steps) query = step(query);
+          const pending = typeof (query as { then?: unknown }).then === "function"
+            ? Promise.resolve(query as unknown as Promise<PageResult>)
+            : Promise.resolve(query.limit(10000));
+          return pending.then((result) => {
+            if (result?.error) throw new Error(result.error.message ?? "document read failed");
+            return result;
+          }).then(resolve, reject);
+        },
+      };
+      return api;
+    },
+  };
 }
 
 function asVehicle(row: unknown): ComplianceVehicle | null {
@@ -204,18 +201,6 @@ function asVehicle(row: unknown): ComplianceVehicle | null {
     insurance_expires_on: record.insurance_expires_on,
     plate_expires_on: record.plate_expires_on,
   };
-}
-
-function asDocuments(rows: unknown[], owned: boolean): ComplianceDocument[] {
-  if (!owned) return [];
-  const documents: ComplianceDocument[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as { vehicle_id?: unknown; kind?: unknown; expires_at?: unknown };
-    if (typeof record.vehicle_id !== "string") continue;
-    documents.push({ vehicle_id: record.vehicle_id, kind: String(record.kind ?? ""), expires_at: record.expires_at });
-  }
-  return documents;
 }
 
 function asInspection(row: unknown): ComplianceInspection | null {

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getVehicleCompliance } from "@/lib/vehicle-compliance.functions";
 import { VEHICLE_COMPLIANCE_ENABLED } from "@/lib/vehicle-compliance-flag";
-import { COMPLIANCE_LABEL, type ComplianceStatus, type VehicleComplianceRow } from "@/lib/vehicle-compliance";
+import { COMPLIANCE_LABEL, complianceFilterIds, type ComplianceStatus, type VehicleComplianceRow } from "@/lib/vehicle-compliance";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export type ComplianceFilter = "all" | ComplianceStatus;
@@ -32,15 +32,22 @@ export function useVehicleCompliance() {
   });
   const report = query.data?.status === "ready" ? query.data : null;
   const byId = useMemo(() => new Map((report?.rows ?? []).map((row) => [row.vehicleId, row])), [report]);
-  const listIds = useMemo(() => {
-    if (!enabled || filter === "all") return undefined;
-    if (!report) return [];
-    return report.rows.filter((row) => row.status === filter).map((row) => row.vehicleId);
-  }, [enabled, filter, report]);
+  const listIds = useMemo(
+    () =>
+      complianceFilterIds({
+        enabled,
+        filter,
+        truncated: report?.truncated === true,
+        loaded: report != null,
+        rows: report?.rows ?? [],
+      }),
+    [enabled, filter, report],
+  );
   const notices: string[] = [];
   if (enabled && query.isLoading) notices.push("Loading Compliance");
   if (enabled && (query.isError || query.data?.status === "unavailable")) notices.push("Compliance Could Not Be Loaded");
   if (enabled && query.data?.status === "disabled") notices.push("Vehicle Compliance Is Off");
+  if (report?.truncated && filter === "unknown") notices.push("Unknown Filter Is Withheld Because Compliance Is Truncated");
   if (report) notices.push(...report.notes);
 
   return { enabled, filter, setFilter, listIds, notices, byId, loading: enabled && query.isLoading };
@@ -67,6 +74,34 @@ export function ComplianceFilterSelect({
         <SelectItem value="unknown">Unknown</SelectItem>
       </SelectContent>
     </Select>
+  );
+}
+
+export function ComplianceColumnHeader() {
+  return <th className="px-3 py-2 font-medium">Compliance</th>;
+}
+
+export function ComplianceCardStatus({
+  row,
+  loading,
+}: {
+  row: VehicleComplianceRow | undefined;
+  loading: boolean;
+}) {
+  return (
+    <div className="mt-2 text-[13px]">
+      <span className="text-muted-foreground">Compliance </span>
+      <ComplianceStatusText row={row} loading={loading} />
+    </div>
+  );
+}
+
+export function ComplianceNotes({ notices }: { notices: string[] }) {
+  if (!notices.length) return null;
+  return (
+    <ul className="mb-3 space-y-1 text-sm text-muted-foreground" data-testid="vehicle-compliance-notes">
+      {notices.map((note) => <li key={note}>{note}</li>)}
+    </ul>
   );
 }
 
