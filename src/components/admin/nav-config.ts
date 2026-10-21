@@ -42,6 +42,7 @@ import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
@@ -280,6 +281,26 @@ const ACCOUNTANT_EXPORT_TAB: TabDef = {
   description: "Year To Date Revenue, Refunds, Expenses And Net",
 };
 
+/** Shown only while Tax Year Export is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const TAX_EXPORT_TAB: TabDef = {
+  id: "tax_export",
+  label: "Tax Year Export",
+  icon: ScrollText,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Calendar Year Income, Deposits, Refunds, Fees And Costs",
+};
+
+function withTaxExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!TAX_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const accountant = next.findIndex((tab) => tab.id === "accountant_export");
+  const at = accountant >= 0 ? accountant : next.findIndex((tab) => tab.id === "partners");
+  const entry = href ? { ...TAX_EXPORT_TAB, href } : TAX_EXPORT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
@@ -319,10 +340,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
-  if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  if (!extra.length) return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
 }
 
 /**
@@ -374,11 +395,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (!extra.length) {
-    return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+    return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
