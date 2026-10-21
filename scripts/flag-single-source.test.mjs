@@ -2,19 +2,25 @@
 // scripts/ and test fixtures may repeat a flag name. Those copies are not
 // duplicates: a test constant is allowed to mention the same flag the app
 // declares, and counting them turned one src/ flag into a false failure.
+// They are excluded from the duplicate rule. On RC12 the reported count is
+// the production declarations in src/ (63). scripts/ declares none of them,
+// so that count is not test fixtures being scanned in.
 //
 // The check parses with the TypeScript compiler so JSX text, mid-line
-// statements, split declarators, binding patterns, parameters, and aliases
-// stay visible. A second const, let, var, parameter, or alias that introduces
-// the same _ENABLED name in src/ fails the check. A plain same-name re-export
-// (`export { X_ENABLED }` or `export { X_ENABLED } from "..."`) does not,
-// and neither does a same-name import.
+// statements, split declarators, object and array binding patterns,
+// parameters (including defaults), and aliases stay visible. A second const,
+// let, var, parameter, or alias that introduces the same _ENABLED name in
+// src/ fails the check. A plain same-name re-export (`export { X_ENABLED }`
+// or `export { X_ENABLED } from "..."`) does not, and neither does a
+// same-name import. Passing an existing flag as a default value
+// (`function f(on = X_ENABLED)`) is a use, not a second declaration.
 //
 // Hidden boolean gates that are not named *_ENABLED (for example
-// `const filtersOn = false`) are not declarations and are not a failure.
+// `filtersOn = false as boolean`) are not declarations and are not a failure.
 // Search for them with rg before treating a tree as having a single flag
-// source. A top-level `const <name> = false` under src/components is printed
-// as a warning only.
+// source. A top-level const in src/ whose name does not end in _ENABLED, and
+// whose initializer is `false`, `false as boolean`, or `false && ...`, is
+// printed as a warning only.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -79,7 +85,7 @@ export function falseConstWarnings(root) {
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return warnings;
   for (const file of walk(root)) {
     const norm = file.replaceAll("\\", "/");
-    if (!/(^|\/)src\/components\//.test(norm) || isTestOrScript(file)) continue;
+    if (isTestOrScript(file) || !/(^|\/)src\//.test(norm)) continue;
     warnings.push(...falseConstsIn(file));
   }
   return warnings;
@@ -165,6 +171,30 @@ function recordExport(node, push) {
   }
 }
 
+function unwrap(node) {
+  let current = node;
+  while (current && ts.isParenthesizedExpression(current)) current = current.expression;
+  return current;
+}
+
+function isBooleanType(typeNode) {
+  return typeNode?.kind === ts.SyntaxKind.BooleanKeyword;
+}
+
+/** `false`, `false as boolean`, or `false && ...`. Other shapes still need rg. */
+function hiddenFalseKind(node) {
+  const expr = unwrap(node);
+  if (!expr) return null;
+  if (expr.kind === ts.SyntaxKind.FalseKeyword) return "false";
+  if ((ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) && unwrap(expr.expression)?.kind === ts.SyntaxKind.FalseKeyword && isBooleanType(expr.type)) {
+    return "false as boolean";
+  }
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && unwrap(expr.left)?.kind === ts.SyntaxKind.FalseKeyword) {
+    return "false &&";
+  }
+  return null;
+}
+
 function falseConstsIn(file) {
   const source = sourceFile(file);
   const warnings = [];
@@ -173,9 +203,10 @@ function falseConstsIn(file) {
     if ((stmt.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
     for (const decl of stmt.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name) || decl.name.text.endsWith("_ENABLED")) continue;
-      if (decl.initializer?.kind !== ts.SyntaxKind.FalseKeyword) continue;
+      const kind = hiddenFalseKind(decl.initializer);
+      if (!kind) continue;
       const { line } = source.getLineAndCharacterOfPosition(decl.name.getStart(source));
-      warnings.push({ file, line: line + 1, name: decl.name.text });
+      warnings.push({ file, line: line + 1, name: decl.name.text, kind });
     }
   }
   return warnings;
@@ -303,6 +334,19 @@ function selfTest() {
         source: ["function f({ PARAM_BIND_ENABLED }) { return PARAM_BIND_ENABLED; }", "function g([PARAM_BIND_ENABLED]) { return PARAM_BIND_ENABLED; }", ""].join("\n"),
       },
       {
+        label: "parameter with a default",
+        file: "param-default.ts",
+        flag: "DEFAULT_PARAM_ENABLED",
+        count: 3,
+        source: [
+          "function f(DEFAULT_PARAM_ENABLED = false) { return DEFAULT_PARAM_ENABLED; }",
+          "const g = (DEFAULT_PARAM_ENABLED = true) => DEFAULT_PARAM_ENABLED;",
+          "function h({ DEFAULT_PARAM_ENABLED = false } = {}) { return DEFAULT_PARAM_ENABLED; }",
+          "function usedAsDefault(other = DEFAULT_PARAM_ENABLED) { return other; }",
+          "",
+        ].join("\n"),
+      },
+      {
         label: "mts file",
         file: "mod.mts",
         flag: "MTS_ENABLED",
@@ -353,6 +397,7 @@ function selfTest() {
         "import { type t as TYPE_SPEC_ENABLED } from './flag';",
         "export type { t as TYPE_EXPORT_ENABLED };",
         "const { ONLY_ENABLED: renamed } = {};",
+        "function passed(on = ONLY_ENABLED) { return on; }",
         "export function View() {",
         "  return <p>you're reading const TEXT_ENABLED = true</p>;",
         "}",
@@ -408,6 +453,7 @@ function selfTest() {
 
     const gateDir = join(root, "src", "components");
     mkdirSync(gateDir, { recursive: true });
+    mkdirSync(join(root, "src", "lib"), { recursive: true });
     writeFileSync(
       join(gateDir, "Gate.tsx"),
       [
@@ -418,11 +464,24 @@ function selfTest() {
         "",
       ].join("\n"),
     );
+    writeFileSync(
+      join(root, "src", "lib", "gates.ts"),
+      [
+        "export const castOff = false as boolean;",
+        "export const shortCircuit = false && true;",
+        "export const CAST_FLAG_ENABLED = false as boolean;",
+        "export const andFlag = false && check();",
+        "let castLet = false as boolean;",
+        "export function nested() { const hiddenCast = false as boolean; return hiddenCast; }",
+        "export const compared = value === false && other;",
+        "",
+      ].join("\n"),
+    );
     const warnings = falseConstWarnings(join(root, "src"));
     assert.deepEqual(
-      warnings.map((item) => item.name),
-      ["filtersOn"],
-      "only a top-level const false in src/components is a warning",
+      warnings.map((item) => `${item.name}:${item.kind}`).sort(),
+      ["andFlag:false &&", "castOff:false as boolean", "filtersOn:false", "shortCircuit:false &&"],
+      "top-level false, false as boolean, and false && consts in src/ are warnings",
     );
     const gateRun = scannerExit(join(root, "src"));
     assert.equal(gateRun.status, 0, gateRun.stderr);
@@ -480,9 +539,9 @@ if (isMain) {
   }
   const warnings = falseConstWarnings("src");
   if (warnings.length) {
-    const lines = warnings.map((item) => `  ${item.file}:${item.line} ${item.name}`);
+    const lines = warnings.map((item) => `  ${item.file}:${item.line} ${item.name} (${item.kind})`);
     console.error(
-      `flag-single-source: warning: top-level const initialized to false in src/components (not a failure; rg for other hidden gates):\n` +
+      `flag-single-source: warning: top-level const in src/ initialized with false, false as boolean, or false && (not a failure; rg for other hidden gates):\n` +
         lines.join("\n"),
     );
   }
