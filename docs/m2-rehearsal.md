@@ -1,8 +1,8 @@
 # M2 install rehearsal
 
-Local rehearsal. `SHOW server_version` on this database returned `16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)`. Host `127.0.0.1:55442`, database `m2`, trust authentication, role `postgres`. The hosted procedure is `proposed/HOSTED-INSTALL.md`. No production credentials were used, and no hosted database was contacted.
+Local rehearsal. `SHOW server_version` on this database returned `16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)`. The same files also pass on PostgreSQL 17.11. Host `127.0.0.1:55442`, database `m2`, trust authentication, role `postgres`. The hosted procedure is `proposed/HOSTED-INSTALL.md`. No production credentials were used, and no hosted database was contacted.
 
-The packet SQL was not edited. Rollback scripts are under `proposed/rollback/`. They were generated from the local catalog difference for each step, then run in reverse on this database.
+Header comments in 12 SQL files now point at `proposed/HOSTED-INSTALL.md`. Those comments changed the file bytes. The executable statements in the packet files were not rewritten. Current SHA-256 for the 12 files is in the functional rehearsal section below. Rollback scripts are under `proposed/rollback/`. They were generated from the local catalog difference for each step, then run in reverse on this database.
 
 ## Baseline
 
@@ -36,7 +36,7 @@ Both objects are already live through Drizzle, not through `supabase/migrations`
 - `public.application_identity_reviews` is created by `drizzle/migrations/0019_application_identity_reviews.sql` and its grants are tightened by `drizzle/migrations/0020_identity_reviews_tighten_grants.sql`. The inline check is named `application_identity_reviews_resolution_check`, which step 6 drops and replaces.
 - `applications.deleted_at` is added by `drizzle/migrations/0016_0016_driver_deletion_stage1.sql`. The rehearsal added that column and the other columns from the same statement: `deleted_by`, `deleted_reason`, `purged_at`, and `legal_hold`. The rest of 0016 was not applied. It creates deletion functions that reference further Drizzle tables.
 
-The recorded run below uses that supplemented baseline. No packet file was changed. On a database that already has these live objects, the packet files apply as written. Adding `CREATE TABLE application_identity_reviews` to step 6 would fail on that live database.
+The recorded run below uses that supplemented baseline. No packet file was changed to add those objects. On a database that already has these live objects, the packet files apply as written. Adding `CREATE TABLE application_identity_reviews` to step 6 would fail on that live database.
 
 The first recorded run left `public.application_waitlist_holds` absent. `extend_rental_tx` mentions it inside a PL/pgSQL body, so `CREATE FUNCTION` succeeded. A later production-matching baseline, below, applies Drizzle `0014_waitlist_holds_and_safe_promotion.sql` before the packet.
 
@@ -125,7 +125,7 @@ The rollback scripts restore replaced function bodies, the original `application
 
 ## Fixes
 
-No packet SQL was changed.
+The packet files were not patched to create those Drizzle objects.
 
 The install fails on a `supabase/migrations`-only database at step 6 and, after the identity-review table is added, at step 10. The minimal fix is to have those already-live Drizzle objects in place before the packet, as this rehearsal did. It is not a patch to the packet files.
 
@@ -190,7 +190,7 @@ After step 7, the remaining packet call is `record_existing_rental_tx`. Before s
 3. Step 0, `proposed/m2-with-approval-boundary/00-approval-boundary.sql`. This creates `approval_validate`, `approval_snapshot`, and the rest of the approval boundary.
 4. Packet steps 2 through 17, then 18, 19, 19b, 20, extend rental, and the return checklist.
 
-`proposed/m2-with-approval-boundary/approval-boundary.local.sql` is a byte-for-byte copy of the excluded script (`90e1ca62274aa59df8c48de8953827e61523cf11a2c82e7be2f6e6ce780d5deb`). The original packet files were not edited. Their bytes are in `proposed/m2-packet/` and match the SHA-256 table above. The installable step 0 is that script with the three `CREATE FUNCTION` statements step 1 owns removed, so step 1's session-checking provider is not replaced by the deny stub.
+`proposed/m2-with-approval-boundary/approval-boundary.local.sql` is the excluded script plus a header comment. Its SHA-256 is `e377ee948cd294b6afdc34b7f7441fdd1d86801a66b2337a57d4431f84995e78`. The SHA-256 table in the baseline section records the first apply, before those header comments. The installable step 0 is that script with the three `CREATE FUNCTION` statements step 1 owns removed, so step 1's session-checking provider is not replaced by the deny stub.
 
 The excluded file cannot be applied unchanged in either order:
 
@@ -271,7 +271,7 @@ The seed transaction was rolled back. Schema rollback then ran return, extend, 2
 
 ## Functional rehearsal
 
-Triggers stayed on for the install and for `scripts/m2-functional-proof.sql`. The only `session_replication_role = replica` use is the unused-install fixture under Rollbacks. `approval-boundary.local.sql` is still the verbatim excluded script. Packet files were not edited.
+Triggers stayed on for the install and for `scripts/m2-functional-proof.sql`. The only `session_replication_role = replica` use is the unused-install fixture under Rollbacks. `approval-boundary.local.sql` keeps the excluded script's statements and adds a header comment. Its SHA-256 is `e377ee948cd294b6afdc34b7f7441fdd1d86801a66b2337a57d4431f84995e78`. Header comments in the 12 files below point at `proposed/HOSTED-INSTALL.md`. The executable packet statements were not rewritten. The rehearsal passes on PostgreSQL 16.15 and 17.11.
 
 `private.approval_object_version` now reads the one `storage.objects` row for the document's bucket and path. It returns that object's bucket, path, and sha256, and a version token: `storage.objects.version` when that column exists and is non-blank, otherwise `metadata.version`, then `metadata.eTag`, then the object id. The object must carry the same sha256 the document row claims, in `user_metadata`. A missing or mismatched object still raises `approval_storage_version_unverified`. The rehearsal adds `version text` before the baseline, the same provider column hosted Storage has. License objects are inserted at `v1`. After verify, setting the front object to `v2` is the hosted upsert's version change, and `approve_application_checked` raises `positive_identity_required` because the fresh snapshot no longer matches the stored review. Putting the version back to `v1` lets the success path approve.
 
@@ -285,7 +285,7 @@ Step 19b leaves the four-argument `record_agreement_evidence` as a deny-all. `19
 
 `confirmDocumentUpload` and `registerDocument` do not set `content_sha256` while `DOCUMENT_CONTENT_SHA256_ENABLED` is false. Supabase storage metadata does not carry a sha256 on its own. The earlier proof at `2362f2b` hand-seeded both sides in `/tmp/m2-proof.sql` after the upload-shaped inserts: `UPDATE public.documents SET content_sha256` to the literals `1111…1111` and `2222…2222`, then `INSERT INTO storage.objects` with those same literals in `metadata.sha256`. The agreement row was inserted already at `immutable-v1/…` with a literal sha. No packet step hashes driver-upload bytes. Step 9 `bind_document_integrity_v1` writes `content_sha256` only when an issuer supplies a sha and rebinds the row onto `immutable-v1`. After step 19, `finalized_archive_document_v1` refuses that path change on a document whose path matches `^(immutable|completed)-v1/` or that an agreement with a sha already points at.
 
-The production path for license bytes is the flag in `src/lib/document-content-sha.ts`. It stays false. When an owner changes it and rebuilds, `recordUploadedContentSha` calls Storage API `info` and `download`, SHA-256s those bytes, and calls `public.record_uploaded_content_sha`. That function refuses an `immutable-v1` path, and it refuses a bucket and path that are not already a documents row or a known application upload. It then merges `user_metadata.sha256` with `jsonb ||` only when the object's id and version, or `updated_at` when version is blank, still match the hashed row. The storage client's `updatedAt` is that timestamp. It does not re-upload the file and it does not `UPDATE storage.objects` through PostgREST. `confirmDocumentUpload` inserts the documents row first so the function can see it. `registerDocument` hashes a known application upload and stores the returned hex. If the function is not installed, the first flag-on call logs that and confirms the upload with `content_sha256` null, so approval stays closed. No environment variable opens the flag. The function is `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql`, an own-transaction step. Hosted install is `proposed/HOSTED-INSTALL.md`. It is not installed on hosted.
+The production path for license bytes is the flag in `src/lib/document-content-sha.ts`. It stays false. When an owner changes it and rebuilds, `recordUploadedContentSha` calls Storage API `info` and `download`, SHA-256s those bytes, and calls `public.record_uploaded_content_sha`. That function refuses an `immutable-v1` path, and it refuses a bucket and path that are not already a documents row or a known application upload. It then merges `user_metadata.sha256` with `jsonb ||` only when the object's id and version, or `updated_at` when version is blank, still match the hashed row. The storage client's `updatedAt` is that timestamp. It does not re-upload the file and it does not `UPDATE storage.objects` through PostgREST. `confirmDocumentUpload` inserts the documents row first so the function can see it. `registerDocument` hashes a known application upload and stores the returned hex. If the function is not installed, the first flag-on call logs that once per process and confirms the upload with `content_sha256` null, so approval stays closed. A hasher error after `confirmDocumentUpload` inserts a row marks that new row not current and rethrows. The previous current row stays current, and the new row is not deleted. No environment variable opens the flag. The function is `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql`, an own-transaction step. Hosted install is `proposed/HOSTED-INSTALL.md`. It is not installed on hosted.
 
 With `SIGNED_ARCHIVE_V1_ENABLED` false and `ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED` false, eSign still writes `{applicationId}/agreement-{id}.pdf` and does not set `documents.content_sha256`. The immutable-v1 writer exists now, behind `ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED`, which stays false. `SIGNED_ARCHIVE_V1_ENABLED` must stay false when immutable-v1 is on: `archiveDocument` checks that flag first and runs completed-v1, so this writer does not. With immutable-v1 on, the first insert is already `immutable-v1/<document id>/<pdf sha>.pdf` in `rental-agreements`, `content_sha256` and `user_metadata.sha256` are the PDF hash, and a failed attempt does not delete the document or the object. With only `SIGNED_ARCHIVE_V1_ENABLED` true, `archiveCompletedV1` writes `completed-v1/<document id>/<file sha>.pdf`. Step 9 cannot move either path after step 19.
 
@@ -305,21 +305,28 @@ Install mode is `proposed/INSTALL.md`. Packet files, including `17.sql`, are app
 10. Packet step 20, extend rental, return checklist
 11. `record-uploaded-content-sha.sql` after the return checklist. The proof rolls it back before the return checklist so the privilege dumps stay comparable.
 
+Header comments changed the bytes of these 12 files. The executable packet statements were not rewritten. SHA-256 of the files as rehearsed:
+
 | File | SHA-256 |
 | --- | --- |
-| `00-approval-boundary.sql` | `0176cc57bfa24ee049e85d7ea48d01f018d02257556d0d2c7fa40b12486c33f9` |
-| `06b-approval-identity-check.sql` | `48a97ec52eff7ccab70684ca40f3147dca83bc53d32970ee35061914c3e113c6` |
-| `10b-approval-executor-writes.sql` | `53003c593a65bc6bfa9cdf6166d2fd30929ca7ff37081ddce2c4d09d2d5b1251` |
-| `19c-agreement-contract.sql` | `938c5de9eda4c70897221ead5ddcc5cd235745664ea47825f5ce41c201579e42` |
-| `record-uploaded-content-sha.sql` | `9b2f9da3441d5f34c1aab7f165ef2814b777483df2c5431f8128df726251a683` |
-
-`approval-boundary.local.sql` is unchanged: `90e1ca62274aa59df8c48de8953827e61523cf11a2c82e7be2f6e6ce780d5deb`.
+| `proposed/m2-packet/10.sql` | `cf40bd9d02cf03d999c8413ae4123ec23d0e7133bba912b2dad7ffd49bb5d764` |
+| `proposed/m2-packet/11.sql` | `b8fde7718e9893c3ed97dd0066808c6d02a921de15fccc7ff5514976753472a2` |
+| `proposed/m2-packet/17.sql` | `30768834894d0291ba39353795fb82a34708ed95428979c75420bf34f9b0c506` |
+| `proposed/m2-packet/19b.sql` | `951f7ca247c1073a46ee453866acb66b7d7a3f84fc0a67ef7453c603a7899074` |
+| `proposed/m2-packet/20.sql` | `dd58a035206e1886236eb51784c06accebf299cf704de75204a5a2600387d5c2` |
+| `proposed/m2-packet/extend.sql` | `ef1c6a1dc1dea9138a2c9a2a223eeba2e23cf75fc0e8d041115cf03a134f1fb3` |
+| `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | `e0d0b896388ace43125faf8e5df2b1710413b7130d150ea136599a46e5020bb0` |
+| `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | `ba5db19b8e8910c2501ad63c10d16d0a8b9ac616b264a3d8f10c908fd3240683` |
+| `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | `b7ea20b919a1527f66ec46dcc1feb9ee7940fe7f470bd6b97e4cd7a05c488456` |
+| `proposed/m2-with-approval-boundary/19c-agreement-contract.sql` | `81aec62a997acf4ff5a3f5e26398a09d193a33c71dd97a1242466e80042c5d49` |
+| `proposed/m2-with-approval-boundary/approval-boundary.local.sql` | `e377ee948cd294b6afdc34b7f7441fdd1d86801a66b2337a57d4431f84995e78` |
+| `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | `16177844b26c26be9fbff2543c0cf8240a159612e678aeb7c54d9b30e54ff479` |
 
 ### Proof
 
 `scripts/m2-functional-proof.sql`, one transaction, then `ROLLBACK`. No 64-hex literal is in that file. License and agreement hashes are `encode(extensions.digest(bytes, 'sha256'), 'hex')` of `m2-license-front-v1`, `m2-license-back-v1`, `m2-signed-agreement-v1`, and `signed terms`. `scripts/m2-content-sha.test.ts` checks that `contentSha256Hex` returns the same digests. Front is `66cd8986298ba1265463727de09dbc11f65fc4a17d9726222218b63c56793f0c`. Back is `577ba23d2c2bcdccc259d9b91c0261232ca4c26e4e9bc528484dd8378a3dd240`. The flag stayed false.
 
-(a) and (b) insert the `confirmDocumentUpload` column list with no `content_sha256`. The objects are inserted with `user_metadata.source` and no sha. `service_role` then calls `public.record_uploaded_content_sha`, which sets `documents.content_sha256` and merges `user_metadata.sha256`. `anon` and `authenticated` are `permission denied`. A stale version raises `content_sha256_object_changed`. A different stored hash raises `content_sha256_mismatch`. An `immutable-v1` path raises `content_sha256_immutable` and writes nothing. `metadata` is system data (`mimetype`, `size`) and has no sha. supabase-js stores the upload `metadata` option in `user_metadata` (storage migration 0025), so `approval_object_version` and step 19c read `user_metadata` and do not fall back to `metadata`. The agreement used for (d) is an initial insert at `immutable-v1/<doc>/<digest>.pdf` in `rental-agreements`, with the object `user_metadata` sha equal to the same digest. A `completed-v1` agreement is refused with `agreement_contract_unverified`, and updating its path to `immutable-v1` raises `finalized_archive_immutable`.
+(a) and (b) insert the `confirmDocumentUpload` column list with no `content_sha256`. The objects are inserted with `user_metadata.source` and no sha. `service_role` then calls `public.record_uploaded_content_sha`, which sets `documents.content_sha256` and merges `user_metadata.sha256`. `anon` and `authenticated` are `permission denied`. A stale version raises `content_sha256_object_changed`. A different stored hash raises `content_sha256_mismatch`. An `immutable-v1` path raises `content_sha256_immutable` and writes nothing. A `driver-docs` path with no documents row and no application upload raises `content_sha256_unclaimed` and writes nothing. `metadata` is system data (`mimetype`, `size`) and has no sha. supabase-js stores the upload `metadata` option in `user_metadata` (storage migration 0025), so `approval_object_version` and step 19c read `user_metadata` and do not fall back to `metadata`. The agreement used for (d) is an initial insert at `immutable-v1/<doc>/<digest>.pdf` in `rental-agreements`, with the object `user_metadata` sha equal to the same digest. A `completed-v1` agreement is refused with `agreement_contract_unverified`, and updating its path to `immutable-v1` raises `finalized_archive_immutable`.
 
 | Check | Result |
 | --- | --- |

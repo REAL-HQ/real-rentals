@@ -563,6 +563,62 @@ async function assertMayTouch(userId: string, documentId: string): Promise<void>
   }
 }
 
+type UploadHasher = (admin: any, bucket: string, path: string) => Promise<string | null>;
+
+/**
+ * Insert the documents row, then hash. The hasher returns null when the flag
+ * is off, and when the packet function is not installed yet. A thrown hasher
+ * marks this new row not current and is rethrown. The previous current row
+ * stays current. The new row is not deleted. Supersede runs only after the
+ * hasher returns.
+ */
+export async function persistConfirmedDocument(
+  admin: any,
+  fields: {
+    driver_id: string;
+    kind: string;
+    category: string;
+    label: string | null;
+    storage_bucket: string;
+    storage_path: string;
+    visibility: string[];
+    file_name: string | null;
+    mime_type: string | null;
+    size_bytes: number | null;
+    expires_at: string | null;
+    uploaded_by: string | null;
+    uploaded_by_role: string;
+  },
+  hash: UploadHasher = recordUploadedContentSha,
+): Promise<{ id: string }> {
+  const { data: row, error } = await admin
+    .from("documents")
+    .insert({ ...fields, is_current: true })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  try {
+    await hash(admin, fields.storage_bucket, fields.storage_path);
+  } catch (hashError) {
+    const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+    if (demoted?.error) {
+      console.error(
+        "[documents] could not mark the unhashed upload not current",
+        demoted.error.message ?? demoted.error,
+      );
+    }
+    throw hashError;
+  }
+  await admin
+    .from("documents")
+    .update({ is_current: false, superseded_by: row.id })
+    .eq("driver_id", fields.driver_id)
+    .eq("category", fields.category)
+    .eq("is_current", true)
+    .neq("id", row.id);
+  return { id: row.id as string };
+}
+
 /** True for Coordinator and above. */
 async function isStaffUser(userId: string): Promise<boolean> {
   try {
@@ -621,44 +677,22 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-    // The packet function writes the hash only after this bucket and path
-    // belong to a documents row. Insert first, with a null hash. Flag off,
-    // the hasher returns null. Flag on, before the function exists, it logs
-    // and returns null so the upload is confirmed and approval stays closed.
-    // Any other hasher failure throws. The null hash still fails approval closed.
-    const { data: row, error } = await supabaseAdmin
-      .from("documents")
-      .insert({
-        driver_id: data.applicationId,
-        kind: data.category,
-        category: data.category,
-        label: data.label ?? null,
-        storage_bucket: DOC_BUCKET,
-        storage_path: data.path,
-        visibility,
-        file_name: data.fileName ?? null,
-        mime_type: data.mimeType ?? null,
-        size_bytes: data.sizeBytes ?? null,
-        expires_at: data.expiresAt || null,
-        is_current: true,
-        uploaded_by: context.userId,
-        uploaded_by_role: admin ? "team" : "driver",
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-    await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
-
-    // Supersede the previous current document in the same category.
-    await supabaseAdmin
-      .from("documents")
-      .update({ is_current: false, superseded_by: row.id })
-      .eq("driver_id", data.applicationId)
-      .eq("category", data.category)
-      .eq("is_current", true)
-      .neq("id", row.id);
-
-    return { ok: true, id: row.id as string };
+    const saved = await persistConfirmedDocument(supabaseAdmin, {
+      driver_id: data.applicationId,
+      kind: data.category,
+      category: data.category,
+      label: data.label ?? null,
+      storage_bucket: DOC_BUCKET,
+      storage_path: data.path,
+      visibility,
+      file_name: data.fileName ?? null,
+      mime_type: data.mimeType ?? null,
+      size_bytes: data.sizeBytes ?? null,
+      expires_at: data.expiresAt || null,
+      uploaded_by: context.userId,
+      uploaded_by_role: admin ? "team" : "driver",
+    });
+    return { ok: true, id: saved.id };
   });
 
 export const updateDocumentMeta = createServerFn({ method: "POST" })

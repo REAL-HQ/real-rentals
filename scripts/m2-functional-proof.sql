@@ -274,6 +274,38 @@ BEGIN
   IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id='acacacac-acac-4aca-8aca-acacacacacac') IS NOT NULL THEN
     RAISE EXCEPTION 'immutable-v1 wrote a hash';
   END IF;
+  INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version)
+  VALUES (
+    'adadadad-adad-4ada-8ada-adadadadadad',
+    'driver-docs',
+    'unclaimed/not-a-document.jpg',
+    jsonb_build_object('source','upload'),
+    'v1'
+  );
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha(
+      'driver-docs',
+      'unclaimed/not-a-document.jpg',
+      front_sha,
+      'adadadad-adad-4ada-8ada-adadadadadad',
+      'v1',
+      NULL);
+    RAISE EXCEPTION 'unclaimed path accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_unclaimed%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha unclaimed pass %', SQLERRM;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id='adadadad-adad-4ada-8ada-adadadadadad') IS NOT NULL THEN
+    RAISE EXCEPTION 'unclaimed path wrote a hash';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.documents
+    WHERE storage_bucket='driver-docs' AND storage_path='unclaimed/not-a-document.jpg'
+  ) THEN
+    RAISE EXCEPTION 'unclaimed path invented a documents row';
+  END IF;
 END $$;
 
 DO $$
