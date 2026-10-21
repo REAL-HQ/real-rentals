@@ -48,6 +48,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   const [remainingOnly, setRemainingOnly] = useState(false);
   const [prepRows, setPrepRows] = useState<IncidentChargePrepRow[]>([]);
   const [prepTruncated, setPrepTruncated] = useState(false);
+  const [prepError, setPrepError] = useState(false);
   const [editing, setEditing] = useState<Incident | "new" | null>(null);
   const [seed, setSeed] = useState<IssueIncidentSeed | null>(null);
   const prepById = new Map(prepRows.map((row) => [row.incidentId, row.proposedAmount]));
@@ -116,7 +117,10 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         </button>
       </div>
 
-      <RemainingToChargeLoader onRows={setPrepRows} onTruncated={setPrepTruncated} />
+      <RemainingToChargeLoader onRows={setPrepRows} onTruncated={setPrepTruncated} onError={setPrepError} />
+      {INCIDENT_CHARGE_PREP_ENABLED && prepError ? (
+        <p className="text-[12px] text-[#D03020]">Could Not Load Remaining To Charge</p>
+      ) : null}
       {INCIDENT_CHARGE_PREP_ENABLED && prepTruncated ? (
         <p className="text-[12px] text-[#55555E]">Remaining To Charge Is Capped</p>
       ) : null}
@@ -272,20 +276,24 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
 function RemainingToChargeLoader({
   onRows,
   onTruncated,
+  onError,
 }: {
   onRows: (rows: IncidentChargePrepRow[]) => void;
   onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
 }) {
   if (!INCIDENT_CHARGE_PREP_ENABLED) return null;
-  return <RemainingToChargeFetch onRows={onRows} onTruncated={onTruncated} />;
+  return <RemainingToChargeFetch onRows={onRows} onTruncated={onTruncated} onError={onError} />;
 }
 
 function RemainingToChargeFetch({
   onRows,
   onTruncated,
+  onError,
 }: {
   onRows: (rows: IncidentChargePrepRow[]) => void;
   onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
 }) {
   const load = useServerFn(listIncidentChargePrep);
   useEffect(() => {
@@ -293,12 +301,14 @@ function RemainingToChargeFetch({
     void load({ data: {} })
       .then((next) => {
         if (!cancelled) {
+          onError(false);
           onRows(next.rows);
           onTruncated(next.truncated);
         }
       })
       .catch(() => {
         if (!cancelled) {
+          onError(true);
           onRows([]);
           onTruncated(false);
         }
@@ -306,7 +316,7 @@ function RemainingToChargeFetch({
     return () => {
       cancelled = true;
     };
-  }, [load, onRows, onTruncated]);
+  }, [load, onRows, onTruncated, onError]);
   return null;
 }
 

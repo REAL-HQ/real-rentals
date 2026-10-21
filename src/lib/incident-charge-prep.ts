@@ -61,7 +61,7 @@ export function deductedCents(rows: IncidentDeductionInput[], incidentId: string
   for (const row of rows) {
     if (row.incidentId !== incidentId) continue;
     const cents = moneyToCents(row.amount);
-    if (cents == null) continue;
+    if (cents == null || cents < 0) continue;
     total += cents;
   }
   return total;
@@ -88,11 +88,18 @@ export function proposeRemainingCharge(
 export function buildIncidentChargePrep(
   rows: IncidentChargeInput[],
   deductions: IncidentDeductionInput[] = [],
+  options: { deductionsTruncated?: boolean } = {},
 ): IncidentChargePrepRow[] {
+  const deductionsTruncated = options.deductionsTruncated === true;
   const out: IncidentChargePrepRow[] = [];
   for (const row of rows) {
     if (!OPEN.has(row.status)) continue;
-    const proposal = proposeRemainingCharge(row.rentalId, row.driverResponsibleAmount, deductedCents(deductions, row.id));
+    const proposal = proposeRemainingCharge(
+      row.rentalId,
+      row.driverResponsibleAmount,
+      deductionsTruncated ? 0 : deductedCents(deductions, row.id),
+    );
+    if (deductionsTruncated) proposal.proposedAmount = null;
     const unit = row.unitNumber?.trim() || "—";
     const name = row.vehicle.trim() || "Vehicle";
     out.push({

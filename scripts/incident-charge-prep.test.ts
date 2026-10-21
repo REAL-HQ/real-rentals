@@ -18,6 +18,9 @@ assert.ok(flagAt < roleAt && roleAt < readAt && readAt < deductionsAt);
 assert.doesNotMatch(server, /stripe|payments|insert\(|\.rpc\(/i);
 assert.doesNotMatch(server, /estimated_cost|actual_cost|insurance_payout|notes|police_report/);
 assert.equal(server.match(/\.limit\(LIMIT \+ 1\)/g)?.length, 2);
+assert.match(server, /\.order\("occurred_at", \{ ascending: true \}\)/);
+assert.match(server, /\.order\("id", \{ ascending: true \}\)/);
+assert.match(server, /buildIncidentChargePrep\(rows, deductionsTruncated \? \[\] : deductions, \{ deductionsTruncated \}\)/);
 assert.match(server, /incidentPage\.length > LIMIT/);
 assert.match(server, /deductionPage\.length > LIMIT/);
 assert.doesNotMatch(server, /truncated[\s\S]{0,80}throw new Error/);
@@ -30,6 +33,9 @@ const gate = panel.indexOf("if (!INCIDENT_CHARGE_PREP_ENABLED) return null");
 const hook = panel.indexOf("useServerFn(listIncidentChargePrep)");
 assert.ok(gate !== -1 && hook !== -1 && gate < hook);
 assert.match(panel, /Remaining to Charge/);
+assert.match(panel, /Could Not Load Remaining To Charge/);
+const prepCatch = panel.indexOf(".catch(");
+assert.ok(prepCatch !== -1 && panel.indexOf("onError(true)", prepCatch) > prepCatch);
 assert.match(panel, /This Does Not Create a Charge\./);
 assert.doesNotMatch(panel, /Incident Charge Prep/);
 assert.doesNotMatch(panel, /function IncidentChargePrep\b/);
@@ -122,5 +128,29 @@ const shared = buildIncidentChargePrep(
 assert.equal(shared.find((row) => row.incidentId === sameRentalA)?.proposedAmount, 60);
 assert.equal(shared.find((row) => row.incidentId === sameRentalB)?.proposedAmount, 70.05);
 assert.equal(shared[0].rentalId, shared[1].rentalId);
+
+const negativeDeduction = buildIncidentChargePrep(
+  [{ ...base, driverResponsibleAmount: 100 }],
+  [
+    { incidentId: base.id, amount: -25 },
+    { incidentId: base.id, amount: "10.00" },
+  ],
+);
+assert.equal(negativeDeduction[0].proposedAmount, 90);
+
+const hiddenDeduction = buildIncidentChargePrep(
+  [
+    { ...base, id: sameRentalA, driverResponsibleAmount: 100 },
+    { ...base, id: sameRentalB, driverResponsibleAmount: "80.10" },
+  ],
+  [
+    { incidentId: sameRentalA, amount: "40.00" },
+    { incidentId: sameRentalB, amount: "10.05" },
+  ],
+  { deductionsTruncated: true },
+);
+assert.equal(hiddenDeduction.find((row) => row.incidentId === sameRentalA)?.proposedAmount, null);
+assert.equal(hiddenDeduction.find((row) => row.incidentId === sameRentalB)?.proposedAmount, null);
+assert.equal(hiddenDeduction.find((row) => row.incidentId === sameRentalA)?.basis, "driver_responsible_amount");
 
 console.log("incident charge prep: ok");

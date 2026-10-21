@@ -41,6 +41,8 @@ export const listIncidentChargePrep = createServerFn({ method: "POST" })
       .from("incidents")
       .select("id,status,incident_type,occurred_at,vehicle_id,rental_id,driver_responsible_amount,vehicles(unit_number,year,make,model)")
       .in("status", ["open", "in_claim", "repairing"])
+      .order("occurred_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(LIMIT + 1);
     if (error) throw new Error(error.message);
     const incidentPage = data ?? [];
@@ -77,7 +79,9 @@ export const listIncidentChargePrep = createServerFn({ method: "POST" })
       }));
     }
     return {
-      rows: z.array(rowSchema).parse(buildIncidentChargePrep(rows, deductions)),
+      rows: z.array(rowSchema).parse(
+        buildIncidentChargePrep(rows, deductionsTruncated ? [] : deductions, { deductionsTruncated }),
+      ),
       truncated: incidentsTruncated || deductionsTruncated,
     };
   });
