@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
-import { STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
+import { easternDay, STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
 import { listStalledApplications, type StalledApplicationRow } from "@/lib/stalled-applications.functions";
 import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
@@ -456,15 +456,29 @@ export function DriversPanel({
   // stage underneath is never changed, so Remove restores it automatically.
   const loadStalled = useServerFn(listStalledApplications);
   const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  const [stalledTruncated, setStalledTruncated] = useState(false);
+  const [stalledRelatedTruncated, setStalledRelatedTruncated] = useState(false);
+  const [stalledFailed, setStalledFailed] = useState(false);
   useEffect(() => {
     if (!stalledOn) return;
     let cancelled = false;
+    setStalledFailed(false);
     loadStalled()
       .then((result) => {
-        if (!cancelled) setStalledRows(result.rows);
+        if (!cancelled) {
+          setStalledRows(result.rows);
+          setStalledTruncated(result.truncated);
+          setStalledRelatedTruncated(result.relatedTruncated);
+          setStalledFailed(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setStalledRows([]);
+        if (!cancelled) {
+          setStalledFailed(true);
+          setStalledRows([]);
+          setStalledTruncated(false);
+          setStalledRelatedTruncated(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -812,6 +826,28 @@ setDocCounts(requiredDocCounts(rows));
     applyContactStatus(id, st);
   }
 
+  function saveStalledContact(applicationId: string, state: ContactStatusState) {
+    setStalledRows(
+      (rows) =>
+        rows?.map((row) =>
+          row.id === applicationId
+            ? {
+                ...row,
+                lastContactOn: state.changedAt ? easternDay(new Date(state.changedAt)) : row.lastContactOn,
+                contact: {
+                  contact_status: state.status,
+                  contact_status_note: state.note,
+                  contact_follow_up_on: state.followUpOn,
+                  contact_status_at: state.changedAt,
+                  contact_status_by: state.changedBy,
+                },
+              }
+            : row,
+        ) ?? rows,
+    );
+    applyContactStatus(applicationId, state);
+  }
+
   function applyContactStatus(id: string, st: ContactStatusState) {
     setDrivers((arr) =>
       arr.map((x) =>
@@ -972,26 +1008,6 @@ setDocCounts(requiredDocCounts(rows));
       </button>,
     );
   }
-  function saveStalledContact(applicationId: string, state: ContactStatusState) {
-    setStalledRows(
-      (rows) =>
-        rows?.map((row) =>
-          row.id === applicationId
-            ? {
-                ...row,
-                contact: {
-                  contact_status: state.status,
-                  contact_status_note: state.note,
-                  contact_follow_up_on: state.followUpOn,
-                  contact_status_at: state.changedAt,
-                  contact_status_by: state.changedBy,
-                },
-              }
-            : row,
-        ) ?? rows,
-    );
-  }
-
   return (
     <div>
       {deleteDialog}
@@ -1080,7 +1096,14 @@ setDocCounts(requiredDocCounts(rows));
           onContactSaved={applyFunnelContact}
         />
       ) : filter === "stalled" && stalledOn ? (
-        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} onContactSaved={saveStalledContact} />
+        <StalledApplications
+          rows={stalledRows ?? []}
+          loading={stalledRows == null && !stalledFailed}
+          failed={stalledFailed}
+          truncated={stalledTruncated}
+          relatedTruncated={stalledRelatedTruncated}
+          onContactSaved={saveStalledContact}
+        />
       ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
