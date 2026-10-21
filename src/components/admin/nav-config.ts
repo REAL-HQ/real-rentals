@@ -28,6 +28,7 @@ import {
   LayoutGrid,
   ScrollText,
   Scale,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -38,6 +39,7 @@ import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 
 export type TabDef = {
   id: string;
@@ -233,6 +235,26 @@ function withExpenseEntry<T extends TabDef>(tabs: T[], tier: StaffTier | null, h
   return next;
 }
 
+/** Shown only while the Accountant Export is compiled on. Kept out of TABS so a dark build cannot list it. */
+const ACCOUNTANT_EXPORT_TAB: TabDef = {
+  id: "accountant_export",
+  label: "Accountant Export",
+  icon: FileSpreadsheet,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Year To Date Revenue, Refunds, Expenses And Net",
+};
+
+function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const ownerPnl = next.findIndex((t) => t.id === "owner_pnl");
+  const at = ownerPnl >= 0 ? ownerPnl : next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...ACCOUNTANT_EXPORT_TAB, href } : ACCOUNTANT_EXPORT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   let next = TABS.filter((t) => tierAllows(tier, t.minTier));
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
@@ -247,10 +269,10 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
-  if (!extra.length) return withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier);
+  if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier);
+  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
 }
 
 /**
@@ -296,11 +318,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (!extra.length) {
-    return withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry");
+    return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry");
+  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */

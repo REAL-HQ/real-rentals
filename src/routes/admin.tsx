@@ -68,6 +68,8 @@ import { OwnerPnlPanel } from "@/components/admin/OwnerPnlPanel";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OwnerExpenseEntryPanel } from "@/components/admin/OwnerExpenseEntryPanel";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
+import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -338,6 +340,10 @@ function Admin() {
     if (urlTab === "expense_entry") {
       if (!OWNER_EXPENSE_ENTRY_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "expense_entry";
+    }
+    if (urlTab === "accountant_export") {
+      if (!ACCOUNTANT_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "accountant_export";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -859,6 +865,7 @@ function Admin() {
             {PARTNER_STATEMENT_ENABLED && tab === "partner_statement" && <PartnerStatementPanel />}
             {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
             {OWNER_EXPENSE_ENTRY_ENABLED && tab === "expense_entry" && <OwnerExpenseEntryPanel />}
+            {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

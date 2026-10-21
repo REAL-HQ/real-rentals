@@ -19,18 +19,21 @@ export type ReadOnlyStripeGateway = {
 const PAGE = 100;
 const MAX_PAGES = 100;
 const INCOMPLETE = "Stripe evidence was incomplete or timed out";
+export const STRIPE_CHARGE_PAGE_CAP = `Stripe charge list reached its page limit (${MAX_PAGES} pages)`;
 
 export async function readPartnerCharges(
   gateway: ReadOnlyStripeGateway,
   window: { gte: number; lt: number },
   options: { signal?: AbortSignal; timeoutMs?: number; now?: () => number } = {},
-): Promise<{ ok: true; charges: PartnerCharge[] } | { ok: false; reason: string }> {
+): Promise<{ ok: true; charges: PartnerCharge[] } | { ok: false; reason: string; capped?: boolean }> {
   if (!Number.isSafeInteger(window.gte) || !Number.isSafeInteger(window.lt) || window.lt <= window.gte) return { ok: false, reason: "Stripe period is invalid" };
   const now = options.now ?? Date.now;
   const deadline = now() + (options.timeoutMs ?? 20_000);
   try {
     const charges = await pages(gateway.charges.list, { created: window, expand: ["data.invoice"] as ["data.invoice"] }, options.signal, deadline, now);
-    return charges ? { ok: true, charges } : { ok: false, reason: INCOMPLETE };
+    if (!charges) return { ok: false, reason: INCOMPLETE };
+    if (charges.capped) return { ok: false, reason: STRIPE_CHARGE_PAGE_CAP, capped: true };
+    return { ok: true, charges: charges.rows };
   } catch {
     return { ok: false, reason: INCOMPLETE };
   }
@@ -62,7 +65,7 @@ async function pages(
   signal: AbortSignal | undefined,
   deadline: number,
   now: () => number,
-): Promise<PartnerCharge[] | null> {
+): Promise<{ rows: PartnerCharge[]; capped: boolean } | null> {
   const rows: PartnerCharge[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -75,13 +78,13 @@ async function pages(
       if (!mapped) return null;
       rows.push(mapped);
     }
-    if (!result.has_more) return rows;
+    if (!result.has_more) return { rows, capped: false };
     const next = idOf((result.data.at(-1) as { id?: unknown } | undefined)?.id);
     if (!next || next === cursor) return null;
     cursor = next;
   }
   console.warn(`Partner statement page cap reached (${MAX_PAGES})`);
-  return null;
+  return { rows, capped: true };
 }
 
 function mapCharge(row: RawCharge): PartnerCharge | null {
