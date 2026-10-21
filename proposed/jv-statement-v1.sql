@@ -1,0 +1,32 @@
+-- LOCAL PROPOSAL. Not a migration. Do not run against a hosted database.
+-- This file creates nothing. The partner statement does not read it.
+--
+-- public.vehicle_pl, last replaced in
+-- supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql,
+-- still does both of these:
+--
+--   exp:   sum(vehicle_expenses.amount) for every row in the window
+--   maint: sum(COALESCE(maintenance_records.company_share, total_cost, 0))
+--          for every maintenance row in the window
+--   net:   revenue - exp - maint
+--
+-- A completed service writes both rows. maintenance.server.ts inserts one
+-- vehicle_expenses row with maintenance_record_id pointing at the service.
+-- The expense amount is the net the business paid. vehicle_pl then counts
+-- that amount and also counts company_share (or total_cost when the share
+-- is null). One linked bill is in the net twice.
+--
+-- The partner statement does not change vehicle_pl. It counts each
+-- vehicle_expenses row once. The linked maintenance row is not added again.
+-- Company share and partner share are used only when they add up to that
+-- one cost. An unlinked service uses company_share and partner_share only
+-- when they add up to total_cost. A blank company share is total_cost minus
+-- partner_share. Recorded zero shares count total_cost once as the company
+-- share. Any other split is withheld. No company_share write rule is added.
+--
+-- PARTNER_REVENUE_BASE is null. The owner has not chosen rent only versus
+-- all revenue types. This file does not decide that.
+--
+-- No new table. Income, expenses, and the split are computed from
+-- vehicles.partner_id, partners.revenue_split_pct, payments, payment_refunds,
+-- rentals, vehicle_expenses, and maintenance_records.
