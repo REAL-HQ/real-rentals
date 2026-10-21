@@ -4,8 +4,6 @@ import { describe, it } from "node:test";
 import {
   ONBOARDING_CHECKLIST_ENABLED,
   ONBOARDING_ROW_CAP,
-  ONBOARDING_STEP_LABELS,
-  buildOnboardingChecklist,
   type OnboardingAgreement,
   type OnboardingApplication,
   type OnboardingDocument,
@@ -13,6 +11,7 @@ import {
   type OnboardingPayment,
   type OnboardingRental,
 } from "../src/lib/onboarding-checklist";
+import { ONBOARDING_STEP_LABELS, buildOnboardingChecklist } from "../src/lib/onboarding-checklist-build";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
@@ -108,11 +107,14 @@ describe("onboarding checklist", () => {
     const asserted = handler.indexOf("assertOnboardingChecklistEnabled()");
     const role = handler.indexOf("requireManager(");
     const readFrom = handler.indexOf(".from(");
+    const buildImport = handler.indexOf('import("./onboarding-checklist-build")');
     assert.ok(asserted !== -1 && asserted < role && role < readFrom);
+    assert.ok(asserted < buildImport);
     const limits = fn.match(/\.limit\([^)]*\)/g) ?? [];
     assert.equal(limits.length, 6);
     assert.ok(limits.every((limit) => limit === ".limit(ONBOARDING_ROW_CAP + 1)"));
     assert.match(fn, /truncated/);
+    assert.doesNotMatch(fn, /throw /);
     assert.equal(ONBOARDING_ROW_CAP, 1000);
     assert.doesNotMatch(fn, /\.(insert|update|delete|upsert)\(/);
     assert.doesNotMatch(fn, /process\.env/);

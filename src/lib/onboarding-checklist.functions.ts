@@ -1,10 +1,10 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
+  ONBOARDING_CHECKLIST_REFUSED,
   ONBOARDING_ROW_CAP,
   ONBOARDING_STATUSES,
   assertOnboardingChecklistEnabled,
-  buildOnboardingChecklist,
   type OnboardingAgreement,
   type OnboardingApplication,
   type OnboardingChecklistResult,
@@ -35,7 +35,7 @@ async function readRelated(
   const rows: Record<string, unknown>[] = [];
   for (let index = 0; index < ids.length; index += ONBOARDING_CHUNK) {
     const result = await fetchPage(ids.slice(index, index + ONBOARDING_CHUNK));
-    if (result.error) throw new Error("Onboarding checklist could not be loaded. Please retry.");
+    if (result.error) return { rows: [], truncated: true };
     const page = Array.isArray(result.data) ? result.data : [];
     if (page.length > ONBOARDING_ROW_CAP) return { rows: [], truncated: true };
     for (const row of page) rows.push(row as Record<string, unknown>);
@@ -47,7 +47,11 @@ async function readRelated(
 export const getOnboardingChecklist = createServerFn({ method: "GET" })
   .middleware([onboardingChecklistGate, requireSupabaseAuth])
   .handler(async ({ context }): Promise<OnboardingChecklistResult> => {
-    assertOnboardingChecklistEnabled();
+    if (ONBOARDING_CHECKLIST_REFUSED) {
+      assertOnboardingChecklistEnabled();
+      return capped();
+    }
+    const { buildOnboardingChecklist } = await import("./onboarding-checklist-build");
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -61,7 +65,7 @@ export const getOnboardingChecklist = createServerFn({ method: "GET" })
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .limit(ONBOARDING_ROW_CAP + 1);
-    if (loaded.error) throw new Error("Onboarding checklist could not be loaded. Please retry.");
+    if (loaded.error) return capped();
     const applications = (Array.isArray(loaded.data) ? loaded.data : []) as OnboardingApplication[];
     if (applications.length > ONBOARDING_ROW_CAP) return capped();
     const ids = applications.map((application) => application.id);
