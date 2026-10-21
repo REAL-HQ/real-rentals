@@ -78,15 +78,14 @@ REVOKE ALL ON SCHEMA "vault" FROM "rr_record_executor";
 REVOKE ALL ON ALL TABLES IN SCHEMA "vault" FROM "rr_record_executor";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA "vault" FROM "rr_record_executor";
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "vault" FROM "rr_record_executor";
--- privileges captured on the pre-step catalog
--- Step 0 grants USAGE to rr_approval_executor before step 3. Keep that grant.
-UPDATE pg_catalog.pg_namespace SET nspacl = $acl${postgres=UC/postgres,service_role=U/postgres,rr_approval_executor=U/postgres}$acl$::aclitem[] WHERE nspname = 'private';
-UPDATE pg_catalog.pg_namespace SET nspacl = $acl${pg_database_owner=UC/pg_database_owner,=U/pg_database_owner}$acl$::aclitem[] WHERE nspname = 'public';
+-- Step 3's schema grant is CREATE on private and public. REVOKE ALL above
+-- removes that grant and leaves step 0's USAGE for rr_approval_executor.
+-- DROP OWNED BY removes any remaining grants, so DROP ROLE does not write
+-- pg_shdepend.
 -- comments
 -- role memberships added by this step
 REVOKE "rr_record_executor" FROM "postgres";
 -- roles added by this step
-DELETE FROM pg_catalog.pg_shdepend WHERE refclassid = 'pg_authid'::regclass AND refobjid = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'rr_record_executor') AND deptype = 'a';
 DROP OWNED BY "rr_record_executor";
 DROP ROLE IF EXISTS "rr_record_executor";
 COMMIT;

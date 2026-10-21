@@ -65,13 +65,32 @@ REVOKE ALL ON SCHEMA "vault" FROM "rr_evidence_issuer";
 REVOKE ALL ON ALL TABLES IN SCHEMA "vault" FROM "rr_evidence_issuer";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA "vault" FROM "rr_evidence_issuer";
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "vault" FROM "rr_evidence_issuer";
--- privileges captured on the pre-step catalog
--- Step 0 grants USAGE to rr_approval_executor before step 5. Keep that grant.
-UPDATE pg_catalog.pg_namespace SET nspacl = $acl${postgres=UC/postgres,service_role=U/postgres,rr_approval_executor=U/postgres,rr_record_executor=C/postgres}$acl$::aclitem[] WHERE nspname = 'private';
+-- Step 5 grants USAGE on schema private to rr_evidence_issuer. REVOKE ALL
+-- above removes that grant and leaves step 0's USAGE for rr_approval_executor
+-- and step 3's CREATE for rr_record_executor. DROP OWNED BY removes any
+-- remaining grants, so DROP ROLE does not write pg_shdepend.
+-- Steps 9 and 14 rewrote column and function ACLs in place. That left
+-- shared-dependency rows for rr_evidence_issuer after the privileges
+-- themselves were gone. Granting each one and revoking it clears the row
+-- through the privilege commands. The revoke is in this same transaction,
+-- so the committed privileges match the pre-step catalog.
+GRANT USAGE ON SCHEMA public TO rr_evidence_issuer;
+REVOKE USAGE ON SCHEMA public FROM rr_evidence_issuer;
+GRANT EXECUTE ON FUNCTION private.approval_actor(), private.approval_lock() TO rr_evidence_issuer;
+REVOKE EXECUTE ON FUNCTION private.approval_actor(), private.approval_lock() FROM rr_evidence_issuer;
+GRANT SELECT (id, application_id, vehicle_id, body, merge_data, status, signed_at, voided_at, document_id, completed_document_id, sha256, body_sha256) ON TABLE public.agreements TO rr_evidence_issuer;
+REVOKE SELECT (id, application_id, vehicle_id, body, merge_data, status, signed_at, voided_at, document_id, completed_document_id, sha256, body_sha256) ON TABLE public.agreements FROM rr_evidence_issuer;
+GRANT SELECT (id, user_id, full_name, dob, license_number, license_state, license_expiration, deleted_at) ON TABLE public.applications TO rr_evidence_issuer;
+REVOKE SELECT (id, user_id, full_name, dob, license_number, license_state, license_expiration, deleted_at) ON TABLE public.applications FROM rr_evidence_issuer;
+GRANT SELECT (id, driver_id, storage_bucket, storage_path, category, is_current, superseded_by, review_status, reviewed_at, reviewed_by, content_sha256) ON TABLE public.documents TO rr_evidence_issuer;
+REVOKE SELECT (id, driver_id, storage_bucket, storage_path, category, is_current, superseded_by, review_status, reviewed_at, reviewed_by, content_sha256) ON TABLE public.documents FROM rr_evidence_issuer;
+GRANT SELECT (user_id, role) ON TABLE public.user_roles TO rr_evidence_issuer;
+REVOKE SELECT (user_id, role) ON TABLE public.user_roles FROM rr_evidence_issuer;
+GRANT SELECT (id, application_id, kind, status, resolution, resolved_at) ON TABLE public.application_identity_reviews TO rr_evidence_issuer;
+REVOKE SELECT (id, application_id, kind, status, resolution, resolved_at) ON TABLE public.application_identity_reviews FROM rr_evidence_issuer;
 -- comments
 -- role memberships added by this step
 -- roles added by this step
-DELETE FROM pg_catalog.pg_shdepend WHERE refclassid = 'pg_authid'::regclass AND refobjid = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'rr_evidence_issuer') AND deptype = 'a';
 DROP OWNED BY "rr_evidence_issuer";
 DROP ROLE IF EXISTS "rr_evidence_issuer";
 COMMIT;
