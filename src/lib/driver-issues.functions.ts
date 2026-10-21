@@ -35,6 +35,22 @@ function noticeWaitUntil(context: unknown): ((promise: Promise<unknown>) => void
   }
 }
 
+/** Clears the 3s timer, and aborts the notice so a 5s email plus a 5s SMS cannot continue. */
+async function boundedNotice(notice: Promise<unknown>, controller: AbortController): Promise<void> {
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    await Promise.race([
+      notice,
+      new Promise<void>((resolve) => {
+        if (controller.signal.aborted) resolve();
+        else controller.signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const CLOSED = ["resolved", "closed"] as const;
 
 export type DriverIssueRow = {
@@ -175,17 +191,20 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       metadata: { from: existing.status, to: data.status },
     });
     if (DRIVER_NOTIFICATIONS_ENABLED === true) {
+      const waitUntil = noticeWaitUntil(context);
+      // No waitUntil: abort at 3s so email (5s) plus SMS (5s) cannot outlive the handler.
+      const controller = waitUntil ? undefined : new AbortController();
       const notice = (async () => {
         try {
           const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
-          await notifyIssueStatusChanged(data.id);
+          await notifyIssueStatusChanged(data.id, controller?.signal);
         } catch (err) {
+          if (controller?.signal.aborted) return;
           console.error("[driver-notifications] issue_status", err);
         }
       })();
-      const waitUntil = noticeWaitUntil(context);
       if (waitUntil) waitUntil(notice);
-      else await Promise.race([notice, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      else await boundedNotice(notice, controller!);
     }
     return { ok: true, status: data.status };
   });

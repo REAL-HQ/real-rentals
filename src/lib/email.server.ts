@@ -30,6 +30,8 @@ type SendArgs = {
    * same request it was before: no abort signal is created.
    */
   noticeTimeout?: boolean;
+  /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
+  signal?: AbortSignal;
 };
 
 export type SendResult = {
@@ -98,7 +100,13 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout }: SendArgs): Promise<SendResult> {
+function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSignal | undefined): AbortSignal | undefined {
+  if (noticeTimeout !== true) return undefined;
+  const timeout = AbortSignal.timeout(5000);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -124,6 +132,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     }
     return result;
   };
+  const noticeSignal = noticeFetchSignal(noticeTimeout, signal);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -140,7 +149,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
       }),
-      ...(noticeTimeout ? { signal: AbortSignal.timeout(5000) } : {}),
+      ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     if (!res.ok) {
       const body = await res.text();

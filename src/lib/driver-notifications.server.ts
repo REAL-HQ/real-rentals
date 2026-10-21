@@ -136,7 +136,7 @@ export async function notifyIncidentOpened(incidentId: string): Promise<DriverNo
   return deliverDriverNotice(notice, { send: sendDriverNoticeChannels });
 }
 
-export async function notifyIssueStatusChanged(issueId: string): Promise<DriverNoticeResult> {
+export async function notifyIssueStatusChanged(issueId: string, signal?: AbortSignal): Promise<DriverNoticeResult> {
   if (DRIVER_NOTIFICATIONS_ENABLED !== true) return noticeHeld();
   const admin = await db();
   const { data: issue } = await admin
@@ -157,7 +157,7 @@ export async function notifyIssueStatusChanged(issueId: string): Promise<DriverN
     issueTitle: String(issue.title ?? ""),
     statusLabel: statusLabel(String(issue.status ?? "")),
   });
-  return deliverDriverNotice(notice, { send: sendDriverNoticeChannels });
+  return deliverDriverNotice(notice, { send: (item) => sendDriverNoticeChannels(item, { signal }) });
 }
 
 type NoticeChannelDeps = {
@@ -166,6 +166,7 @@ type NoticeChannelDeps = {
     subject: string;
     html: string;
     noticeTimeout?: boolean;
+    signal?: AbortSignal;
   }) => Promise<{ ok: boolean; error?: string }>;
   sendSms?: (args: {
     to: string;
@@ -174,7 +175,10 @@ type NoticeChannelDeps = {
     applicationId: string;
     rentalId: string | null;
     noticeTimeout?: boolean;
+    signal?: AbortSignal;
   }) => Promise<{ ok: boolean; skipped?: boolean }>;
+  /** Aborts the email and SMS fetches when the caller has no waitUntil. */
+  signal?: AbortSignal;
   insertInApp?: (row: {
     driver_id: string;
     kind: DriverNotice["kind"];
@@ -203,6 +207,7 @@ export async function deliverDriverNoticeChannels(
   deps: NoticeChannelDeps = {},
 ): Promise<DriverNoticeResult> {
   const result: DriverNoticeResult = { email: "skipped", sms: "skipped", inApp: "skipped", skipped: null };
+  if (deps.signal?.aborted) return result;
 
   if (notice.email) {
     try {
@@ -212,6 +217,7 @@ export async function deliverDriverNoticeChannels(
         subject: notice.emailSubject,
         html: notice.emailHtml,
         noticeTimeout: true,
+        signal: deps.signal,
       });
       if (!r.ok) {
         console.error("[driver-notifications] email failed", notice.kind, r.error ?? "not sent");
@@ -220,11 +226,13 @@ export async function deliverDriverNoticeChannels(
         result.email = "sent";
       }
     } catch (err) {
+      if (deps.signal?.aborted) return result;
       console.error("[driver-notifications] email failed", notice.kind, err);
       result.email = "failed";
     }
   }
 
+  if (deps.signal?.aborted) return result;
   if (notice.phone && notice.applicationId) {
     try {
       const sendSms = deps.sendSms ?? (await import("@/lib/sms.server")).sendSms;
@@ -235,14 +243,17 @@ export async function deliverDriverNoticeChannels(
         applicationId: notice.applicationId,
         rentalId: notice.rentalId,
         noticeTimeout: true,
+        signal: deps.signal,
       });
       result.sms = sms.ok ? "sent" : sms.skipped ? "skipped" : "failed";
     } catch (err) {
+      if (deps.signal?.aborted) return result;
       console.error("[driver-notifications] sms failed", notice.kind, err);
       result.sms = "failed";
     }
   }
 
+  if (deps.signal?.aborted) return result;
   if (notice.driverId) {
     try {
       const row = {
