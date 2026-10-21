@@ -15,6 +15,7 @@ const SENSITIVE_QUERY_KEYS = [
   "refresh_token",
   "token_hash",
   "session_id",
+  "claim",
 ];
 
 function normalizedPathname(pathname: string): string {
@@ -95,7 +96,7 @@ export const GOOGLE_ADS_BOOTSTRAP = `(function(){
       return path === "/thank-you" || path === "/login" || path === "/invite" || path === "/sign" || path.indexOf("/sign/") === 0 || path === "/card" || path.indexOf("/card/") === 0;
     }
     function sanitizeTrackingUrl(raw) {
-      var sensitive = ["t", "signin", "token", "code", "access_token", "refresh_token", "token_hash", "session_id"];
+      var sensitive = ["t", "signin", "token", "code", "access_token", "refresh_token", "token_hash", "session_id", "claim"];
       var url;
       try { url = new URL(raw); } catch (e) { return raw; }
       var keys = [];
@@ -148,6 +149,7 @@ export const GOOGLE_ADS_BOOTSTRAP = `(function(){
         if (new URL(referrer).origin === location.origin) fields.page_referrer = sanitizeTrackingUrl(referrer);
       } catch (e) {}
     }
+    window.gtag("set", fields);
     window.gtag("js", new Date());
     window.gtag("config", id, fields);
 

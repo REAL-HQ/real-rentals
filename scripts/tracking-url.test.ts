@@ -26,6 +26,7 @@ describe("sanitizeTrackingUrl", () => {
     ["refresh_token", "refresh-token"],
     ["token_hash", "hashed-token"],
     ["session_id", "session-token"],
+    ["claim", "claim-token"],
   ] as const)("drops %s and keeps utm params and gclid", (key, value) => {
     const url = parsed(
       `${ORIGIN}/apply?${key}=${encodeURIComponent(value)}&utm_source=google&utm_medium=cpc&gclid=abc123`,
@@ -57,6 +58,15 @@ describe("sanitizeTrackingUrl", () => {
     expect(parsed(`${ORIGIN}/%?t=resume-token`).href).toBe(`${ORIGIN}/%`);
   });
 
+  it("drops a claim fragment without dropping ads params", () => {
+    const url = parsed(`${ORIGIN}/apply?utm_source=google&gclid=abc123#claim=claim-token`);
+    expect(url.hash).toBe("");
+    expect(url.href).not.toContain("claim-token");
+    expect(url.searchParams.get("utm_source")).toBe("google");
+    expect(url.searchParams.get("gclid")).toBe("abc123");
+    expect(url.pathname).toBe("/apply");
+  });
+
   it("clears the hash", () => {
     const url = parsed(`${ORIGIN}/login#access_token=secret&refresh_token=other`);
     expect(url.hash).toBe("");
@@ -68,14 +78,14 @@ describe("sanitizeTrackingUrl", () => {
   it("strips every credential at once and keeps ads params", () => {
     const raw = [
       `${ORIGIN}/sign/path-token?`,
-      "t=1&signin=2&token=3&code=4&access_token=5&refresh_token=6&token_hash=7&session_id=8",
+      "t=1&signin=2&token=3&code=4&access_token=5&refresh_token=6&token_hash=7&session_id=8&claim=9",
       "&utm_source=google&utm_medium=cpc&utm_campaign=brand&utm_term=uber&utm_content=hero&gclid=Cj0KCQjw",
       "#access_token=in-hash",
     ].join("");
     const url = parsed(raw);
     expect(url.pathname).toBe("/sign/redacted");
     expect(url.hash).toBe("");
-    for (const key of ["t", "signin", "token", "code", "access_token", "refresh_token", "token_hash", "session_id"]) {
+    for (const key of ["t", "signin", "token", "code", "access_token", "refresh_token", "token_hash", "session_id", "claim"]) {
       expect(url.searchParams.has(key)).toBe(false);
     }
     expect(url.searchParams.get("utm_source")).toBe("google");
@@ -238,7 +248,8 @@ describe("googleAdsBootstrap", () => {
     const samples = [
       `${ORIGIN}/fleet?utm_source=google&gclid=abc123&t=resume-token`,
       `${ORIGIN}/Fleet?t=resume-token&gclid=abc123`,
-      `${ORIGIN}/apply?t=resume-token&utm_source=google&gclid=abc123`,
+      `${ORIGIN}/apply?t=resume-token&claim=claim-token&utm_source=google&gclid=abc123`,
+      `${ORIGIN}/apply?utm_source=google&gclid=abc123#claim=claim-token`,
     ];
     for (const href of samples) {
       const { queued, scripts } = run(href);
