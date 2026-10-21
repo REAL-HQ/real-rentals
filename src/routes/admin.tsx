@@ -65,6 +65,8 @@ import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
+import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
@@ -365,6 +367,10 @@ function Admin() {
     if (urlTab === "stripe_risk_monitor") {
       if (!STRIPE_RISK_MONITOR_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "stripe_risk_monitor";
+    }
+    if (urlTab === "stripe_payout_recon") {
+      if (!STRIPE_PAYOUT_RECON_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_payout_recon";
     }
     if (urlTab === "funnel") {
       if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -894,6 +900,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
+            {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && <StripePayoutReconPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>

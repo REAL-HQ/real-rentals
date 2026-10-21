@@ -34,6 +34,7 @@ const READERS = [
   "src/lib/weekly-cash-flow-read.server.ts",
   "src/lib/stripe-collections.server.ts",
   "src/lib/stripe-risk-monitor-read.server.ts",
+  "src/lib/stripe-payout-recon-read.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
