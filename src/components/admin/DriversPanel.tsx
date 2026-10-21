@@ -5,6 +5,19 @@ import {
   onboardingCohort,
   type OnboardingChecklistResult,
 } from "@/lib/onboarding-checklist";
+import {
+  DriverDocExpiryCell,
+  DriverDocExpiryFilter,
+  DriverDocExpiryHeader,
+  DriverDocExpiryNotice,
+} from "./DriverDocExpiry";
+import { getDriverDocExpiry } from "@/lib/driver-doc-expiry.functions";
+import {
+  DRIVER_DOC_EXPIRY_ENABLED,
+  DRIVER_DOC_EXPIRY_ROW_CAP,
+  documentListStatus,
+  type DriverDocExpiryResult,
+} from "@/lib/driver-doc-expiry";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -362,6 +375,8 @@ export function DriversPanel({
   const [contactFilter, setContactFilter] = useState<string>("all");
   const [onboardingResult, setOnboardingResult] = useState<OnboardingChecklistResult | null>(null);
   const [onboardingFailed, setOnboardingFailed] = useState(false);
+  const [docExpiry, setDocExpiry] = useState<DriverDocExpiryResult | null>(null);
+  const [docFilter, setDocFilter] = useState("all");
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -548,6 +563,28 @@ export function DriversPanel({
       cancel = true;
     };
   }, [loadOnboarding, canViewOnboarding]);
+  const loadDocExpiry = useServerFn(getDriverDocExpiry);
+  useEffect(() => {
+    if (DRIVER_DOC_EXPIRY_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocExpiry()
+      .then((result) => {
+        if (!cancel) setDocExpiry(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocExpiry({
+            failed: true,
+            truncated: false,
+            cap: DRIVER_DOC_EXPIRY_ROW_CAP,
+            drivers: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocExpiry, driversLoaded, canSeeSensitive]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -635,6 +672,7 @@ setDocCounts(requiredDocCounts(rows));
       // readContactStatus already answers New for a row that has no value, so
       // filtering by New finds the leads nobody has worked yet.
       .filter((a) => contactFilter === "all" || readContactStatus(a).state.status === contactFilter)
+      .filter((a) => DRIVER_DOC_EXPIRY_ENABLED !== true || docFilter === "all" || documentListStatus(docExpiry, a.id) === docFilter)
       .filter((a) => {
       if (!q) return true;
       const hay =
@@ -658,7 +696,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, externalSearch, held, activeRenters]);
 
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   function applySaved(id: string, patch: Partial<Application>) {
@@ -828,6 +866,12 @@ setDocCounts(requiredDocCounts(rows));
         : s === "active"
           ? drivers.filter((a) => activeRenters.has(a.id)).length
           : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+  const expiryCounts = { expired: 0, expiring: 0, ok: 0, unknown: 0 };
+  for (const row of docExpiry?.drivers ?? []) {
+    if (row.status === "expired" || row.status === "expiring" || row.status === "ok" || row.status === "unknown") {
+      expiryCounts[row.status] += 1;
+    }
+  }
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -871,6 +915,14 @@ setDocCounts(requiredDocCounts(rows));
             </option>
           ))}
         </select>
+        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+          <DriverDocExpiryFilter
+            canView={canSeeSensitive}
+            value={docFilter}
+            onChange={setDocFilter}
+            counts={expiryCounts}
+          />
+        ) : null}
         {isOwner && (
           <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
             Recently Deleted
@@ -886,6 +938,9 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         </div>
       </div>
+      {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <DriverDocExpiryNotice canView={canSeeSensitive} meta={docExpiry} />
+      ) : null}
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -900,6 +955,9 @@ setDocCounts(requiredDocCounts(rows));
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Readiness
                 </th>
+                {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                  <DriverDocExpiryHeader />
+                ) : null}
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Payment
                 </th>
@@ -1060,6 +1118,11 @@ setDocCounts(requiredDocCounts(rows));
                         </span>
                       )}
                     </td>
+                    {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <DriverDocExpiryCell status={documentListStatus(docExpiry, a.id)} />
+                      </td>
+                    ) : null}
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {payCells(payIndex[a.id]).pay}
                     </td>
@@ -1137,6 +1200,11 @@ setDocCounts(requiredDocCounts(rows));
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
+                        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                          <td className="px-4 py-2">
+                            <DriverDocExpiryCell status={documentListStatus(docExpiry, h.id)} />
+                          </td>
+                        ) : null}
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         {/* A superseded submission has no conversation of its
                             own: the contact status belongs to the person, and
@@ -1160,7 +1228,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-4">
+                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 11 : 10} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."
