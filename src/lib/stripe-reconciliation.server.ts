@@ -53,6 +53,8 @@ export async function invoiceSnapshot(stripe: Stripe, id: string, env: StripeEnv
   return {...base,paid_cents:cents(pi.amount_received),payment_intent_id:pi.id,...await chargeSnapshot(stripe,pi,env)};
 }
 export async function paymentSnapshot(stripe: Stripe,id:string,env:StripeEnv,db:any) {
+  // `.or()` splits on commas. Refuse anything that is not a payment-intent id before retrieve or the filter.
+  if (!/^pi_[A-Za-z0-9]+$/.test(id)) throw new Error('Invalid payment intent');
   const pi=await stripe.paymentIntents.retrieve(id); mode(pi,env);
   let ids=String(pi.metadata.paymentIds??'').split(',').filter(x=>/^[0-9a-f-]{36}$/i.test(x));
   if(!ids.length){const r=await db.from('payments').select('id').or(`stripe_payment_intent_id.eq.${id},stripe_collection_reference.eq.${id}`);if(r.error)throw new Error('Payment read failed');ids=(r.data??[]).map((r:any)=>r.id);}

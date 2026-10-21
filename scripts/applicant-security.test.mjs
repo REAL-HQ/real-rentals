@@ -74,7 +74,34 @@ console.log("\nNO APPLICANT INPUT IS SPLICED INTO A POSTGREST FILTER");
   // name from the fixed AUTO_FIELDS list; photo-enhance.functions.ts a
   // server-computed ISO timestamp.
   const ALLOWED = ["src/components/site/Nav.tsx", "src/lib/esign.server.ts", "src/routes/api/public/payments/webhook.ts", "src/lib/fleet-inbox.functions.ts", "src/lib/safe-autofill.server.ts", "src/lib/photo-enhance.functions.ts"];
-  const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)));
+  // Two lines in lead-priorities.functions.ts interpolate `today`. That value
+  // is leadToday() in src/lib/lead-priorities.ts: an America/New_York
+  // YYYY-MM-DD built from Intl.DateTimeFormat parts, not a request field.
+  // A hyphen is not a PostgREST clause separator. Any other interpolation in
+  // that file is still a finding.
+  const leadSrc = readFileSync("src/lib/lead-priorities.functions.ts", "utf8");
+  const leadPure = readFileSync("src/lib/lead-priorities.ts", "utf8");
+  ok(/const today = leadToday\(\)/.test(leadSrc), "lead priorities date is leadToday()");
+  ok(/export function leadToday/.test(leadPure) && /LEAD_TIME_ZONE = "America\/New_York"/.test(leadPure) && /timeZone: LEAD_TIME_ZONE/.test(leadPure),
+     "leadToday is the Eastern calendar date");
+  // paymentSnapshot interpolates `id` only after /^pi_[A-Za-z0-9]+$/. The
+  // handlers that call it throw unless STRIPE_RECONCILIATION_ENABLED === "true".
+  const recon = readFileSync("src/lib/stripe-reconciliation.server.ts", "utf8");
+  const snap = recon.slice(recon.indexOf("export async function paymentSnapshot"), recon.indexOf("export async function ingestSnapshot"));
+  const guardAt = snap.search(/if \(!\/\^pi_\[A-Za-z0-9\]\+\$\/\.test\(id\)\)/);
+  const orAt = snap.indexOf(".or(`");
+  ok(guardAt >= 0 && orAt > guardAt, "payment intent id is checked for pi_ before the filter");
+  ok(/STRIPE_RECONCILIATION_ENABLED !== 'true'/.test(recon), "reconciliation throws unless the flag is exactly true");
+  const lineReviewed = (offender) => {
+    if (/^src\/lib\/lead-priorities\.functions\.ts:\d+ /.test(offender)) {
+      return /q = q\.or\(`contact_follow_up_on\.is\.null,contact_follow_up_on\.gt(?:e)?\.\$\{today\}`\);$/.test(offender);
+    }
+    if (/^src\/lib\/stripe-reconciliation\.server\.ts:\d+ /.test(offender)) {
+      return offender.includes("stripe_payment_intent_id.eq.${id}") && offender.includes("stripe_collection_reference.eq.${id}");
+    }
+    return false;
+  };
+  const unexpected = offenders.filter((o) => !ALLOWED.some((a) => o.startsWith(a)) && !lineReviewed(o));
   ok(unexpected.length === 0, `no unreviewed interpolated filter (found ${unexpected.length})`);
   for (const o of unexpected) console.log(`       ${o}`);
 }
