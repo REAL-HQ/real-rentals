@@ -41,14 +41,17 @@ export const FOLLOWUP_REASON_LABEL: Record<FollowupReason, string> = {
   approved_and_verified: "Approved And Verified",
 };
 
-export type LastContactSource = "contact_status" | "document_request" | "recovery" | "message";
+export type LastContactSource = "contact_status" | "document_request" | "recovery" | "message" | "outbound";
 
 export const LAST_CONTACT_LABEL: Record<LastContactSource, string> = {
   contact_status: "Contact Status",
   document_request: "Document Request",
   recovery: "Recovery",
   message: "Message",
+  outbound: "Outbound Message",
 };
+
+export const LAST_CONTACT_NOT_CHECKED = "Last Contact Not Checked";
 
 /** Delivery states that mean a message actually went out. */
 export const SENT_DELIVERY_STATES = ["accepted", "sent", "delivered"] as const;
@@ -100,6 +103,8 @@ export type BookingFollowupRow = {
 
 export type BookingFollowupList = {
   rows: BookingFollowupRow[];
+  /** A capped contact or approval read could not be completed for every applicant. */
+  truncated?: boolean;
 };
 
 function norm(value: string | null | undefined): string {
@@ -288,10 +293,12 @@ export function buildBookingFollowups(input: {
   rentals: readonly FollowupRental[];
   approvals: readonly FollowupStamp[];
   contacts: readonly FollowupStamp[];
+  uncheckedContacts?: readonly string[];
   now: Date;
   portalUrl?: string;
 }): BookingFollowupRow[] {
   const approvedAt = earliestApproval(input.approvals);
+  const unchecked = new Set(input.uncheckedContacts ?? []);
   const contactsById = new Map<string, FollowupStamp[]>();
   for (const app of input.applications) {
     contactsById.set(app.id, contactMarksFromApplication(app));
@@ -312,6 +319,7 @@ export function buildBookingFollowups(input: {
     const waiting = daysWaiting(waitingSince, input.now);
     const contact = latestContact(contactsById.get(app.id) ?? []);
     const name = app.fullName.trim();
+    const contactUnchecked = unchecked.has(app.id);
     rows.push({
       applicationId: app.id,
       name,
@@ -321,8 +329,12 @@ export function buildBookingFollowups(input: {
       reasonLabel: FOLLOWUP_REASON_LABEL[reason],
       daysWaiting: waiting,
       waitingSince,
-      lastContactAt: contact ? new Date(Date.parse(contact.at)).toISOString() : null,
-      lastContactLabel: contact?.source ? LAST_CONTACT_LABEL[contact.source] : null,
+      lastContactAt: contactUnchecked || !contact ? null : new Date(Date.parse(contact.at)).toISOString(),
+      lastContactLabel: contactUnchecked
+        ? LAST_CONTACT_NOT_CHECKED
+        : contact?.source
+          ? LAST_CONTACT_LABEL[contact.source]
+          : null,
       reminder: reminderText({
         fullName: name,
         reason,

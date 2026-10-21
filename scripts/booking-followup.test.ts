@@ -89,9 +89,14 @@ describe("booking follow-up flag", () => {
       /\.order\("sent_at", \{ ascending: false, nullsFirst: false \}\)\s*\.order\("created_at", \{ ascending: false \}\)/,
     );
     assert.match(loader, /isApprovedStatus\(app\.status\)/);
-    assert.match(loader, /\.in\("entity_id", approvedIds\)/);
-    assert.doesNotMatch(loader, /\.in\("entity_id", ids\)/);
-    assert.doesNotMatch(server, /\.limit\(1\)/);
+    assert.match(server, /approvedIds\.slice\(index, index \+ CONTACT_CHUNK\)/);
+    assert.match(server, /\.in\("entity_id", chunk\)/);
+    assert.doesNotMatch(server, /\.in\("entity_id", approvedIds\)/);
+    assert.doesNotMatch(server, /\.in\("entity_id", ids\)/);
+    assert.match(server, /\.limit\(1\)/);
+    assert.match(server, /source: "outbound"/);
+    assert.match(server, /source: "message"/);
+    assert.doesNotMatch(server, /stamps\.push\(\{ applicationId, at, source: "message" \}\)/);
     assert.doesNotMatch(server, /CONTACT_LIMIT|2000/);
     assert.doesNotMatch(server, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
     assert.doesNotMatch(server, /contacted_at/);
@@ -118,6 +123,8 @@ describe("booking follow-up flag", () => {
     const panelLoad = panel.indexOf("load()");
     assert.ok(panelFlag !== -1 && panelLoad !== -1 && panelFlag < panelLoad);
     assert.match(panel, /Copy Reminder/);
+    assert.match(panel, /LAST_CONTACT_NOT_CHECKED/);
+    assert.match(panel, /Some Last Contact Times Were Not Checked/);
     assert.doesNotMatch(panel, /sendEmail|sendSms|uppercase|text-transform/);
   });
 });
@@ -207,6 +214,24 @@ describe("booking follow-up rows", () => {
     });
     assert.equal(rows[0].lastContactAt, "2026-10-21T12:00:00.000Z");
     assert.equal(rows[0].lastContactLabel, "Message");
+    const outbound = buildBookingFollowups({
+      applications: [person],
+      rentals: [],
+      approvals: [{ applicationId: "app-contact", at: "2026-10-20T15:00:00.000Z" }],
+      contacts: [{ applicationId: "app-contact", at: "2026-10-21T18:00:00.000Z", source: "outbound" }],
+      now,
+    });
+    assert.equal(outbound[0].lastContactLabel, "Outbound Message");
+    const unchecked = buildBookingFollowups({
+      applications: [person],
+      rentals: [],
+      approvals: [],
+      contacts: [{ applicationId: "app-contact", at: "2026-10-21T18:00:00.000Z", source: "message" }],
+      uncheckedContacts: ["app-contact"],
+      now,
+    });
+    assert.equal(unchecked[0].lastContactAt, null);
+    assert.equal(unchecked[0].lastContactLabel, "Last Contact Not Checked");
     assert.equal(rows[0].daysWaiting, 1);
     assert.equal(daysWaiting(null, now), null);
     assert.equal(daysWaiting("nope", now), null);

@@ -12,6 +12,7 @@ import {
   type FollowupApplication,
   type FollowupRental,
   type FollowupStamp,
+  type LastContactSource,
 } from "@/lib/booking-followup";
 
 const CANDIDATE_LIMIT = 200;
@@ -147,9 +148,66 @@ function firstPerApplication<T extends { application_id?: unknown }>(
   return best;
 }
 
-/** Latest sent contact for each application, in batches. A truncated batch is a refusal. */
-async function latestContacts(admin: Admin, ids: readonly string[]): Promise<FollowupStamp[]> {
+type ContactMark = { at: string; source: LastContactSource };
+
+function laterContact(left: ContactMark | null, right: ContactMark | null): ContactMark | null {
+  if (!left) return right;
+  if (!right) return left;
+  return Date.parse(right.at) > Date.parse(left.at) ? right : left;
+}
+
+/** Newest-first rows already hold each listed application's latest. A cap only hides the rest. */
+function keptNewest<T>(rows: readonly T[]): { kept: T[]; capped: boolean } {
+  const capped = rows.length > READ_CAP;
+  return { kept: capped ? rows.slice(0, READ_CAP) : [...rows], capped };
+}
+
+async function oneMessage(admin: Admin, applicationId: string): Promise<ContactMark | null | "unchecked"> {
+  const message = await admin
+    .from("messages")
+    .select("application_id,created_at,delivery_state")
+    .eq("application_id", applicationId)
+    .eq("direction", "outbound")
+    .in("delivery_state", ["accepted", "sent", "delivered"])
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1);
+  if (message.error) return "unchecked";
+  const row = message.data?.[0];
+  if (!row || !isSentDelivery(row.delivery_state)) return null;
+  const at = text(row.created_at);
+  return at ? { at, source: "message" } : null;
+}
+
+async function oneOutbound(admin: Admin, applicationId: string): Promise<ContactMark | null | "unchecked"> {
+  const outbound = await admin
+    .from("outbound_messages")
+    .select("application_id,sent_at,created_at,status")
+    .eq("application_id", applicationId)
+    .in("status", ["sent", "delivered"])
+    .order("sent_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1);
+  if (outbound.error) return "unchecked";
+  const row = outbound.data?.[0];
+  if (!row || !isSentDelivery(row.status)) return null;
+  const at = text(row.sent_at) ?? text(row.created_at);
+  return at ? { at, source: "outbound" } : null;
+}
+
+/**
+ * Latest sent contact for each application, in batches.
+ * A capped newest-first batch still has the true latest for every application it contains.
+ * Applications missing from that batch are read again with limit(1). A failed re-read is
+ * marked unchecked instead of failing the list.
+ */
+async function latestContacts(
+  admin: Admin,
+  ids: readonly string[],
+): Promise<{ stamps: FollowupStamp[]; unchecked: string[] }> {
   const stamps: FollowupStamp[] = [];
+  const unchecked: string[] = [];
   for (let index = 0; index < ids.length; index += CONTACT_CHUNK) {
     const chunk = ids.slice(index, index + CONTACT_CHUNK);
     const message = await admin
@@ -162,8 +220,7 @@ async function latestContacts(admin: Admin, ids: readonly string[]): Promise<Fol
       .order("id", { ascending: false })
       .limit(READ_CAP + 1);
     if (message.error) throw new Error(message.error.message);
-    const messageRows = message.data ?? [];
-    refuseIfTruncated(messageRows.length);
+    const messages = keptNewest(message.data ?? []);
 
     const outbound = await admin
       .from("outbound_messages")
@@ -175,23 +232,94 @@ async function latestContacts(admin: Admin, ids: readonly string[]): Promise<Fol
       .order("id", { ascending: false })
       .limit(READ_CAP + 1);
     if (outbound.error) throw new Error(outbound.error.message);
-    const outboundRows = outbound.data ?? [];
-    refuseIfTruncated(outboundRows.length);
+    const outbounds = keptNewest(outbound.data ?? []);
 
-    const messageAt = firstPerApplication(messageRows, (row) =>
+    const messageAt = firstPerApplication(messages.kept, (row) =>
       isSentDelivery(row.delivery_state) ? text(row.created_at) : null,
     );
-    const outboundAt = firstPerApplication(outboundRows, (row) =>
+    const outboundAt = firstPerApplication(outbounds.kept, (row) =>
       isSentDelivery(row.status) ? text(row.sent_at) ?? text(row.created_at) : null,
     );
     for (const applicationId of chunk) {
-      const at = [messageAt.get(applicationId), outboundAt.get(applicationId)]
-        .filter((value): value is string => !!value)
-        .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
-      if (at) stamps.push({ applicationId, at, source: "message" });
+      let messageMark: ContactMark | null = null;
+      const messageSeen = messageAt.get(applicationId);
+      if (messageSeen) messageMark = { at: messageSeen, source: "message" };
+      else if (messages.capped) {
+        const again = await oneMessage(admin, applicationId);
+        if (again === "unchecked") {
+          unchecked.push(applicationId);
+          continue;
+        }
+        messageMark = again;
+      }
+
+      let outboundMark: ContactMark | null = null;
+      const outboundSeen = outboundAt.get(applicationId);
+      if (outboundSeen) outboundMark = { at: outboundSeen, source: "outbound" };
+      else if (outbounds.capped) {
+        const again = await oneOutbound(admin, applicationId);
+        if (again === "unchecked") {
+          unchecked.push(applicationId);
+          continue;
+        }
+        outboundMark = again;
+      }
+
+      const at = laterContact(messageMark, outboundMark);
+      if (at) stamps.push({ applicationId, at: at.at, source: at.source });
     }
   }
-  return stamps;
+  return { stamps, unchecked };
+}
+
+/** Oldest approval per application. A capped chunk re-reads the missing ids one at a time. */
+async function approvalStamps(
+  admin: Admin,
+  approvedIds: readonly string[],
+): Promise<{ stamps: FollowupStamp[]; truncated: boolean }> {
+  const stamps: FollowupStamp[] = [];
+  let truncated = false;
+  for (let index = 0; index < approvedIds.length; index += CONTACT_CHUNK) {
+    const chunk = approvedIds.slice(index, index + CONTACT_CHUNK);
+    const approvalsQuery = await admin
+      .from("audit_log")
+      .select("entity_id,created_at")
+      .eq("action", "application.approved")
+      .eq("entity_type", "application")
+      .in("entity_id", chunk)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(READ_CAP + 1);
+    if (approvalsQuery.error) throw new Error(approvalsQuery.error.message);
+    const rows = approvalsQuery.data ?? [];
+    const capped = rows.length > READ_CAP;
+    const seen = new Set<string>();
+    for (const row of capped ? rows.slice(0, READ_CAP) : rows) {
+      const applicationId = String(row.entity_id ?? "");
+      if (!applicationId || seen.has(applicationId)) continue;
+      seen.add(applicationId);
+      stamps.push({ applicationId, at: String(row.created_at ?? "") });
+    }
+    if (!capped) continue;
+    for (const applicationId of chunk) {
+      if (seen.has(applicationId)) continue;
+      const one = await admin
+        .from("audit_log")
+        .select("entity_id,created_at")
+        .eq("action", "application.approved")
+        .eq("entity_type", "application")
+        .eq("entity_id", applicationId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(1);
+      if (one.error || !one.data?.[0]) {
+        truncated = true;
+        continue;
+      }
+      stamps.push({ applicationId, at: String(one.data[0].created_at ?? "") });
+    }
+  }
+  return { stamps, truncated };
 }
 
 export async function loadBookingFollowups(now = new Date()): Promise<BookingFollowupList> {
@@ -206,25 +334,7 @@ export async function loadBookingFollowups(now = new Date()): Promise<BookingFol
   if (applications.length === 0) return { rows: [] };
 
   const approvedIds = applications.filter((app) => isApprovedStatus(app.status)).map((app) => app.id);
-  let approvals: FollowupStamp[] = [];
-  if (approvedIds.length > 0) {
-    const approvalsQuery = await supabaseAdmin
-      .from("audit_log")
-      .select("entity_id,created_at")
-      .eq("action", "application.approved")
-      .eq("entity_type", "application")
-      .in("entity_id", approvedIds)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(READ_CAP + 1);
-    if (approvalsQuery.error) throw new Error(approvalsQuery.error.message);
-    const approvalRows = approvalsQuery.data ?? [];
-    refuseIfTruncated(approvalRows.length);
-    approvals = approvalRows.map((row) => ({
-      applicationId: String(row.entity_id ?? ""),
-      at: String(row.created_at ?? ""),
-    }));
-  }
+  const approvals = approvedIds.length > 0 ? await approvalStamps(supabaseAdmin, approvedIds) : { stamps: [], truncated: false };
 
   const contacts = await latestContacts(
     supabaseAdmin,
@@ -232,11 +342,13 @@ export async function loadBookingFollowups(now = new Date()): Promise<BookingFol
   );
 
   return {
+    truncated: approvals.truncated || contacts.unchecked.length > 0,
     rows: buildBookingFollowups({
       applications,
       rentals: [],
-      approvals,
-      contacts,
+      approvals: approvals.stamps,
+      contacts: contacts.stamps,
+      uncheckedContacts: contacts.unchecked,
       now,
       portalUrl: portalUrl(),
     }),

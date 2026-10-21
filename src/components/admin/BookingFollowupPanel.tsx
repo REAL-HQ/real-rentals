@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { listBookingFollowups } from "@/lib/booking-followup.functions";
-import { BOOKING_FOLLOWUP_ENABLED, type BookingFollowupRow } from "@/lib/booking-followup";
+import { BOOKING_FOLLOWUP_ENABLED, LAST_CONTACT_NOT_CHECKED, type BookingFollowupRow } from "@/lib/booking-followup";
 import { displayPersonName } from "@/lib/display-normalize";
 import { fmtDateTime } from "@/lib/date-format";
 
 export function BookingFollowupPanel() {
   const load = useServerFn(listBookingFollowups);
   const [rows, setRows] = useState<BookingFollowupRow[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copyErrorId, setCopyErrorId] = useState<string | null>(null);
@@ -21,6 +22,7 @@ export function BookingFollowupPanel() {
         if (!current) return;
         if (!result || !Array.isArray(result.rows)) throw new Error("unavailable");
         setRows(result.rows);
+        setTruncated(result.truncated === true);
       })
       .catch(() => {
         if (current) setError(true);
@@ -54,6 +56,11 @@ export function BookingFollowupPanel() {
       <p className="mt-1 text-sm text-[#55555E]">
         Approved or verified applications with no booking. Copy a reminder. Nothing sends from here.
       </p>
+      {truncated ? (
+        <p className="mt-2 text-sm text-[#55555E]">
+          Some Last Contact Times Were Not Checked.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="py-6 text-sm text-[#9B1C1C]">
           Booking Follow-Up Could Not Be Loaded.
@@ -92,9 +99,11 @@ export function BookingFollowupPanel() {
                   <div>
                     <dt className="text-[#55555E]">Last Contact</dt>
                     <dd>
-                      {row.lastContactAt
-                        ? `${fmtDateTime(row.lastContactAt)}${row.lastContactLabel ? ` · ${row.lastContactLabel}` : ""}`
-                        : "No Contact Recorded"}
+                      {row.lastContactLabel === LAST_CONTACT_NOT_CHECKED
+                        ? LAST_CONTACT_NOT_CHECKED
+                        : row.lastContactAt
+                          ? `${fmtDateTime(row.lastContactAt)}${row.lastContactLabel ? ` · ${row.lastContactLabel}` : ""}`
+                          : "No Contact Recorded"}
                     </dd>
                   </div>
                   <div>
