@@ -168,6 +168,7 @@ describe("live report behind the same flag", () => {
     const live = readFileSync("src/lib/unified-finance-live.server.ts", "utf8");
     expect(nav).toContain('label: "Unified Finance"');
     expect(nav).toContain('!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")');
+    expect(nav).toContain('args.urlTab === "finance"');
     expect(admin).toContain('urlTab === "finance"');
     expect(admin).toContain("UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === \"finance\" && <UnifiedFinancePanel />");
     expect(panel).toContain("Per-Vehicle Profitability");
