@@ -63,6 +63,8 @@ import { PayoutBreakdownPanel } from "@/components/admin/PayoutBreakdownPanel";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { RentReconciliationPanel } from "@/components/admin/RentReconciliationPanel";
+import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
@@ -362,6 +364,11 @@ function Admin() {
     if (urlTab === "funnel") {
       if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "funnel";
+    }
+    // Rent Payment Reconciliation is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "rent_reconciliation") {
+      if (!RENT_RECONCILIATION_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "rent_reconciliation";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -886,6 +893,7 @@ function Admin() {
             {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
+            {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
