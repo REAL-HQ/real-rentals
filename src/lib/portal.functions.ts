@@ -19,8 +19,8 @@ export type DriverDashboard = {
   rental: {
     id: string;
     weekly_rate: number;
-    deposit_amount: number;
-    deposit_held: boolean;
+    deposit_amount: number | null;
+    deposit_held: boolean | null;
     next_payment_due: string | null;
     start_date: string | null;
     status: string;
@@ -297,8 +297,8 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
         ? {
             id: rental.id,
             weekly_rate: Number(rental.weekly_rate ?? 0),
-            deposit_amount: Number(rental.deposit_amount ?? 0),
-            deposit_held: Boolean(rental.deposit_held),
+            deposit_amount: rental.deposit_amount == null ? null : Number(rental.deposit_amount),
+            deposit_held: rental.deposit_held == null ? null : Boolean(rental.deposit_held),
             next_payment_due: rental.next_payment_due,
             start_date: rental.start_date,
             status: rental.status,

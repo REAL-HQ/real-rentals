@@ -249,12 +249,12 @@ export type DepositDeduction = {
 
 export type DepositSummary = {
   rentalId: string;
-  depositAmount: number;
-  depositHeld: boolean;
+  depositAmount: number | null;
+  depositHeld: boolean | null;
   depositStatus: string;
   deductions: DepositDeduction[];
   deductionTotal: number;
-  refundDue: number;
+  refundDue: number | null;
   /** Charges and incidents not yet turned into deductions. */
   suggestions: Array<{
     kind: "toll" | "incident";
@@ -290,7 +290,7 @@ export const getDepositSummary = createServerFn({ method: "POST" })
       amount: Number(d.amount ?? 0),
     }));
     const deductionTotal = rows.reduce((s, d) => s + d.amount, 0);
-    const depositAmount = Number(rental.deposit_amount ?? 0);
+    const depositAmount = rental.deposit_amount == null ? null : Number(rental.deposit_amount);
 
     // Anything chargeable on this rental that has not already been deducted.
     const usedTolls = new Set(rows.map((d) => d.toll_charge_id).filter(Boolean));
@@ -334,13 +334,13 @@ export const getDepositSummary = createServerFn({ method: "POST" })
     return {
       rentalId: rental.id as string,
       depositAmount,
-      depositHeld: Boolean(rental.deposit_held),
+      depositHeld: rental.deposit_held == null ? null : Boolean(rental.deposit_held),
       depositStatus: (rental.deposit_status as string) ?? "none",
       deductions: rows,
       deductionTotal,
       // Never negative: a deposit cannot refund more than was held. Anything
       // beyond it is collected separately, not netted off.
-      refundDue: Math.max(0, depositAmount - deductionTotal),
+      refundDue: depositAmount == null || rental.deposit_held == null ? null : Math.max(0, depositAmount - deductionTotal),
       suggestions,
       settledAt: (rental.deposit_settled_at as string) ?? null,
     };
@@ -425,11 +425,15 @@ export const settleDeposit = createServerFn({ method: "POST" })
 
     const { data: rental } = await supabaseAdmin
       .from("rentals")
-      .select("id,deposit_amount,application_id,deposit_settled_at")
+      .select("id,deposit_amount,deposit_held,application_id,deposit_settled_at")
       .eq("id", data.rentalId)
       .maybeSingle();
     if (!rental) throw new Error("Rental not found");
     if (rental.deposit_settled_at) throw new Error("This deposit is already settled.");
+    if (rental.deposit_amount == null || rental.deposit_held == null) {
+      return { error: { code: "UNRESOLVED_DEPOSIT" as const,
+        message: "Deposit is Not Set. Verify the deposit amount and held status before settlement." } };
+    }
 
     const { data: deductions } = await supabaseAdmin
       .from("deposit_deductions")

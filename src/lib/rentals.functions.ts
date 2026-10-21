@@ -1,4 +1,5 @@
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "./record-rental-contract";
+import { END_RENTAL_SAFE_V1_ENABLED } from "./record-rental-live-path";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
@@ -498,6 +499,44 @@ export const endRental = createServerFn({ method: "POST" })
 
     const endDate = data.endDate ?? new Date().toISOString().slice(0, 10);
 
+    const mileageError = (error: { message?: string }) => {
+      const m = String(error.message);
+      const n = (s: string) => Number(m.split(s + ":")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
+      if (m.includes("return_below_pickup")) return { ok: false as const, error: `Return mileage can't be lower than pickup mileage (${n("return_below_pickup")} mi).` };
+      if (m.includes("return_below_history")) return { ok: false as const, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
+      return null;
+    };
+    const safeLifecycle = z.discriminatedUnion("alreadyClosed", [
+      z.object({ contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(true) }).strict(),
+      z.object({
+        contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(false),
+        vehicleStatus: z.enum(["available", "maintenance"]), releaseReasons: z.array(z.string()),
+        billing: z.literal("unchanged_unverified"),
+      }).strict(),
+    ]);
+
+    // end_rental_safe_v1 does not exist until 020-safe-release-compatible-v1.sql.
+    // While the flag is false, the published end_rental_tx path is unchanged.
+    if (END_RENTAL_SAFE_V1_ENABLED) {
+      const { data: outcome, error } = await (supabaseAdmin as any).rpc("end_rental_safe_v1", {
+        _rental_id: data.rentalId,
+        _end: endDate,
+        _vehicle_status: data.vehicleStatus,
+        _return_miles: data.returnMileage ?? null,
+        _actor: actor.userId,
+        _release_contract: "safe-release-v1",
+      });
+      if (error) {
+        const mapped = mileageError(error);
+        if (mapped) return mapped;
+        throw new Error(error.message);
+      }
+      const lifecycle = safeLifecycle.parse(outcome);
+      if (lifecycle.alreadyClosed) return { ok: true, alreadyClosed: true };
+      // The safe-release transaction owns its atomic audit; no second client audit.
+      return { ok: true, alreadyClosed: false, lifecycle };
+    }
+
     // One transaction (end_rental_tx): rental closed, vehicle released,
     // application closed, automations stopped — all or nothing.
     const { data: outcome, error } = await (supabaseAdmin as any).rpc("end_rental_tx", {
@@ -509,21 +548,12 @@ export const endRental = createServerFn({ method: "POST" })
       ...(RECORD_RENTAL_CONTRACT_ENABLED ? { _release_contract: "safe-release-v1" } : {}),
     });
     if (error) {
-      const m = String(error.message);
-      const n = (s: string) => Number(m.split(s + ":")[1]?.match(/\d+/)?.[0] ?? 0).toLocaleString("en-US");
-      if (m.includes("return_below_pickup")) return { ok: false, error: `Return mileage can't be lower than pickup mileage (${n("return_below_pickup")} mi).` };
-      if (m.includes("return_below_history")) return { ok: false, error: `Return mileage is far below this car's mileage history (${n("return_below_history")} mi). Check the odometer.` };
+      const mapped = mileageError(error);
+      if (mapped) return mapped;
       throw new Error(error.message);
     }
     if (!RECORD_RENTAL_CONTRACT_ENABLED && outcome === "already_closed") return { ok: true, alreadyClosed: true };
-    const lifecycle = RECORD_RENTAL_CONTRACT_ENABLED ? z.discriminatedUnion("alreadyClosed", [
-      z.object({ contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(true) }).strict(),
-      z.object({
-        contract: z.literal("safe-release-v1"), alreadyClosed: z.literal(false),
-        vehicleStatus: z.enum(["available", "maintenance"]), releaseReasons: z.array(z.string()),
-        billing: z.literal("unchanged_unverified"),
-      }).strict(),
-    ]).parse(outcome) : null;
+    const lifecycle = RECORD_RENTAL_CONTRACT_ENABLED ? safeLifecycle.parse(outcome) : null;
     if (lifecycle?.alreadyClosed) return { ok: true, alreadyClosed: true };
 
     const { logAudit } = await import("@/lib/audit.server");
