@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 
 export type TabDef = {
   id: string;
@@ -112,13 +114,36 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Partner Statement is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PARTNER_STATEMENT_TAB: TabDef = {
+  id: "partner_statement",
+  label: "Partner Statement",
+  icon: ScrollText,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Per-Partner Revenue, Expenses And Share For A Period",
+};
+
+function withPartnerStatement<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...PARTNER_STATEMENT_TAB, href } : PARTNER_STATEMENT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
-  return next;
+  const withFinance = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")
+    ? tabs
+    : (() => {
+      const next = [...tabs];
+      const at = next.findIndex((t) => t.id === "expenses");
+      next.splice(at + 1, 0, FINANCE_TAB);
+      return next;
+    })();
+  return withPartnerStatement(withFinance, tier);
 }
 
 /**
@@ -151,10 +176,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
-  return entries;
+  if (UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "expenses");
+    entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  }
+  return withPartnerStatement(entries, tier, "partner_statement");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
