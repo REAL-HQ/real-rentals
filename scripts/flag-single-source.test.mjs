@@ -1,118 +1,150 @@
-// Each *_ENABLED flag has one declaration under src/. A second const, let,
-// or var with the same name — in this file or another — fails the check.
-// Tests under scripts/ mention these names inside matchers and are not scanned.
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+// Each *_ENABLED name has one VariableDeclaration under src/ and scripts/.
+// The check parses with the TypeScript compiler so JSX text, mid-line
+// statements, and split declarators stay visible. A second const, let, or
+// var with the same name — any scope, this file or another — fails the check.
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { extname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
 
-const walk = (dir) =>
-  readdirSync(dir).flatMap((name) => {
+const ROOTS = ["src", "scripts"];
+const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".output", ".wrangler", "coverage", "out", ".next", ".turbo"]);
+
+const SCRIPT_KIND = {
+  ".ts": ts.ScriptKind.TS,
+  ".tsx": ts.ScriptKind.TSX,
+  ".js": ts.ScriptKind.JS,
+  ".jsx": ts.ScriptKind.JSX,
+  ".mjs": ts.ScriptKind.JS,
+};
+
+export function collectFlagDeclarations(root) {
+  const byName = new Map();
+  if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return byName;
+  for (const file of walk(root)) {
+    for (const decl of declarationsIn(file)) {
+      const sites = byName.get(decl.name) ?? [];
+      sites.push(`${file}:${decl.line}`);
+      byName.set(decl.name, sites);
+    }
+  }
+  return byName;
+}
+
+function walk(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    if (SKIP_DIRS.has(name)) return [];
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return walk(path);
-    return /\.(tsx|ts)$/.test(name) ? [path] : [];
+    return EXTENSIONS.has(extname(name)) ? [path] : [];
   });
+}
 
-function declarations(source) {
+function declarationsIn(file) {
+  const kind = SCRIPT_KIND[extname(file)];
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, kind);
   const found = [];
-  let i = 0;
-  let line = 1;
-  let state = "code";
-  let buf = "";
-  let bufLine = 1;
-  const flush = () => {
-    const match = buf.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Z][A-Z0-9_]*_ENABLED)\b/);
-    if (match) found.push({ name: match[1], line: bufLine });
-    buf = "";
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text.endsWith("_ENABLED")) {
+      const { line } = source.getLineAndCharacterOfPosition(node.name.getStart(source));
+      found.push({ name: node.name.text, line: line + 1 });
+    }
+    ts.forEachChild(node, visit);
   };
-  while (i < source.length) {
-    const c = source[i];
-    const n = source[i + 1];
-    if (state === "code") {
-      if (c === "/" && n === "/") {
-        state = "line";
-        i += 2;
-        continue;
-      }
-      if (c === "/" && n === "*") {
-        state = "block";
-        i += 2;
-        continue;
-      }
-      if (c === "'") {
-        state = "sq";
-        i++;
-        continue;
-      }
-      if (c === '"') {
-        state = "dq";
-        i++;
-        continue;
-      }
-      if (c === "`") {
-        state = "tpl";
-        i++;
-        continue;
-      }
-      if (c === "\n") {
-        flush();
-        line++;
-        bufLine = line;
-        i++;
-        continue;
-      }
-      if (!buf && /\s/.test(c)) {
-        i++;
-        continue;
-      }
-      if (!buf) bufLine = line;
-      buf += c;
-      i++;
-      continue;
-    }
-    if (state === "line") {
-      if (c === "\n") {
-        state = "code";
-        line++;
-      }
-      i++;
-      continue;
-    }
-    if (state === "block") {
-      if (c === "\n") line++;
-      if (c === "*" && n === "/") {
-        state = "code";
-        i += 2;
-        continue;
-      }
-      i++;
-      continue;
-    }
-    if (c === "\n") line++;
-    if (c === "\\") {
-      i += 2;
-      continue;
-    }
-    const end = state === "sq" ? "'" : state === "dq" ? '"' : "`";
-    if (c === end) state = "code";
-    i++;
-  }
-  flush();
+  visit(source);
   return found;
 }
 
-const byName = new Map();
-for (const file of walk("src")) {
-  const source = readFileSync(file, "utf8");
-  for (const decl of declarations(source)) {
-    const list = byName.get(decl.name) ?? [];
-    list.push(`${file}:${decl.line}`);
-    byName.set(decl.name, list);
+function selfTest() {
+  const root = mkdtempSync(join(tmpdir(), "flag-single-source-"));
+  try {
+    const cases = [
+      {
+        label: "duplicate in a tsx file with an apostrophe in JSX text",
+        file: "view.tsx",
+        flag: "APOSTROPHE_ENABLED",
+        source: [
+          "export const APOSTROPHE_ENABLED = false;",
+          "export function View() {",
+          "  return <p>you're not done</p>;",
+          "}",
+          "export const APOSTROPHE_ENABLED = true;",
+          "",
+        ].join("\n"),
+      },
+      {
+        label: "mid-line declaration",
+        file: "mid.ts",
+        flag: "MID_ENABLED",
+        source: ["export const MID_ENABLED = false;", "const a=1; const MID_ENABLED = true;", ""].join("\n"),
+      },
+      {
+        label: "two-line split declaration",
+        file: "split.ts",
+        flag: "SPLIT_ENABLED",
+        source: ["export const SPLIT_ENABLED = false;", "const", "  SPLIT_ENABLED = true;", ""].join("\n"),
+      },
+      {
+        label: "js file",
+        file: "plain.js",
+        flag: "JS_ENABLED",
+        source: ["const JS_ENABLED = false;", "function inner() { var JS_ENABLED = true; }", ""].join("\n"),
+      },
+    ];
+    for (const item of cases) {
+      const dir = join(root, item.flag);
+      mkdirSync(dir);
+      writeFileSync(join(dir, item.file), item.source);
+      const sites = collectFlagDeclarations(dir).get(item.flag) ?? [];
+      assert.equal(sites.length, 2, `${item.label} should be caught, saw ${sites.length}: ${sites.join(", ")}`);
+    }
+    const clean = join(root, "clean");
+    mkdirSync(clean);
+    writeFileSync(
+      join(clean, "copy.tsx"),
+      [
+        "export const ONLY_ENABLED = false;",
+        "export function View() {",
+        "  return <p>you're reading const TEXT_ENABLED = true</p>;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    const cleanFlags = collectFlagDeclarations(clean);
+    assert.deepEqual([...cleanFlags.keys()], ["ONLY_ENABLED"]);
+    assert.equal(cleanFlags.get("ONLY_ENABLED").length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 }
 
-const dupes = [...byName.entries()].filter(([, sites]) => sites.length > 1);
-if (dupes.length) {
-  const lines = dupes.map(([name, sites]) => `  ${name}\n    ${sites.join("\n    ")}`);
-  console.error("flag-single-source: a *_ENABLED flag is declared more than once:\n" + lines.join("\n"));
-  process.exit(1);
+function scanWorkspace() {
+  const byName = new Map();
+  for (const root of ROOTS) {
+    for (const [name, sites] of collectFlagDeclarations(root)) {
+      const list = byName.get(name) ?? [];
+      list.push(...sites);
+      byName.set(name, list);
+    }
+  }
+  return byName;
 }
-console.log(`flag-single-source: OK (${byName.size} flags, one declaration each)`);
+
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  selfTest();
+  console.log("flag-single-source: self-test passed");
+  const byName = scanWorkspace();
+  const dupes = [...byName.entries()].filter(([, sites]) => sites.length > 1).sort(([a], [b]) => a.localeCompare(b));
+  if (dupes.length) {
+    const lines = dupes.map(([name, sites]) => `  ${name}\n    ${sites.join("\n    ")}`);
+    console.error(
+      `flag-single-source: ${byName.size} flag names, ${dupes.length} declared more than once:\n` + lines.join("\n"),
+    );
+    process.exit(1);
+  }
+  console.log(`flag-single-source: OK (${byName.size} flags, one declaration each)`);
+}
