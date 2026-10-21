@@ -156,11 +156,11 @@ describe("shared Stripe reader", () => {
       charges: [
         {
           id: "ch_1", customerId: "cus_1", paymentIntentId: "pi_1", invoiceId: "in_1", subscriptionId: "sub_1",
-          amountCents: 5000, currency: "usd", succeeded: true, created: 1_700_000_000,
+          amountCents: 5000, currency: "usd", succeeded: true, created: 1_700_000_000, paymentIds: [],
         },
         {
           id: "ch_2", customerId: "cus_2", paymentIntentId: null, invoiceId: "in_2", subscriptionId: null,
-          amountCents: 0, currency: "usd", succeeded: false, created: 1_700_000_100,
+          amountCents: 0, currency: "usd", succeeded: false, created: 1_700_000_100, paymentIds: [],
         },
       ],
     });

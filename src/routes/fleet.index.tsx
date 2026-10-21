@@ -124,10 +124,8 @@ export const Route = createFileRoute("/fleet/")({
     sort?: string;
   } => {
     const base = isMarketingCategory(s.type) ? { type: s.type } : {};
-    // Inlined so this route option does not reference the filter helpers.
-    // Referencing them here makes the dev server request a shared route chunk.
-    const filtersOn: boolean = false as boolean;
-    if (filtersOn !== true) return base;
+    // Same constant as the rest of this page. While it is off, only `type` is parsed.
+    if (FLEET_FILTERS_ENABLED !== true) return base;
     const extra: { make?: string; min?: number; max?: number; uber?: boolean; available?: boolean; sort?: string } = {};
     if (typeof s.make === "string" && s.make.trim() !== "" && s.make !== "all") extra.make = s.make.trim().slice(0, 40);
     const rate = (value: unknown) => {

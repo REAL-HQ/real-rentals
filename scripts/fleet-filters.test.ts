@@ -57,9 +57,9 @@ describe("fleet filters flag", () => {
     const libLoad = route.indexOf('import("@/lib/fleet-filters")');
     assert.ok(gate !== -1 && gate < barLoad && gate < libLoad);
     const searchFn = route.slice(route.indexOf("validateSearch:"), route.indexOf("head:"));
-    assert.match(searchFn, /const filtersOn: boolean = false as boolean/);
-    assert.ok(searchFn.indexOf("if (filtersOn !== true) return base;") < searchFn.indexOf("extra.make"));
-    assert.doesNotMatch(searchFn, /readFleetSearch|fleetSearchParams|FLEET_FILTERS_ENABLED/);
+    assert.match(searchFn, /if \(FLEET_FILTERS_ENABLED !== true\) return base;/);
+    assert.ok(searchFn.indexOf("if (FLEET_FILTERS_ENABLED !== true) return base;") < searchFn.indexOf("extra.make"));
+    assert.doesNotMatch(searchFn, /readFleetSearch|fleetSearchParams|filtersOn|false as boolean/);
     assert.match(
       route,
       /\.from\("vehicles_public"\)\s*\.select\("\*"\)\s*\.neq\("status", "retired"\)\s*\.order\("weekly_rate", \{ ascending: true \}\)/,

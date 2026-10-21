@@ -51,6 +51,8 @@ ok(!/\.or\(/.test(fn) && !/\.filter\(/.test(fn), "the reads do not use or or fil
 ok(!/select\(\s*["'`]\*/.test(fn), "the reads name their columns");
 ok(fn.includes("last_oil_change_miles") && fn.includes("registration_expires_on") && fn.includes("insurance_expires_on"), "vehicle service columns are named");
 ok(fn.includes('from("maintenance_records")') && fn.includes('from("inspections")'), "history is read from the existing tables");
+ok(fn.includes('error.message.includes("relation does not exist")'), "only a missing relation counts as not installed");
+ok(fn.indexOf('error.message.includes("relation does not exist")') < fn.indexOf("maintenance_log_v1 is not installed"), "a real read error is not reported as a missing table");
 ok(fn.includes("maintenance_log_v1 is not installed"), "a missing inspection table is logged and does not fail the read");
 ok(!rules.includes("?? 5000") && !fn.includes("5000"), "a missing oil interval is not replaced with 5000");
 ok(!liveService.includes("MAINTENANCE_LOG_ENABLED"), "the live maintenance API does not know this flag");

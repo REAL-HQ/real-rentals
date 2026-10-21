@@ -1,3 +1,9 @@
+// Default inspect() is the isolated candidate gate: ancestry, then checkPaths
+// against manifest.baseline. A release candidate is not that candidate, so
+// `node scripts/ci/record-rental/guard.mjs --rc` is the RC checklist. It still
+// requires a full fetch (a shallow clone is refused), still requires the three
+// manifest commits to be ancestors, and still requires Record Rental to stay
+// disabled. It skips checkPaths. Do not pass --rc on release/record-rental-base.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -43,19 +49,32 @@ export function checkOutput(suite,result){
  } else assert.equal(result.stderr.trim(),'','Unexpected test stderr');
  assert.equal(result.stdout.replace(/\r\n/g,'\n').trim(),suite.stdout,'Missing, changed, skipped or substituted assertion output');
 }
-export function inspect(){
+export function inspectOptionsFromArgv(argv){
+ return {rc:argv.includes('--rc')};
+}
+export function inspect(options={}){
+ const rc=options.rc===true;
  const git=(...a)=>execFileSync('git',a,{encoding:'utf8'}).trim();
+ if(rc)assert.equal(git('rev-parse','--is-shallow-repository'),'false','RC guard needs a full fetch; refusing a shallow clone');
  git('merge-base','--is-ancestor',manifest.baseline,'HEAD');
  git('merge-base','--is-ancestor',manifest.candidate,'HEAD');
  git('merge-base','--is-ancestor',manifest.evidenceCandidate,'HEAD');
- const changed=git('diff','--name-only',manifest.baseline,'HEAD').split('\n').filter(Boolean);
- checkScope(changed,p=>readFileSync(p));
  assert.equal(git('diff','--name-only'),'','Unstaged tracked changes');
  assert.equal(git('diff','--cached','--name-only'),'','Staged changes');
+ if(rc){
+  const contract=readFileSync('src/lib/record-rental-contract.ts').toString();
+  assert.match(contract,/export const RECORD_RENTAL_CONTRACT_ENABLED = false;/);
+  const handler=readFileSync('src/lib/record-rental.functions.ts').toString();
+  assert.doesNotMatch(handler,/supabaseAdmin|createStripeClient|\.insert\(|\.update\(/);
+  console.log('PASS RC ancestry and disabled record-rental flag; isolated path allowlist skipped');
+  return;
+ }
+ const changed=git('diff','--name-only',manifest.baseline,'HEAD').split('\n').filter(Boolean);
+ checkScope(changed,p=>readFileSync(p));
  console.log('PASS exact source scope, hashes, disabled flag and immutable test definitions');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- inspect();
+ inspect(inspectOptionsFromArgv(process.argv));
  if(process.argv.includes('--tests')){
   for(const suite of manifest.suites){
    const result=spawnSync(process.execPath,[suite.file],{encoding:'utf8',timeout:120000,maxBuffer:8*1024*1024});

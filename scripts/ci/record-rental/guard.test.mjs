@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {checkPaths,checkDigest,checkOutput,checkScope} from './guard.mjs';
+import {checkPaths,checkDigest,checkOutput,checkScope,inspectOptionsFromArgv} from './guard.mjs';
 const m=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
 const paths=Object.keys({...m.application,...m.evidence});let count=0;
 function test(name,fn){fn();console.log('PASS '+name);count++;}
@@ -10,6 +10,11 @@ test('application plus separate CI paths accepted',()=>checkPaths([...paths,...m
 for(const p of paths)test('missing application path rejected: '+p,()=>assert.throws(()=>checkPaths(paths.filter(x=>x!==p))));
 for(const p of ['drizzle/migrations/new.sql','src/lib/stripe-new.ts','package.json','.github/workflows/paper-validation.yml'])test('unapproved path rejected: '+p,()=>assert.throws(()=>checkPaths([...paths,p])));
 test('duplicate path rejected',()=>assert.throws(()=>checkPaths([...paths,paths[0]])));
+test('rc mode is opt-in and does not replace checkPaths',()=>{
+ assert.deepEqual(inspectOptionsFromArgv(['node','guard.mjs']),{rc:false});
+ assert.deepEqual(inspectOptionsFromArgv(['node','guard.mjs','--rc']),{rc:true});
+ assert.throws(()=>checkPaths([...paths,'docs/stripe-reconciliation-review.md']));
+});
 const bytes=Buffer.from('reviewed'),digest=createHash('sha256').update(bytes).digest('hex');
 test('exact bytes accepted',()=>checkDigest(bytes,digest));
 test('changed bytes rejected',()=>assert.throws(()=>checkDigest(Buffer.from('changed'),digest)));

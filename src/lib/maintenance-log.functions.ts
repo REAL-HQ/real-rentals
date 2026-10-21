@@ -97,6 +97,10 @@ export const listMaintenanceLog = createServerFn({ method: "POST" })
       if (vehicleId) query = query.eq("vehicle_id", vehicleId);
       const { data, error } = await query;
       if (error) {
+        if (!error.message.includes("relation does not exist")) {
+          console.error("[maintenance-log] read failed", error.message);
+          throw new Error("Could not load the maintenance log.");
+        }
         inspectionExpiryInstalled = false;
         console.error("[maintenance-log] maintenance_log_v1 is not installed; inspection expiry stays unknown.");
         break;
