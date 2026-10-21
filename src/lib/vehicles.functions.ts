@@ -255,6 +255,11 @@ export const createVehicle = createServerFn({ method: "POST" })
       const actor = await requireManager(context.userId);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+      // A partner link must name an existing, active partner — never a guess.
+      if (data.partner_id) {
+        const { data: partner } = await supabaseAdmin.from("partners").select("id,status").eq("id", data.partner_id).maybeSingle();
+        if (!partner || partner.status !== "active") return { ok: false, error: "Choose an active partner.", field: "partner_id" };
+      }
       const vin = data.vin ? normalizeVin(data.vin) : null;
       if (vin) {
         const check = checkVin(vin);

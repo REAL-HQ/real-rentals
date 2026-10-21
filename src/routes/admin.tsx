@@ -242,9 +242,13 @@ function Admin() {
     const set = () => {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
       const header = el.querySelector("header");
-      root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
+      // Fractional heights: offsetHeight rounds to whole px, which leaves the
+      // sticky panel below a sub-pixel off and makes it jitter while scrolling.
+      const chromeH = el.getBoundingClientRect().height;
+      const headerH = header?.getBoundingClientRect().height ?? 0;
+      root.style.setProperty("--admin-sticky-h", `${desktop ? chromeH : headerH}px`);
       const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
-      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
+      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.getBoundingClientRect().height : 0}px`);
     };
     set();
     const ro = new ResizeObserver(set);
@@ -737,9 +741,13 @@ function Admin() {
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
             {tab !== "overview" && !recordParent && (
-              <div className="mb-3">
-                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                </div>
+                {/* Pages may portal a primary action here (e.g. Vehicles → Add Vehicle). */}
+                <div id="admin-page-header-actions" className="flex shrink-0 items-center gap-2" />
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (
