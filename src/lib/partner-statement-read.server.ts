@@ -11,6 +11,7 @@ type CallOptions = { timeout?: number };
 type RawCharge = {
   id?: unknown; amount_captured?: unknown; currency?: unknown; status?: unknown; paid?: unknown;
   captured?: unknown; created?: unknown; customer?: unknown; payment_intent?: unknown; invoice?: unknown; livemode?: unknown;
+  metadata?: unknown;
 };
 export type ReadOnlyStripeGateway = {
   charges: { list: (params: { created: { gte: number; lt: number }; limit: number; starting_after?: string; expand: ["data.invoice"] }, options?: CallOptions) => Promise<Page<RawCharge>> };
@@ -102,5 +103,12 @@ function mapCharge(row: RawCharge): PartnerCharge | null {
     currency: row.currency.toLowerCase(),
     succeeded: row.paid === true && row.captured === true && row.status === "succeeded" && row.amount_captured > 0,
     created: row.created,
+    paymentIds: paymentIdsOf(row.metadata),
   };
+}
+
+function paymentIdsOf(metadata: unknown): string[] {
+  const raw = metadata && typeof metadata === "object" ? (metadata as { paymentIds?: unknown }).paymentIds : null;
+  if (typeof raw !== "string") return [];
+  return raw.split(",").map((part) => part.trim()).filter(Boolean);
 }
