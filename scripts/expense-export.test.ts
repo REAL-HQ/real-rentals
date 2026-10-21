@@ -86,30 +86,38 @@ describe("monthly finance csv", () => {
     expect(csv).not.toMatch(/,0\.00,Unknown/);
   });
 
-  it("starts a truncated file with a TRUNCATED line", () => {
+  it("writes TRUNCATED after the header", () => {
     const csv = expenseExportCsv(report({ truncated: true, rows: [{
       ...report().rows[0]!,
       revenueCents: null,
       netCents: null,
     }] }));
-    expect(csv.startsWith(`${EXPENSE_EXPORT_TRUNCATED}\r\n`)).toBe(true);
+    const [header, note] = csv.split("\r\n");
+    expect(header?.startsWith("Month,")).toBe(true);
+    expect(note).toBe(EXPENSE_EXPORT_TRUNCATED);
   });
 
   it("escapes commas and quotes and neutralizes formula cells", () => {
     expect(escapeCsvCell(`=cmd|' /C calc'!A0`)).toBe(`"'=cmd|' /C calc'!A0"`);
     expect(escapeCsvCell("+1")).toBe(`"'+1"`);
-    expect(escapeCsvCell("-10.00")).toBe("-10.00");
-    expect(escapeCsvCell("-40.00")).toBe("-40.00");
+    expect(escapeCsvCell("-10.00")).toBe(`"'-10.00"`);
+    expect(escapeCsvCell("-12.34")).toBe(`"'-12.34"`);
+    expect(escapeCsvCell("-40.00")).toBe(`"'-40.00"`);
     expect(escapeCsvCell("12.50")).toBe("12.50");
     expect(escapeCsvCell(" =1+1")).toBe(`"' =1+1"`);
     expect(escapeCsvCell("＝1+1")).toBe(`"'＝1+1"`);
+    expect(escapeCsvCell("＋1")).toBe(`"'＋1"`);
+    expect(escapeCsvCell("－1")).toBe(`"'－1"`);
+    expect(escapeCsvCell("＠sum")).toBe(`"'＠sum"`);
+    expect(escapeCsvCell("\u200b=1")).toBe(`"'\u200b=1"`);
+    expect(escapeCsvCell("\u200bname")).toBe(`"'\u200bname"`);
     expect(escapeCsvCell("|cmd")).toBe(`"'|cmd"`);
     expect(escapeCsvCell("@sum")).toBe(`"'@sum"`);
     expect(escapeCsvCell(`Honda, "Civic"`)).toBe(`"Honda, ""Civic"""`);
     const csv = expenseExportCsv(report({
       rows: [{
         vehicleId: "veh-1",
-        label: "=HYPERLINK(\"http://evil\")",
+        label: "-12.34",
         revenueCents: 0,
         expenses: [],
         expenseCents: 0,
@@ -118,7 +126,7 @@ describe("monthly finance csv", () => {
         netCents: -1000,
       }],
     }));
-    expect(csv).toContain(`"'=HYPERLINK(""http://evil"")"`);
+    expect(csv).toContain(`"'-12.34"`);
     expect(csv).toContain("-10.00,Known");
     expect(csv).not.toContain(`"'-10.00"`);
   });
@@ -127,7 +135,7 @@ describe("monthly finance csv", () => {
     const csv = expenseExportCsv(report({
       unattributed: {
         revenueCents: 100,
-        expenseCents: 0,
+        expenseCents: 200,
         tollsTicketsCents: 0,
         maintenanceCents: 0,
         netCents: 50,
@@ -135,6 +143,9 @@ describe("monthly finance csv", () => {
     }));
     const line = csv.trim().split("\r\n").find((row) => row.includes("Unattributed"));
     expect(line?.includes("1.00,Known")).toBe(true);
+    expect(line?.includes("0.00,Known")).toBe(true);
+    expect(line?.includes("2.00,Known")).toBe(true);
+    expect(line?.includes("Unknown")).toBe(false);
     expect(line?.endsWith("0.50,Known")).toBe(true);
     const builder = readFileSync(new URL("../src/lib/expense-export.ts", import.meta.url), "utf8");
     expect(builder).not.toContain("revenue - expense");
@@ -197,11 +208,11 @@ describe("monthly finance export access", () => {
       tier: "coordinator",
       month: "2026-10",
       load,
-    })).rejects.toThrow("Forbidden");
+    })).resolves.toEqual({ status: "disabled", csv: null, truncated: false, month: null });
     expect(load).not.toHaveBeenCalled();
   });
 
-  it("lets a manager export the Vehicle Profit report", async () => {
+  it("does not read while Vehicle Profit is off, even when the export caller is enabled", async () => {
     const load = vi.fn(async () => ({
       vehicles: [{ id: "veh-1", year: 2020, make: "Honda", model: "Civic", licensePlate: null }],
       rentals: [],
@@ -219,13 +230,11 @@ describe("monthly finance export access", () => {
       month: "2026-10",
       load,
     });
-    expect(load).toHaveBeenCalledTimes(1);
-    expect(result.status).toBe("ready");
-    if (result.status === "ready") {
-      expect(result.truncated).toBe(false);
-      expect(result.csv.startsWith("TRUNCATED")).toBe(false);
-      expect(result.csv).toContain("0.00,Known");
-      expect(result.month).toBe("2026-10");
-    }
+    expect(load).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "disabled", csv: null, truncated: false, month: null });
+    const server = readFileSync(new URL("../src/lib/expense-export.server.ts", import.meta.url), "utf8");
+    const gate = server.indexOf("if (!input.enabled || !VEHICLE_PNL_ENABLED) return DISABLED");
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(server.indexOf("runVehiclePnl({"));
   });
 });

@@ -1,5 +1,6 @@
 import { runVehiclePnl, type VehiclePnlDirectory } from "./vehicle-pnl.server";
 import { expenseExportCsv, type ExpenseExportResponse } from "./expense-export";
+import { VEHICLE_PNL_ENABLED } from "./vehicle-pnl-flag";
 import type { StaffTier } from "./roles";
 
 /**
@@ -17,9 +18,9 @@ export async function runExpenseExport(input: {
   month: string;
   load: () => Promise<VehiclePnlDirectory | null>;
 }): Promise<ExpenseExportResponse> {
-  if (!input.enabled) return DISABLED;
+  if (!input.enabled || !VEHICLE_PNL_ENABLED) return DISABLED;
   const result = await runVehiclePnl({
-    enabled: true,
+    enabled: VEHICLE_PNL_ENABLED,
     userId: input.userId,
     tier: input.tier,
     month: input.month,

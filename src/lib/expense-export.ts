@@ -4,7 +4,8 @@ import type { VehiclePnlExpenseLine, VehiclePnlReport, VehiclePnlRow } from "./v
  * CSV for one Vehicle Profit report. Amounts come from that report.
  * This file does not calculate revenue, expenses, tolls, or maintenance.
  * An unknown amount is a blank cell marked Unknown. A truncated read
- * starts the file with a TRUNCATED line.
+ * writes a TRUNCATED line after the header. Text is always formula-guarded.
+ * Only money columns stay raw numbers.
  */
 
 export const EXPENSE_EXPORT_TRUNCATED = "TRUNCATED";
@@ -41,9 +42,8 @@ export function expenseExportCsv(report: VehiclePnlReport): string {
     "Net",
     "Net Status",
   ];
-  const lines: string[] = [];
+  const lines = [header.map((cell) => escapeCsvCell(cell)).join(",")];
   if (report.truncated) lines.push(EXPENSE_EXPORT_TRUNCATED);
-  lines.push(header.map(escapeCsvCell).join(","));
   for (const row of report.rows) lines.push(line(report.month, row, categories));
   if (unattributedVisible(report)) {
     lines.push(line(report.month, unattributedRow(report), categories));
@@ -52,16 +52,19 @@ export function expenseExportCsv(report: VehiclePnlReport): string {
 }
 
 function line(month: string, row: MoneyRow, categories: { category: string; label: string }[]): string {
-  const cells = [month, row.label, ...moneyCells(row.revenueCents)];
-  for (const category of categories) cells.push(...categoryCells(row, category.category));
-  cells.push(...moneyCells(row.expenseCents), ...moneyCells(row.tollsTicketsCents), ...moneyCells(row.maintenanceCents), ...moneyCells(row.netCents));
-  return cells.map(escapeCsvCell).join(",");
+  const cells = [escapeCsvCell(month), escapeCsvCell(row.label)];
+  const amounts = [...moneyCells(row.revenueCents)];
+  for (const category of categories) amounts.push(...categoryCells(row, category.category));
+  amounts.push(...moneyCells(row.expenseCents), ...moneyCells(row.tollsTicketsCents), ...moneyCells(row.maintenanceCents), ...moneyCells(row.netCents));
+  cells.push(...amounts.map(escapeMoneyCell));
+  return cells.join(",");
 }
 
 function categoryCells(row: MoneyRow, category: string): [string, string] {
   const found = row.expenses.find((expense) => expense.category === category);
   if (found) return moneyCells(found.cents);
   if (row.expenseCents === null) return moneyCells(null);
+  if (row.label === "Unattributed") return moneyCells(0);
   if (row.expenses.length === 0 && row.expenseCents !== 0) return moneyCells(null);
   return moneyCells(0);
 }
@@ -108,13 +111,17 @@ function unattributedRow(report: VehiclePnlReport): MoneyRow {
 }
 
 const NUMERIC_CELL = /^-?\d+\.\d{2}$/;
-const FORMULA_CELL = /^[\s\u00a0]*[=+\-@\t\r|＝]/;
+const FORMULA_CELL = /^[\s\u00a0\u200b]*[=+\-@\t\r|＝＋－＠]|\u200b/;
 
-/** RFC 4180. Formula-like text is prefixed with an apostrophe. A money amount stays a number. */
+/** RFC 4180. Formula-like text is prefixed with an apostrophe, including a label that looks like money. */
 export function escapeCsvCell(value: string): string {
-  if (NUMERIC_CELL.test(value)) return value;
   const formula = FORMULA_CELL.test(value);
   const safe = formula ? `'${value}` : value;
   if (formula || /[",\n\r]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
   return safe;
+}
+
+function escapeMoneyCell(value: string): string {
+  if (NUMERIC_CELL.test(value)) return value;
+  return escapeCsvCell(value);
 }
