@@ -532,22 +532,18 @@ export function DriversPanel({
    */
   const loadDriverRows = useServerFn(listDriverRows);
   const loadOnboarding = useServerFn(getOnboardingChecklist);
-  useEffect(() => {
+  const refreshOnboarding = useCallback(() => {
     if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
-    let cancel = false;
     void loadOnboarding()
       .then((result) => {
-        if (cancel) return;
         setOnboardingResult(result);
         setOnboardingFailed(result.failed === true);
       })
-      .catch(() => {
-        if (!cancel) setOnboardingFailed(true);
-      });
-    return () => {
-      cancel = true;
-    };
+      .catch(() => setOnboardingFailed(true));
   }, [loadOnboarding, canViewOnboarding]);
+  useEffect(() => {
+    refreshOnboarding();
+  }, [refreshOnboarding]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -802,6 +798,7 @@ setDocCounts(requiredDocCounts(rows));
         }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
+        onSharedReadinessRefresh={refreshOnboarding}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         canViewOnboarding={canViewOnboarding}
@@ -1195,6 +1192,7 @@ function DriverDetail({
   onSaved,
   onDelete,
   onScreeningChange,
+  onSharedReadinessRefresh,
   onVaultChange,
   isOwner,
   hasActiveRental,
@@ -1210,6 +1208,8 @@ function DriverDetail({
   onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
+  /** Re-reads the shared checklist after a vault or screening edit. No-ops while the flag is off. */
+  onSharedReadinessRefresh?: () => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
@@ -1250,6 +1250,7 @@ function DriverDetail({
       const row = data as DriverScreeningRow;
       setScreening(row);
       onScreeningChange?.(row);
+      onSharedReadinessRefresh?.();
       toast.success(`Status: ${next.replace(/_/g, " ")}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to advance status");
@@ -1687,6 +1688,16 @@ function DriverDetail({
             onboardingFailed ? (
               <OnboardingLoadError />
             ) : null}
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingResult?.failed !== true &&
+            onboardingResult?.truncated === true &&
+            !sharedDriver ? (
+              <p className="mb-2 text-[12px] text-[#55555E]">
+                This Driver Is Past The First 1000. Showing The Original Readiness Rows.
+              </p>
+            ) : null}
             <dl className="space-y-2 text-[12px]">
               {requirements.map((r) => (
                 <SignalRow key={r.label} label={r.label} ok={r.ok} />
@@ -2006,7 +2017,10 @@ function DriverDetail({
                       applicationId={driver.id}
                       docs={vaultDocs}
                       loading={vaultLoading}
-                      onRefresh={refreshVault}
+                      onRefresh={async () => {
+                        await refreshVault();
+                        onSharedReadinessRefresh?.();
+                      }}
                     />
                   </div>
                 </SectionCard>
@@ -2027,6 +2041,7 @@ function DriverDetail({
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
+                    onSharedReadinessRefresh?.();
                   }}
                   onRecordingChange={setHasRecording}
                 />
@@ -2271,6 +2286,7 @@ function DriverDetail({
         onSaved={(next) => {
           setScreening(next);
           onScreeningChange?.(next);
+          onSharedReadinessRefresh?.();
         }}
       />
 
