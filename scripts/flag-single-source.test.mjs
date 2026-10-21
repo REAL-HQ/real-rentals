@@ -17,22 +17,31 @@
 // (`function f(on = X_ENABLED)`) is a use, not a second declaration.
 //
 // A production declaration must be initialized with literal `false` or
-// `false as boolean`. Aliases, binding patterns, and parameters are
+// `false as boolean`, and it must be `const`. `let` and `var` are rejected
+// even when initialized with `false`, so `export let NEW_ENABLED = false`
+// cannot be reassigned later. Aliases, binding patterns, and parameters are
 // non-literal even when a parameter default is `false`, so they fail.
-// Object properties (`{ X_ENABLED: true }` and shorthand `{ X_ENABLED }`)
-// and PropertyAccessExpression assignment targets (`globalThis.X_ENABLED = …`)
-// are declarations. Their initializer is the assigned expression.
+// Object properties (`{ X_ENABLED: true }`) are declarations. A shorthand
+// `{ X_ENABLED }` is a declaration only when that name is not an import and
+// not an in-scope binding; otherwise it is a use
+// (`import { FLEET_CALENDAR_ENABLED }` then `{ FLEET_CALENDAR_ENABLED }`).
+// PropertyAccessExpression assignment targets (`globalThis.X_ENABLED = …`)
+// are declarations whose initializer is the assigned expression. An identifier
+// assignment (`NEW_ENABLED = true`, or `= false`) is always a non-literal
+// declaration, so it fails.
 // Element access (`obj["X_ENABLED"] = …`), computed property names,
 // compound assignments (`+=`), and property signatures in types
 // (`interface Flags { X_ENABLED: boolean }` and `{ X_ENABLED?: string }`)
 // are out of scope. A type field names a shape; it does not declare the flag.
 //
-// LIVE_TRUE_FLAGS may be literal `true`. On 7e3e6eb (release/rc2-dark-features)
-// the only `*_ENABLED = true` under src/ is STRIPE_COLLECTIONS_ENABLED.
-// LIVE_ENV_GATED_FLAGS is the second allowlist: live env-gated, owner-controlled.
-// Those two names read process.env and may already be sending alerts. Any other
-// *_ENABLED name whose initializer is not literal false still fails, including
-// a new flag that reads the environment.
+// LIVE_TRUE_FLAGS and LIVE_ENV_GATED_FLAGS live in scripts/live-enabled-flags.mjs,
+// shared with enabled-flags-no-env. LIVE_TRUE_FLAGS may be literal `true`.
+// On 7e3e6eb the only `*_ENABLED = true` under src/ is STRIPE_COLLECTIONS_ENABLED.
+// LIVE_ENV_GATED_FLAGS is live env-gated, owner-controlled: the two alert flags
+// plus STRIPE_RECONCILIATION_ENABLED, APPLICATION_RESUME_ATOMIC_ENABLED, and
+// RENTER_LIFECYCLE_NOTICES_ENABLED. Those exist and read process.env on 7e3e6eb.
+// DOCUMENT_EXPIRY_NOTICES_ENABLED does not exist on 7e3e6eb and is not listed.
+// Any other *_ENABLED name whose initializer is not literal false still fails.
 //
 // Hidden boolean gates that are not named *_ENABLED (for example
 // `filtersOn = false as boolean`) are not declarations and are not a failure.
@@ -47,14 +56,14 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { LIVE_ENV_GATED_FLAGS as LIVE_ENV_GATED_FLAG_LIST, LIVE_TRUE_FLAGS as LIVE_TRUE_FLAG_LIST } from "./live-enabled-flags.mjs";
 
-// Live in source on 7e3e6eb and on this branch. Literal `true` only.
-const LIVE_TRUE_FLAGS = new Set(["STRIPE_COLLECTIONS_ENABLED"]);
+// Literal `true` only. Names come from scripts/live-enabled-flags.mjs.
+const LIVE_TRUE_FLAGS = new Set(LIVE_TRUE_FLAG_LIST);
 
-// LIVE env-gated, owner-controlled. driver-issue-alert.server.ts reads
-// process.env for these two. They may be on in production and sending alerts.
-// Do not add a name here to silence a new env-gated flag.
-const LIVE_ENV_GATED_FLAGS = new Set(["DRIVER_ISSUE_ALERTS_ENABLED", "ROADSIDE_SMS_ALERTS_ENABLED"]);
+// LIVE env-gated, owner-controlled. Same module as enabled-flags-no-env.
+// Do not add a name here; add it to that module only if it is env-gated on 7e3e6eb.
+const LIVE_ENV_GATED_FLAGS = new Set(LIVE_ENV_GATED_FLAG_LIST.map((flag) => flag.name));
 
 const ROOTS = ["src"];
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
@@ -154,6 +163,7 @@ function sourceFile(file) {
 function declarationsIn(file) {
   const source = sourceFile(file);
   const found = [];
+  const scopes = [new Set()];
   const push = (nameNode, initializer = "non-literal") => {
     const text = nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) ? nameNode.text : null;
     if (!text || !text.endsWith("_ENABLED")) return;
@@ -172,22 +182,108 @@ function declarationsIn(file) {
       }
     }
   };
+  const bindName = (name) => {
+    const collect = (node) => {
+      if (!node) return;
+      if (ts.isIdentifier(node)) scopes.at(-1).add(node.text);
+      else if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+        for (const element of node.elements) {
+          if (ts.isBindingElement(element)) collect(element.name);
+        }
+      }
+    };
+    collect(name);
+  };
+  const bindStatement = (stmt) => {
+    if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) bindName(decl.name);
+    } else if ((ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) && stmt.name) {
+      scopes.at(-1).add(stmt.name.text);
+    }
+  };
+  const bindImports = (sf) => {
+    for (const stmt of sf.statements) {
+      if (!ts.isImportDeclaration(stmt)) continue;
+      const clause = stmt.importClause;
+      if (!clause || clause.isTypeOnly) continue;
+      if (clause.name) scopes.at(-1).add(clause.name.text);
+      const named = clause.namedBindings;
+      if (!named) continue;
+      if (ts.isNamespaceImport(named)) scopes.at(-1).add(named.name.text);
+      else if (ts.isNamedImports(named)) {
+        for (const spec of named.elements) {
+          if (!spec.isTypeOnly) scopes.at(-1).add(spec.name.text);
+        }
+      }
+    }
+  };
+  const visible = (name) => scopes.some((scope) => scope.has(name));
+  const isConst = (node) => ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0;
   const recordProperty = (node) => {
     if (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) push(node.name, classifyInitializer(node.initializer));
   };
   const visit = (node) => {
+    if (ts.isSourceFile(node)) {
+      bindImports(node);
+      for (const stmt of node.statements) bindStatement(stmt);
+      for (const stmt of node.statements) visit(stmt);
+      return;
+    }
+    if (ts.isBlock(node) || ts.isModuleBlock(node)) {
+      scopes.push(new Set());
+      for (const stmt of node.statements) bindStatement(stmt);
+      for (const stmt of node.statements) visit(stmt);
+      scopes.pop();
+      return;
+    }
+    if (ts.isFunctionLike(node)) {
+      for (const param of node.parameters) {
+        if (param.initializer) visit(param.initializer);
+      }
+      scopes.push(new Set());
+      for (const param of node.parameters) bindName(param.name);
+      if (node.body) visit(node.body);
+      scopes.pop();
+      for (const param of node.parameters) bindings(param.name);
+      return;
+    }
+    if (ts.isCatchClause(node)) {
+      scopes.push(new Set());
+      if (node.variableDeclaration) bindName(node.variableDeclaration.name);
+      visit(node.block);
+      scopes.pop();
+      if (node.variableDeclaration) bindings(node.variableDeclaration.name);
+      return;
+    }
+    if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+      scopes.push(new Set());
+      const init = node.initializer;
+      if (init && ts.isVariableDeclarationList(init)) {
+        for (const decl of init.declarations) bindName(decl.name);
+      }
+      if (ts.isForStatement(node)) {
+        if (node.initializer) visit(node.initializer);
+        if (node.condition) visit(node.condition);
+        if (node.incrementor) visit(node.incrementor);
+      } else {
+        visit(node.initializer);
+        visit(node.expression);
+      }
+      visit(node.statement);
+      scopes.pop();
+      return;
+    }
     if (ts.isVariableDeclaration(node)) {
-      if (ts.isIdentifier(node.name)) push(node.name, classifyInitializer(node.initializer));
+      if (ts.isIdentifier(node.name)) push(node.name, isConst(node) ? classifyInitializer(node.initializer) : "non-literal");
       else bindings(node.name);
     } else if (ts.isParameter(node)) bindings(node.name);
     else if (ts.isPropertyDeclaration(node) || ts.isPropertyAssignment(node)) recordProperty(node);
-    else if (ts.isShorthandPropertyAssignment(node)) push(node.name, "non-literal");
-    else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left)
-    ) {
-      push(node.left.name, classifyInitializer(node.right));
+    else if (ts.isShorthandPropertyAssignment(node)) {
+      if (!visible(node.name.text)) push(node.name, "non-literal");
+    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = unwrap(node.left);
+      if (ts.isPropertyAccessExpression(left)) push(left.name, classifyInitializer(node.right));
+      else if (ts.isIdentifier(left)) push(left, "non-literal");
     } else if (ts.isImportDeclaration(node)) recordImport(node, push);
     else if (ts.isExportDeclaration(node)) recordExport(node, push);
     ts.forEachChild(node, visit);
@@ -533,6 +629,13 @@ function selfTest() {
         initializer: "non-literal",
         source: "export const ENV_EXPR_ENABLED = process.env.ENV_EXPR_ENABLED === \"true\";\n",
       },
+      {
+        label: "document expiry is not a live env flag",
+        file: "expiry.ts",
+        flag: "DOCUMENT_EXPIRY_NOTICES_ENABLED",
+        initializer: "non-literal",
+        source: "export const DOCUMENT_EXPIRY_NOTICES_ENABLED = process.env.DOCUMENT_EXPIRY_NOTICES_ENABLED === \"true\";\n",
+      },
     ];
     for (const item of badValues) {
       const dir = join(root, `value-${item.flag}`);
@@ -561,9 +664,15 @@ function selfTest() {
       { label: "live true allowlist", source: "export const STRIPE_COLLECTIONS_ENABLED = true;\n" },
       {
         label: "live env-gated allowlist",
+        source: `${[...LIVE_ENV_GATED_FLAGS].map((name) => `export const ${name} = process.env.${name} === "true";`).join("\n")}\n`,
+      },
+      {
+        label: "shorthand of an import or in-scope binding is a use",
         source: [
-          'export const DRIVER_ISSUE_ALERTS_ENABLED = process.env.DRIVER_ISSUE_ALERTS_ENABLED === "true";',
-          'export const ROADSIDE_SMS_ALERTS_ENABLED = process.env.ROADSIDE_SMS_ALERTS_ENABLED === "true";',
+          "import { FLEET_CALENDAR_ENABLED } from './flag';",
+          "export const FLEET_CALENDAR_ENABLED = false;",
+          "const view = { FLEET_CALENDAR_ENABLED };",
+          "function panel() { return { FLEET_CALENDAR_ENABLED }; }",
           "",
         ].join("\n"),
       },
@@ -589,9 +698,51 @@ function selfTest() {
     }
     assert.deepEqual(
       [...LIVE_ENV_GATED_FLAGS].sort(),
-      ["DRIVER_ISSUE_ALERTS_ENABLED", "ROADSIDE_SMS_ALERTS_ENABLED"],
-      "the env allowlist is exactly the two live alert flags",
+      [
+        "APPLICATION_RESUME_ATOMIC_ENABLED",
+        "DRIVER_ISSUE_ALERTS_ENABLED",
+        "RENTER_LIFECYCLE_NOTICES_ENABLED",
+        "ROADSIDE_SMS_ALERTS_ENABLED",
+        "STRIPE_RECONCILIATION_ENABLED",
+      ],
+      "the env allowlist is the live env-gated names on 7e3e6eb",
     );
+    assert.deepEqual([...LIVE_TRUE_FLAGS], ["STRIPE_COLLECTIONS_ENABLED"]);
+    const shorthandUse = join(root, "shorthand-use");
+    mkdirSync(shorthandUse);
+    writeFileSync(
+      join(shorthandUse, "use.ts"),
+      [
+        "import { FLEET_CALENDAR_ENABLED } from './flag';",
+        "export const FLEET_CALENDAR_ENABLED = false;",
+        "const view = { FLEET_CALENDAR_ENABLED };",
+        "function panel() { return { FLEET_CALENDAR_ENABLED }; }",
+        "",
+      ].join("\n"),
+    );
+    const shorthandFlags = collectFlagDeclarations(shorthandUse);
+    assert.equal(productionSites(shorthandFlags.get("FLEET_CALENDAR_ENABLED")).length, 1, "a shorthand use is not a second declaration");
+    assert.equal(scannerExit(shorthandUse).status, 0);
+    const letReassign = join(root, "let-reassign");
+    mkdirSync(letReassign);
+    writeFileSync(join(letReassign, "let.ts"), "export let NEW_ENABLED = false;\nNEW_ENABLED = true;\n");
+    assert.equal(scannerExit(letReassign).status, 1, "let plus identifier assignment must fail");
+    const letOnly = join(root, "let-only");
+    mkdirSync(letOnly);
+    writeFileSync(join(letOnly, "let.ts"), "export let LET_ONLY_ENABLED = false;\n");
+    assert.equal(initializerFailures(collectFlagDeclarations(letOnly))[0][1].initializer, "non-literal");
+    assert.equal(scannerExit(letOnly).status, 1, "let is rejected even when initialized false");
+    const varOnly = join(root, "var-only");
+    mkdirSync(varOnly);
+    writeFileSync(join(varOnly, "var.ts"), "export var VAR_ONLY_ENABLED = false;\n");
+    assert.equal(scannerExit(varOnly).status, 1, "var is rejected even when initialized false");
+    const identAssign = join(root, "ident-assign");
+    mkdirSync(identAssign);
+    writeFileSync(join(identAssign, "assign.ts"), "export const ASSIGN_ID_ENABLED = false;\nASSIGN_ID_ENABLED = false;\n");
+    const assignHits = initializerFailures(collectFlagDeclarations(identAssign));
+    assert.equal(assignHits.length, 1, "an identifier assignment is non-literal even when the right-hand side is false");
+    assert.equal(assignHits[0][1].initializer, "non-literal");
+    assert.equal(scannerExit(identAssign).status, 1);
     const liveEnvButTrue = join(root, "live-env-true");
     mkdirSync(liveEnvButTrue);
     writeFileSync(liveEnvButTrue + "/true.ts", "export const DRIVER_ISSUE_ALERTS_ENABLED = true;\n");
