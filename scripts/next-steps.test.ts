@@ -52,6 +52,7 @@ describe("approved and not renting", () => {
       ["done", "done", "done", "done"],
     );
     assert.equal(shown.pickupLine, PICKUP_LINE);
+    assert.equal(/833-8280|18888338280/.test(PICKUP_LINE), false);
     assert.equal(view({ status: "active" }).show, false);
     assert.equal(view({ status: "reviewing" }).show, false);
     assert.equal(view({ hasActiveRental: true }).show, false);
@@ -107,6 +108,10 @@ describe("the card stays off and on the signed-in driver", () => {
     assert.equal(fn.includes("storage_path"), false);
     assert.equal(fn.includes("license_number"), false);
     assert.match(portal, /NEXT_STEPS_CARD_ENABLED && !rental && data\.applicationStatus === "approved"/);
+    const card = readFileSync(new URL("../src/components/portal/NextStepsCard.tsx", import.meta.url), "utf8");
+    const pure = readFileSync(new URL("../src/lib/next-steps.ts", import.meta.url), "utf8");
+    assert.match(card, /useBusinessPhone/);
+    assert.equal(/833-8280|18888338280/.test(card + pure), false);
   });
 });
 

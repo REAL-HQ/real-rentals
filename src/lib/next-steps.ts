@@ -18,7 +18,8 @@ export const NEXT_STEPS_CARD_ENABLED: boolean = false;
 
 export const NEXT_STEPS_TIME_ZONE = "America/New_York";
 
-export const PICKUP_LINE = "Call us to pick up your car: (888) 833-8280";
+/** The sentence before the company phone. The number comes from Settings → Business Phone. */
+export const PICKUP_LINE = "Call us to pick up your car:";
 
 export type NextStepState = "done" | "needed" | "unknown";
 

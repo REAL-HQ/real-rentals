@@ -1,17 +1,15 @@
 import type { MyNextSteps } from "@/lib/next-steps.functions";
 import type { NextStepState } from "@/lib/next-steps";
+import { useBusinessPhone } from "@/lib/company.functions";
 
 function PickupLine({ line }: { line: string }) {
-  const phone = "(888) 833-8280";
-  const at = line.indexOf(phone);
-  if (at < 0) return <>{line}</>;
+  const phone = useBusinessPhone();
   return (
     <>
-      {line.slice(0, at)}
-      <a href="tel:18888338280" className="font-medium text-real-red hover:underline">
-        {phone}
+      {line}{" "}
+      <a href={phone.tel} className="font-medium text-real-red hover:underline">
+        {phone.display}
       </a>
-      {line.slice(at + phone.length)}
     </>
   );
 }
