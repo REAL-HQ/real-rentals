@@ -92,7 +92,10 @@ describe("renewal history on Renewal Due", () => {
     assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "failed", type: "late_fee" }]), false);
     assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "failed", type: "toll" }]), false);
     assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "toll", late_fees: 15 }]), false);
-    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "late_fee" }]), true);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "late_fee" }]), false);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "waived", type: "late_fee" }]), true);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "bitcoin" }]), true);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "failed", type: "mystery" }]), true);
     for (const status of ["failed", "late", "overdue", "past_due", "unpaid", "collections", "current"]) {
       assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status, type: "rent" }]), false);
     }

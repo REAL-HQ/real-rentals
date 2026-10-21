@@ -148,7 +148,9 @@ function isDepositCharge(charge: RenewalHistoryCharge): boolean {
  * and are not paid charges. current and the late or failed statuses are not good.
  * Any other rent status is unknown and is not good. A paid-late rent charge is not clean.
  * A failed or paid-late late fee, toll, fee, damage, or other charge is not clean.
+ * A paid late fee is not clean even when it has no extra late-fee watermark.
  * Those types are not counted as Paid Charges.
+ * Unknown non-rent types are skipped: they are not Paid Charges and they do not fail the history.
  */
 export function hasGoodPaymentHistory(charges: readonly RenewalHistoryCharge[]): boolean {
   let paid = 0;
@@ -156,7 +158,12 @@ export function hasGoodPaymentHistory(charges: readonly RenewalHistoryCharge[]):
     if (isDepositCharge(charge)) continue;
     const status = rentStatus(charge.status);
     if (!isRentCharge(charge)) {
-      if (!(ANCILLARY_CHARGE_TYPES as readonly string[]).includes(chargeType(charge))) continue;
+      const type = chargeType(charge);
+      if (!(ANCILLARY_CHARGE_TYPES as readonly string[]).includes(type)) {
+        // Skip unknown non-rent types explicitly. They are not Paid Charges.
+        continue;
+      }
+      if (type === "late_fee" && status === "paid") return false;
       if ((BAD_RENT_STATUSES as readonly string[]).includes(status)) return false;
       if (status === "paid" && isPaidLate(charge)) return false;
       continue;
