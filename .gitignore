@@ -43,3 +43,4 @@ demo-data-backup-*.json
 .docfn-build
 .onboarding-build
 .doc-expiry-build
+.doc-gaps-build
