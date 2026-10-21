@@ -972,26 +972,6 @@ setDocCounts(requiredDocCounts(rows));
       </button>,
     );
   }
-  function saveStalledContact(applicationId: string, state: ContactStatusState) {
-    setStalledRows(
-      (rows) =>
-        rows?.map((row) =>
-          row.id === applicationId
-            ? {
-                ...row,
-                contact: {
-                  contact_status: state.status,
-                  contact_status_note: state.note,
-                  contact_follow_up_on: state.followUpOn,
-                  contact_status_at: state.changedAt,
-                  contact_status_by: state.changedBy,
-                },
-              }
-            : row,
-        ) ?? rows,
-    );
-  }
-
   return (
     <div>
       {deleteDialog}
@@ -1080,7 +1060,7 @@ setDocCounts(requiredDocCounts(rows));
           onContactSaved={applyFunnelContact}
         />
       ) : filter === "stalled" && stalledOn ? (
-        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} onContactSaved={saveStalledContact} />
+        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} />
       ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
