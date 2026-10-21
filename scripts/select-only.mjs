@@ -1,21 +1,35 @@
 /**
  * Accept exactly one SELECT or WITH.
  * Comments, standard strings, E'' strings, dollar quotes, and quoted
- * identifiers cannot hide a second command or a write.
+ * identifiers cannot hide a second command or a write. Unicode escapes
+ * are refused. Function calls must be on the checklist allowlist.
  */
 
 const WRITE_KEYWORD = /\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|merge|call|do|comment|vacuum|analyze|refresh|reindex|cluster|lock|set|begin|commit|rollback|execute|prepare|listen|notify|into)\b/i;
 
-export const SIDE_EFFECT = new Set([
-  "set_config",
-  "pg_advisory_lock",
-  "pg_terminate_backend",
-  "pg_notify",
-  "pg_reload_conf",
-  "pg_read_file",
+/** Functions proposed/m3/preflight.sql calls. Any other call is refused. */
+export const ALLOWED_CALLS = new Set([
+  "exists",
+  "to_regprocedure",
+  "to_regclass",
+  "coalesce",
+  "string_agg",
+  "count",
+  "current_setting",
+  "pg_catalog.pg_get_userbyid",
+  "pg_catalog.has_column_privilege",
 ]);
 
-export function assertSelectOnly(sql) {
+const NOT_A_CALL = new Set([
+  "all", "and", "any", "array", "as", "between", "by", "case", "cast", "collate",
+  "else", "end", "except", "fetch", "filter", "for", "from", "group", "having",
+  "ilike", "in", "intersect", "into", "isnull", "join", "lateral", "like", "limit",
+  "not", "notnull", "offset", "on", "or", "order", "over", "placement", "returning",
+  "row", "select", "similar", "some", "tablesample", "then", "union", "using",
+  "values", "when", "where", "window", "with", "within",
+]);
+
+export function assertReadQuery(sql) {
   const scanned = scanSql(sql);
   if (scanned.statements !== 1) {
     throw new Error("Refusing to run: SQL is not a single statement.");
@@ -26,8 +40,13 @@ export function assertSelectOnly(sql) {
   }
   const write = code.match(WRITE_KEYWORD);
   if (write) throw new Error(`Refusing to run: SELECT contains ${write[1]}`);
-  for (const name of scanned.names) {
-    if (SIDE_EFFECT.has(name)) throw new Error(`Refusing to run: SELECT calls ${name}`);
+  return scanned;
+}
+
+export function assertSelectOnly(sql) {
+  const scanned = assertReadQuery(sql);
+  for (const call of scanned.calls) {
+    if (!ALLOWED_CALLS.has(call)) throw new Error(`Refusing to run: SELECT calls ${call}`);
   }
 }
 
@@ -35,7 +54,9 @@ export function scanSql(sql) {
   let code = "";
   let statements = 0;
   let saw = false;
+  let qualifier = "";
   const names = [];
+  const calls = [];
   let i = 0;
   const len = sql.length;
 
@@ -46,10 +67,32 @@ export function scanSql(sql) {
     if (saw) statements += 1;
     saw = false;
   };
+  const skipSpaceFrom = (at) => {
+    let j = at;
+    while (j < len && /\s/.test(sql[j])) j += 1;
+    return j;
+  };
   const ident = (text) => {
     mark();
     code += text;
-    names.push(text.toLowerCase());
+    const lower = text.toLowerCase();
+    names.push(lower);
+    const after = skipSpaceFrom(i);
+    if (sql[after] === ".") {
+      qualifier = qualifier ? `${qualifier}.${lower}` : lower;
+      return;
+    }
+    const call = qualifier ? `${qualifier}.${lower}` : lower;
+    qualifier = "";
+    if (sql[after] === "(" && !NOT_A_CALL.has(call)) calls.push(call);
+  };
+  const refuseUnicode = (at) => {
+    if ((sql[at] !== "U" && sql[at] !== "u") || sql[at + 1] !== "&") return;
+    const quote = sql[at + 2];
+    if (quote !== "'" && quote !== "\"") return;
+    const prev = at > 0 ? sql[at - 1] : "";
+    if (/[A-Za-z0-9_]/.test(prev)) return;
+    throw new Error("Refusing to run: SQL uses a Unicode escape.");
   };
 
   while (i < len) {
@@ -74,8 +117,9 @@ export function scanSql(sql) {
     }
     if (ch === "\"") {
       const end = skipQuotedIdent(sql, i);
-      ident(unquoteIdent(sql.slice(i, end)));
+      const text = unquoteIdent(sql.slice(i, end));
       i = end;
+      ident(text);
       continue;
     }
     const dollar = dollarTag(sql, i);
@@ -89,23 +133,26 @@ export function scanSql(sql) {
     }
     if (ch === ";") {
       finish();
+      qualifier = "";
       code += " ";
       i += 1;
       continue;
     }
     if (/[A-Za-z_]/.test(ch)) {
+      refuseUnicode(i);
       const start = i;
       i += 1;
       while (i < len && /[A-Za-z0-9_]/.test(sql[i])) i += 1;
       ident(sql.slice(start, i));
       continue;
     }
+    if (!/\s/.test(ch) && ch !== ".") qualifier = "";
     if (!/\s/.test(ch)) mark();
     code += ch;
     i += 1;
   }
   finish();
-  return { statements, code, names };
+  return { statements, code, names, calls };
 }
 
 function dollarTag(sql, i) {

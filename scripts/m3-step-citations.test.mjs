@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { assertSelectOnly as guardSelect } from "./select-only.mjs";
+import { assertReadQuery, assertSelectOnly as guardSelect } from "./select-only.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file) => readFileSync(resolve(root, file), "utf8");
@@ -34,8 +34,9 @@ function table(text) {
 }
 
 function assertSelectOnly(file, text) {
+  const check = file.endsWith("preflight.sql") ? guardSelect : assertReadQuery;
   try {
-    guardSelect(text);
+    check(text);
   } catch (error) {
     throw new Error(`${file}: ${error instanceof Error ? error.message : error}`);
   }

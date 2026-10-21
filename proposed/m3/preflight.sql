@@ -73,17 +73,17 @@ FROM (
          EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname = 'service_role')
   UNION ALL
   SELECT 110, 'installer owns public.applications', 'owner bypass',
-         current_user || ' super=' || r.rolsuper::text || ' bypass=' || r.rolbypassrls::text,
-         pg_catalog.pg_get_userbyid(c.relowner) = current_user AND (r.rolsuper OR r.rolbypassrls)
+         pg_catalog.pg_get_userbyid(c.relowner) || ' super=' || r.rolsuper::text || ' bypass=' || r.rolbypassrls::text,
+         r.rolsuper OR r.rolbypassrls
   FROM pg_catalog.pg_class c
-  JOIN pg_catalog.pg_roles r ON r.rolname = current_user
+  JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
   WHERE c.oid = 'public.applications'::regclass
   UNION ALL
   SELECT 120, 'installer owns public.waitlist', 'owner bypass',
-         current_user || ' super=' || r.rolsuper::text || ' bypass=' || r.rolbypassrls::text,
-         pg_catalog.pg_get_userbyid(c.relowner) = current_user AND (r.rolsuper OR r.rolbypassrls)
+         pg_catalog.pg_get_userbyid(c.relowner) || ' super=' || r.rolsuper::text || ' bypass=' || r.rolbypassrls::text,
+         r.rolsuper OR r.rolbypassrls
   FROM pg_catalog.pg_class c
-  JOIN pg_catalog.pg_roles r ON r.rolname = current_user
+  JOIN pg_catalog.pg_roles r ON r.oid = c.relowner
   WHERE c.oid = 'public.waitlist'::regclass
   UNION ALL
   SELECT 130, 'public.waitlist_coming_soon_email_limit()', 'absent',
@@ -107,20 +107,20 @@ FROM (
   SELECT 160, 'anon waitlist insert columns',
          'driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term',
          COALESCE((
-           SELECT string_agg(p.column_name, ',' ORDER BY p.column_name)
-           FROM information_schema.column_privileges p
-           WHERE p.table_schema = 'public'
-             AND p.table_name = 'waitlist'
-             AND p.grantee = 'anon'
-             AND p.privilege_type = 'INSERT'
+           SELECT string_agg(a.attname, ',' ORDER BY a.attname)
+           FROM pg_catalog.pg_attribute a
+           WHERE a.attrelid = 'public.waitlist'::regclass
+             AND a.attnum > 0
+             AND NOT a.attisdropped
+             AND pg_catalog.has_column_privilege('anon', a.attrelid, a.attname, 'INSERT')
          ), ''),
          COALESCE((
-           SELECT string_agg(p.column_name, ',' ORDER BY p.column_name)
-           FROM information_schema.column_privileges p
-           WHERE p.table_schema = 'public'
-             AND p.table_name = 'waitlist'
-             AND p.grantee = 'anon'
-             AND p.privilege_type = 'INSERT'
+           SELECT string_agg(a.attname, ',' ORDER BY a.attname)
+           FROM pg_catalog.pg_attribute a
+           WHERE a.attrelid = 'public.waitlist'::regclass
+             AND a.attnum > 0
+             AND NOT a.attisdropped
+             AND pg_catalog.has_column_privilege('anon', a.attrelid, a.attname, 'INSERT')
          ), '') = 'driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term'
   UNION ALL
   SELECT 170, 'public.waitlist.claim_token_hash', 'report',

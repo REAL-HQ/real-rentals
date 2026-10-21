@@ -7,16 +7,25 @@
  * with the extended protocol. The connection sets
  * default_transaction_read_only=on, and the transaction ends with ROLLBACK.
  *
- * Run it as a role that can SELECT the checklist tables and cannot insert,
- * update, delete, or change the catalog. A superuser can ignore the
- * read-only setting. This file does not create that role.
+ * Run it as a least-privilege read-only role. The script stops when the
+ * current role is a superuser. The message is: run as least-privilege
+ * read-only role. This file does not create that role.
+ *
+ * Function calls are an allowlist of the functions proposed/m3/preflight.sql
+ * uses, including pg_catalog.has_column_privilege. Any other function call
+ * is refused before connect. A U& identifier
+ * or string is refused. The URL is refused when it sets
+ * standard_conforming_strings, including through options. After connect
+ * the script stops when that setting is not on, and when dblink or
+ * postgres_fdw is installed, because those extensions can write from a
+ * read-only transaction.
  *
  * PGUSER, PGPASSWORD, PGHOST, PGPORT, and PGDATABASE fill in parts the URL
  * leaves out. The script prints the host and port only. It does not read
  * SUPABASE_URL. There is no default connection. A host other than loopback
  * (127.0.0.1, localhost, ::1) also needs --hosted.
  *
- *   bun scripts/m3-hosted-preflight.ts --url postgresql://postgres@127.0.0.1:55442/m3_rehearsal?sslmode=disable
+ *   bun scripts/m3-hosted-preflight.ts --url postgresql://read_only_role@127.0.0.1:55442/m3_rehearsal?sslmode=disable
  */
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
@@ -108,11 +117,80 @@ export function isLoopbackHost(url: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "0:0:0:0:0:0:0:1";
 }
 
+export function assertNoStandardStringsOverride(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Refusing to run: connection URL is invalid.");
+  }
+  for (const [key, value] of parsed.searchParams) {
+    const name = key.toLowerCase();
+    if (name === "standard_conforming_strings" || (name === "options" && /standard_conforming_strings/i.test(value))) {
+      throw new Error("Refusing to run: URL sets standard_conforming_strings.");
+    }
+  }
+}
+
 export function assertPreflightTarget(url: string, hosted: boolean): void {
   if (!url || url.startsWith("--")) throw new Error("Pass the database URL after --url. There is no default connection.");
+  assertNoStandardStringsOverride(url);
   if (!isLoopbackHost(url) && !hosted) {
     throw new Error("Refusing to run: host is not loopback. Pass --hosted to run the read-only checklist against that host.");
   }
+}
+
+const SESSION_PROBE = `
+SELECT current_setting('transaction_read_only') AS read_only,
+       current_setting('default_transaction_read_only') AS default_read_only,
+       current_setting('standard_conforming_strings') AS standard_strings,
+       r.rolsuper AS is_super,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = 'dblink') AS dblink,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = 'postgres_fdw') AS postgres_fdw
+FROM pg_catalog.pg_roles r
+WHERE r.rolname = current_user
+`;
+
+export function guardStops(flag: Record<string, unknown>): ChecklistRow[] {
+  const stops: ChecklistRow[] = [];
+  if (String(flag.standard_strings) !== "on") {
+    stops.push({ step: 0, check_name: "standard_conforming_strings", expected: "on", actual: String(flag.standard_strings), ok: false });
+  }
+  if (flag.is_super === true || flag.is_super === "t" || flag.is_super === "true") {
+    stops.push({
+      step: 0,
+      check_name: "current role",
+      expected: "not superuser",
+      actual: "superuser; run as least-privilege read-only role",
+      ok: false,
+    });
+  }
+  if (flag.dblink === true || flag.dblink === "t" || flag.dblink === "true") {
+    stops.push({
+      step: 0,
+      check_name: "extension dblink",
+      expected: "not installed",
+      actual: "installed; dblink can write from a read-only transaction",
+      ok: false,
+    });
+  }
+  if (flag.postgres_fdw === true || flag.postgres_fdw === "t" || flag.postgres_fdw === "true") {
+    stops.push({
+      step: 0,
+      check_name: "extension postgres_fdw",
+      expected: "not installed",
+      actual: "installed; postgres_fdw can write from a read-only transaction",
+      ok: false,
+    });
+  }
+  return stops;
+}
+
+export function formatGuardFailure(rows: ChecklistRow[]): string {
+  const lines = rows.map((row) => `${row.ok ? "PASS" : "STOP"} step ${row.step} ${row.check_name} expected=${row.expected} actual=${row.actual}`);
+  const stops = rows.filter((row) => !row.ok).length;
+  lines.push(`checklist stops=${stops} checks=${rows.length}`);
+  return lines.join("\n");
 }
 
 function asBool(value: unknown): boolean {
@@ -139,6 +217,8 @@ export async function executeReadOnly(
 }
 
 export async function defaultConnect(url: string, statements: string[]): Promise<Record<string, unknown>[]> {
+  assertNoStandardStringsOverride(url);
+  assertSelectOnly(SESSION_PROBE);
   const target = connectionTarget(url);
   const sql = postgres(url, {
     max: 1,
@@ -150,11 +230,7 @@ export async function defaultConnect(url: string, statements: string[]): Promise
   const rows: Record<string, unknown>[] = [];
   try {
     await sql.begin("READ ONLY", async (tx) => {
-      const [flag] = await tx.unsafe(
-        "SELECT current_setting('transaction_read_only') AS read_only, current_setting('default_transaction_read_only') AS default_read_only",
-        [],
-        { prepare: true, simple: false },
-      );
+      const [flag] = await tx.unsafe(SESSION_PROBE, [], { prepare: true, simple: false });
       if (String(flag.read_only) !== "on" || String(flag.default_read_only) !== "on") {
         throw new Error("Refusing to run: transaction_read_only is not on");
       }
@@ -165,6 +241,11 @@ export async function defaultConnect(url: string, statements: string[]): Promise
         actual: "on",
         ok: true,
       });
+      const stops = guardStops(flag);
+      if (stops.length) {
+        for (const stop of stops) rows.push({ ...stop, blocked: true });
+        throw new ReadOnlyDone();
+      }
       for (const statement of statements) {
         rows.push(...await tx.unsafe(statement, [], { prepare: true, simple: false }));
       }
@@ -202,7 +283,9 @@ export async function runChecklist(options: {
   assertPreflightTarget(options.url, options.hosted);
   const statements = options.statements ?? [loadPreflight()];
   const queryRows = await executeReadOnly(options.url, statements, options.connect);
-  return formatChecklist(rowsFromQuery(queryRows));
+  const checklist = rowsFromQuery(queryRows);
+  if (queryRows.some((row) => row.blocked === true)) return formatGuardFailure(checklist);
+  return formatChecklist(checklist);
 }
 
 if (import.meta.main) {

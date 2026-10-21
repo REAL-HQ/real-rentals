@@ -33,6 +33,8 @@ if [[ "$db" == "m2" ]]; then
   exit 1
 fi
 
+READER_ROLE="m3_preflight_reader"
+READER_URL=""
 if [[ -z "$PGURL" ]]; then
   OWN_SCRATCH=1
   PGURL="postgresql://postgres@127.0.0.1:55442/m3_rehearsal?sslmode=disable"
@@ -44,6 +46,9 @@ if [[ -z "$PGURL" ]]; then
   psql "$ADMIN" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'm3_rehearsal' AND pid <> pg_backend_pid();" >>"$LOG" 2>&1 || true
   psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS m3_rehearsal;" >>"$LOG" 2>&1
   psql "$ADMIN" -v ON_ERROR_STOP=1 -c "CREATE DATABASE m3_rehearsal TEMPLATE m2;" >>"$LOG" 2>&1
+  psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS ${READER_ROLE};" >>"$LOG" 2>&1
+  psql "$ADMIN" -v ON_ERROR_STOP=1 -c "CREATE ROLE ${READER_ROLE} LOGIN PASSWORD 'readerpass' NOSUPERUSER NOCREATEDB NOCREATEROLE; GRANT pg_read_all_data TO ${READER_ROLE};" >>"$LOG" 2>&1
+  READER_URL="postgresql://${READER_ROLE}:readerpass@127.0.0.1:55442/m3_rehearsal?sslmode=disable"
   echo "scratch database m3_rehearsal cloned from local m2" | tee -a "$LOG"
 fi
 
@@ -56,6 +61,7 @@ cleanup() {
   if [[ "$OWN_SCRATCH" == 1 ]]; then
     psql "$ADMIN" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'm3_rehearsal' AND pid <> pg_backend_pid();" >>"$LOG" 2>&1 || true
     psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS m3_rehearsal;" >>"$LOG" 2>&1 || true
+    psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS ${READER_ROLE};" >>"$LOG" 2>&1 || true
     echo "dropped scratch database m3_rehearsal" | tee -a "$LOG"
   fi
 }
@@ -89,8 +95,16 @@ require_preflight() {
     echo "bun is required for the read-only preflight" | tee -a "$LOG"
     exit 1
   fi
-  text="$("$BUN" "$ROOT/scripts/m3-hosted-preflight.ts" --url "$PGURL")"
+  local url="${READER_URL:-$PGURL}" status
+  set +e
+  text="$("$BUN" "$ROOT/scripts/m3-hosted-preflight.ts" --url "$url" 2>&1)"
+  status=$?
+  set -e
   printf '%s\n' "$text" | tee -a "$LOG"
+  if [[ "$status" -ne 0 ]]; then
+    echo "preflight failed" | tee -a "$LOG"
+    exit 1
+  fi
   if ! printf '%s\n' "$text" | grep -q 'checklist stops=0 checks=18'; then
     echo "preflight failed" | tee -a "$LOG"
     exit 1
