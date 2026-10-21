@@ -4,6 +4,8 @@
 // wizard. First-touch wins: once a field is recorded, later navigations
 // don't overwrite it.
 
+import { landingPageWithoutClaim } from "@/lib/waitlist-claim";
+
 const KEY = "rr_attribution_v1";
 
 export type Attribution = {
@@ -69,8 +71,16 @@ export function captureAttribution(): Attribution {
     }
   }
   if (!current.landing_page) {
-    current.landing_page = window.location.pathname + window.location.search;
+    // A claim link must not be stored as the landing page. The token is a
+    // credential; the path and the other query params are the attribution.
+    current.landing_page = landingPageWithoutClaim(window.location.pathname + window.location.search);
     changed = true;
+  } else {
+    const clean = landingPageWithoutClaim(current.landing_page);
+    if (clean !== current.landing_page) {
+      current.landing_page = clean;
+      changed = true;
+    }
   }
   if (!current.referrer) {
     const ref = document.referrer;

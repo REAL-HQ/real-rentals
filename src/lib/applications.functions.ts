@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { landingPageWithoutClaim } from "@/lib/waitlist-claim";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 
@@ -533,6 +534,10 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       // what "the same address" means.
       .insert({
         ...insertFields,
+        // A claim token in the address bar is a credential. Keep the page,
+        // drop the token, including when the browser sends it anyway.
+        landing_page: landingPageWithoutClaim(insertFields.landing_page),
+        referrer: landingPageWithoutClaim(insertFields.referrer),
         email: emailLower,
         status: "partial",
         current_step: "rental",

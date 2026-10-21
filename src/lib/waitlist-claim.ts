@@ -4,15 +4,28 @@
  *
  * false: the opening email is the current /apply link, a failed send still
  * marks the row Notified, and Coming Soon still inserts from the browser.
- * true: the email carries a claim link, Notified is written only after the
- * send succeeds, and Coming Soon calls joinWaitlist.
+ * true: the email carries a single-use claim link bound to that row's email,
+ * Notified is written only after the send succeeds, and Coming Soon calls
+ * joinWaitlist behind a rate limit.
  *
  * No environment variable can open it. Activation is changing this constant
- * and rebuilding. Leave it false until an owner does that.
+ * and rebuilding. Leave it false until an owner does that, and until the
+ * proposed claim_token_hash column exists. A missing signing secret fails
+ * closed: no link, no send, no Notified stamp.
  *
  * Typed as boolean so the enabled branch stays visible to the type checker.
  */
 export const WAITLIST_CLAIM_ENABLED: boolean = false;
+
+/** Dedicated HMAC secret. Never the service-role key. */
+export const WAITLIST_CLAIM_SECRET_NAME = "WAITLIST_CLAIM_SECRET";
+
+/** Coming Soon attempts, counted inside one hour, including the current one. */
+export const COMING_SOON_EMAIL_LIMIT = 5;
+export const COMING_SOON_IP_LIMIT = 20;
+export const COMING_SOON_WINDOW_MS = 60 * 60 * 1000;
+export const COMING_SOON_LIMIT_ERROR = "Please try again later.";
+export const COMING_SOON_ATTEMPT_ACTION = "waitlist.coming_soon_attempt";
 
 /** Fourteen days. Not an application resume token. */
 export const WAITLIST_CLAIM_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -79,28 +92,37 @@ export function openingEmail(input: {
 
 type OpeningRow = { id: string; full_name?: string | null; email: string; city?: string | null };
 
+/** A claim link plus the hash the row must store before the link will open. */
+export type ClaimLink = { href: string; tokenHash: string };
+
 /**
  * Sends one opening email per row. The caller supplies send and markNotified,
  * so tests never touch a mail provider. claimUrl is not called while the
  * flag is off.
+ *
+ * Flag off: a failed send still marks Notified, and the hash is null so the
+ * caller must not write claim_token_hash. Flag on: no hash and no successful
+ * send means no Notified write.
  */
 export async function deliverOpeningEmails<T extends OpeningRow>(args: {
   enabled: boolean;
   rows: readonly T[];
   origin: string;
   companyPhone: string;
-  claimUrl: (row: T) => Promise<string | null>;
+  claimUrl: (row: T) => Promise<ClaimLink | null>;
   send: (message: { to: string; subject: string; html: string }) => Promise<{ ok: boolean }>;
-  markNotified: (id: string) => Promise<void>;
+  markNotified: (id: string, tokenHash: string | null) => Promise<void | boolean>;
 }): Promise<{ sent: number }> {
   let sent = 0;
   for (const row of args.rows) {
     let href = `${args.origin}/apply`;
+    let tokenHash: string | null = null;
     if (args.enabled) {
       const claim = await args.claimUrl(row);
       // No secret, no link: do not send and do not mark Notified.
-      if (!claim) continue;
-      href = claim;
+      if (!claim?.href || !claim.tokenHash) continue;
+      href = claim.href;
+      tokenHash = claim.tokenHash;
     }
     const message = openingEmail({
       enabled: args.enabled,
@@ -110,10 +132,63 @@ export async function deliverOpeningEmails<T extends OpeningRow>(args: {
       companyPhone: args.companyPhone,
     });
     const res = await args.send({ to: row.email, subject: message.subject, html: message.html });
-    if (res.ok) sent += 1;
-    if (shouldMarkNotified(args.enabled, res.ok)) await args.markNotified(row.id);
+    if (args.enabled) {
+      if (!res?.ok) continue;
+      const marked = await args.markNotified(row.id, tokenHash);
+      if (marked === false) continue;
+      sent += 1;
+      continue;
+    }
+    if (res?.ok) sent += 1;
+    await args.markNotified(row.id, null);
   }
   return { sent };
+}
+
+/**
+ * Drop a claim token from a stored landing page or referrer.
+ * The value may be a path (`/apply?claim=…`) or an absolute URL.
+ * Other query params stay. A value with no claim param is returned as-is.
+ */
+export function landingPageWithoutClaim(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const raw = String(value);
+  if (!raw) return raw;
+  const q = raw.indexOf("?");
+  if (q === -1) return raw;
+  const hashAt = raw.indexOf("#", q);
+  const query = raw.slice(q + 1, hashAt === -1 ? undefined : hashAt);
+  const params = new URLSearchParams(query);
+  if (!params.has("claim")) return raw;
+  params.delete("claim");
+  const next = params.toString();
+  const suffix = hashAt === -1 ? "" : raw.slice(hashAt);
+  return `${raw.slice(0, q)}${next ? `?${next}` : ""}${suffix}`;
+}
+
+export function normalizeClaimEmail(email: string | null | undefined): string | null {
+  const norm = String(email ?? "").trim().toLowerCase();
+  if (!norm || norm.includes("|") || norm.includes("\n") || norm.includes("\r")) return null;
+  return norm;
+}
+
+/**
+ * Coming Soon rate decision. Counts include the attempt being judged.
+ * A missing client address fails closed. The message is the same for every
+ * refusal so the endpoint does not describe which limit fired.
+ */
+export function comingSoonRateDecision(input: {
+  emailAttempts: number;
+  ipAttempts: number;
+  ipKnown: boolean;
+}): { ok: true } | { ok: false; error: string } {
+  if (!input.ipKnown || !Number.isFinite(input.emailAttempts) || !Number.isFinite(input.ipAttempts)) {
+    return { ok: false, error: COMING_SOON_LIMIT_ERROR };
+  }
+  if (input.emailAttempts > COMING_SOON_EMAIL_LIMIT || input.ipAttempts > COMING_SOON_IP_LIMIT) {
+    return { ok: false, error: COMING_SOON_LIMIT_ERROR };
+  }
+  return { ok: true };
 }
 
 export type ComingSoonFields = {

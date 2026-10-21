@@ -71,6 +71,15 @@ export const joinWaitlist = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { WAITLIST_CLAIM_ENABLED } = await import("@/lib/waitlist-claim");
+    // Coming Soon uses this endpoint only while the claim flag is on. The
+    // public hero keeps source fleet_waitlist and is not limited here, so
+    // today's signup path is unchanged while the flag stays off.
+    if (WAITLIST_CLAIM_ENABLED && data.source === "homepage_waitlist") {
+      const { enforceComingSoonRate } = await import("@/lib/waitlist-claim.server");
+      const gate = await enforceComingSoonRate(supabaseAdmin, data.email);
+      if (!gate.ok) return { ok: false as const, error: gate.error };
+    }
 
     // One spot per address. Say success either way so a repeat click or a
     // second submission from the same person is not a second queue entry —
@@ -366,14 +375,33 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
       companyPhone,
       claimUrl: async (row) => {
         const { waitlistClaimUrl } = await import("@/lib/waitlist-claim.server");
-        return waitlistClaimUrl(row.id, { origin: siteOrigin() });
+        return waitlistClaimUrl({ entryId: row.id, email: row.email, origin: siteOrigin() });
       },
       send: (message) => sendEmail(message),
-      markNotified: async (id) => {
-        await supabaseAdmin
+      markNotified: async (id, tokenHash) => {
+        // Flag off: the same Notified stamp as before, including after a
+        // failed send. The claim hash column is not written.
+        if (!WAITLIST_CLAIM_ENABLED) {
+          await supabaseAdmin
+            .from("waitlist")
+            .update({ status: "notified", notified_at: new Date().toISOString() })
+            .eq("id", id);
+          return true;
+        }
+        // Flag on: deliverOpeningEmails calls this only after the send
+        // returns ok. The hash is stored in that same write.
+        if (!tokenHash) return false;
+        const { data: marked, error } = await supabaseAdmin
           .from("waitlist")
-          .update({ status: "notified", notified_at: new Date().toISOString() })
-          .eq("id", id);
+          .update({
+            status: "notified",
+            notified_at: new Date().toISOString(),
+            claim_token_hash: tokenHash,
+          } as any)
+          .eq("id", id)
+          .eq("status", "waiting")
+          .select("id");
+        return !error && Array.isArray(marked) && marked.length === 1;
       },
     });
 
@@ -390,28 +418,19 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 
 /**
  * Opens a claim link into a prefill. With the flag off this returns
- * immediately and does not read the waitlist. It never promotes, never
- * writes, and never issues an application resume token.
+ * immediately and does not read the waitlist. It never promotes and never
+ * issues an application resume token. With the flag on, the only write is
+ * clearing the single-use hash after the signature matches that row's email.
  */
 export const readWaitlistClaim = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(300) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(500) }).parse(d))
   .handler(async ({ data }) => {
-    const { WAITLIST_CLAIM_ENABLED, claimPrefillFromRow } = await import("@/lib/waitlist-claim");
+    const { WAITLIST_CLAIM_ENABLED } = await import("@/lib/waitlist-claim");
     if (!WAITLIST_CLAIM_ENABLED) return { ok: false as const };
 
-    const { verifyWaitlistClaim } = await import("@/lib/waitlist-claim.server");
-    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-    const parsed = await verifyWaitlistClaim(data.token, secret);
-    if (!parsed) return { ok: false as const, error: "This link is not valid." };
-
+    const { openWaitlistClaim, readClaimSecret, claimStoreFromSupabase } = await import("@/lib/waitlist-claim.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("waitlist")
-      .select("full_name,email,phone,city,state,pickup_date,market_id,status")
-      .eq("id", parsed.entryId)
-      .maybeSingle();
-    if (error || !row) return { ok: false as const, error: "This link is not valid." };
-    return claimPrefillFromRow(row);
+    return openWaitlistClaim(claimStoreFromSupabase(supabaseAdmin), data.token, readClaimSecret());
   });
 
 export const promoteToApplicant = createServerFn({ method: "POST" })
