@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { tierAllows, type StaffTier } from "./roles";
 import { OWNER_DIRECTORY_MAX_PAGES, OWNER_DIRECTORY_PAGE } from "./owner-pnl.server";
+import type { OwnerFeeRead } from "./owner-pnl-fees";
 import { monthWindow } from "./owner-pnl";
 import {
   buildAccountantYear,
@@ -14,7 +15,8 @@ import type { OwnerCharge, OwnerPnlDirectory } from "./owner-pnl";
 /**
  * Owners only. The flag is checked before the role and before any table or
  * Stripe read. Charges come from one readLivePartnerCharges call for the
- * year. This file does not import Stripe. Page size and page count are the
+ * year. Fees come from the caller, one Eastern Time month at a time, after
+ * the charge read. This file does not import Stripe. Page size and page count are the
  * directory limits from Monthly Owner P&L.
  */
 
@@ -47,6 +49,7 @@ export async function runAccountantExport(input: {
   now?: Date;
   load: () => Promise<AccountantLoad | null>;
   readCharges: (window: { gte: number; lt: number }) => Promise<{ ok: true; charges: OwnerCharge[] } | { ok: false; reason: string; capped?: boolean }>;
+  readFees: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>;
 }): Promise<AccountantExportResponse> {
   if (!input.enabled) return { status: "disabled", report: null };
   if (!input.userId || !tierAllows(input.tier, "owner")) throw new Error("Forbidden");
@@ -59,6 +62,12 @@ export async function runAccountantExport(input: {
   if (!loaded) return { status: "unavailable", reason: "Year records were incomplete", report: null };
   const charges = await input.readCharges({ gte: first.gte, lt: last.lt });
   if (!charges.ok && !charges.capped) return { status: "unavailable", reason: charges.reason, report: null };
+  const feesByMonth: Record<string, OwnerFeeRead> = {};
+  for (const month of months) {
+    const window = monthWindow(month);
+    if (!window) return { status: "unavailable", reason: "The year could not be dated", report: null };
+    feesByMonth[month] = await settleFees(input.readFees, { gte: window.gte, lt: window.lt });
+  }
   const warnings: string[] = [];
   if (loaded.ledgerCapped) warnings.push(LEDGER_CAP);
   if (loaded.namesCapped) warnings.push(NAME_CAP);
@@ -77,6 +86,7 @@ export async function runAccountantExport(input: {
     blankRefunds: blankLedger,
     omitDetails: blankLedger || loaded.namesCapped,
     warnings,
+    feesByMonth,
   });
   return report ? { status: "ready", report } : { status: "unavailable", reason: "The year could not be dated", report: null };
 }
@@ -173,6 +183,19 @@ export async function loadAccountantSources(
     })),
     vendors: vendors.rows.map((row) => ({ id: row.id, name: row.name })),
   };
+}
+
+async function settleFees(
+  read: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>,
+  window: { gte: number; lt: number },
+): Promise<OwnerFeeRead> {
+  try {
+    const result = await read(window);
+    if (result?.ok === true && Number.isSafeInteger(result.feesCents)) return { ok: true, feesCents: result.feesCents };
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
 }
 
 async function readBounded<T extends { id: string }>(
