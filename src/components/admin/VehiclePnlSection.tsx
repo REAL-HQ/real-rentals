@@ -145,9 +145,7 @@ export function VehiclePnlSection() {
                       <td className="px-3 py-2">{money(report.unattributed.expenseCents)}</td>
                       <td className="px-3 py-2">{money(report.unattributed.tollsTicketsCents)}</td>
                       <td className="px-3 py-2">{money(report.unattributed.maintenanceCents)}</td>
-                      <td className="px-3 py-2">
-                        {money(netOf(report.unattributed))}
-                      </td>
+                      <td className="px-3 py-2">{money(report.unattributed.netCents)}</td>
                     </tr>
                   )}
                 </tbody>
@@ -163,12 +161,6 @@ export function VehiclePnlSection() {
       )}
     </section>
   );
-}
-
-function netOf(row: { revenueCents: number | null; expenseCents: number | null; tollsTicketsCents: number | null; maintenanceCents: number | null }): number | null {
-  if (row.revenueCents === null || row.expenseCents === null || row.tollsTicketsCents === null || row.maintenanceCents === null) return null;
-  const value = row.revenueCents - row.expenseCents - row.tollsTicketsCents - row.maintenanceCents;
-  return Number.isSafeInteger(value) ? value : null;
 }
 
 function money(cents: number | null): string {

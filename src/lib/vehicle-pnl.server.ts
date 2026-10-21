@@ -46,6 +46,10 @@ type Query = PromiseLike<QueryResult> & {
   order: (column: string, options: { ascending: boolean }) => Query;
   limit: (count: number) => Query;
   gt: (column: string, value: string) => Query;
+  gte: (column: string, value: string) => Query;
+  lt: (column: string, value: string) => Query;
+  or: (filters: string) => Query;
+  in: (column: string, values: readonly string[]) => Query;
 };
 export type VehiclePnlClient = {
   from: (table: string) => { select: (columns: string) => Query };
@@ -78,26 +82,34 @@ export async function loadVehiclePnl(
   if (!vehicles) return null;
   const rentals = await readPages(supabase, "rentals", "id,vehicle_id");
   if (!rentals) return null;
-  const payments = await readPages(
-    supabase,
-    "payments",
-    "id,rental_id,vehicle_id,status,type,net_collected,paid_date,stripe_payment_intent_id",
-  );
-  if (!payments) return null;
+  const from = shiftYmd(window.from, -1);
+  const to = shiftYmd(window.to, 1);
+  const dated = (column: string) => (query: Query) => query.gte(column, from).lt(column, to);
   const expenses = await readPages(
     supabase,
     "vehicle_expenses",
     "id,vehicle_id,category,amount,incurred_on,maintenance_record_id",
+    dated("incurred_on"),
   );
   if (!expenses) return null;
-  const tolls = await readPages(supabase, "toll_charges", "id,vehicle_id,charge_type,occurred_at,amount");
+  const tolls = await readPages(
+    supabase,
+    "toll_charges",
+    "id,vehicle_id,charge_type,occurred_at,amount",
+    dated("occurred_at"),
+  );
   if (!tolls) return null;
   const maintenance = await readPages(
     supabase,
     "maintenance_records",
     "id,vehicle_id,company_share,total_cost,performed_on,completed_at,created_at",
+    (query) => query.or(["performed_on", "completed_at", "created_at"].map((column) => `and(${column}.gte.${from},${column}.lt.${to})`).join(",")),
   );
   if (!maintenance) return null;
+  const stripe = await readStripe({ gte: window.gte, lt: window.lt });
+  const paymentColumns = "id,rental_id,vehicle_id,status,type,net_collected,paid_date,stripe_payment_intent_id,stripe_invoice_id";
+  const payments = await readPayments(supabase, paymentColumns, dated("paid_date"), stripe);
+  if (!payments) return null;
 
   const directory: VehiclePnlDirectory = {
     vehicles: [],
@@ -141,6 +153,7 @@ export async function loadVehiclePnl(
       netCollected: row.net_collected,
       paidDate: text(row.paid_date),
       stripePaymentIntentId: text(row.stripe_payment_intent_id),
+      stripeInvoiceId: text(row.stripe_invoice_id),
     });
   }
   for (const row of expenses.rows) {
@@ -176,19 +189,63 @@ export async function loadVehiclePnl(
       createdAt: text(row.created_at),
     });
   }
-  directory.stripe = await readStripe({ gte: window.gte, lt: window.lt });
+  directory.stripe = stripe;
   return directory;
+}
+
+const LINK_CHUNK = 50;
+
+async function readPayments(
+  supabase: VehiclePnlClient,
+  columns: string,
+  dated: (query: Query) => Query,
+  stripe: VehiclePnlStripeRead,
+): Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean } | null> {
+  const payments = await readPages(supabase, "payments", columns, dated);
+  if (!payments) return null;
+  if (!stripe.ok) return payments;
+  const intents = unique(stripe.charges.flatMap((charge) => [charge.paymentIntentId, charge.id]));
+  const invoices = unique(stripe.charges.map((charge) => charge.invoiceId));
+  const linked = await readLinked(supabase, columns, intents, invoices);
+  if (!linked) return null;
+  const byId = new Map(payments.rows.map((row) => [String(row.id), row]));
+  for (const row of linked.rows) {
+    if (typeof row.id === "string" && !byId.has(row.id)) byId.set(row.id, row);
+  }
+  return { rows: [...byId.values()], truncated: payments.truncated || linked.truncated };
+}
+
+async function readLinked(
+  supabase: VehiclePnlClient,
+  columns: string,
+  intents: string[],
+  invoices: string[],
+): Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean } | null> {
+  const rows: Array<Record<string, unknown>> = [];
+  let truncated = false;
+  for (const [column, ids] of [["stripe_payment_intent_id", intents], ["stripe_invoice_id", invoices]] as const) {
+    for (let index = 0; index < ids.length; index += LINK_CHUNK) {
+      const chunk = ids.slice(index, index + LINK_CHUNK);
+      const page = await readPages(supabase, "payments", columns, (query) => query.in(column, chunk));
+      if (!page) return null;
+      if (page.truncated) truncated = true;
+      rows.push(...page.rows);
+    }
+  }
+  return { rows, truncated };
 }
 
 export async function readPages(
   supabase: VehiclePnlClient,
   table: string,
   columns: string,
+  narrow?: (query: Query) => Query,
 ): Promise<{ rows: Array<Record<string, unknown>>; truncated: boolean } | null> {
   const rows: Array<Record<string, unknown>> = [];
   let cursor: string | null = null;
   for (let page = 0; page < VEHICLE_PNL_MAX_PAGES; page++) {
     let query = supabase.from(table).select(columns).order("id", { ascending: true });
+    if (narrow) query = narrow(query);
     if (cursor) query = query.gt("id", cursor);
     const response = await query.limit(PAGE + 1);
     if (response.error || !Array.isArray(response.data) || response.data.length > PAGE + 1) return null;
@@ -206,4 +263,13 @@ export async function readPages(
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function unique(values: Array<string | null>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())))];
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const [year, month, day] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(year!, month! - 1, day! + days)).toISOString().slice(0, 10);
 }

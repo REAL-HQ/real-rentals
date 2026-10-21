@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { monthWindow } from "../src/lib/owner-pnl";
+import { verifyCollectedCharges } from "../src/lib/stripe-collections";
 import { VEHICLE_PNL_ENABLED } from "../src/lib/vehicle-pnl-flag";
 import {
   VEHICLE_PNL_MAX_PAGES,
@@ -44,6 +45,7 @@ function payment(extra: Partial<VehiclePnlPayment> & { id: string }): VehiclePnl
     netCollected: "0.00",
     paidDate: "2026-10-09",
     stripePaymentIntentId: null,
+    stripeInvoiceId: null,
     ...extra,
   };
 }
@@ -52,6 +54,7 @@ function charge(extra: Partial<VehiclePnlCharge> = {}): VehiclePnlCharge {
   return {
     id: "ch_1",
     paymentIntentId: "pi_1",
+    invoiceId: null,
     currency: "usd",
     amount: 10000,
     created: OCTOBER.gte + 3600,
@@ -231,7 +234,7 @@ describe("vehicle profit amounts", () => {
     expect(result.rows[0]?.netCents).toBe(0);
   });
 
-  it("includes a Stripe deposit charge in verified revenue", () => {
+  it("excludes a Stripe deposit charge from verified revenue", () => {
     const result = report({
       payments: [payment({ id: "p-dep", type: "deposit", stripePaymentIntentId: "pi_dep", netCollected: "50.00" })],
       stripe: {
@@ -241,7 +244,39 @@ describe("vehicle profit amounts", () => {
         refunds: [],
       },
     });
-    expect(result.rows[0]?.revenueCents).toBe(4900);
+    expect(result.rows[0]?.revenueCents).toBe(0);
+    expect(result.rows[0]?.netCents).toBe(0);
+  });
+
+  it("keeps revenue known when the payment is in the month and the charge was captured earlier", () => {
+    const result = report({
+      payments: [payment({ id: "p-1", stripePaymentIntentId: "pi_old", netCollected: "100.00", paidDate: "2026-10-09" })],
+      stripe: {
+        ok: true,
+        truncated: false,
+        charges: [charge({ id: "ch_old", paymentIntentId: "pi_old", created: OCTOBER.gte - 86400 })],
+        refunds: [],
+      },
+    });
+    expect(result.rows[0]?.revenueCents).toBe(0);
+    expect(result.unattributed.revenueCents).toBe(0);
+  });
+
+  it("does not add a payment that shares only a Stripe invoice with the charge", () => {
+    const matched = report({
+      payments: [payment({ id: "p-1", stripePaymentIntentId: null, stripeInvoiceId: "in_1", netCollected: "100.00" })],
+      stripe: {
+        ok: true,
+        truncated: false,
+        charges: [charge({ invoiceId: "in_1", paymentIntentId: "pi_other" })],
+        refunds: [],
+      },
+    });
+    expect(matched.rows[0]?.revenueCents).toBe(9700);
+    const earlier = report({
+      payments: [payment({ id: "p-2", stripePaymentIntentId: null, stripeInvoiceId: "in_old", netCollected: "100.00" })],
+    });
+    expect(earlier.rows[0]?.revenueCents).toBe(0);
   });
 
   it("attributes a payment through its rental", () => {
@@ -375,6 +410,31 @@ describe("vehicle profit amounts", () => {
   });
 });
 
+function queryChain(limit: (count: number) => Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>) {
+  const api = {
+    order() {
+      return api;
+    },
+    gt() {
+      return api;
+    },
+    gte() {
+      return api;
+    },
+    lt() {
+      return api;
+    },
+    or() {
+      return api;
+    },
+    in() {
+      return api;
+    },
+    limit,
+  };
+  return api;
+}
+
 describe("vehicle profit reads", () => {
   it("stops at limit plus one and reports a truncated page", async () => {
     let issued = 0;
@@ -382,23 +442,14 @@ describe("vehicle profit reads", () => {
       from() {
         return {
           select() {
-            const api = {
-              order() {
-                return api;
-              },
-              gt() {
-                return api;
-              },
-              limit(count: number) {
-                expect(count).toBe(VEHICLE_PNL_PAGE + 1);
-                const rows = Array.from({ length: count }, (_, index) => {
-                  issued += 1;
-                  return { id: String(issued).padStart(8, "0"), status: "paid", type: "rent" };
-                });
-                return Promise.resolve({ data: rows, error: null });
-              },
-            };
-            return api;
+            return queryChain((count: number) => {
+              expect(count).toBe(VEHICLE_PNL_PAGE + 1);
+              const rows = Array.from({ length: count }, (_, index) => {
+                issued += 1;
+                return { id: String(issued).padStart(8, "0"), status: "paid", type: "rent" };
+              });
+              return Promise.resolve({ data: rows, error: null });
+            });
           },
         };
       },
@@ -414,18 +465,7 @@ describe("vehicle profit reads", () => {
       from() {
         return {
           select() {
-            const api = {
-              order() {
-                return api;
-              },
-              gt() {
-                return api;
-              },
-              limit() {
-                return Promise.resolve({ data: null, error: { message: "down" } });
-              },
-            };
-            return api;
+            return queryChain(() => Promise.resolve({ data: null, error: { message: "down" } }));
           },
         };
       },
@@ -440,11 +480,50 @@ describe("vehicle profit reads", () => {
       from(table: string) {
         return {
           select() {
+            return queryChain(() => {
+              const row =
+                table === "vehicles"
+                  ? { id: "veh-1", year: 2020, make: "Honda", model: "Civic", license_plate: "ABC" }
+                  : { id: `${table}-1`, status: "paid", type: "rent", charge_type: "toll" };
+              return Promise.resolve({ data: [row], error: null });
+            });
+          },
+        };
+      },
+    };
+    const loaded = await loadVehiclePnl(client, stripe, "2026-10");
+    expect(loaded?.caps.payments).toBe(false);
+    expect(stripe).toHaveBeenCalledTimes(1);
+    const bounds = stripe.mock.calls[0]?.[0] as { gte: number; lt: number };
+    expect(bounds).toEqual({ gte: OCTOBER.gte, lt: OCTOBER.lt });
+  });
+
+  it("filters money tables to the month and leaves the vehicle directory unfiltered", async () => {
+    const calls: string[] = [];
+    const client: VehiclePnlClient = {
+      from(table: string) {
+        return {
+          select() {
             const api = {
               order() {
                 return api;
               },
               gt() {
+                return api;
+              },
+              gte(column: string, value: string) {
+                calls.push(`${table}.gte.${column}.${value}`);
+                return api;
+              },
+              lt(column: string, value: string) {
+                calls.push(`${table}.lt.${column}.${value}`);
+                return api;
+              },
+              or(filters: string) {
+                calls.push(`${table}.or.${filters}`);
+                return api;
+              },
+              in() {
                 return api;
               },
               limit() {
@@ -460,11 +539,64 @@ describe("vehicle profit reads", () => {
         };
       },
     };
-    const loaded = await loadVehiclePnl(client, stripe, "2026-10");
-    expect(loaded?.caps.payments).toBe(false);
-    expect(stripe).toHaveBeenCalledTimes(1);
-    const bounds = stripe.mock.calls[0]?.[0] as { gte: number; lt: number };
-    expect(bounds).toEqual({ gte: OCTOBER.gte, lt: OCTOBER.lt });
+    const loaded = await loadVehiclePnl(client, async () => ({ ok: true, truncated: false, charges: [], refunds: [] }), "2026-10");
+    expect(loaded?.payments).toHaveLength(1);
+    expect(calls.some((call) => call.startsWith("vehicles."))).toBe(false);
+    expect(calls).toContain("vehicle_expenses.gte.incurred_on.2026-09-30");
+    expect(calls).toContain("vehicle_expenses.lt.incurred_on.2026-11-02");
+    expect(calls).toContain("toll_charges.gte.occurred_at.2026-09-30");
+    expect(calls).toContain("payments.gte.paid_date.2026-09-30");
+    expect(calls.some((call) => call.startsWith("maintenance_records.or.") && call.includes("performed_on") && call.includes("completed_at") && call.includes("created_at"))).toBe(true);
+  });
+});
+
+describe("shared Stripe verification", () => {
+  const gte = Date.parse("2026-10-15T00:00:00Z") / 1000;
+  const lt = Date.parse("2026-10-17T00:00:00Z") / 1000;
+  const owned = {
+    invoicePayments: [{ id: "ip", invoiceId: "in", intentId: "pi", chargeId: "ch", externalRecord: false }],
+    invoices: [{ id: "in", customerId: "cus", subscriptionId: "sub" }],
+    subscriptions: [{ id: "sub", customerId: "cus" }],
+  };
+  function charge(extra: Record<string, unknown> = {}) {
+    return {
+      id: "ch",
+      customerId: "cus",
+      paymentIntentId: "pi",
+      currency: "usd",
+      amountCaptured: 35000,
+      paid: true,
+      captured: true,
+      status: "succeeded",
+      created: gte + 10,
+      balance: { created: gte + 10, currency: "usd", amount: 35000, fee: 1045 },
+      ...extra,
+    };
+  }
+  function verify(charges: ReturnType<typeof charge>[], refunds: Parameters<typeof verifyCollectedCharges>[0]["refunds"] = []) {
+    return verifyCollectedCharges({ window: { gte, lt }, ...owned, charges, refunds });
+  }
+
+  it("dates cash by capture time and checks settlement amount, ownership, and bad refunds", () => {
+    const dated = verify([charge({ created: gte - 604800, balance: { created: gte + 10, currency: "usd", amount: 35000, fee: 1045 } })]);
+    expect(dated.collectionsComplete).toBe(true);
+    expect(dated.charges[0]?.created).toBe(gte + 10);
+    const unowned = verifyCollectedCharges({
+      window: { gte, lt },
+      invoicePayments: [],
+      invoices: [],
+      subscriptions: [],
+      charges: [charge()],
+      refunds: [],
+    });
+    expect(unowned.collectionsComplete).toBe(false);
+    expect(unowned.charges).toEqual([]);
+    const mismatched = verify([charge({ balance: { created: gte + 10, currency: "usd", amount: 10000, fee: 1045 } })]);
+    expect(mismatched.collectionsComplete).toBe(false);
+    expect(mismatched.charges).toEqual([]);
+    const badRefund = verify([charge()], [{ id: "re", chargeId: "ch_missing", created: gte + 20, currency: "usd", amount: 500, status: "succeeded", fee: 0 }]);
+    expect(badRefund.collectionsComplete).toBe(false);
+    expect(badRefund.incompletePortions.some((portion) => portion.source === "Refund" && portion.id === "re")).toBe(true);
   });
 });
 
@@ -508,9 +640,26 @@ describe("vehicle profit access", () => {
     expect(admin).not.toContain("vehicle_pnl");
     const stripe = readFileSync(new URL("../src/lib/vehicle-pnl-stripe.server.ts", import.meta.url), "utf8");
     expect(stripe).toContain("createReadOnlyStripe");
+    expect(stripe).toContain("verifyCollectedCharges");
+    expect(stripe).toContain("lt: window.lt");
     expect(stripe).not.toMatch(/\.create\(/);
+    expect(stripe).not.toContain("amount_captured ??");
+    const formula = readFileSync(new URL("../src/lib/vehicle-pnl.ts", import.meta.url), "utf8");
+    expect(formula).toContain("aggregateCollections");
+    expect(formula).toContain("consolidatedRevenue");
+    expect(formula).not.toContain("add(target.revenue, charge.amount)");
+    const shared = readFileSync(new URL("../src/lib/stripe-collections.ts", import.meta.url), "utf8");
+    expect(shared).toContain("export function verifyCollectedCharges");
+    expect(shared).toContain("balance.amount !==");
+    const collections = readFileSync(new URL("../src/lib/stripe-collections.server.ts", import.meta.url), "utf8");
+    expect(collections).toContain("verifyCollectedCharges");
     const server = readFileSync(new URL("../src/lib/vehicle-pnl.server.ts", import.meta.url), "utf8");
     expect(server).not.toContain("createReadOnlyStripe");
+    expect(server).toContain("stripe_invoice_id");
+    expect(server).toContain('dated("paid_date")');
+    expect(server).toContain('dated("incurred_on")');
+    expect(server).toContain('dated("occurred_at")');
+    expect(server).toContain("performed_on");
     const load = vi.fn();
     await expect(
       runVehiclePnl({ enabled: false, userId: "owner-1", tier: "owner", month: "2026-10", load }),

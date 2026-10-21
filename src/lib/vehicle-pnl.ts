@@ -1,25 +1,28 @@
 import { categoryLabel } from "./expense-categories";
 import { etYmd, monthWindow } from "./owner-pnl";
+import { aggregateCollections, consolidatedRevenue, type CollectionCharge, type CollectionRefund, type CollectionsReport } from "./stripe-collections";
 import { decimalSourceCents } from "./unified-finance-live-mapping";
 import { validFinanceDate } from "./unified-finance";
 
 /**
  * Read-only profit for one vehicle and one Eastern Time month.
- * Verified revenue matches Overview combined revenue: Stripe net after
- * refunds and fees, plus recorded non-Stripe net_collected. Deposits are
- * excluded. Revenue types are rent, late fee, and other. A Stripe-linked
- * payment is not added again as net_collected. Tolls and tickets are toll
- * charges, separate from expenses. Maintenance company share is the cost,
- * or total cost when the share is blank, and a service already on an
- * in-month expense is one cost. An amount that cannot be read stays null.
- * This module does not call Stripe or write.
+ * Verified revenue is Overview combined revenue: aggregateCollections and
+ * consolidatedRevenue, with the vehicle id as the grouping key. Stripe net
+ * is after refunds and fees. Recorded non-Stripe net_collected is added for
+ * rent, late fee, and other. Deposit payments and deposit charges are
+ * excluded. A payment with a Stripe payment intent or invoice id is not
+ * added again, including when that charge was captured in another month.
+ * Tolls and tickets are toll charges, separate from expenses. Maintenance
+ * company share is the cost, or total cost when the share is blank, and a
+ * service already on an in-month expense is one cost. An amount that cannot
+ * be read stays null. This module does not call Stripe or write.
  */
 
 export const VEHICLE_PNL_PAGE = 100;
 export const VEHICLE_PNL_MAX_PAGES = 20;
 
 export const VEHICLE_PNL_REVENUE_NOTE =
-  "Verified revenue is Stripe net after refunds and fees, plus recorded non-Stripe payments, for rent, late fee, and other. Deposits are excluded. A missing amount stays Unknown.";
+  "Verified revenue is Stripe net after refunds and fees, plus recorded non-Stripe payments, for rent, late fee, and other. Deposit payments and deposit charges are excluded. A missing amount stays Unknown.";
 export const VEHICLE_PNL_ONCE_NOTE =
   "A maintenance row linked to an expense in this month is counted once, on the expense.";
 export const VEHICLE_PNL_TOLLS_NOTE =
@@ -54,6 +57,7 @@ export type VehiclePnlPayment = {
   netCollected: unknown;
   paidDate: string | null;
   stripePaymentIntentId: string | null;
+  stripeInvoiceId: string | null;
 };
 
 export type VehiclePnlExpense = {
@@ -86,6 +90,7 @@ export type VehiclePnlMaintenance = {
 export type VehiclePnlCharge = {
   id: string;
   paymentIntentId: string | null;
+  invoiceId: string | null;
   currency: string;
   amount: number;
   created: number;
@@ -134,7 +139,7 @@ export type VehiclePnlReport = {
   from: string;
   through: string;
   rows: VehiclePnlRow[];
-  unattributed: VehiclePnlMoney;
+  unattributed: VehiclePnlMoney & { netCents: number | null };
   truncated: boolean;
   notes: string[];
 };
@@ -219,60 +224,90 @@ export function buildVehiclePnl(input: {
       withhold(unattributed, "revenue");
       for (const bucket of buckets.values()) withhold(bucket, "revenue");
     } else {
-      const chargeById = new Map(charges.map((charge) => [charge.id, charge]));
-      const chargeVehicle = new Map<string, MoneyBucket>();
+      const counted: CollectionCharge[] = [];
+      const depositIds = new Set<string>();
       for (const charge of charges) {
-        const links = input.payments.filter((payment) => payment.stripePaymentIntentId && payment.stripePaymentIntentId === charge.paymentIntentId);
-        const vehicles = new Set(
-          links
-            .map((payment) => vehicleFor(payment, rentals, known))
-            .filter((id): id is string => Boolean(id)),
-        );
-        chargeVehicle.set(charge.id, vehicles.size === 1 ? bucketFor([...vehicles][0]!) : unattributed);
-      }
-      for (const charge of charges) {
-        const target = chargeVehicle.get(charge.id) ?? unattributed;
-        if (!inUnix(charge.created, window) || !succeededCharge(charge)) continue;
-        if (charge.currency.toLowerCase() !== "usd" || charge.fee === null || !Number.isSafeInteger(charge.amount) || !Number.isSafeInteger(charge.fee)) {
-          withhold(target, "revenue");
+        const key = chargeGroup(charge, input.payments, rentals, known);
+        if (key === "deposit") {
+          depositIds.add(charge.id);
           continue;
         }
-        target.revenue = add(target.revenue, charge.amount);
-        target.revenue = add(target.revenue, -charge.fee);
+        const vehicleId = key === "unattributed" ? UNATTRIBUTED_GROUP : key;
+        if (vehicleId !== UNATTRIBUTED_GROUP) bucketFor(vehicleId);
+        counted.push(collectionCharge(charge, vehicleId));
       }
+      const countedById = new Map(counted.map((charge) => [charge.id, charge]));
+      const countedRefunds: CollectionRefund[] = [];
+      let refundsBad = false;
       for (const refund of refunds) {
-        if (!inUnix(refund.created, window) || refund.status !== "succeeded") continue;
-        const charge = chargeById.get(refund.chargeId);
-        const target = charge ? chargeVehicle.get(charge.id) : undefined;
-        if (!charge || !succeededCharge(charge) || !target || refund.currency.toLowerCase() !== charge.currency.toLowerCase()) {
-          withhold(unattributed, "revenue");
-          for (const bucket of buckets.values()) withhold(bucket, "revenue");
+        if (refund.status !== "succeeded") continue;
+        if (depositIds.has(refund.chargeId)) continue;
+        const charge = countedById.get(refund.chargeId);
+        if (!charge || !charge.paid || !charge.captured || charge.amount <= 0 || charge.status !== "succeeded" || charge.currency !== refund.currency) {
+          refundsBad = true;
           break;
         }
-        if (refund.fee === null || !Number.isSafeInteger(refund.amount) || !Number.isSafeInteger(refund.fee)) {
-          withhold(target, "revenue");
-          continue;
-        }
-        target.revenue = add(target.revenue, -refund.amount);
-        target.revenue = add(target.revenue, -refund.fee);
+        countedRefunds.push({
+          id: refund.id,
+          chargeId: refund.chargeId,
+          created: refund.created,
+          currency: refund.currency,
+          amount: refund.amount,
+          status: refund.status,
+          fee: refund.fee,
+        });
       }
-      for (const payment of input.payments) {
-        if (!PAID_STATUSES.has(payment.status.trim().toLowerCase())) continue;
-        if (payment.type.trim().toLowerCase() === "deposit") continue;
-        if (!REVENUE_TYPES.has(payment.type.trim().toLowerCase())) continue;
-        const placed = placeDay(payment.paidDate);
-        if (placed === "missing") continue;
-        const target = placePayment(payment);
-        if (placed === "invalid" || !inDay(placed.date, window)) {
-          if (placed === "invalid") withhold(target, "revenue");
-          continue;
+      if (refundsBad) {
+        withhold(unattributed, "revenue");
+        for (const vehicle of input.vehicles) withhold(bucketFor(vehicle.id), "revenue");
+        for (const bucket of buckets.values()) withhold(bucket, "revenue");
+      } else {
+        const aggregated = aggregateCollections({
+          charges: counted,
+          refunds: countedRefunds,
+          subscriptions: [],
+          window: { gte: window.gte, lt: window.lt },
+          now: 0,
+        });
+        const internal = new Map<string, number | null>();
+        for (const vehicle of input.vehicles) internal.set(vehicle.id, 0);
+        internal.set(UNATTRIBUTED_GROUP, 0);
+        for (const payment of input.payments) {
+          if (!PAID_STATUSES.has(payment.status.trim().toLowerCase())) continue;
+          if (payment.type.trim().toLowerCase() === "deposit") continue;
+          if (!REVENUE_TYPES.has(payment.type.trim().toLowerCase())) continue;
+          const placed = placeDay(payment.paidDate);
+          if (placed === "missing") continue;
+          const target = placePayment(payment);
+          const key = paymentGroup(payment, rentals, known);
+          if (placed === "invalid" || !inDay(placed.date, window)) {
+            if (placed === "invalid") {
+              withhold(target, "revenue");
+              internal.set(key, null);
+            }
+            continue;
+          }
+          if (payment.stripePaymentIntentId?.trim() || payment.stripeInvoiceId?.trim()) continue;
+          const current = internal.get(key);
+          internal.set(key, add(current === undefined ? 0 : current, centsOf(payment.netCollected)));
         }
-        if (payment.stripePaymentIntentId) {
-          const matched = charges.some((charge) => charge.paymentIntentId === payment.stripePaymentIntentId && succeededCharge(charge));
-          if (!matched) withhold(target, "revenue");
-          continue;
-        }
-        target.revenue = add(target.revenue, centsOf(payment.netCollected));
+        const applyGroup = (key: string, bucket: MoneyBucket) => {
+          if (bucket.revenue === null) return;
+          const rows = aggregated.customers.filter((customer) => customer.id === key);
+          const stored = internal.get(key);
+          const combined = consolidatedRevenue({
+            internalNonStripe: dollarAmount(stored === undefined ? 0 : stored),
+            report: reportFor(rows),
+          });
+          if (combined.amount === null) {
+            bucket.revenue = null;
+            return;
+          }
+          const cents = Math.round(combined.amount * 100);
+          bucket.revenue = Number.isSafeInteger(cents) ? cents : null;
+        };
+        for (const vehicle of input.vehicles) applyGroup(vehicle.id, bucketFor(vehicle.id));
+        applyGroup(UNATTRIBUTED_GROUP, unattributed);
       }
     }
   } else {
@@ -376,6 +411,7 @@ export function buildVehiclePnl(input: {
       expenseCents: unattributed.expense,
       tollsTicketsCents: unattributed.tolls,
       maintenanceCents: unattributed.maintenance,
+      netCents: net(unattributed.revenue, unattributed.expense, unattributed.tolls, unattributed.maintenance),
     },
     truncated,
     notes,
@@ -456,12 +492,94 @@ function distinct(ids: string[]): boolean {
   return new Set(ids).size === ids.length && ids.every((id) => id.trim());
 }
 
-function succeededCharge(charge: VehiclePnlCharge): boolean {
-  return charge.paid && charge.captured && charge.status === "succeeded" && charge.amount > 0;
+const UNATTRIBUTED_GROUP = "vehicle-pnl:unattributed";
+
+function paymentGroup(payment: VehiclePnlPayment, rentals: Map<string, VehiclePnlRental>, known: Set<string>): string {
+  const vehicleId = vehicleFor(payment, rentals, known);
+  return vehicleId && known.has(vehicleId) ? vehicleId : UNATTRIBUTED_GROUP;
 }
 
-function inUnix(created: number, window: VehiclePnlWindow): boolean {
-  return Number.isSafeInteger(created) && created >= window.gte && created < window.lt;
+function sharesCharge(payment: VehiclePnlPayment, charge: VehiclePnlCharge): boolean {
+  const intent = payment.stripePaymentIntentId?.trim() ?? "";
+  const invoice = payment.stripeInvoiceId?.trim() ?? "";
+  const chargeIntent = charge.paymentIntentId?.trim() ?? "";
+  const chargeInvoice = charge.invoiceId?.trim() ?? "";
+  if (intent && (intent === chargeIntent || intent === charge.id)) return true;
+  if (invoice && (invoice === chargeInvoice || invoice === charge.id)) return true;
+  return false;
+}
+
+function chargeGroup(
+  charge: VehiclePnlCharge,
+  payments: VehiclePnlPayment[],
+  rentals: Map<string, VehiclePnlRental>,
+  known: Set<string>,
+): string | "deposit" {
+  const links = payments.filter((payment) => sharesCharge(payment, charge));
+  if (links.length > 0 && links.every((payment) => payment.type.trim().toLowerCase() === "deposit")) return "deposit";
+  const mixed = links.some((payment) => payment.type.trim().toLowerCase() === "deposit")
+    && links.some((payment) => payment.type.trim().toLowerCase() !== "deposit");
+  if (mixed) return "unattributed";
+  const vehicles = new Set(
+    links
+      .map((payment) => vehicleFor(payment, rentals, known))
+      .filter((id): id is string => Boolean(id && known.has(id))),
+  );
+  if (vehicles.size === 1) return [...vehicles][0]!;
+  return "unattributed";
+}
+
+function collectionCharge(charge: VehiclePnlCharge, customerId: string): CollectionCharge {
+  return {
+    id: charge.id,
+    customerId,
+    created: charge.created,
+    currency: charge.currency,
+    amount: charge.amount,
+    paid: charge.paid,
+    captured: charge.captured,
+    status: charge.status,
+    fee: charge.fee,
+  };
+}
+
+function dollarAmount(cents: number | null): number | null {
+  if (cents === null || !Number.isSafeInteger(cents)) return null;
+  return cents / 100;
+}
+
+function reportFor(rows: CollectionsReport["customers"]): CollectionsReport {
+  const totals = rows.map((row) => ({
+    currency: row.currency,
+    gross: row.gross,
+    refunds: row.refunds,
+    fees: row.fees,
+    net: row.net,
+    successful: row.successful,
+    failed: row.failed,
+  }));
+  return {
+    collectionsComplete: true,
+    refreshedAt: "1970-01-01T00:00:00.000Z",
+    totals,
+    successful: totals.reduce((sum, row) => sum + row.successful, 0),
+    failed: totals.reduce((sum, row) => sum + row.failed, 0),
+    activeSubscriptions: 0,
+    customers: [],
+    verifiedCollections: {
+      scope: "Verified Only",
+      totals,
+      customers: [],
+      successful: 0,
+      failed: 0,
+      charges: [],
+      refunds: [],
+    },
+    incompletePortions: [],
+    subscriptions: [],
+    payouts: null,
+    warnings: [],
+  };
 }
 
 function inDay(date: string, window: VehiclePnlWindow): boolean {
