@@ -7,7 +7,39 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { readWaitlistClaim } from "@/lib/waitlist.functions";
-import { WAITLIST_CLAIM_ENABLED, applySearchKeys, claimLandingPath, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
+import { WAITLIST_CLAIM_ENABLED, applySearchKeys, landingPageWithoutClaim, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
+
+const CLAIM_STASH = "rr_waitlist_claim";
+
+/** Runs in this route's head, before gtag.js handles the queued config. */
+const STRIP_CLAIM_SCRIPT = `(function () {
+  if (location.pathname !== "/apply") return;
+  var token = "";
+  var hash = location.hash || "";
+  if (hash.indexOf("#claim=") === 0) {
+    try { token = decodeURIComponent(hash.slice(7)); } catch (e) { token = hash.slice(7); }
+  }
+  var params = new URLSearchParams(location.search);
+  if (!token && params.has("claim")) token = params.get("claim") || "";
+  if (params.has("claim")) params.delete("claim");
+  var search = params.toString();
+  var cleanPath = location.pathname + (search ? "?" + search : "");
+  if (token) {
+    try { sessionStorage.setItem(${JSON.stringify(CLAIM_STASH)}, token); } catch (e) {}
+  }
+  if (token || hash.indexOf("#claim=") === 0 || location.search.indexOf("claim=") !== -1) {
+    history.replaceState(history.state, "", cleanPath);
+    var page = location.origin + cleanPath;
+    var queue = window.dataLayer;
+    if (queue) {
+      for (var i = 0; i < queue.length; i++) {
+        var item = queue[i];
+        if (item && item[0] === "config") item[2] = Object.assign({}, item[2] || {}, { page_location: page });
+      }
+    }
+    if (typeof gtag === "function") gtag("set", { page_location: page });
+  }
+})();`;
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,8 +64,6 @@ export const Route = createFileRoute("/apply")({
      * Carried so the landing URL records which category converted.
      */
     vehicle_type?: string;
-    /** Waitlist claim. Kept only while WAITLIST_CLAIM_ENABLED is on. Not a resume token. */
-    claim?: string;
   } => {
     // Only keep params that actually have a value so the URL never ends up
     // as /apply?t=&city=&pickup=&vehicle=
@@ -58,6 +88,7 @@ export const Route = createFileRoute("/apply")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [{ rel: "canonical", href: "https://drivereal.com/apply" }],
+    scripts: [{ children: STRIP_CLAIM_SCRIPT }],
   }),
   component: ApplyPage,
 });
@@ -80,21 +111,30 @@ function ApplyPage() {
   // the previous person on a shared or kiosk device must not open their form.
   const token = useResumeToken(t, { allowStashed: false });
   const readClaim = useServerFn(readWaitlistClaim);
-  const claimToken = WAITLIST_CLAIM_ENABLED ? search.claim : undefined;
   const [claimPrefill, setClaimPrefill] = useState<WaitlistClaimPrefill | null>(null);
   const [claimNote, setClaimNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!WAITLIST_CLAIM_ENABLED || !claimToken) return;
-    // Drop claim before attribution's effect reads landing_page. replaceState
-    // keeps Back from returning to a URL that still carries the token.
+    if (!WAITLIST_CLAIM_ENABLED) return;
+    let claimToken = "";
     try {
-      const next = claimLandingPath(window.location.href);
-      const current = window.location.pathname + window.location.search + window.location.hash;
-      if (next !== current) window.history.replaceState(window.history.state, "", next);
+      const url = new URL(window.location.href);
+      const fromHash = url.hash.startsWith("#claim=") ? decodeURIComponent(url.hash.slice("#claim=".length)) : "";
+      const fromQuery = url.searchParams.get("claim") || "";
+      claimToken = fromHash || fromQuery;
+      if (!claimToken) claimToken = sessionStorage.getItem(CLAIM_STASH) || "";
+      sessionStorage.removeItem(CLAIM_STASH);
+      if (fromHash || fromQuery) {
+        const next = landingPageWithoutClaim(url.pathname + url.search + url.hash) || url.pathname;
+        window.history.replaceState(window.history.state, "", next);
+        const page = url.origin + next;
+        const gtag = (window as { gtag?: (command: string, fields: { page_location: string }) => void }).gtag;
+        if (typeof gtag === "function") gtag("set", { page_location: page });
+      }
     } catch {
-      /* the token simply stays visible */
+      claimToken = "";
     }
+    if (!claimToken) return;
     let live = true;
     readClaim({ data: { token: claimToken } })
       .then((res) => {
@@ -112,7 +152,7 @@ function ApplyPage() {
     return () => {
       live = false;
     };
-  }, [claimToken, readClaim]);
+  }, [readClaim]);
 
   return (
     // No site header here. The wizard's dark panel already carries the

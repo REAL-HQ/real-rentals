@@ -366,14 +366,42 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
       companyPhone,
       claimUrl: async (row) => {
         const { waitlistClaimUrl } = await import("@/lib/waitlist-claim.server");
-        return waitlistClaimUrl(row.id, row.email, { origin: siteOrigin() });
+        return waitlistClaimUrl({ entryId: row.id, email: row.email, origin: siteOrigin() });
+      },
+      reserve: async (id, tokenHash) => {
+        const { data, error } = await (supabaseAdmin.from("waitlist") as any)
+          .update({ claim_token_hash: tokenHash })
+          .eq("id", id)
+          .eq("status", "waiting")
+          .is("claim_token_hash", null)
+          .select("id");
+        return !error && Array.isArray(data) && data.length === 1;
+      },
+      release: async (id, tokenHash) => {
+        await (supabaseAdmin.from("waitlist") as any)
+          .update({ claim_token_hash: null })
+          .eq("id", id)
+          .eq("status", "waiting")
+          .eq("claim_token_hash", tokenHash);
       },
       send: (message) => sendEmail(message),
-      markNotified: async (id) => {
-        await supabaseAdmin
-          .from("waitlist")
+      markNotified: async (id, tokenHash) => {
+        if (!WAITLIST_CLAIM_ENABLED) {
+          const { error } = await supabaseAdmin
+            .from("waitlist")
+            .update({ status: "notified", notified_at: new Date().toISOString() })
+            .eq("id", id)
+            .eq("status", "waiting");
+          return !error;
+        }
+        if (!tokenHash) return false;
+        const { data, error } = await (supabaseAdmin.from("waitlist") as any)
           .update({ status: "notified", notified_at: new Date().toISOString() })
-          .eq("id", id);
+          .eq("id", id)
+          .eq("status", "waiting")
+          .eq("claim_token_hash", tokenHash)
+          .select("id");
+        return !error && Array.isArray(data) && data.length === 1;
       },
     });
 
@@ -390,32 +418,24 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 
 /**
  * Opens a claim link into a prefill. With the flag off this returns
- * immediately and does not read the waitlist. It never promotes, never
- * writes, and never issues an application resume token.
+ * immediately and does not read the waitlist. It never promotes and never
+ * issues an application resume token. With the flag on, the first open
+ * clears claim_token_hash. A missing WAITLIST_CLAIM_SECRET or a missing
+ * column fails closed before a prefill is returned.
  */
 export const readWaitlistClaim = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(300) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(500) }).parse(d))
   .handler(async ({ data }) => {
-    const { WAITLIST_CLAIM_ENABLED, claimPrefillFromRow } = await import("@/lib/waitlist-claim");
+    const { WAITLIST_CLAIM_ENABLED } = await import("@/lib/waitlist-claim");
     if (!WAITLIST_CLAIM_ENABLED) return { ok: false as const };
 
-    const { peekWaitlistClaim, verifyWaitlistClaim } = await import("@/lib/waitlist-claim.server");
-    const secret = process.env.WAITLIST_CLAIM_SECRET ?? "";
+    const { readClaimSecret, openWaitlistClaim, claimStoreFromSupabase } = await import("@/lib/waitlist-claim.server");
+    // WAITLIST_CLAIM_SECRET must be its own 32+ character value. readClaimSecret
+    // refuses the service-role key and a missing secret before any waitlist read.
+    const secret = readClaimSecret();
     if (!secret) return { ok: false as const, error: "This link is not valid." };
-    const peeked = peekWaitlistClaim(data.token);
-    if (!peeked) return { ok: false as const, error: "This link is not valid." };
-
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("waitlist")
-      .select("full_name,email,phone,city,state,pickup_date,market_id,status")
-      .eq("id", peeked.entryId)
-      .maybeSingle();
-    if (error || !row?.email) return { ok: false as const, error: "This link is not valid." };
-    // The signature covers the email from send time. A changed address does not match.
-    const verified = await verifyWaitlistClaim(data.token, secret, row.email);
-    if (!verified) return { ok: false as const, error: "This link is not valid." };
-    return claimPrefillFromRow(row);
+    return openWaitlistClaim(claimStoreFromSupabase(supabaseAdmin), data.token, secret);
   });
 
 export const promoteToApplicant = createServerFn({ method: "POST" })

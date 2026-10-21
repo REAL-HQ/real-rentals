@@ -1,23 +1,7 @@
 -- PROPOSED ONLY. This file is not a migration and must not be run.
--- Do not copy it into drizzle/migrations or supabase/migrations.
--- No column, index, or function is created or replaced here.
+-- The single-use column is proposed/waitlist-claim-token-v1.sql
+-- (claim_token_hash). This note only points at that file so an older
+-- name is not mistaken for a second design.
 --
--- Waitlist claim links are stateless. The signature is
--- HMAC(WAITLIST_CLAIM_SECRET, entryId.exp.sha256(lower(trim(email)))).
--- A link is refused when it is expired (72 hours), when the row email
--- changed, or when the row is promoted or no longer waiting or notified.
--- It can still be opened again until it expires.
---
--- When an owner wants a single-use link, add a nullable column and
--- compare it inside the read. Do not invent the column in application code
--- before that migration exists.
---
---   ALTER TABLE public.waitlist
---     ADD COLUMN claim_nonce text,
---     ADD COLUMN claimed_at timestamptz;
---
--- Send stores a fresh nonce in the signed payload and on the row.
--- The read accepts the link only when claim_nonce still equals that value
--- and claimed_at is null, then sets claimed_at and clears claim_nonce in
--- the same update. A second open finds claimed_at set and refuses.
--- That update is the migration's job. This note does not apply it.
+-- Do not add claim_nonce or claimed_at. The stored value is the hash of
+-- the nonce, and the first open clears it.

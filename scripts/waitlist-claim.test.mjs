@@ -54,9 +54,12 @@ try {
     "claim is not a recognized /apply search key while the flag is off",
   );
   check(
-    claim.applySearchKeys(true).includes("claim") && claim.applySearchKeys(true).includes("t"),
-    "a claim link is its own search key and does not reuse the resume token",
+    !claim.applySearchKeys(true).includes("claim") && claim.applySearchKeys(true).includes("t"),
+    "the claim token is not an /apply search key, so it cannot reuse the resume token",
   );
+  check(claim.landingPageWithoutClaim("/apply?claim=abc&city=Austin#top") === "/apply?city=Austin#top", "a claim query is stripped and the other hash stays");
+  check(claim.landingPageWithoutClaim("https://drivereal.com/apply?city=Austin#claim=abc.1.ff") === "https://drivereal.com/apply?city=Austin", "a claim fragment is stripped from an absolute url");
+  check(claim.landingPageWithoutClaim("https://other.example/start?claim=abc&utm_source=ad") === "https://other.example/start?utm_source=ad", "a referrer loses its claim query");
 
   const off = claim.openingEmail({
     enabled: false,
@@ -118,8 +121,8 @@ try {
   check(claim.claimLandingPath("https://drivereal.com/apply?claim=only") === "/apply", "a claim-only url becomes /apply");
 
   const row = { id: "11111111-1111-4111-8111-111111111111", full_name: "Sam Rivera", email: "sam@example.com", city: "Austin" };
-  const secret = "test-secret-not-a-mailbox";
-  async function deliver(enabled, sendOk, claimHref) {
+  const secret = "0123456789abcdef0123456789abcdef";
+  async function deliver(enabled, sendOk, claimHref, markOk) {
     const sentTo = [];
     const marked = [];
     let claimCalls = 0;
@@ -138,6 +141,7 @@ try {
       },
       markNotified: async (id) => {
         marked.push(id);
+        return markOk;
       },
     });
     return { result, sentTo, marked, claimCalls };
@@ -149,33 +153,88 @@ try {
   check(failedOff.marked.length === 1 && failedOff.result.sent === 0, "a failed send still marks Notified while the flag is off");
 
   const issuedAt = Date.UTC(2026, 9, 21);
-  const href = await server.waitlistClaimUrl(row.id, "  Sam@Example.com ", { secret, origin: "https://drivereal.com", now: issuedAt });
-  check(typeof href === "string" && href.startsWith("https://drivereal.com/apply?claim="), "the claim url is an /apply claim link");
-  const token = href.split("claim=")[1];
+  const nonce = "a".repeat(64);
+  const link = await server.waitlistClaimUrl({ entryId: row.id, email: "  Sam@Example.com ", secret, origin: "https://drivereal.com", now: issuedAt, nonce });
+  check(link?.href.startsWith("https://drivereal.com/apply#claim="), "the claim url is an /apply fragment, not a query param");
+  check(!link.href.includes("?") && !link.href.includes("@") && !link.href.toLowerCase().includes("sam"), "the fragment does not carry the email");
+  const token = link.href.split("#claim=")[1];
+  check(link.tokenHash !== nonce && link.tokenHash.length === 64, "the stored value is a hash of the nonce, not the nonce");
   const opened = await server.verifyWaitlistClaim(token, secret, "sam@example.com", issuedAt);
-  check(opened?.entryId === row.id, "the claim token round-trips for the trimmed lower-case email");
+  check(opened?.entryId === row.id && opened.tokenHash === link.tokenHash, "the claim token round-trips for the trimmed lower-case email");
   check((await server.verifyWaitlistClaim(token, secret, "other@example.com", issuedAt)) === null, "a changed email does not match the signature");
   const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
   check((await server.verifyWaitlistClaim(tampered, secret, row.email, issuedAt)) === null, "a tampered claim token is refused");
-  check((await server.verifyWaitlistClaim(token, "other-secret", row.email, issuedAt)) === null, "a claim token from another secret is refused");
   check((await server.verifyWaitlistClaim(token, secret, row.email, issuedAt + 72 * 60 * 60 * 1000)) === null, "a claim token expires at 72 hours");
   check((await server.verifyWaitlistClaim(token, secret, row.email, issuedAt + 71 * 60 * 60 * 1000))?.entryId === row.id, "a claim token is still valid inside 72 hours");
-  const previousSecret = process.env.WAITLIST_CLAIM_SECRET;
-  delete process.env.WAITLIST_CLAIM_SECRET;
-  check((await server.waitlistClaimUrl(row.id, row.email, { secret: "" })) === null, "a missing secret does not invent a link");
-  check((await server.waitlistClaimUrl(row.id, row.email)) === null, "a missing WAITLIST_CLAIM_SECRET does not invent a link");
-  if (previousSecret === undefined) delete process.env.WAITLIST_CLAIM_SECRET;
-  else process.env.WAITLIST_CLAIM_SECRET = previousSecret;
+  check(server.readClaimSecret({ WAITLIST_CLAIM_SECRET: secret }) === secret, "a dedicated 32-character secret is accepted");
+  check(server.readClaimSecret({}) === null, "a missing WAITLIST_CLAIM_SECRET fails closed");
+  check(server.readClaimSecret({ WAITLIST_CLAIM_SECRET: "short-secret" }) === null, "a short WAITLIST_CLAIM_SECRET fails closed");
+  check(server.readClaimSecret({ WAITLIST_CLAIM_SECRET: secret, SUPABASE_SERVICE_ROLE_KEY: secret }) === null, "a secret equal to the service-role key fails closed");
+  check((await server.waitlistClaimUrl({ entryId: row.id, email: row.email, secret: "" })) === null, "a missing secret does not invent a link");
+  check((await server.waitlistClaimUrl({ entryId: row.id, email: row.email, secret, env: { SUPABASE_SERVICE_ROLE_KEY: secret } })) === null, "the signer refuses the service-role key");
+  check((await server.waitlistClaimUrl({ entryId: row.id, email: row.email, env: {} })) === null, "a missing WAITLIST_CLAIM_SECRET does not invent a link");
 
-  const failedOn = await deliver(true, false, href);
-  check(failedOn.sentTo[0].html.includes(`claim=${token}`) && !failedOn.sentTo[0].html.includes("you stay at the top") && !failedOn.sentTo[0].html.includes("application you started"), "the enabled email carries the claim link and drops the old promise");
+  const prefillRow = {
+    id: row.id,
+    status: "waiting",
+    full_name: "Sam Rivera",
+    email: "sam@example.com",
+    phone: "5550100",
+    city: "Austin",
+    state: "TX",
+    pickup_date: "2026-11-01",
+    market_id: "m1",
+    claim_token_hash: link.tokenHash,
+  };
+  function memoryStore(seed) {
+    let hash = seed.claim_token_hash;
+    const calls = { loads: 0, consumes: 0 };
+    return {
+      calls,
+      async load(id) {
+        calls.loads += 1;
+        if (id !== seed.id) return { row: null };
+        return { row: { ...seed, claim_token_hash: hash } };
+      },
+      async consume(_id, tokenHash) {
+        calls.consumes += 1;
+        if (hash !== tokenHash) return false;
+        hash = null;
+        return true;
+      },
+    };
+  }
+  const once = memoryStore(prefillRow);
+  const first = await server.openWaitlistClaim(once, token, secret, issuedAt);
+  const second = await server.openWaitlistClaim(once, token, secret, issuedAt);
+  check(first.ok === true && first.prefill.email === "sam@example.com", "the first open prefills the applicant");
+  check(second.ok === false && once.calls.consumes === 1, "the second open does not consume the hash again");
+  const otherEmail = memoryStore({ ...prefillRow, email: "other@example.com" });
+  const refused = await server.openWaitlistClaim(otherEmail, token, secret, issuedAt);
+  check(refused.ok === false && otherEmail.calls.consumes === 0, "an email mismatch does not consume the hash");
+  let loaded = false;
+  const closed = await server.openWaitlistClaim({
+    async load() { loaded = true; return { error: true }; },
+    async consume() { return true; },
+  }, token, "", issuedAt);
+  check(closed.ok === false && loaded === false, "a missing secret does not read the waitlist");
+  const missingColumn = await server.openWaitlistClaim({
+    async load() { return { error: true }; },
+    async consume() { throw new Error("consume"); },
+  }, token, secret, issuedAt);
+  check(missingColumn.ok === false, "a missing claim_token_hash column fails closed");
+
+  const failedOn = await deliver(true, false, link);
+  check(failedOn.sentTo[0].html.includes(`#claim=${token}`) && !failedOn.sentTo[0].html.includes("?claim=") && !failedOn.sentTo[0].html.includes("you stay at the top") && !failedOn.sentTo[0].html.includes("application you started"), "the enabled email carries the claim fragment and drops the old promise");
   check(failedOn.marked.length === 0 && failedOn.result.sent === 0, "a failed send does not mark Notified while the flag is on");
 
-  const sentOn = await deliver(true, true, href);
+  const sentOn = await deliver(true, true, link);
   check(sentOn.marked.length === 1 && sentOn.result.sent === 1, "a successful send marks Notified while the flag is on");
 
   const missing = await deliver(true, true, null);
   check(missing.sentTo.length === 0 && missing.marked.length === 0, "a missing claim link does not send and does not mark Notified");
+  const unmarked = await deliver(true, true, link, false);
+  check(unmarked.marked.length === 1 && unmarked.result.sent === 0, "a hash write that does not match does not count as sent");
 
   const waiting = claim.claimPrefillFromRow({
     status: "waiting",
@@ -210,10 +269,12 @@ try {
   check(notify.includes("await requireManager(context.userId)"), "notify stays Manager gated");
   const reader = functions.slice(functions.indexOf("export const readWaitlistClaim"), functions.indexOf("export const promoteToApplicant"));
   check(reader.indexOf("if (!WAITLIST_CLAIM_ENABLED)") < reader.indexOf("client.server"), "a disabled claim read returns before the database import");
-  check(reader.indexOf("WAITLIST_CLAIM_SECRET") < reader.indexOf("client.server"), "a missing claim secret returns before the database import");
-  check(reader.indexOf("verifyWaitlistClaim(data.token, secret, row.email)") < reader.lastIndexOf("return claimPrefillFromRow"), "the claim read checks the row email before it prefills");
+  check(reader.indexOf("readClaimSecret()") < reader.indexOf("client.server"), "a missing claim secret returns before the database import");
+  check(reader.includes("openWaitlistClaim"), "the claim read checks the row email and clears the nonce hash before it prefills");
   check(!reader.includes("SUPABASE_SERVICE_ROLE_KEY"), "the claim read does not use the service role key as a signing secret");
-  check(!reader.includes(".update(") && !reader.includes("issueResumeToken") && !reader.includes("promote_waitlist_entry"), "opening a claim does not write, promote, or mint a resume token");
+  check(!reader.includes("issueResumeToken") && !reader.includes("promote_waitlist_entry"), "opening a claim does not promote or mint a resume token");
+  const markedOff = notify.slice(notify.indexOf("if (!WAITLIST_CLAIM_ENABLED)"), notify.indexOf("if (!tokenHash)"));
+  check(!markedOff.includes("claim_token_hash"), "flag-off Notified does not write the hash column");
   const conflict = functions.slice(functions.indexOf("phone conflict review"));
   check(!conflict.includes("WAITLIST_CLAIM_ENABLED"), "the conflict resolver does not read the claim flag");
   const dialog = readFileSync("src/components/admin/WaitlistConflictDialog.tsx", "utf8");
@@ -225,22 +286,30 @@ try {
   const apply = readFileSync("src/routes/apply.tsx", "utf8");
   check(apply.includes("applySearchKeys(WAITLIST_CLAIM_ENABLED)"), "/apply keeps claim off the search list until the flag is on");
   const claimEffect = apply.slice(apply.indexOf("useEffect(() => {"), apply.indexOf("return ("));
-  check(claimEffect.indexOf("claimLandingPath") >= 0 && claimEffect.indexOf("claimLandingPath") < claimEffect.indexOf("readClaim("), "claim is stripped before the claim read");
+  check(claimEffect.indexOf("landingPageWithoutClaim") < claimEffect.indexOf("readClaim("), "claim is stripped before the claim read");
   check(claimEffect.includes("window.history.replaceState") && !claimEffect.includes("pushState"), "stripping claim replaces history");
+  check(apply.includes("page_location") && apply.includes("#claim="), "the /apply route keeps the claim token out of gtag page_location");
+  check(!readFileSync("src/routes/__root.tsx", "utf8").includes("claim"), "the Google tag in the root shell is untouched");
+  check(!readFileSync("src/lib/attribution.ts", "utf8").includes("landingPageWithoutClaim"), "attribution is left to the live hotfix");
 
   const serverSrc = readFileSync("src/lib/waitlist-claim.server.ts", "utf8");
   const claimSrc = readFileSync("src/lib/waitlist-claim.ts", "utf8");
   check(!serverSrc.includes("resume-tokens") && !serverSrc.includes("email.server") && !serverSrc.includes("node:crypto"), "the claim signer does not use resume tokens, mail, or node:crypto");
-  check(serverSrc.includes("WAITLIST_CLAIM_SECRET") && !serverSrc.includes("SUPABASE_SERVICE_ROLE_KEY"), "the claim signer uses WAITLIST_CLAIM_SECRET only");
-  check(serverSrc.includes("claimEmailHash"), "the signature covers the normalized email");
+  check(serverSrc.includes("WAITLIST_CLAIM_SECRET") && serverSrc.includes("SUPABASE_SERVICE_ROLE_KEY") && !serverSrc.includes("?? process.env.SUPABASE_SERVICE_ROLE_KEY") && !serverSrc.includes("?? env.SUPABASE_SERVICE_ROLE_KEY"), "the signer names the service-role key only to refuse it");
+  check(serverSrc.includes("normalizeClaimEmail") && serverSrc.includes("claimTokenHash"), "the signature covers the normalized email and the stored value is the nonce hash");
   check(!claimSrc.includes("email.server") && !claimSrc.includes("node:crypto"), "the claim helper does not send mail");
 
   const proposed = readFileSync("proposed/waitlist-promote-skip-deleted-v1.sql", "utf8");
   check(proposed.includes("not a migration") && proposed.includes("must not be run") && proposed.includes("deleted_at IS NULL") && !/CREATE\s+OR\s+REPLACE/i.test(proposed), "option 5 is a proposed note and not a migration");
-  const singleUse = readFileSync("proposed/waitlist-claim-single-use-v1.sql", "utf8");
-  check(singleUse.includes("not a migration") && singleUse.includes("must not be run") && singleUse.includes("claimed_at") && singleUse.includes("claim_nonce") && !/^\s*ALTER\s+TABLE/im.test(singleUse.replace(/^--.*$/gm, "")), "single-use claim state is a proposed note and not a migration");
-  check(!readdirSync("drizzle/migrations").some((name) => name.includes("waitlist-promote-skip-deleted")), "the proposal is not in drizzle migrations");
-  check(!readdirSync("supabase/migrations").some((name) => name.includes("waitlist-promote-skip-deleted")), "the proposal is not in supabase migrations");
+  const tokenSql = readFileSync("proposed/waitlist-claim-token-v1.sql", "utf8");
+  check(tokenSql.includes("not a migration") && tokenSql.includes("must not be run") && tokenSql.includes("claim_token_hash") && tokenSql.includes("WAITLIST_CLAIM_SECRET"), "the hash column is proposed and names the dedicated secret");
+  const rateSql = readFileSync("proposed/waitlist-coming-soon-rate-v1.sql", "utf8");
+  check(rateSql.includes("Owner decision") && rateSql.includes("must not be run") && rateSql.includes("homepage_waitlist"), "the Coming Soon rate limit is proposed SQL and an owner decision");
+  const appSrc = readFileSync("src/lib/applications.functions.ts", "utf8");
+  check(appSrc.includes("landing_page: landingPageWithoutClaim(insertFields.landing_page)") && appSrc.includes("referrer: landingPageWithoutClaim(insertFields.referrer)"), "the server strips claim from landing_page and referrer");
+  check(!functions.includes("waitlist_coming_soon_email_limit") && !appSrc.includes("waitlist_coming_soon_email_limit"), "the app does not call the proposed rate limit");
+  check(!readdirSync("drizzle/migrations").some((name) => name.includes("waitlist-claim") || name.includes("coming-soon-rate")), "the proposals are not in drizzle migrations");
+  check(!readdirSync("supabase/migrations").some((name) => name.includes("waitlist-claim") || name.includes("coming-soon-rate")), "the proposals are not in supabase migrations");
 
   console.log(`${passed} waitlist claim checks passed`);
 } finally {

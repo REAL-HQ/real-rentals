@@ -10,21 +10,49 @@
  * It does not call joinWaitlist.
  *
  * No environment variable can open it. Activation is changing this constant
- * and rebuilding. Leave it false until an owner does that.
+ * and rebuilding, and it needs a new WAITLIST_CLAIM_SECRET: at least 32
+ * characters, and not the service-role key. Without that secret the enabled
+ * path sends no link and does not mark Notified. Leave the flag false until
+ * an owner does both.
  *
  * Typed as boolean so the enabled branch stays visible to the type checker.
  */
 export const WAITLIST_CLAIM_ENABLED: boolean = false;
+
+/** Dedicated signer. Never the service-role key. */
+export const WAITLIST_CLAIM_SECRET_NAME = "WAITLIST_CLAIM_SECRET";
 
 /** 72 hours. Not an application resume token. */
 export const WAITLIST_CLAIM_TTL_SECONDS = 72 * 60 * 60;
 
 const APPLY_SEARCH_KEYS = ["t", "city", "pickup", "vehicle", "vehicle_type"] as const;
 
-/** Search keys /apply keeps. `claim` is recognized only while the flag is on. */
-export function applySearchKeys(enabled: boolean): readonly string[] {
-  if (!enabled) return APPLY_SEARCH_KEYS;
-  return [...APPLY_SEARCH_KEYS, "claim"];
+/**
+ * Search keys /apply keeps. The claim token is a URL fragment, never one of
+ * these keys, so a query string cannot carry it into landing_page or gtag.
+ */
+export function applySearchKeys(_enabled: boolean): readonly string[] {
+  return APPLY_SEARCH_KEYS;
+}
+
+/** Drop a claim token from a path or absolute URL. Other params and a non-claim hash stay. */
+export function landingPageWithoutClaim(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  if (value === "") return "";
+  try {
+    const absolute = /^https?:\/\//i.test(value);
+    const url = new URL(value, "https://drivereal.invalid");
+    url.searchParams.delete("claim");
+    if (url.hash === "#claim" || url.hash.startsWith("#claim=")) url.hash = "";
+    if (!absolute) return `${url.pathname}${url.search}${url.hash}`;
+    return url.toString();
+  } catch {
+    return value
+      .replace(/([?&])claim=[^&#]*/g, (_, sep: string) => (sep === "?" ? "?" : ""))
+      .replace(/\?&/g, "?")
+      .replace(/[?&]$/g, "")
+      .replace(/#claim(=[^#]*)?$/g, "");
+  }
 }
 
 export function shouldMarkNotified(enabled: boolean, sendOk: boolean): boolean {
@@ -80,29 +108,36 @@ export function openingEmail(input: {
 }
 
 type OpeningRow = { id: string; full_name?: string | null; email: string; city?: string | null };
+export type ClaimLink = { href: string; tokenHash: string };
 
 /**
  * Sends one opening email per row. The caller supplies send and markNotified,
  * so tests never touch a mail provider. claimUrl is not called while the
- * flag is off.
+ * flag is off. While the flag is on, reserve must store the nonce hash before
+ * the send; a failed reserve sends nothing and marks nobody.
  */
 export async function deliverOpeningEmails<T extends OpeningRow>(args: {
   enabled: boolean;
   rows: readonly T[];
   origin: string;
   companyPhone: string;
-  claimUrl: (row: T) => Promise<string | null>;
+  claimUrl: (row: T) => Promise<ClaimLink | null>;
+  reserve?: (id: string, tokenHash: string) => Promise<boolean>;
+  release?: (id: string, tokenHash: string) => Promise<void>;
   send: (message: { to: string; subject: string; html: string }) => Promise<{ ok: boolean }>;
-  markNotified: (id: string) => Promise<void>;
+  markNotified: (id: string, tokenHash: string | null) => Promise<boolean | void>;
 }): Promise<{ sent: number }> {
   let sent = 0;
   for (const row of args.rows) {
     let href = `${args.origin}/apply`;
+    let tokenHash: string | null = null;
     if (args.enabled) {
       const claim = await args.claimUrl(row);
-      // No secret, no link: do not send and do not mark Notified.
+      // No secret, or the hash could not be stored: do not send and do not mark Notified.
       if (!claim) continue;
-      href = claim;
+      if (args.reserve && !(await args.reserve(row.id, claim.tokenHash))) continue;
+      href = claim.href;
+      tokenHash = claim.tokenHash;
     }
     const message = openingEmail({
       enabled: args.enabled,
@@ -112,8 +147,10 @@ export async function deliverOpeningEmails<T extends OpeningRow>(args: {
       companyPhone: args.companyPhone,
     });
     const res = await args.send({ to: row.email, subject: message.subject, html: message.html });
-    if (res.ok) sent += 1;
-    if (shouldMarkNotified(args.enabled, res.ok)) await args.markNotified(row.id);
+    if (!res.ok && args.enabled && tokenHash && args.release) await args.release(row.id, tokenHash);
+    if (!shouldMarkNotified(args.enabled, res.ok)) continue;
+    const marked = await args.markNotified(row.id, tokenHash);
+    if (res.ok && marked !== false) sent += 1;
   }
   return { sent };
 }
@@ -173,11 +210,16 @@ export function comingSoonSignup(_enabled: boolean, fields: ComingSoonFields): {
   };
 }
 
-/** Path and query attribution may store. `claim` is removed first. */
+/** Path form of a landing page: claim token removed, other params kept. */
 export function claimLandingPath(href: string): string {
-  const url = new URL(href);
-  url.searchParams.delete("claim");
-  return url.pathname + url.search + url.hash;
+  const cleaned = landingPageWithoutClaim(href);
+  if (!cleaned) return "";
+  try {
+    const url = new URL(cleaned, "https://drivereal.invalid");
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return cleaned;
+  }
 }
 
 export type WaitlistClaimPrefill = {
