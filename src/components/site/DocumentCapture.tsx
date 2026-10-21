@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
+
+/**
+ * Hard off. The same constant lives in src/lib/upload-precheck.ts and in the
+ * trip-screenshot uploader. While it is false this file does not import the
+ * pre-check, and the upload call below is the one this screen already makes.
+ */
+const UPLOAD_PRECHECK_ENABLED: boolean = false;
+
+type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
 
 // Photographing a document on a phone, without wondering whether it worked.
 //
@@ -42,6 +51,25 @@ export function DocumentCapture({
 }) {
   const [justUploaded, setJustUploaded] = useState(false);
   const done = onFile || justUploaded;
+  const overrideWait = useRef<((ok: boolean) => void) | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
+  const [PrecheckNotice, setPrecheckNotice] = useState<
+    null | ((props: PrecheckView & { onUpload: () => void; onRetake: () => void }) => React.ReactNode)
+  >(null);
+
+  async function askOverride(result: PrecheckView): Promise<boolean> {
+    if (UPLOAD_PRECHECK_ENABLED !== true) return true;
+    const mod = await import("@/components/site/UploadPrecheckNotice");
+    setPrecheckNotice(() => mod.UploadPrecheckNotice);
+    return new Promise((resolve) => {
+      overrideWait.current = (ok: boolean) => {
+        overrideWait.current = null;
+        setPrecheck(null);
+        resolve(ok);
+      };
+      setPrecheck(result);
+    });
+  }
 
   return (
     <div className="rounded-2xl border border-[#EDEDF0] bg-white overflow-hidden">
@@ -90,12 +118,28 @@ export function DocumentCapture({
             // optimization, since a phone photo that arrives at 9 MB usually
             // leaves at under one. uploadApplicantFile enforces that ceiling
             // and throws UploadTooLarge, which the queue's Retry relies on.
+            if (UPLOAD_PRECHECK_ENABLED === true) {
+              const { reviewUpload } = await import("@/lib/upload-precheck");
+              const result = await reviewUpload(file);
+              if (result.blocked) throw new Error(result.blockMessage ?? "This file can't be uploaded.");
+              if (result.warnings.length && !(await askOverride(result))) {
+                throw new Error("Choose another photo and try again.");
+              }
+            }
             const { path } = await uploadApplicantFile({ token, kind, file });
             onProgress(100);
             onChange(path);
           }}
           onAllDone={() => setJustUploaded(true)}
         />
+        {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
+          <PrecheckNotice
+            warnings={precheck.warnings}
+            tips={precheck.tips}
+            onUpload={() => overrideWait.current?.(true)}
+            onRetake={() => overrideWait.current?.(false)}
+          />
+        ) : null}
       </div>
     </div>
   );

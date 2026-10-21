@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
-import { ProgressBar } from "@/components/site/ApplicationWizard";
+import { APPLY_PROGRESS_ENABLED, ApplyProgressSlot, ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
@@ -190,11 +190,12 @@ function ContactStep({
     }
   }
 
-  return (
-    <FadeUp>
-      <div className="max-w-xl mx-auto">
+  const contact = (
+    <>
         <ProgressBar current="your_info" source="homepage" />
-        <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
+        {APPLY_PROGRESS_ENABLED ? null : (
+          <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
+        )}
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
 
@@ -238,7 +239,21 @@ function ContactStep({
           Questions about availability, pricing, deposits or your application? Call{" "}
           <PhoneLink placement="application_help" className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline" />.
         </div>
+    </>
+  );
+
+  if (APPLY_PROGRESS_ENABLED) {
+    return (
+      <div className="max-w-xl mx-auto">
+        <ApplyProgressSlot stepKey="your_info" showNeeded />
+        {contact}
       </div>
+    );
+  }
+
+  return (
+    <FadeUp>
+      <div className="max-w-xl mx-auto">{contact}</div>
     </FadeUp>
   );
 }

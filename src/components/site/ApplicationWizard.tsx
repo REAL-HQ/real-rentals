@@ -282,6 +282,40 @@ export function ProgressBar({
   );
 }
 
+/**
+ * Hard off. The type stays `boolean` so the on-branch is not deleted, and
+ * this copy lives in the module /apply already loads. src/lib/apply-progress.ts
+ * keeps the same constant for the panel. While both are false, the panel is
+ * not imported and nothing here renders.
+ */
+export const APPLY_PROGRESS_ENABLED: boolean = false;
+
+export function ApplyProgressSlot({
+  stepKey,
+  showNeeded,
+  className = "",
+}: {
+  stepKey: string;
+  showNeeded: boolean;
+  className?: string;
+}) {
+  const [View, setView] = useState<
+    null | ((props: { stepKey: string; showNeeded: boolean; className?: string }) => React.ReactNode)
+  >(null);
+  useEffect(() => {
+    if (APPLY_PROGRESS_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/site/ApplyProgress").then((mod) => {
+      if (live) setView(() => mod.ApplyProgress);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (APPLY_PROGRESS_ENABLED !== true || View == null) return null;
+  return <View stepKey={stepKey} showNeeded={showNeeded} className={className} />;
+}
+
 // ------------------------------------------------------------------ wizard
 
 export function ApplicationWizard({ token }: { token: string }) {
@@ -396,6 +430,19 @@ export function ApplicationWizard({ token }: { token: string }) {
   };
 
   const inPart1 = phase === "rental" || phase === "driving";
+  const wizardSteps = (
+    <WizardSteps
+      phase={phase}
+      state={state}
+      update={update}
+      saving={saving}
+      savedAt={savedAt}
+      inPart1={inPart1}
+      token={token}
+      go={go}
+      setPhase={setPhase}
+    />
+  );
 
   return (
     <div className="min-h-screen w-full">
@@ -406,72 +453,111 @@ export function ApplicationWizard({ token }: { token: string }) {
           widened by an overflowing descendant. */}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft min-w-0">
         <SideRail phase={phase} source={state.source} />
-        <FadeUp delay={50} className="min-w-0">
-          <div className="p-5 md:p-8 min-w-0">
-            {/* The side rail is desktop-only, so on mobile it would otherwise
-              carry no branding at all once the site nav was removed. One mark,
-              either way — never both on screen at once. */}
-            <div className="lg:hidden mb-6">
-              <div className="mb-5">
-                <Logo width={84} offset={false} href={false} />
-              </div>
-              {inPart1 && (
-                <>
-                  <ProgressBar current={phase} source={state.source} />
-                  <SavedIndicator savedAt={savedAt} saving={saving} />
-                </>
-              )}
-            </div>
-
-            {phase === "rental" && (
-              <RentalStep
-                state={state}
-                update={update}
-                saving={saving}
-                onNext={() => go("driving", fieldsFor("rental", state))}
-              />
-            )}
-            {phase === "driving" && (
-              <DrivingStep
-                state={state}
-                update={update}
-                saving={saving}
-                onBack={() => setPhase("rental")}
-                onSubmit={() => go("submitted", fieldsFor("driving", state))}
-              />
-            )}
-            {phase === "submitted" && (
-              <ApplicationReceived
-                state={state}
-                onContinue={() => go("documents", {})}
-                saving={saving}
-              />
-            )}
-            {(phase === "documents" || phase === "profile_complete") && (
-              <DriverProfile
-                token={token}
-                state={state}
-                update={update}
-                phase={phase}
-                onFinish={async () => {
-                  await go("profile_complete", {});
-                  // Done for now: stop this tab holding a credential for a
-                  // flow nobody is in any more. The emailed link still works.
-                  clearResumeToken();
-                }}
-                saving={saving}
-              />
-            )}
-
-            {inPart1 && (
-              <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
-                No documents needed to apply · No payment required.
-              </p>
-            )}
+        {APPLY_PROGRESS_ENABLED ? (
+          <div className="min-w-0">
+            <ApplyProgressSlot
+              stepKey={phase}
+              showNeeded={phase === "rental" && state.source !== "homepage"}
+              className="px-5 pt-4 md:px-8"
+            />
+            <FadeUp delay={50} className="min-w-0">
+              <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
+            </FadeUp>
           </div>
+        ) : (
+        <FadeUp delay={50} className="min-w-0">
+          <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
         </FadeUp>
+        )}
       </div>
     </div>
+  );
+}
+
+function WizardSteps({
+  phase,
+  state,
+  update,
+  saving,
+  savedAt,
+  inPart1,
+  token,
+  go,
+  setPhase,
+}: {
+  phase: Phase;
+  state: WizardState;
+  update: <K extends keyof WizardState>(k: K, v: WizardState[K]) => void;
+  saving: boolean;
+  savedAt: number | null;
+  inPart1: boolean;
+  token: string;
+  go: (next: Phase, payload: Record<string, unknown>) => void;
+  setPhase: (phase: Phase) => void;
+}) {
+  return (
+    <>
+      {/* The side rail is desktop-only, so on mobile it would otherwise
+          carry no branding at all once the site nav was removed. One mark,
+          either way — never both on screen at once. */}
+      <div className="lg:hidden mb-6">
+        <div className="mb-5">
+          <Logo width={84} offset={false} href={false} />
+        </div>
+        {inPart1 && (
+          <>
+            <ProgressBar current={phase} source={state.source} />
+            <SavedIndicator savedAt={savedAt} saving={saving} />
+          </>
+        )}
+      </div>
+
+      {phase === "rental" && (
+        <RentalStep
+          state={state}
+          update={update}
+          saving={saving}
+          onNext={() => go("driving", fieldsFor("rental", state))}
+        />
+      )}
+      {phase === "driving" && (
+        <DrivingStep
+          state={state}
+          update={update}
+          saving={saving}
+          onBack={() => setPhase("rental")}
+          onSubmit={() => go("submitted", fieldsFor("driving", state))}
+        />
+      )}
+      {phase === "submitted" && (
+        <ApplicationReceived
+          state={state}
+          onContinue={() => go("documents", {})}
+          saving={saving}
+        />
+      )}
+      {(phase === "documents" || phase === "profile_complete") && (
+        <DriverProfile
+          token={token}
+          state={state}
+          update={update}
+          phase={phase}
+          onFinish={async () => {
+            await go("profile_complete", {});
+            // Done for now: stop this tab holding a credential for a
+            // flow nobody is in any more. The emailed link still works.
+            clearResumeToken();
+          }}
+          saving={saving}
+        />
+      )}
+
+      {inPart1 && (
+        <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
+          No documents needed to apply · No payment required.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -1562,6 +1648,15 @@ function InsuranceSection({
  * stored array — so the applicant can delete a wrong screenshot without us
  * handing back the paths of the right ones.
  */
+/**
+ * Hard off. The same constant lives in src/lib/upload-precheck.ts and in
+ * DocumentCapture. While it is false the trip uploader does not import the
+ * pre-check, and its upload call stays the one this screen already makes.
+ */
+const UPLOAD_PRECHECK_ENABLED: boolean = false;
+
+type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
+
 function MultiFileUpload({
   label,
   hint,
@@ -1583,6 +1678,25 @@ function MultiFileUpload({
   const [uploading, setUploading] = useState(false);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const overrideWait = useRef<((ok: boolean) => void) | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
+  const [PrecheckNotice, setPrecheckNotice] = useState<
+    null | ((props: PrecheckView & { onUpload: () => void; onRetake: () => void }) => React.ReactNode)
+  >(null);
+
+  async function askOverride(result: PrecheckView): Promise<boolean> {
+    if (UPLOAD_PRECHECK_ENABLED !== true) return true;
+    const mod = await import("@/components/site/UploadPrecheckNotice");
+    setPrecheckNotice(() => mod.UploadPrecheckNotice);
+    return new Promise((resolve) => {
+      overrideWait.current = (ok: boolean) => {
+        overrideWait.current = null;
+        setPrecheck(null);
+        resolve(ok);
+      };
+      setPrecheck(result);
+    });
+  }
   /** The screenshot a retake is about to stand in for, if any. */
   const [replacing, setReplacing] = useState<
     { name: string; stored: boolean; path?: string } | null
@@ -1633,6 +1747,18 @@ function MultiFileUpload({
     try {
       for (const file of chosen) {
         try {
+          if (UPLOAD_PRECHECK_ENABLED === true) {
+            const { reviewUpload } = await import("@/lib/upload-precheck");
+            const result = await reviewUpload(file);
+            if (result.blocked) {
+              toast.error(`${file.name}: ${result.blockMessage ?? "This file can't be uploaded."}`);
+              continue;
+            }
+            if (result.warnings.length && !(await askOverride(result))) {
+              toast.message("Choose another photo and try again.");
+              continue;
+            }
+          }
           const { path } = await uploadApplicantFile({ token, kind: "trip_history", file });
           uploaded.push(path);
         } catch (e) {
@@ -1796,6 +1922,14 @@ function MultiFileUpload({
           ))}
         </ul>
       )}
+      {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
+        <PrecheckNotice
+          warnings={precheck.warnings}
+          tips={precheck.tips}
+          onUpload={() => overrideWait.current?.(true)}
+          onRetake={() => overrideWait.current?.(false)}
+        />
+      ) : null}
     </div>
   );
 }
