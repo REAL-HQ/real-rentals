@@ -19,6 +19,8 @@ const token = "invalidtoken123";
 const handoff = resumeTargetFromApply({ t: token });
 ok(handoff?.to === "/thank-you", "a token on /apply goes to /thank-you");
 ok(handoff?.search.t === token, "the same token is carried on the thank-you search");
+const invalid = resumeTargetFromApply({ t: "x" });
+ok(invalid?.to === "/thank-you" && invalid.search.t === "x" && invalid.replace === true, "/apply?t=x lands on /thank-you?t=x before the token can be stripped");
 ok(handoff?.replace === true, "the apply URL is replaced, so Back does not return to the credential");
 ok(resumeTargetFromApply({}) === null, "/apply with no token stays and starts a new application");
 ok(resumeTargetFromApply({ t: "   " }) === null, "a blank token stays and starts a new application");
@@ -45,7 +47,8 @@ ok(hook.includes("window.history.replaceState"), "stripping still replaces histo
 const thanks = readFileSync("src/routes/thank-you.tsx", "utf8");
 ok(/const raw = useResumeToken\(t\);/.test(thanks), "/thank-you still stashes and strips through useResumeToken");
 ok(!thanks.includes("allowStashed: false"), "/thank-you still reads the token it just stashed");
-ok(thanks.includes("<WelcomeBack expired />"), "an unusable token still renders the new-link screen");
+ok(thanks.includes('if (token === "")'), "a token the server refuses is the recovery state");
+ok(thanks.includes("<WelcomeBack expired />"), "that recovery state still renders the new-link screen");
 ok(readFileSync("src/components/site/WelcomeBack.tsx", "utf8").includes("Get A New Secure Link"), "that screen says Get A New Secure Link");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall apply token redirect checks pass");
