@@ -17,6 +17,13 @@ assert.ok(flagAt !== -1 && roleAt !== -1 && readAt !== -1 && deductionsAt !== -1
 assert.ok(flagAt < roleAt && roleAt < readAt && readAt < deductionsAt);
 assert.doesNotMatch(server, /stripe|payments|insert\(|\.rpc\(/i);
 assert.doesNotMatch(server, /estimated_cost|actual_cost|insurance_payout|notes|police_report/);
+assert.equal(server.match(/\.limit\(LIMIT \+ 1\)/g)?.length, 2);
+assert.match(server, /incidentPage\.length > LIMIT/);
+assert.match(server, /deductionPage\.length > LIMIT/);
+assert.doesNotMatch(server, /truncated[\s\S]{0,80}throw new Error/);
+assert.doesNotMatch(server, /Math\.round\([^)]*\*\s*100\)/);
+assert.doesNotMatch(server, /Number\(row\.driver_responsible_amount\)/);
+assert.doesNotMatch(server, /Number\(row\.amount\)/);
 
 assert.equal(existsSync("src/components/admin/IncidentChargePrep.tsx"), false);
 const gate = panel.indexOf("if (!INCIDENT_CHARGE_PREP_ENABLED) return null");
@@ -94,5 +101,26 @@ assert.equal(deducted.find((row) => row.incidentId === noRental)?.proposedAmount
 assert.equal(deducted.find((row) => row.incidentId === noRental)?.basis, "no_rental");
 assert.equal(deducted.find((row) => row.incidentId === over)?.proposedAmount, null);
 assert.equal(deducted.find((row) => row.incidentId === over)?.basis, "already_deducted");
+
+const drifted = buildIncidentChargePrep([{ ...base, driverResponsibleAmount: "1.005" }]);
+assert.equal(Math.round(1.005 * 100), 100);
+assert.equal(drifted[0].proposedAmount, 1.01);
+assert.equal(drifted[0].basis, "driver_responsible_amount");
+
+const sameRentalA = "10000000-0000-4000-8000-000000000014";
+const sameRentalB = "10000000-0000-4000-8000-000000000015";
+const shared = buildIncidentChargePrep(
+  [
+    { ...base, id: sameRentalA, driverResponsibleAmount: "100.00" },
+    { ...base, id: sameRentalB, driverResponsibleAmount: "80.10" },
+  ],
+  [
+    { incidentId: sameRentalA, amount: "40.00" },
+    { incidentId: sameRentalB, amount: "10.05" },
+  ],
+);
+assert.equal(shared.find((row) => row.incidentId === sameRentalA)?.proposedAmount, 60);
+assert.equal(shared.find((row) => row.incidentId === sameRentalB)?.proposedAmount, 70.05);
+assert.equal(shared[0].rentalId, shared[1].rentalId);
 
 console.log("incident charge prep: ok");

@@ -47,6 +47,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   const [filter, setFilter] = useState("all");
   const [remainingOnly, setRemainingOnly] = useState(false);
   const [prepRows, setPrepRows] = useState<IncidentChargePrepRow[]>([]);
+  const [prepTruncated, setPrepTruncated] = useState(false);
   const [editing, setEditing] = useState<Incident | "new" | null>(null);
   const [seed, setSeed] = useState<IssueIncidentSeed | null>(null);
   const prepById = new Map(prepRows.map((row) => [row.incidentId, row.proposedAmount]));
@@ -115,7 +116,10 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         </button>
       </div>
 
-      <RemainingToChargeLoader onRows={setPrepRows} />
+      <RemainingToChargeLoader onRows={setPrepRows} onTruncated={setPrepTruncated} />
+      {INCIDENT_CHARGE_PREP_ENABLED && prepTruncated ? (
+        <p className="text-[12px] text-[#55555E]">Remaining To Charge Is Capped</p>
+      ) : null}
 
       <div className="flex flex-wrap gap-1.5">
         {["all", ...STATUSES].map((s) => (
@@ -265,26 +269,44 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   );
 }
 
-function RemainingToChargeLoader({ onRows }: { onRows: (rows: IncidentChargePrepRow[]) => void }) {
+function RemainingToChargeLoader({
+  onRows,
+  onTruncated,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+}) {
   if (!INCIDENT_CHARGE_PREP_ENABLED) return null;
-  return <RemainingToChargeFetch onRows={onRows} />;
+  return <RemainingToChargeFetch onRows={onRows} onTruncated={onTruncated} />;
 }
 
-function RemainingToChargeFetch({ onRows }: { onRows: (rows: IncidentChargePrepRow[]) => void }) {
+function RemainingToChargeFetch({
+  onRows,
+  onTruncated,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+}) {
   const load = useServerFn(listIncidentChargePrep);
   useEffect(() => {
     let cancelled = false;
     void load({ data: {} })
       .then((next) => {
-        if (!cancelled) onRows(next);
+        if (!cancelled) {
+          onRows(next.rows);
+          onTruncated(next.truncated);
+        }
       })
       .catch(() => {
-        if (!cancelled) onRows([]);
+        if (!cancelled) {
+          onRows([]);
+          onTruncated(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [load, onRows]);
+  }, [load, onRows, onTruncated]);
   return null;
 }
 

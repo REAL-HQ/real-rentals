@@ -4,6 +4,8 @@
 
 const OPEN = new Set(["open", "in_claim", "repairing"]);
 
+export type Money = number | string | null;
+
 export type IncidentChargeInput = {
   id: string;
   status: string;
@@ -11,14 +13,14 @@ export type IncidentChargeInput = {
   occurredAt: string;
   vehicleId: string;
   rentalId: string | null;
-  driverResponsibleAmount: number | null;
+  driverResponsibleAmount: Money;
   unitNumber: string | null;
   vehicle: string;
 };
 
 export type IncidentDeductionInput = {
   incidentId: string | null;
-  amount: number | null;
+  amount: Money;
 };
 
 export type IncidentChargePrepRow = {
@@ -33,8 +35,24 @@ export type IncidentChargePrepRow = {
   basis: "driver_responsible_amount" | "no_driver_amount" | "no_rental" | "already_deducted";
 };
 
-function cents(value: number): number {
-  return Math.round(value * 100);
+/**
+ * Integer cents from a numeric string or a finite number.
+ * Decimal text is parsed directly so "1.005" is 101 cents.
+ * Multiplying a float by 100 and rounding is not used.
+ */
+export function moneyToCents(value: Money | undefined): number | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+  } else if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value).trim());
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1 : 1;
+  const frac = match[3] ?? "";
+  let cents = Number(match[2]) * 100 + Number((frac + "00").slice(0, 2));
+  if (frac.length > 2 && Number(frac[2]) >= 5) cents += 1;
+  return sign * cents;
 }
 
 /** Sum of deposit_deductions.amount for one incident, in cents. */
@@ -42,8 +60,9 @@ export function deductedCents(rows: IncidentDeductionInput[], incidentId: string
   let total = 0;
   for (const row of rows) {
     if (row.incidentId !== incidentId) continue;
-    if (typeof row.amount !== "number" || !Number.isFinite(row.amount)) continue;
-    total += cents(row.amount);
+    const cents = moneyToCents(row.amount);
+    if (cents == null) continue;
+    total += cents;
   }
   return total;
 }
@@ -54,14 +73,13 @@ export function deductedCents(rows: IncidentDeductionInput[], incidentId: string
  */
 export function proposeRemainingCharge(
   rentalId: string | null,
-  driverResponsibleAmount: number | null,
+  driverResponsibleAmount: Money,
   deducted: number,
 ): { proposedAmount: number | null; basis: IncidentChargePrepRow["basis"] } {
   if (rentalId == null) return { proposedAmount: null, basis: "no_rental" };
-  if (typeof driverResponsibleAmount !== "number" || !Number.isFinite(driverResponsibleAmount) || driverResponsibleAmount <= 0) {
-    return { proposedAmount: null, basis: "no_driver_amount" };
-  }
-  const remaining = cents(driverResponsibleAmount) - deducted;
+  const amountCents = moneyToCents(driverResponsibleAmount);
+  if (amountCents == null || amountCents <= 0) return { proposedAmount: null, basis: "no_driver_amount" };
+  const remaining = amountCents - deducted;
   if (remaining <= 0) return { proposedAmount: null, basis: "already_deducted" };
   return { proposedAmount: remaining / 100, basis: "driver_responsible_amount" };
 }
