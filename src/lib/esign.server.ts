@@ -2,6 +2,8 @@
 // consume these helpers; nothing else signs, voids or archives.
 import { preserveCompletedPdfV1 } from "@/lib/esign-immutable-archive-v1.server";
 import { SIGNED_ARCHIVE_V1_ENABLED } from "@/lib/record-rental-live-path";
+import { ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED } from "@/lib/esign-immutable-archive-flag";
+import { archiveImmutableV1 } from "@/lib/esign-immutable-archive-write.server";
 import { assertSignedArchiveBytes } from "@/lib/signed-archive-protection.server";
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
@@ -227,6 +229,7 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
   // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
   // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
   if (SIGNED_ARCHIVE_V1_ENABLED) return archiveCompletedV1(admin, ag, actor);
+  if (ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED) return archiveImmutableV1(admin, ag, actor);
   const wasFailed = ag.archive_status === "failed";
   try {
     const bodySha = await sha256Hex(ag.body as string);
