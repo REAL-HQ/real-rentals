@@ -30,6 +30,11 @@ type SendSmsArgs = {
    * still require an opt-out check but not a marketing opt-in.
    */
   requireConsent?: boolean;
+  /**
+   * Driver notices set this. Live sends omit it, so the Twilio fetch is the
+   * same request it was before: no abort signal is created.
+   */
+  noticeTimeout?: boolean;
 };
 
 /**
@@ -207,6 +212,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),
+      ...(args.noticeTimeout ? { signal: AbortSignal.timeout(5000) } : {}),
     });
     const payload = (await res.json().catch(() => ({}))) as { sid?: string; message?: string };
 

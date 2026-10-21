@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
@@ -20,6 +21,18 @@ import { DRIVER_NOTIFICATIONS_ENABLED } from "@/lib/driver-notifications";
 async function gate(userId: string) {
   const { requireManager } = await import("@/lib/roles.server");
   return requireManager(userId);
+}
+
+/** Workers keep the notice alive via waitUntil. Other runtimes wait at most 3s. */
+function noticeWaitUntil(context: unknown): ((promise: Promise<unknown>) => void) | undefined {
+  const fromContext = (context as { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
+  if (typeof fromContext === "function") return fromContext;
+  try {
+    const request = getRequest() as { waitUntil?: (promise: Promise<unknown>) => void };
+    return typeof request?.waitUntil === "function" ? request.waitUntil.bind(request) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const CLOSED = ["resolved", "closed"] as const;
@@ -162,12 +175,17 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       metadata: { from: existing.status, to: data.status },
     });
     if (DRIVER_NOTIFICATIONS_ENABLED === true) {
-      try {
-        const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
-        await notifyIssueStatusChanged(data.id);
-      } catch (err) {
-        console.error("[driver-notifications] issue_status", err);
-      }
+      const notice = (async () => {
+        try {
+          const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
+          await notifyIssueStatusChanged(data.id);
+        } catch (err) {
+          console.error("[driver-notifications] issue_status", err);
+        }
+      })();
+      const waitUntil = noticeWaitUntil(context);
+      if (waitUntil) waitUntil(notice);
+      else await Promise.race([notice, new Promise((resolve) => setTimeout(resolve, 3000))]);
     }
     return { ok: true, status: data.status };
   });

@@ -161,13 +161,19 @@ export async function notifyIssueStatusChanged(issueId: string): Promise<DriverN
 }
 
 type NoticeChannelDeps = {
-  sendEmail?: (args: { to: string; subject: string; html: string }) => Promise<{ ok: boolean; error?: string }>;
+  sendEmail?: (args: {
+    to: string;
+    subject: string;
+    html: string;
+    noticeTimeout?: boolean;
+  }) => Promise<{ ok: boolean; error?: string }>;
   sendSms?: (args: {
     to: string;
     body: string;
     kind: DriverNotice["kind"];
     applicationId: string;
     rentalId: string | null;
+    noticeTimeout?: boolean;
   }) => Promise<{ ok: boolean; skipped?: boolean }>;
   insertInApp?: (row: {
     driver_id: string;
@@ -201,7 +207,12 @@ export async function deliverDriverNoticeChannels(
   if (notice.email) {
     try {
       const sendEmail = deps.sendEmail ?? (await import("@/lib/email.server")).sendEmail;
-      const r = await sendEmail({ to: notice.email, subject: notice.emailSubject, html: notice.emailHtml });
+      const r = await sendEmail({
+        to: notice.email,
+        subject: notice.emailSubject,
+        html: notice.emailHtml,
+        noticeTimeout: true,
+      });
       if (!r.ok) {
         console.error("[driver-notifications] email failed", notice.kind, r.error ?? "not sent");
         result.email = "failed";
@@ -223,6 +234,7 @@ export async function deliverDriverNoticeChannels(
         kind: notice.kind,
         applicationId: notice.applicationId,
         rentalId: notice.rentalId,
+        noticeTimeout: true,
       });
       result.sms = sms.ok ? "sent" : sms.skipped ? "skipped" : "failed";
     } catch (err) {

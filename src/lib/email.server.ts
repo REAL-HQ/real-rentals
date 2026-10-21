@@ -25,6 +25,11 @@ type SendArgs = {
   track?: { workflow: string };
   /** Stable key for a reserved recovery attempt. Omitted by every other sender. */
   idempotencyKey?: string;
+  /**
+   * Driver notices set this. Live sends omit it, so the Resend fetch is the
+   * same request it was before: no abort signal is created.
+   */
+  noticeTimeout?: boolean;
 };
 
 export type SendResult = {
@@ -93,7 +98,7 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -135,6 +140,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
       }),
+      ...(noticeTimeout ? { signal: AbortSignal.timeout(5000) } : {}),
     });
     if (!res.ok) {
       const body = await res.text();

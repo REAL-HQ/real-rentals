@@ -104,12 +104,22 @@ describe("driver notifications flag", () => {
 
     const hook = issues.indexOf('import("@/lib/driver-notifications.server")');
     assert.ok(hook !== -1);
-    assert.match(issues.slice(Math.max(0, hook - 400), hook), /DRIVER_NOTIFICATIONS_ENABLED === true/);
-    assert.match(issues.slice(Math.max(0, hook - 80), hook), /try \{/);
+    assert.match(issues.slice(Math.max(0, hook - 500), hook), /DRIVER_NOTIFICATIONS_ENABLED === true/);
+    assert.match(issues.slice(Math.max(0, hook - 120), hook), /try \{/);
     assert.match(issues, /await import\("@\/lib\/driver-notifications\.server"\)/);
     assert.match(issues, /await notifyIssueStatusChanged\(data\.id\)/);
+    assert.match(issues, /noticeWaitUntil\(context\)/);
+    assert.match(issues, /waitUntil\(notice\)/);
+    assert.match(issues, /Promise\.race\(\[notice, new Promise\(\(resolve\) => setTimeout\(resolve, 3000\)\)\]\)/);
     assert.doesNotMatch(issues, /void import\("@\/lib\/driver-notifications\.server"\)/);
     assert.doesNotMatch(issues, /from ["']@\/lib\/driver-notifications\.server["']/);
+    assert.match(sendBody, /noticeTimeout: true/);
+    const email = readFileSync("src/lib/email.server.ts", "utf8");
+    const sms = readFileSync("src/lib/sms.server.ts", "utf8");
+    assert.match(email, /\.\.\.\(noticeTimeout \? \{ signal: AbortSignal\.timeout\(5000\) \} : \{\}\)/);
+    assert.match(sms, /\.\.\.\(args\.noticeTimeout \? \{ signal: AbortSignal\.timeout\(5000\) \} : \{\}\)/);
+    assert.equal((email.match(/AbortSignal\.timeout\(5000\)/g) ?? []).length, 1);
+    assert.equal((sms.match(/AbortSignal\.timeout\(5000\)/g) ?? []).length, 1);
   });
 
   it("does not put claim or staff detail in the renter copy", () => {
