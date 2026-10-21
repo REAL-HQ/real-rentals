@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 
 export type TabDef = {
   id: string;
@@ -102,6 +104,23 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while Fleet Availability is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FLEET_AVAILABILITY_TAB: TabDef = {
+  id: "fleet_availability",
+  label: "Fleet Availability",
+  icon: LayoutGrid,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Which Cars Are Available, Rented, In Shop, Or Not Rentable",
+};
+
+function spliceAfter<T extends { id: string }>(entries: T[], afterId: string, item: T): T[] {
+  const next = [...entries];
+  const at = next.findIndex((entry) => entry.id === afterId);
+  next.splice(at === -1 ? next.length : at + 1, 0, item);
+  return next;
+}
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -113,12 +132,12 @@ const FINANCE_TAB: TabDef = {
 };
 
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  let tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    tabs = spliceAfter(tabs, "vehicles", FLEET_AVAILABILITY_TAB);
+  }
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
-  return next;
+  return spliceAfter(tabs, "expenses", FINANCE_TAB);
 }
 
 /**
@@ -148,13 +167,14 @@ export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
 
 /** Rail entries: a workspace shows if any of its tabs is allowed; it links to the first allowed tab. */
 export function railEntries(tier: StaffTier | null): (TabDef & { href: string })[] {
-  const entries = TABS.filter((t) => t.group)
+  let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
+  }
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
-  return entries;
+  return spliceAfter(entries, "expenses", { ...FINANCE_TAB, href: "finance" });
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
