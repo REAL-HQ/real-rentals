@@ -12,6 +12,7 @@ import {
   followupReason,
   isVerifiedApplication,
   reminderText,
+  takeUnbooked,
   type FollowupApplication,
 } from "../src/lib/booking-followup";
 import { loadBookingFollowups } from "../src/lib/booking-followup.server";
@@ -68,8 +69,18 @@ describe("booking follow-up flag", () => {
     const loader = server.slice(server.indexOf("export async function loadBookingFollowups"));
     const guard = loader.indexOf("assertBookingFollowupEnabled()");
     const db = loader.indexOf('import("@/integrations/supabase/client.server")');
-    const read = loader.indexOf(".from(");
-    assert.ok(guard !== -1 && db !== -1 && read !== -1 && guard < db && db < read);
+    const collect = loader.indexOf("collectUnbooked(");
+    assert.ok(guard !== -1 && db !== -1 && collect !== -1 && guard < db && db < collect);
+    const collectBody = server.slice(server.indexOf("async function collectUnbooked"));
+    const pageRead = collectBody.indexOf(".range(");
+    const unbooked = collectBody.indexOf("takeUnbooked(");
+    assert.ok(pageRead !== -1 && unbooked !== -1 && pageRead < unbooked);
+    assert.match(server, /const POSTGREST_MAX_ROWS = 1000/);
+    assert.match(server, /const READ_CAP = POSTGREST_MAX_ROWS - 1/);
+    assert.match(server, /\.limit\(READ_CAP \+ 1\)/);
+    assert.match(server, /if \(count > READ_CAP\) throw new Error\("Booking follow-up could not be listed\."\)/);
+    assert.match(server, /\.order\("created_at", \{ ascending: false \}\)\s*\.limit\(1\)/);
+    assert.doesNotMatch(server, /CONTACT_LIMIT|2000/);
     assert.doesNotMatch(server, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
     assert.doesNotMatch(server, /contacted_at/);
 
@@ -221,5 +232,37 @@ describe("booking follow-up rows", () => {
     });
     assert.equal(rows.length, BOOKING_FOLLOWUP_LIMIT);
     assert.equal(rows[0].applicationId, "app-0");
+  });
+
+  it("counts America/New_York calendar days across midnight and DST", () => {
+    assert.equal(daysWaiting("2026-01-15T04:59:00.000Z", new Date("2026-01-15T05:01:00.000Z")), 1);
+    assert.equal(daysWaiting("2026-03-07T17:00:00.000Z", new Date("2026-03-09T16:00:00.000Z")), 2);
+    assert.equal(daysWaiting("2026-11-01T04:30:00.000Z", new Date("2026-11-02T04:30:00.000Z")), 0);
+    assert.equal(daysWaiting("2026-06-15T14:00:00.000Z", new Date("2026-06-16T01:00:00.000Z")), 0);
+    assert.equal(daysWaiting("2026-10-22T16:00:00.000Z", new Date("2026-10-21T15:00:00.000Z")), 0);
+  });
+
+  it("drops booked applicants before the list cap", () => {
+    const booked = Array.from({ length: BOOKING_FOLLOWUP_LIMIT }, (_, index) =>
+      app({ id: `booked-${index}`, userId: `user-${index}` }),
+    );
+    const waiting = app({ id: "waiting", fullName: "Waiting Person" });
+    const rentals = booked.map((person) => ({ applicationId: person.id, driverId: person.userId }));
+    const taken = takeUnbooked([...booked, waiting], rentals, BOOKING_FOLLOWUP_LIMIT);
+    assert.deepEqual(
+      taken.map((person) => person.id),
+      ["waiting"],
+    );
+    const rows = buildBookingFollowups({
+      applications: [...booked, waiting],
+      rentals,
+      approvals: [{ applicationId: "waiting", at: "2026-10-01T15:00:00.000Z" }],
+      contacts: [],
+      now,
+    });
+    assert.deepEqual(
+      rows.map((row) => row.applicationId),
+      ["waiting"],
+    );
   });
 });

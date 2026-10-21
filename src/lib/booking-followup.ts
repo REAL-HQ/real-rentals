@@ -150,13 +150,54 @@ export function applicationHasBooking(
   );
 }
 
+const NY_DAY = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Calendar day in America/New_York, as a UTC day serial. Not elapsed 24-hour periods. */
+function nyCivilDay(date: Date): number | null {
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = NY_DAY.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  if (!year || !month || !day) return null;
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+/**
+ * Whole America/New_York calendar days from the approval instant to now.
+ * A 23-hour spring-forward day and a 25-hour fall-back day each count as one
+ * date change, and a wait that crosses midnight counts even when it is under
+ * 24 hours.
+ */
 export function daysWaiting(sinceIso: string | null, now: Date): number | null {
   if (!sinceIso) return null;
-  const since = Date.parse(sinceIso);
-  if (Number.isNaN(since)) return null;
-  const elapsed = now.getTime() - since;
-  if (elapsed < 0) return 0;
-  return Math.floor(elapsed / 86_400_000);
+  const since = nyCivilDay(new Date(sinceIso));
+  const today = nyCivilDay(now);
+  if (since === null || today === null) return null;
+  return Math.max(0, today - since);
+}
+
+/**
+ * Drop booked applicants before a cap. The cap counts people still waiting,
+ * so a page full of rentals cannot push an unbooked applicant off the list.
+ */
+export function takeUnbooked(
+  applications: readonly FollowupApplication[],
+  rentals: readonly FollowupRental[],
+  limit: number,
+): FollowupApplication[] {
+  const kept: FollowupApplication[] = [];
+  for (const app of applications) {
+    if (applicationHasBooking(app, rentals)) continue;
+    kept.push(app);
+    if (kept.length >= limit) break;
+  }
+  return kept;
 }
 
 export function isSentDelivery(state: string | null | undefined): boolean {
