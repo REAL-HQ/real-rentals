@@ -50,6 +50,7 @@ import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 
 export type TabDef = {
   id: string;
@@ -176,6 +177,16 @@ const FLEET_CALENDAR_TAB: TabDef = {
   minTier: "manager",
   group: "FLEET",
   description: "The Week Ahead For Every Vehicle",
+};
+
+/** Shown only while Receivables Aging is compiled on. Kept out of TABS so a dark build cannot list it. */
+const AGING_TAB: TabDef = {
+  id: "receivables_aging",
+  label: "Receivables Aging",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Unpaid Rent By How Long It Has Been Due",
 };
 
 /** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
@@ -360,6 +371,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
+  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push(AGING_TAB);
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
@@ -421,6 +433,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
+  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push({ ...AGING_TAB, href: "receivables_aging" });
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
@@ -506,6 +519,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "revenue_forecast") {
     if (!REVENUE_FORECAST_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "revenue_forecast";
+  }
+  if (args.urlTab === "receivables_aging") {
+    if (!RECEIVABLES_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "receivables_aging";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";

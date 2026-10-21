@@ -71,6 +71,8 @@ import { FleetCalendar } from "@/components/admin/FleetCalendar";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { RevenueForecastPanel } from "@/components/admin/RevenueForecastPanel";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
+import { ReceivablesAgingPanel } from "@/components/admin/ReceivablesAgingPanel";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -380,6 +382,11 @@ function Admin() {
     if (urlTab === "revenue_forecast") {
       if (!REVENUE_FORECAST_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "revenue_forecast";
+    }
+    // Receivables Aging is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "receivables_aging") {
+      if (!RECEIVABLES_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "receivables_aging";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -908,6 +915,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
+            {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
