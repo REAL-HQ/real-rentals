@@ -142,7 +142,7 @@ async function listPaidInvoices(
   return { rows, truncated: true };
 }
 
-async function readDirectory(
+export async function readDirectory(
   db: Db,
   table: string,
   columns: string,
