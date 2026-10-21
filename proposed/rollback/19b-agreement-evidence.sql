@@ -4,8 +4,9 @@
 -- This file does not change the install SQL.
 --
 -- Dropping public.link_replacement_agreement_v1 removes its
--- rr_record_executor EXECUTE grant. authenticated is not granted that
--- function at this step, and this rollback does not grant it.
+-- rr_record_executor EXECUTE grant. Dropping
+-- public.link_replacement_agreement_checked removes its authenticated
+-- EXECUTE grant. This rollback does not grant either function.
 BEGIN;
 -- policies added by this step
 -- policies removed or replaced by this step
@@ -24,6 +25,7 @@ CREATE OR REPLACE FUNCTION private.record_agreement_evidence(uuid, uuid, timesta
 AS $function$ BEGIN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END $function$;
 -- functions added by this step
 DROP FUNCTION IF EXISTS "private"."record_agreement_evidence"(_rental_id uuid, _agreement_id uuid);
+DROP FUNCTION IF EXISTS "public"."link_replacement_agreement_checked"(_rental_id uuid, _agreement_id uuid);
 DROP FUNCTION IF EXISTS "public"."link_replacement_agreement_v1"(_rental_id uuid, _agreement_id uuid);
 -- functions removed by this step
 -- columns added by this step

@@ -308,7 +308,7 @@ Install mode is `proposed/INSTALL.md`. Packet files, including `17.sql`, are app
 7. Packet steps 11 through 19
 8. Packet step 19b
 9. `19c-agreement-contract.sql`
-10. Packet step 20, extend rental, return checklist
+10. Packet step 20 (`proposed/m2-packet/20.sql` only; `proposed/vehicle-swap-v1.sql` is a pointer and is not installed), extend rental, return checklist
 11. `record-uploaded-content-sha.sql` after the return checklist. The proof rolls it back before the return checklist so the privilege dumps stay comparable.
 12. `proposed/m2-packet/21-revoke-executor-create.sql`. This revokes `CREATE` on `public` and `private` from `rr_record_executor`. Its rollback grants that privilege back. The proof rolls it back before the content-sha file.
 
@@ -321,9 +321,9 @@ SHA-256 of the files as rehearsed:
 | `proposed/m2-packet/10.sql` | `cf40bd9d02cf03d999c8413ae4123ec23d0e7133bba912b2dad7ffd49bb5d764` |
 | `proposed/m2-packet/11.sql` | `b8fde7718e9893c3ed97dd0066808c6d02a921de15fccc7ff5514976753472a2` |
 | `proposed/m2-packet/17.sql` | `30768834894d0291ba39353795fb82a34708ed95428979c75420bf34f9b0c506` |
-| `proposed/m2-packet/19b.sql` | `57b82055838bde638518f6c889802d0ba892cf65eb57af6af0ca17dfba62bc36` |
+| `proposed/m2-packet/19b.sql` | `764d71eb4b5ae8f0a3992b81308f46a8f27953a188ffa5acb4718089d390d504` |
 | `proposed/m2-packet/20.sql` | `c23e187d4aada1280616197e876151a1668810c235e5c1504901ee15349ee70a` |
-| `proposed/m2-packet/extend.sql` | `ef1c6a1dc1dea9138a2c9a2a223eeba2e23cf75fc0e8d041115cf03a134f1fb3` |
+| `proposed/m2-packet/extend.sql` | `f1cd8b468381db283f0daf34555e18d7c67913ccd9554a062321a48c696b3f2d` |
 | `proposed/m2-packet/21-revoke-executor-create.sql` | `2eea1a9184bc545d668e7821a3782156ee80492d31543dd11b5dac8b3744c70a` |
 | `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | `618f9c7c3fae2d344e1987bb0a41626f80472fc1ec8a80d40ddf6ec60366d1e3` |
 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | `ba5db19b8e8910c2501ad63c10d16d0a8b9ac616b264a3d8f10c908fd3240683` |
@@ -334,7 +334,7 @@ SHA-256 of the files as rehearsed:
 
 ### Proof
 
-`scripts/m2-functional-proof.sql`, one transaction, then `ROLLBACK`. No 64-hex literal is in that file. License and agreement hashes are `encode(extensions.digest(bytes, 'sha256'), 'hex')` of `m2-license-front-v1`, `m2-license-back-v1`, `m2-signed-agreement-v1`, and `signed terms`. `scripts/m2-content-sha.test.ts` checks that `contentSha256Hex` returns the same digests. Front is `66cd8986298ba1265463727de09dbc11f65fc4a17d9726222218b63c56793f0c`. Back is `577ba23d2c2bcdccc259d9b91c0261232ca4c26e4e9bc528484dd8378a3dd240`. The flag stayed false. After the evidence record, the proof seeds a rental-ready replacement, a signed archived agreement for that car, and a `private.agreement_evidence` row, then calls `swap_rental_vehicle_tx` as the authenticated manager. A second call with the same arguments returns `recovered` true and does not add a closure, assignment, or audit.
+`scripts/m2-functional-proof.sql`, one transaction, then `ROLLBACK`. After the evidence record, the authenticated manager calls `link_replacement_agreement_checked(uuid, uuid)` on the signed archived agreement and gets `recovered` false. A driver with a session and no `user_roles` row is refused with `manager_required`. `anon` is `permission denied` for that function. `link_replacement_agreement_v1` stays denied for `authenticated`. No 64-hex literal is in that file. License and agreement hashes are `encode(extensions.digest(bytes, 'sha256'), 'hex')` of `m2-license-front-v1`, `m2-license-back-v1`, `m2-signed-agreement-v1`, and `signed terms`. `scripts/m2-content-sha.test.ts` checks that `contentSha256Hex` returns the same digests. Front is `66cd8986298ba1265463727de09dbc11f65fc4a17d9726222218b63c56793f0c`. Back is `577ba23d2c2bcdccc259d9b91c0261232ca4c26e4e9bc528484dd8378a3dd240`. The flag stayed false. After the evidence record, the proof seeds a rental-ready replacement, a signed archived agreement for that car, and a `private.agreement_evidence` row, then calls `swap_rental_vehicle_tx` as the authenticated manager. A second call with the same arguments returns `recovered` true and does not add a closure, assignment, or audit.
 
 (a) and (b) insert the `confirmDocumentUpload` column list with no `content_sha256`. The objects are inserted with `user_metadata.source` and no sha. `service_role` then calls `public.record_uploaded_content_sha`, which sets `documents.content_sha256` and merges `user_metadata.sha256`. `anon` and `authenticated` are `permission denied`. A stale version raises `content_sha256_object_changed`. A different stored hash raises `content_sha256_mismatch`. An `immutable-v1` path raises `content_sha256_immutable` and writes nothing. A `driver-docs` path with no documents row and no application upload raises `content_sha256_unclaimed` and writes nothing. `metadata` is system data (`mimetype`, `size`) and has no sha. supabase-js stores the upload `metadata` option in `user_metadata` (storage migration 0025), so `approval_object_version` and step 19c read `user_metadata` and do not fall back to `metadata`. The agreement used for (d) is an initial insert at `immutable-v1/<doc>/<digest>.pdf` in `rental-agreements`, with the object `user_metadata` sha equal to the same digest. A `completed-v1` agreement is refused with `agreement_contract_unverified`, and updating its path to `immutable-v1` raises `finalized_archive_immutable`.
 

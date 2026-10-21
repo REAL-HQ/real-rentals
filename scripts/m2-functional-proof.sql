@@ -738,6 +738,75 @@ EXCEPTION WHEN OTHERS THEN
  RAISE;
 END $$;
 
+-- link_replacement_agreement_checked is the authenticated manager path.
+-- The session above is the admin JWT. v1 stays executor-only.
+DO $$
+DECLARE linked jsonb; rid uuid;
+BEGIN
+ SELECT id INTO rid FROM public.rentals
+  WHERE application_id='44444444-4444-4444-8444-444444444444' AND status='active';
+ IF rid IS NULL THEN RAISE EXCEPTION 'link fixture rental missing'; END IF;
+ linked := public.link_replacement_agreement_checked(
+  rid, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ IF linked->>'contract' IS DISTINCT FROM 'agreement-evidence-v1'
+  OR linked->>'recovered' IS DISTINCT FROM 'false'
+  OR linked->>'agreementId' IS DISTINCT FROM 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  OR linked->>'rentalId' IS DISTINCT FROM rid::text
+ THEN RAISE EXCEPTION 'link result %', linked; END IF;
+ PERFORM set_config('m2.link_rental', rid::text, true);
+ RAISE NOTICE 'RESULT link replacement manager pass';
+END $$;
+
+RESET SESSION AUTHORIZATION;
+DO $$
+BEGIN
+ IF (SELECT count(*) FROM private.agreement_evidence
+     WHERE agreement_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+       AND rental_id=current_setting('m2.link_rental')::uuid) <> 1
+ THEN RAISE EXCEPTION 'link evidence missing'; END IF;
+END $$;
+
+-- A driver with a live session and no user_roles row is refused inside the
+-- function. EXECUTE is granted, so this is not a permission error.
+RESET SESSION AUTHORIZATION;
+INSERT INTO auth.sessions (id, user_id, not_after)
+VALUES ('12121212-1212-4121-8121-121212121212','22222222-2222-4222-8222-222222222222', now() + interval '1 day');
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','22222222-2222-4222-8222-222222222222',
+ 'session_id','12121212-1212-4121-8121-121212121212',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+DO $$
+BEGIN
+ PERFORM public.link_replacement_agreement_checked(
+  (SELECT id FROM public.rentals
+    WHERE application_id='44444444-4444-4444-8444-444444444444' AND status='active'),
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ RAISE EXCEPTION 'non-staff driver linked a replacement agreement';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%manager_required%' THEN RAISE; END IF;
+ RAISE NOTICE 'RESULT link replacement driver refused %', SQLERRM;
+END $$;
+
+-- anon has no EXECUTE. The check fails before the body.
+RESET SESSION AUTHORIZATION;
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE anon;
+DO $$
+BEGIN
+ PERFORM public.link_replacement_agreement_checked(
+  '44444444-4444-4444-8444-444444444444',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ RAISE EXCEPTION 'anon linked a replacement agreement';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%link_replacement_agreement_checked%' OR SQLERRM LIKE '%manager_required%' THEN
+  RAISE;
+ END IF;
+ RAISE NOTICE 'RESULT link replacement anon permission denied';
+END $$;
+
 -- Replacement car, signed archive, and agreement evidence. Seeded as the
 -- table owner. The authenticated swap call does not write these rows.
 -- Mileage stays null, so the swap writes no odometer reading.

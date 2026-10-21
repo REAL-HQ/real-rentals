@@ -102,7 +102,7 @@ After each file, run the verification query in a new execution. The query must r
 | 28 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | own, no `-1` | Step 28 query below | `proposed/rollback/record-uploaded-content-sha.sql` |
 | 29 | `proposed/m2-packet/21-revoke-executor-create.sql` | `-1` | Step 29 query below | `proposed/rollback/21-revoke-executor-create.sql` |
 
-Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, and `list_assignment_history_v1`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. Step 23 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 24. Step 25 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
+Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, `list_assignment_history_v1`, and `link_replacement_agreement_checked`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. Step 23 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 24. Step 25 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
 
 ### Step 1
 
@@ -1930,7 +1930,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=68 AND coalesce(bool_and(
+ AND (SELECT count(*)=69 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -1942,6 +1942,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
@@ -2031,7 +2032,7 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=68 AND coalesce(bool_and(
+ AND (SELECT count(*)=69 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2043,6 +2044,7 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
@@ -2132,7 +2134,7 @@ SELECT to_regclass('private.swap_operations') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=72 AND coalesce(bool_and(
+ AND (SELECT count(*)=73 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2144,6 +2146,7 @@ SELECT to_regclass('private.swap_operations') IS NOT NULL
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
@@ -2237,7 +2240,7 @@ SELECT to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=73 AND coalesce(bool_and(
+ AND (SELECT count(*)=74 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2250,6 +2253,7 @@ SELECT to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
@@ -2343,7 +2347,7 @@ SELECT to_regclass('public.return_checklists') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=73 AND coalesce(bool_and(
+ AND (SELECT count(*)=74 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2356,6 +2360,7 @@ SELECT to_regclass('public.return_checklists') IS NOT NULL
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
@@ -2449,7 +2454,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=74 AND coalesce(bool_and(
+ AND (SELECT count(*)=75 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2462,6 +2467,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
@@ -2557,7 +2563,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=74 AND coalesce(bool_and(
+ AND (SELECT count(*)=75 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2570,6 +2576,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),

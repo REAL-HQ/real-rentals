@@ -2,7 +2,8 @@
 -- NOT EXECUTED.
 --
 -- Install after packet step 19 (corrected signed-archive-protection-v1.sql)
--- and before swap step 20 (proposed/vehicle-swap-v1.sql).
+-- and before swap step 20 (proposed/m2-packet/20.sql). The swap SQL lives
+-- only in that file. proposed/vehicle-swap-v1.sql is a pointer, not a source.
 -- Requires private.record_immutable() from packet step 3, and
 -- private.approval_lock() / private.approval_actor() from packet step 1.
 -- This file does not replace those functions and does not weaken their grants.
@@ -175,12 +176,38 @@ CREATE FUNCTION public.link_replacement_agreement_v1(_rental_id uuid, _agreement
 BEGIN
  RETURN private.record_agreement_evidence(_rental_id, _agreement_id);
 END $$;
--- No JWT client, and no packet function, calls this wrapper. src and the
--- record-rental transport call record_existing_rental_evidence_v1 instead.
--- Restrict it to rr_record_executor, same as the private record helpers.
--- The two-argument private function stays ungranted to that role. This
--- public definer runs as the installer, so an executor-owned definer can
--- enter it and still pass approval_actor under the authenticated gateway.
--- A session whose current role is only rr_record_executor cannot.
+-- The app does not call this wrapper. src and the record-rental transport
+-- call record_existing_rental_evidence_v1 instead. The authenticated path
+-- is link_replacement_agreement_checked, which calls this function after
+-- the JWT actor check. Restrict this one to rr_record_executor, same as
+-- the private record helpers. The two-argument private function stays
+-- ungranted to that role. This public definer runs as the installer, so
+-- the installer-owned checked function can enter it and still pass
+-- approval_actor under the authenticated gateway. A session whose current
+-- role is only rr_record_executor cannot.
 REVOKE ALL ON FUNCTION public.link_replacement_agreement_v1(uuid,uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.link_replacement_agreement_v1(uuid,uuid) TO rr_record_executor;
+
+-- Staff JWT path, same shape as approve_application_checked. The actor is
+-- private.approval_actor(), which reads the caller JWT (sub, session, exp)
+-- and requires user_roles admin or team. The lock and the second actor
+-- read match that function. The explicit user_roles check is the same
+-- manager gate the recorder uses. Coordinator is not a manager for this
+-- write. PUBLIC, anon, and service_role have no EXECUTE. v1 stays
+-- executor-only. This function stays owned by the installer so it can
+-- call v1 without a new grant.
+CREATE FUNCTION public.link_replacement_agreement_checked(_rental_id uuid, _agreement_id uuid)
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
+DECLARE actor uuid;
+BEGIN
+ actor:=private.approval_actor();
+ PERFORM private.approval_lock();
+ IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
+ PERFORM 1 FROM public.user_roles WHERE user_id=actor AND role::text IN ('admin','team') FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'manager_required' USING ERRCODE='42501'; END IF;
+ RETURN public.link_replacement_agreement_v1(_rental_id, _agreement_id);
+EXCEPTION WHEN lock_not_available THEN
+ RAISE EXCEPTION 'agreement_evidence_contention_retry_whole_transaction' USING ERRCODE='40001';
+END $$;
+REVOKE ALL ON FUNCTION public.link_replacement_agreement_checked(uuid,uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.link_replacement_agreement_checked(uuid,uuid) TO authenticated;

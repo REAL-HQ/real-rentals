@@ -5,7 +5,7 @@
 -- then subscription-coordination-v1.sql, then the corrected
 -- signed-archive-protection-v1.sql). Needs private.approval_lock and
 -- private.approval_actor from step 1, and private.record_immutable from step 3.
--- Independent of proposed/vehicle-swap-v1.sql. If both are approved, either
+-- Independent of proposed/m2-packet/20.sql. If both are approved, either
 -- order after step 19 is safe. This file does not create those objects and
 -- does not weaken their grants.
 --
