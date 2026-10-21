@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { APPLICATION_RESUME_ENABLED, CLOSED_RESUME_STATUSES } from "@/lib/application-resume-flag";
+import { APPLICATION_RESUME_ENABLED, portalOpenRefused } from "@/lib/application-resume-flag";
 
 /**
  * Stage-based access for signed-in people who are not (yet) drivers: Lead /
@@ -151,8 +151,10 @@ export const openMyApplication = createServerFn({ method: "POST" })
       }
     }
     if (!app) throw new Error("No application is linked to this account.");
-    const resumeStatus = typeof app.status === "string" ? app.status.trim().toLowerCase() : "";
-    if ((CLOSED_RESUME_STATUSES as readonly string[]).includes(resumeStatus)) {
+    // Flag off, this is exactly declined and closed. Flag on, the full
+    // resume-closed list blocks minting a token, and approved and complete
+    // stay open so Review My Application still works.
+    if (portalOpenRefused(app.status, APPLICATION_RESUME_ENABLED === true)) {
       throw new Error("This application is closed. Contact us to reopen it.");
     }
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");

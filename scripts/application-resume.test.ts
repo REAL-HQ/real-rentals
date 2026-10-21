@@ -3,7 +3,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { resumeUrl } from "../src/lib/resume-tokens.server";
-import { APPLICATION_RESUME_ENABLED, isClosedResumeStatus } from "../src/lib/application-resume-flag";
+import {
+  APPLICATION_RESUME_ENABLED,
+  BASE_CLOSED_APPLICATION_STATUSES,
+  CLOSED_RESUME_STATUSES,
+  isClosedResumeStatus,
+  portalOpenRefused,
+} from "../src/lib/application-resume-flag";
 import {
   OWN_DRAFT_COLUMNS,
   canContinuePromotedApplication,
@@ -29,6 +35,7 @@ const wizard = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8")
 const panel = readFileSync("src/components/admin/WaitlistPanel.tsx", "utf8");
 const portal = readFileSync("src/lib/portal-access.functions.ts", "utf8");
 const waitlistFns = readFileSync("src/lib/waitlist.functions.ts", "utf8");
+const resumeToken = readFileSync("src/lib/resume-token.ts", "utf8");
 
 function walkSources(dir: string): string[] {
   const out: string[] = [];
@@ -79,6 +86,7 @@ describe("application resume flag", () => {
       readFileSync(path, "utf8").includes("stashedTokenContinuesApplication"),
     );
     assert.deepEqual(dead, []);
+    assert.doesNotMatch(resumeToken, /function readResumeToken|export function readResumeToken/);
     for (const source of [lib, client, home, apply, wizard, panel, portal]) {
       assert.match(source, /from ["']@\/lib\/application-resume-flag["']/);
     }
@@ -267,14 +275,26 @@ describe("waitlist promotion resume", () => {
     assert.match(open, /linkVerifiedApplication/);
     const reviewRefuse = open.indexOf('decision === "review"');
     const issue = open.indexOf("issueResumeToken");
-    assert.ok(reviewRefuse !== -1 && issue !== -1 && reviewRefuse < issue);
-    const closed = open.indexOf("CLOSED_RESUME_STATUSES");
-    assert.ok(closed !== -1 && closed < issue);
-    assert.match(portal, /CLOSED_RESUME_STATUSES\s*\} from ["']@\/lib\/application-resume-flag["']/);
-    assert.doesNotMatch(open, /\["declined", "closed"\]/);
+    const refused = open.indexOf("portalOpenRefused(app.status, APPLICATION_RESUME_ENABLED === true)");
+    assert.ok(reviewRefuse !== -1 && refused !== -1 && issue !== -1 && reviewRefuse < refused && refused < issue);
+    assert.match(portal, /portalOpenRefused\s*\} from ["']@\/lib\/application-resume-flag["']/);
     assert.doesNotMatch(open, /const CLOSED_RESUME_STATUSES/);
     assert.doesNotMatch(open, /applicationFromPromotion/);
-    for (const status of ["approved", "active", "suspended", "declined", "closed", "duplicate", "complete"]) {
+    assert.deepEqual([...BASE_CLOSED_APPLICATION_STATUSES], ["declined", "closed"]);
+    for (const status of ["approved", "complete"]) {
+      assert.equal(portalOpenRefused(status, false), false);
+      assert.equal(portalOpenRefused(status, true), false);
+    }
+    for (const status of ["active", "suspended", "duplicate"]) {
+      assert.equal(portalOpenRefused(status, false), false);
+      assert.equal(portalOpenRefused(status, true), true);
+    }
+    for (const status of BASE_CLOSED_APPLICATION_STATUSES) {
+      assert.equal(portalOpenRefused(status, false), true);
+      assert.equal(portalOpenRefused(status, true), true);
+    }
+    assert.equal(portalOpenRefused("partial", true), false);
+    for (const status of CLOSED_RESUME_STATUSES) {
       assert.equal(isClosedResumeStatus(status), true);
     }
     assert.equal(isClosedResumeStatus("partial"), false);
