@@ -17,7 +17,7 @@ Later answers are saved by `updateApplicationStep` (`src/lib/applications.functi
 
 The credential is a hashed resume token (`application_resume_tokens`). `issueResumeToken` mints it (`src/lib/resume-tokens.server.ts:84`), `resolveResumeToken` checks a live token (`src/lib/resume-tokens.server.ts:167`), and `exchangeResumeToken` swaps a single-use recovery link for a session token (`src/lib/resume-tokens.server.ts:203`).
 
-`useResumeToken` (`src/lib/resume-token.ts:79`) copies a `t` query param into `sessionStorage` and strips it from the address bar. On `/apply` the stash is ignored while the flag is off (`src/routes/apply.tsx:79`), so a shared device does not reopen the previous person's form. A `t` on `/apply` redirects to `/thank-you` (`src/routes/apply.tsx:88`).
+`useResumeToken` (`src/lib/resume-token.ts:79`) copies a `t` query param into `sessionStorage` and strips it from the address bar. On `/apply` the stash is ignored (`allowStashed: false` in `src/routes/apply.tsx`), whether or not the flag is on, so a shared device does not reopen the previous person's form. A `t` on `/apply` redirects to `/thank-you`.
 
 `/thank-you` calls `openResumeLink` (`src/lib/applications.functions.ts:1428`), which runs `exchangeResumeToken`, then mounts `ApplicationWizard`.
 
@@ -31,10 +31,9 @@ A signed-in applicant can read their own row when `applications.user_id` equals 
 
 With the flag on:
 
-- A signed-in applicant's own draft is read with the RLS select above (`application-resume-client.ts`, `.eq("user_id", uid)`, explicit columns). The signed-in row wins over a token left in the tab.
-- Otherwise this tab's resume token is read with `getApplicationForWizard`. That is the existing resume endpoint. No new token is minted.
-- `/` and `/apply` show "Continue Your Application" with step X of 4 and the missing documents. The four steps are Your Info, Rental, Driving, and Documents. A step is incomplete when the same fields the wizard requires are empty. Documents match the wizard's five sections: Driver's Licence (photo and a valid answer), Insurance, Gig Profile, Trip History, and Your Address.
-- A token in this tab opens `/thank-you`, and the wizard starts on that first incomplete step with the saved answers and upload presence filled in. It does not write `current_step` just by opening.
+- A signed-in applicant's own draft is read with the RLS select above (`application-resume-client.ts`, `.eq("user_id", uid)`, explicit columns). A token left in the tab is not read. `stashedTokenContinuesApplication` refuses it, and `/apply` does not pass `allowStashed`.
+- `/` and `/apply` show "Continue Your Application" with step X of 4 and the missing documents when that signed-in row is an open draft. The four steps are Your Info, Rental, Driving, and Documents. A step is incomplete when the same fields the wizard requires are empty. Documents match the wizard's five sections: Driver's Licence (photo and a valid answer), Insurance, Gig Profile, Trip History, and Your Address.
+- An explicit resume link still opens `/thank-you`. With the flag on, the wizard starts on the first incomplete step with the saved answers and upload presence filled in. It does not write `current_step` just by opening. The banner does not send the visitor there from a stashed token.
 - A signed-in applicant with no token sees the same progress and the saved answers on `/apply`. The screen does not send email or SMS and does not call `savePartialApplication`.
 
 Closed statuses (`approved`, `active`, `suspended`, `declined`, `closed`, `duplicate`, `complete`) and a finished document set do not get a banner.
@@ -47,14 +46,14 @@ Promote already mints a resume token when it creates an application, and only th
 
 The portal used to hide a promoted waitlist row (`src/lib/portal-access.functions.ts`, the `!promoted_application_id` filter) and send a verified person with no `user_id` application to bare `/apply` (`src/components/portal/ApplicantHome.tsx:50` and the waitlist card at `:190`). That starts a second application. `openMyApplication` only looked up `user_id` (`portal-access.functions.ts` `openMyApplication`).
 
-With the flag on, a verified email whose waitlist row already has `promoted_application_id` sees that application and **Continue Application**. The read checks the email matches, the row is not deleted, and `user_id` is empty or already this account. **Continue Application** still calls `issueResumeToken`, the same write `openMyApplication` already does. The portal does not call `promote_waitlist_entry` and does not insert an application. An unpromoted signup still has **Start My Application**.
+With the flag on, a verified email whose waitlist row already has `promoted_application_id` sees that application only when `linkVerifiedApplication` would link it: exactly one unowned application for the email, no row owned by somebody else, and the promoted id is that row. `promotedApplicationLinkAllowed` is that refusal. A `review` result does not show the application and `openMyApplication` throws before `issueResumeToken`. When the linker does attach the row, **Continue Application** still calls `issueResumeToken` for the `user_id` application, the same write it already did. The portal does not call `promote_waitlist_entry` and does not insert an application. An unpromoted signup still has **Start My Application**.
 
 ## Gaps
 
 - Saving another answer still requires a resume token. Login plus RLS can show the draft. It cannot call `updateApplicationStep`, and this change does not add a writer or send the recovery email.
 - `getApplicationForWizard` does not return `status`, so a token for a decided application can still show a banner when answers are incomplete. The existing upload endpoint already refuses decided applications.
 - `user_id` is null on a draft until a driver account is linked, so most anonymous applicants are invisible to the signed-in read until then. Their path remains the resume link.
-- The flag-on stash read on `/apply` will open whatever application this tab's token belongs to. The flag-off page does not.
+- A resume token left in the tab does not open an application on `/` or `/apply`. `/apply` keeps `allowStashed: false` with the flag on. `/thank-you` still stashes a token that arrived in the URL so the wizard survives the address-bar strip and a refresh of that page.
 - The admin copy link exists only for a promotion that created an application, and only until that admin leaves the page. Linking an existing application does not mint a token.
-- The portal does not continue a promoted application that is deleted, whose email no longer matches, or whose `user_id` belongs to someone else. It also does not promote a still-waiting signup, so **Start My Application** on that card still opens `/apply`.
+- The portal does not continue a promoted application that identity review would refuse, that is deleted, whose email no longer matches, or whose `user_id` belongs to someone else. It also does not promote a still-waiting signup, so **Start My Application** on that card still opens `/apply`.
 - While the promoted application is the portal card, another unpromoted signup for the same email is not shown.

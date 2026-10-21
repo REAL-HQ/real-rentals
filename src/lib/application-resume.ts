@@ -323,6 +323,17 @@ export function continueDraft(snapshot: ResumeSnapshot, canOpenWizard: boolean):
 }
 
 /**
+ * A resume token left in this tab is whoever used the device last.
+ * sessionStorage is shared by the next person who sits down at that tab.
+ * It never authorizes Continue Your Application. A signed-in applicant is
+ * read from their own row. An explicit resume link still arrives as a URL
+ * token on /thank-you, which this banner does not consult.
+ */
+export function stashedTokenContinuesApplication(_stashedToken: string | null): boolean {
+  return false;
+}
+
+/**
  * The link promotion already minted. Same address resumeUrl() builds for
  * /thank-you. Plaintext exists only in the admin session that just promoted.
  */
@@ -357,4 +368,25 @@ export function canContinuePromotedApplication(
   if (!email || appEmail !== email) return false;
   if (app.user_id && app.user_id !== userId) return false;
   return true;
+}
+
+/**
+ * Same refusal as linkVerifiedApplication. That function links only when
+ * every application for the verified email is unowned except exactly one,
+ * and none belong to somebody else. Anything else is an identity review
+ * and is not linked. A promoted application may be continued only when it
+ * is that single unowned row. A row already linked to this account is the
+ * ordinary user_id path, not this one.
+ */
+export function promotedApplicationLinkAllowed(
+  applications: { id: string; user_id?: string | null }[],
+  promotedApplicationId: string,
+  userId: string,
+): boolean {
+  if (!promotedApplicationId || !userId) return false;
+  if (applications.some((row) => row.user_id === userId)) return false;
+  const foreign = applications.filter((row) => row.user_id && row.user_id !== userId);
+  const free = applications.filter((row) => !row.user_id);
+  if (foreign.length > 0 || free.length !== 1) return false;
+  return free[0].id === promotedApplicationId;
 }

@@ -74,10 +74,11 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
 
 function ApplyPage() {
   const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = Route.useSearch();
-  // Flag off, this is allowStashed: false. /apply starts a new application, and
-  // a token left in this tab by the previous person on a shared device must
-  // not open their form. Flag on, this tab's stash is the existing resume credential.
-  const token = useResumeToken(t, { allowStashed: APPLICATION_RESUME_ENABLED === true });
+  // /apply starts a new application. A token left in this tab by the previous
+  // person on a shared device must not open their form. The flag does not
+  // change that. A token in the URL is an explicit resume link and still
+  // redirects to /thank-you.
+  const token = useResumeToken(t, { allowStashed: false });
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -88,7 +89,7 @@ function ApplyPage() {
       {token === undefined ? null : token ? (
         <Navigate
           to="/thank-you"
-          search={t || APPLICATION_RESUME_ENABLED !== true ? { t: token } : {}}
+          search={{ t: token }}
           replace
         />
       ) : (

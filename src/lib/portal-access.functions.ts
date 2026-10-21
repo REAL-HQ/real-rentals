@@ -68,12 +68,13 @@ export const getMyPortalAccess = createServerFn({ method: "GET" })
     const waitlist = verified && email ? (await myWaitlist(admin, email)).find((w: any) => !w.promoted_application_id) ?? null : null;
 
     // Flag off, this stays null and the return below is the user_id application.
-    // Flag on, a promotion that already created or linked an application is
-    // shown instead of sending the caller to /apply to start another one.
+    // Flag on, a promotion is shown only when linkVerifiedApplication did not
+    // refuse it. "review" means the email is ambiguous, so the promoted row
+    // stays unlinked and is not shown.
     let continuation: any = null;
     let continuationDocs: { category: string; created_at: string }[] = [];
     let continuationHold = false;
-    if (APPLICATION_RESUME_ENABLED === true && !app && verified && email) {
+    if (APPLICATION_RESUME_ENABLED === true && !app && verified && email && !review) {
       continuation = await applicationFromPromotion(admin, email, context.userId);
       if (continuation) {
         const { data: docs } = await admin
@@ -131,8 +132,24 @@ export const openMyApplication = createServerFn({ method: "POST" })
     if (!app && APPLICATION_RESUME_ENABLED === true) {
       const { admin, email, verified } = await identity(context.userId);
       if (verified && email) {
-        const promoted = await applicationFromPromotion(admin, email, context.userId);
-        if (promoted) app = { id: promoted.id, status: promoted.status };
+        const { linkVerifiedApplication } = await import("@/lib/portal-signin.server");
+        const decision = await linkVerifiedApplication(admin, context.userId, email);
+        // Identity review is a refusal. Do not mint a resume token for a
+        // promoted application the linker would not attach to this account.
+        if (decision === "review") {
+          throw new Error("This application needs a staff identity review before it can be opened.");
+        }
+        if (decision === "linked" || decision === "already") {
+          const { data: again } = await supabaseAdmin
+            .from("applications")
+            .select("id,status")
+            .eq("user_id", context.userId)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          app = again;
+        }
       }
     }
     if (!app) throw new Error("No application is linked to this account.");
@@ -188,15 +205,24 @@ export const updateMyWaitlist = createServerFn({ method: "POST" })
  * verified email. Reads only. Does not promote, insert, or send.
  */
 async function applicationFromPromotion(admin: any, email: string, userId: string) {
-  const { canContinuePromotedApplication, continuationApplicationId } = await import("@/lib/application-resume");
+  const {
+    canContinuePromotedApplication,
+    continuationApplicationId,
+    promotedApplicationLinkAllowed,
+  } = await import("@/lib/application-resume");
   const id = continuationApplicationId(await myWaitlist(admin, email));
   if (!id) return null;
+  const { exactLike, normEmail } = await import("@/lib/portal-signin.server");
   const { data } = await admin
     .from("applications")
     .select("id,full_name,status,current_step,created_at,email,deleted_at,user_id")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (!data || !canContinuePromotedApplication(data, email, userId)) return null;
-  return data;
+    .ilike("email", exactLike(email))
+    .is("deleted_at", null);
+  const list = (data ?? []).filter((row: any) => normEmail(row.email) === email);
+  // Same set linkVerifiedApplication judges. A foreign owner, or anything
+  // other than this one unowned row, is an identity review and is not shown.
+  if (!promotedApplicationLinkAllowed(list, id, userId)) return null;
+  const row = list.find((item: any) => item.id === id);
+  if (!row || !canContinuePromotedApplication(row, email, userId)) return null;
+  return row;
 }
