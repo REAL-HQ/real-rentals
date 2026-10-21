@@ -79,6 +79,8 @@ import { VehicleTurnaround } from "@/components/admin/VehicleTurnaround";
 import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { RentReconciliationPanel } from "@/components/admin/RentReconciliationPanel";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
+import { OwnerFinanceSnapshotPanel } from "@/components/admin/OwnerFinanceSnapshotPanel";
+import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -408,6 +410,11 @@ function Admin() {
     if (urlTab === "rent_reconciliation") {
       if (!RENT_RECONCILIATION_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "rent_reconciliation";
+    }
+    // Owner Weekly Finance Snapshot is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "owner_finance_snapshot") {
+      if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "owner_finance_snapshot";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -891,6 +898,7 @@ function Admin() {
             {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
             {VEHICLE_TURNAROUND_ENABLED && tab === "vehicle_turnaround" && <VehicleTurnaround />}
             {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
+            {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && <OwnerFinanceSnapshotPanel />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
