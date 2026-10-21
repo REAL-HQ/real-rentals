@@ -60,6 +60,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -1361,6 +1363,7 @@ function DashboardView({
   onNavigate: (t: Tab) => void;
 }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
+  const applicationStatus = data.applicationStatus;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
   const businessPhone = useBusinessPhone();
@@ -1386,7 +1389,12 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+        <>
+          <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+          {APPLICATION_TIMELINE_ENABLED && !rental && applicationStatus !== "approved" && applicationStatus !== "active" ? (
+            <ApplicationTimelineSection />
+          ) : null}
+        </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
