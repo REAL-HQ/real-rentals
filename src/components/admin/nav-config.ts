@@ -218,11 +218,11 @@ const FUNNEL_TAB: TabDef = {
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
-  label: "Vehicle Profit",
+  label: "Vehicle Profitability",
   icon: PieChart,
   minTier: "manager",
   group: "BUSINESS",
-  description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
+  description: "Collected Revenue, Costs And Utilization By Vehicle",
 };
 
 /** Shown only while the Incident Board flag is on. Kept out of TABS so a dark build cannot list it. */

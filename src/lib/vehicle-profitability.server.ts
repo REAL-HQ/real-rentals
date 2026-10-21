@@ -1,144 +1,164 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/integrations/supabase/types";
-import { VEHICLE_PROFITABILITY_ENABLED } from "./vehicle-profitability-flag";
-import { buildVehicleProfitReport, periodWindow, type ProfitCharge, type ProfitPeriodId, type VehicleProfitReport } from "./vehicle-profitability";
+import { tierAllows, type StaffTier } from "./roles";
+import { VEHICLE_PROFITABILITY_OFF } from "./vehicle-profitability-flag";
+import {
+  DIRECTORY_INCOMPLETE,
+  buildVehicleProfit,
+  defaultProfitRange,
+  profitRange,
+  type ProfitExpense,
+  type ProfitMaintenance,
+  type ProfitPayment,
+  type ProfitRange,
+  type ProfitRental,
+  type ProfitVehicle,
+  type VehicleProfitReport,
+} from "./vehicle-profitability";
 
 /**
- * Owners and managers only. The flag is checked before the role lookup and
- * before any table or Stripe read. Expense and maintenance rows are the same
- * tables the Unified Finance vehicle reader pages, with category and the
- * maintenance link included so a service is not counted twice.
+ * Owners and managers. The flag is checked here again so a direct call still
+ * throws before any read. Payments are attributed through the rental.
+ * There is no Stripe call.
  */
 
-const PAGE = 1000;
-type Result<T> = { data: T[] | null; error: { message: string } | null };
-
 export type VehicleProfitResponse =
-  | { status: "disabled"; report: null }
   | { status: "unavailable"; reason: string; report: null }
   | { status: "ready"; report: VehicleProfitReport };
+
+export type VehicleProfitDirectory = {
+  vehicles: ProfitVehicle[];
+  rentals: ProfitRental[];
+  payments: ProfitPayment[];
+  expenses: ProfitExpense[];
+  maintenance: ProfitMaintenance[];
+};
+export type VehicleProfitLoad = { ok: true; directory: VehicleProfitDirectory } | { ok: false; capped: boolean };
 
 export async function runVehicleProfit(input: {
   enabled: boolean;
   userId: string | null;
-  roles: string[];
-  period: ProfitPeriodId;
-  now?: Date;
-  signal?: AbortSignal;
-  load: () => Promise<Parameters<typeof buildVehicleProfitReport>[0] | null>;
-  readCharges: (window: { gte: number; lt: number }) => Promise<{ ok: true; charges: ProfitCharge[] } | { ok: false; reason: string }>;
+  tier: StaffTier | null;
+  now: Date;
+  range: { from: string; through: string } | null;
+  load: () => Promise<VehicleProfitLoad>;
 }): Promise<VehicleProfitResponse> {
-  if (!input.enabled) return { status: "disabled", report: null };
-  if (!input.userId) throw new Error("Forbidden");
-  const { tierFromRoles, tierAllows } = await import("./roles");
-  if (!tierAllows(tierFromRoles(input.roles), "manager")) throw new Error("Forbidden");
-  const now = input.now ?? new Date();
-  if (!periodWindow(input.period, now)) return { status: "unavailable", reason: "The period could not be dated", report: null };
-  const directory = await input.load();
-  if (!directory) return { status: "unavailable", reason: "Vehicle records were incomplete", report: null };
-  const bounds = periodWindow(input.period, now);
-  if (!bounds) return { status: "unavailable", reason: "The period could not be dated", report: null };
-  const charges = await input.readCharges({ gte: bounds.gte, lt: bounds.lt });
-  if (!charges.ok) return { status: "unavailable", reason: charges.reason, report: null };
-  const report = buildVehicleProfitReport({ ...directory, period: input.period, now, charges: charges.charges });
-  return report ? { status: "ready", report } : { status: "unavailable", reason: "The period could not be dated", report: null };
+  if (!input.enabled) throw new Error(VEHICLE_PROFITABILITY_OFF);
+  if (!input.userId || !tierAllows(input.tier, "manager")) throw new Error("Forbidden");
+  const range = input.range ? profitRange(input.range.from, input.range.through) : defaultProfitRange(input.now);
+  if (!range) throw new Error("The date range is not valid");
+  const loaded = await input.load();
+  if (!loaded.ok) return { status: "unavailable", reason: DIRECTORY_INCOMPLETE, report: null };
+  return { status: "ready", report: buildVehicleProfit({ range, ...loaded.directory }) };
 }
 
-export async function loadVehicleProfitDirectory(
-  supabase: SupabaseClient<Database>,
-  signal?: AbortSignal,
-): Promise<Parameters<typeof buildVehicleProfitReport>[0] | null> {
-  const vehicles = await readStable(async (cursor) => {
-    let query = supabase.from("vehicles").select("id,year,make,model,license_plate,partner_id,created_at,archived_at").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  const partners = await readStable(async (cursor) => {
-    let query = supabase.from("partners").select("id,name,revenue_split_pct").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  const expenses = await readStable(async (cursor) => {
-    let query = supabase.from("vehicle_expenses").select("id,vehicle_id,category,amount,incurred_on,maintenance_record_id").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  const maintenance = await readStable(async (cursor) => {
-    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  const rentals = await readStable(async (cursor) => {
-    let query = supabase.from("rentals").select("id,vehicle_id,stripe_customer_id,stripe_subscription_id,start_date,end_date,status").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  const payments = await readStable(async (cursor) => {
-    let query = supabase.from("payments").select("id,vehicle_id,type,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(PAGE);
-    if (cursor) query = query.gt("id", cursor);
-    if (signal) query = query.abortSignal(signal);
-    return query;
-  }, signal);
-  if (!vehicles || !partners || !expenses || !maintenance || !rentals || !payments) return null;
-  return {
-    period: "this_month",
-    now: new Date(),
-    charges: [],
-    vehicles: vehicles.map((row) => ({
-      id: row.id, year: row.year, make: row.make, model: row.model, licensePlate: row.license_plate,
-      partnerId: row.partner_id, createdAt: row.created_at, archivedAt: row.archived_at,
-    })),
-    partners: partners.map((row) => ({ id: row.id, name: row.name, revenueSplitPct: row.revenue_split_pct })),
-    expenses: expenses.map((row) => ({
-      id: row.id, vehicleId: row.vehicle_id, category: row.category, amount: row.amount,
-      incurredOn: row.incurred_on, maintenanceRecordId: row.maintenance_record_id,
-    })),
-    maintenance: maintenance.map((row) => ({
-      id: row.id, vehicleId: row.vehicle_id, category: row.category, companyShare: row.company_share,
-      performedOn: row.performed_on, completedAt: row.completed_at, createdAt: row.created_at,
-    })),
-    rentals: rentals.map((row) => ({
-      id: row.id, vehicleId: row.vehicle_id, customerId: row.stripe_customer_id, subscriptionId: row.stripe_subscription_id,
-      startDate: row.start_date, endDate: row.end_date, status: row.status,
-    })),
-    payments: payments.map((row) => ({
-      id: row.id, vehicleId: row.vehicle_id, type: row.type, paymentIntentId: row.stripe_payment_intent_id,
-      invoiceId: row.stripe_invoice_id, subscriptionId: row.stripe_subscription_id,
-    })),
-  };
-}
+type QueryResult = { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
+type Query = PromiseLike<QueryResult> & {
+  order: (column: string, options: { ascending: boolean }) => Query;
+  limit: (count: number) => Query;
+  gt: (column: string, value: string) => Query;
+};
+export type VehicleProfitClient = {
+  from: (table: string) => { select: (columns: string) => Query };
+};
 
-export function vehicleProfitEnabled(): boolean {
-  return VEHICLE_PROFITABILITY_ENABLED;
-}
+const VEHICLE_COLUMNS = "id,year,make,model,license_plate,created_at,archived_at";
+const RENTAL_COLUMNS = "id,vehicle_id,start_date,end_date,status";
+const PAYMENT_COLUMNS = "id,rental_id,vehicle_id,status,type,amount,net_collected,refunded_amount,paid_date";
+const EXPENSE_COLUMNS = "id,vehicle_id,amount,incurred_on,maintenance_record_id";
+const MAINTENANCE_COLUMNS = "id,vehicle_id,company_share,total_cost,performed_on,completed_at,created_at";
 
-async function readStable<T extends { id: string }>(
-  load: (cursor: string | null) => PromiseLike<Result<T>>,
-  signal?: AbortSignal,
-): Promise<T[] | null> {
-  async function scan(): Promise<T[] | null> {
-    const rows: T[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < 100; page++) {
-      signal?.throwIfAborted();
-      const response = await load(cursor);
-      if (response.error || !Array.isArray(response.data) || response.data.length > PAGE) return null;
-      for (const row of response.data) {
-        if (typeof row.id !== "string" || !row.id || (cursor !== null && row.id <= cursor)) return null;
-        cursor = row.id;
-        rows.push(row);
-      }
-      if (response.data.length < PAGE) return rows;
-    }
-    return null;
+export async function loadVehicleProfitDirectory(supabase: VehicleProfitClient): Promise<VehicleProfitLoad> {
+  const vehicles = await readPages(supabase, "vehicles", VEHICLE_COLUMNS);
+  if (!vehicles.ok) return vehicles;
+  const rentals = await readPages(supabase, "rentals", RENTAL_COLUMNS);
+  if (!rentals.ok) return rentals;
+  const payments = await readPages(supabase, "payments", PAYMENT_COLUMNS);
+  if (!payments.ok) return payments;
+  const expenses = await readPages(supabase, "vehicle_expenses", EXPENSE_COLUMNS);
+  if (!expenses.ok) return expenses;
+  const maintenance = await readPages(supabase, "maintenance_records", MAINTENANCE_COLUMNS);
+  if (!maintenance.ok) return maintenance;
+  const directory: VehicleProfitDirectory = { vehicles: [], rentals: [], payments: [], expenses: [], maintenance: [] };
+  for (const row of vehicles.rows) {
+    if (typeof row.id !== "string" || typeof row.make !== "string" || typeof row.model !== "string") return { ok: false, capped: false };
+    directory.vehicles.push({
+      id: row.id,
+      year: typeof row.year === "number" ? row.year : null,
+      make: row.make,
+      model: row.model,
+      licensePlate: text(row.license_plate),
+      createdAt: text(row.created_at),
+      archivedAt: text(row.archived_at),
+    });
   }
-  const first = await scan();
-  const second = await scan();
-  if (!first || !second || JSON.stringify(first) !== JSON.stringify(second)) return null;
-  return first;
+  for (const row of rentals.rows) {
+    if (typeof row.id !== "string" || typeof row.status !== "string" || typeof row.start_date !== "string") return { ok: false, capped: false };
+    directory.rentals.push({
+      id: row.id,
+      vehicleId: text(row.vehicle_id),
+      startDate: row.start_date,
+      endDate: text(row.end_date),
+      status: row.status,
+    });
+  }
+  for (const row of payments.rows) {
+    if (typeof row.id !== "string" || typeof row.status !== "string" || typeof row.type !== "string") return { ok: false, capped: false };
+    directory.payments.push({
+      id: row.id,
+      rentalId: text(row.rental_id),
+      vehicleId: text(row.vehicle_id),
+      status: row.status,
+      type: row.type,
+      amount: row.amount,
+      netCollected: row.net_collected,
+      refundedAmount: row.refunded_amount,
+      paidDate: text(row.paid_date),
+    });
+  }
+  for (const row of expenses.rows) {
+    if (typeof row.id !== "string") return { ok: false, capped: false };
+    directory.expenses.push({
+      id: row.id,
+      vehicleId: text(row.vehicle_id),
+      amount: row.amount,
+      incurredOn: text(row.incurred_on),
+      maintenanceRecordId: text(row.maintenance_record_id),
+    });
+  }
+  for (const row of maintenance.rows) {
+    if (typeof row.id !== "string") return { ok: false, capped: false };
+    directory.maintenance.push({
+      id: row.id,
+      vehicleId: text(row.vehicle_id),
+      companyShare: row.company_share,
+      totalCost: row.total_cost,
+      performedOn: text(row.performed_on),
+      completedAt: text(row.completed_at),
+      createdAt: text(row.created_at),
+    });
+  }
+  return { ok: true, directory };
 }
+
+async function readPages(supabase: VehicleProfitClient, table: string, columns: string): Promise<{ ok: true; rows: Array<Record<string, unknown>> } | { ok: false; capped: boolean }> {
+  const rows: Array<Record<string, unknown>> = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 100; page++) {
+    let query = supabase.from(table).select(columns).order("id", { ascending: true }).limit(1000);
+    if (cursor) query = query.gt("id", cursor);
+    const response = await query;
+    if (response.error || !response.data) return { ok: false, capped: false };
+    for (const row of response.data) {
+      if (typeof row.id !== "string" || (cursor !== null && row.id <= cursor)) return { ok: false, capped: false };
+      cursor = row.id;
+      rows.push(row);
+    }
+    if (response.data.length < 1000) return { ok: true, rows };
+  }
+  return { ok: false, capped: true };
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export type { ProfitRange };
