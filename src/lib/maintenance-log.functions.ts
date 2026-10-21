@@ -9,6 +9,7 @@ import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   buildMaintenanceLog,
   businessToday,
+  takeOptionalRelationPage,
   type InspectionDueSource,
   type InspectionHistorySource,
   type MaintenanceLogResult,
@@ -96,16 +97,19 @@ export const listMaintenanceLog = createServerFn({ method: "POST" })
         .range(from, toEnd(from));
       if (vehicleId) query = query.eq("vehicle_id", vehicleId);
       const { data, error } = await query;
-      if (error) {
-        if (!error.message.includes("relation does not exist")) {
-          console.error("[maintenance-log] read failed", error.message);
-          throw new Error("Could not load the maintenance log.");
+      let page: unknown[];
+      try {
+        const taken = takeOptionalRelationPage(error, data);
+        if (taken === "missing") {
+          inspectionExpiryInstalled = false;
+          console.error("[maintenance-log] maintenance_log_v1 is not installed; inspection expiry stays unknown.");
+          break;
         }
-        inspectionExpiryInstalled = false;
-        console.error("[maintenance-log] maintenance_log_v1 is not installed; inspection expiry stays unknown.");
-        break;
+        page = taken;
+      } catch (failure) {
+        console.error("[maintenance-log] read failed", error?.message ?? failure);
+        throw failure;
       }
-      const page = data ?? [];
       dueRows.push(...page);
       if (page.length < PAGE) break;
     }

@@ -8,6 +8,7 @@ import {
   TIRE_INTERVAL_MONTHS,
   buildMaintenanceLog,
   reminderBadges,
+  takeOptionalRelationPage,
   type InspectionHistorySource,
   type ServiceHistorySource,
   type VehicleLogSource,
@@ -51,8 +52,27 @@ ok(!/\.or\(/.test(fn) && !/\.filter\(/.test(fn), "the reads do not use or or fil
 ok(!/select\(\s*["'`]\*/.test(fn), "the reads name their columns");
 ok(fn.includes("last_oil_change_miles") && fn.includes("registration_expires_on") && fn.includes("insurance_expires_on"), "vehicle service columns are named");
 ok(fn.includes('from("maintenance_records")') && fn.includes('from("inspections")'), "history is read from the existing tables");
-ok(fn.includes('error.message.includes("relation does not exist")'), "only a missing relation counts as not installed");
-ok(fn.indexOf('error.message.includes("relation does not exist")') < fn.indexOf("maintenance_log_v1 is not installed"), "a real read error is not reported as a missing table");
+const postgresMissing = { code: "42P01", message: 'relation "public.maintenance_log_v1" does not exist' };
+const postgrestMissing = { code: "PGRST205", message: "Could not find the table 'public.maintenance_log_v1' in the schema cache" };
+ok(!postgresMissing.message.includes("relation does not exist"), "the real postgres sentence is not the old contiguous phrase");
+ok(takeOptionalRelationPage(postgresMissing, null) === "missing", "postgres 42P01 leaves inspection expiry unknown");
+ok(takeOptionalRelationPage(postgrestMissing, null) === "missing", "postgrest PGRST205 leaves inspection expiry unknown");
+const present = takeOptionalRelationPage(null, [{ vehicle_id: "v", inspection_due_on: "2026-10-20" }]);
+ok(Array.isArray(present) && present.length === 1, "a present relation returns its rows");
+for (const real of [
+  { code: "42501", message: "permission denied for table maintenance_log_v1" },
+  { code: "PGRST204", message: "Could not find the 'inspection_due_on' column of 'maintenance_log_v1' in the schema cache" },
+  { message: 'relation "public.maintenance_log_v1" does not exist' },
+]) {
+  let failed = false;
+  try {
+    takeOptionalRelationPage(real, null);
+  } catch (error) {
+    failed = error instanceof Error && error.message === "Could not load the maintenance log.";
+  }
+  ok(failed, `a real read error fails the read (${real.code ?? "no code"})`);
+}
+ok(fn.includes("takeOptionalRelationPage"), "the due-table read uses the relation check");
 ok(fn.includes("maintenance_log_v1 is not installed"), "a missing inspection table is logged and does not fail the read");
 ok(!rules.includes("?? 5000") && !fn.includes("5000"), "a missing oil interval is not replaced with 5000");
 ok(!liveService.includes("MAINTENANCE_LOG_ENABLED"), "the live maintenance API does not know this flag");

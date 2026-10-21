@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {checkPaths,checkDigest,checkOutput,checkScope,inspectOptionsFromArgv} from './guard.mjs';
+import {assertRecordRentalDisabled,checkPaths,checkDigest,checkOutput,checkRecordRentalPins,checkScope,inspectOptionsFromArgv} from './guard.mjs';
 const m=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
 const paths=Object.keys({...m.application,...m.evidence});let count=0;
 function test(name,fn){fn();console.log('PASS '+name);count++;}
@@ -14,6 +14,31 @@ test('rc mode is opt-in and does not replace checkPaths',()=>{
  assert.deepEqual(inspectOptionsFromArgv(['node','guard.mjs']),{rc:false});
  assert.deepEqual(inspectOptionsFromArgv(['node','guard.mjs','--rc']),{rc:true});
  assert.throws(()=>checkPaths([...paths,'docs/stripe-reconciliation-review.md']));
+ assertRecordRentalDisabled(readFileSync);
+ checkRecordRentalPins(readFileSync);
+});
+function mutate(path,change){
+ return p=>p===path?change(readFileSync(p).toString()):readFileSync(p);
+}
+test('commented false export does not hide a true record-rental flag',()=>{
+ assert.throws(()=>assertRecordRentalDisabled(mutate('src/lib/record-rental-contract.ts',src=>src.replace(
+  'export const RECORD_RENTAL_CONTRACT_ENABLED = false;',
+  '// export const RECORD_RENTAL_CONTRACT_ENABLED = false;\nexport const RECORD_RENTAL_CONTRACT_ENABLED = true;'
+ ))));
+});
+test('deleted handler flag check is rejected',()=>{
+ assert.throws(()=>assertRecordRentalDisabled(mutate('src/lib/record-rental.functions.ts',src=>src.replace(
+  "if (!RECORD_RENTAL_CONTRACT_ENABLED) throw new Error('Record Rental is disabled pending contract installation and acceptance');",
+  ''
+ ))));
+});
+test('hidden __on gate in a flag file is rejected',()=>{
+ assert.throws(()=>assertRecordRentalDisabled(mutate('src/lib/rentals.functions.ts',src=>src+"\nconst open = RECORD_RENTAL_CONTRACT_ENABLED || __on;\n")));
+});
+test('handler upsert, rpc, and delete are rejected',()=>{
+ for(const call of ['.upsert(','.rpc(','.delete(']){
+  assert.throws(()=>assertRecordRentalDisabled(mutate('src/lib/record-rental.functions.ts',src=>src+`\nvoid db${call}row);\n`)));
+ }
 });
 const bytes=Buffer.from('reviewed'),digest=createHash('sha256').update(bytes).digest('hex');
 test('exact bytes accepted',()=>checkDigest(bytes,digest));

@@ -354,6 +354,27 @@ export function buildMaintenanceLog(input: {
   };
 }
 
+export type RelationReadError = { code?: string; message?: string };
+
+/**
+ * A missing proposed table is Postgres undefined_table (42P01) or PostgREST
+ * PGRST205. The server sentence is `relation "public.maintenance_log_v1" does
+ * not exist`, which does not contain the contiguous phrase the old check used.
+ */
+export function maintenanceLogRelationMissing(error: RelationReadError): boolean {
+  return error.code === "42P01" || error.code === "PGRST205";
+}
+
+/** Rows from one page, or "missing" when the proposed relation is not installed. */
+export function takeOptionalRelationPage(
+  error: RelationReadError | null,
+  data: unknown[] | null,
+): "missing" | unknown[] {
+  if (!error) return data ?? [];
+  if (maintenanceLogRelationMissing(error)) return "missing";
+  throw new Error("Could not load the maintenance log.");
+}
+
 export function reminderBadges(vehicles: VehicleLog[]): Record<string, LogAttention> {
   const badges: Record<string, LogAttention> = {};
   for (const vehicle of vehicles) {

@@ -1,9 +1,11 @@
 // Default inspect() is the isolated candidate gate: ancestry, then checkPaths
 // against manifest.baseline. A release candidate is not that candidate, so
 // `node scripts/ci/record-rental/guard.mjs --rc` is the RC checklist. It still
-// requires a full fetch (a shallow clone is refused), still requires the three
-// manifest commits to be ancestors, and still requires Record Rental to stay
-// disabled. It skips checkPaths. Do not pass --rc on release/record-rental-base.
+// requires a full fetch (a shallow clone is refused) and the three manifest
+// commits to be ancestors. It skips checkPaths. It still hash-pins the Record
+// Rental contract, handler, and the other files that read that flag, and it
+// rejects a true flag, a deleted handler check, a hidden `|| __on` gate, and
+// handler writes. Do not pass --rc on release/record-rental-base.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -35,10 +37,36 @@ export function checkScope(changed, read){
  }
  for(const path of Object.keys(app))assert(changed.includes(path),'Required application path: '+path);
  for(const suite of manifest.suites)assert.equal(hash(read(suite.file)),suite.sha256,'Test hash: '+suite.file);
- const contract=read('src/lib/record-rental-contract.ts').toString();
- assert.match(contract,/export const RECORD_RENTAL_CONTRACT_ENABLED = false;/);
- const handler=read('src/lib/record-rental.functions.ts').toString();
- assert.doesNotMatch(handler,/supabaseAdmin|createStripeClient|\.insert\(|\.update\(/);
+ assertRecordRentalDisabled(read);
+}
+export const RECORD_RENTAL_FLAG_FILES=[
+ 'src/lib/record-rental-contract.ts',
+ 'src/lib/record-rental.functions.ts',
+ 'src/lib/rentals.functions.ts',
+ 'src/components/admin/DriversPanel.tsx',
+ 'src/components/admin/RecordedRentalCloseout.tsx',
+ 'src/components/admin/RecordRentalDialog.tsx',
+];
+export function executableSource(source){
+ return source.toString().replace(/\/\*[\s\S]*?\*\//g,'').split('\n').filter(line=>!/^\s*\/\//.test(line)).join('\n');
+}
+export function assertRecordRentalDisabled(read){
+ const contract=executableSource(read('src/lib/record-rental-contract.ts'));
+ assert.match(contract,/^export const RECORD_RENTAL_CONTRACT_ENABLED = false;$/m,'Record Rental flag must stay the hard false export');
+ assert.doesNotMatch(contract,/RECORD_RENTAL_CONTRACT_ENABLED\s*=\s*true\b/,'Record Rental flag is true');
+ const handler=executableSource(read('src/lib/record-rental.functions.ts'));
+ assert.match(handler,/if\s*\(\s*!RECORD_RENTAL_CONTRACT_ENABLED\s*\)\s*throw new Error\('Record Rental is disabled pending contract installation and acceptance'\)/,'handler must keep the disabled-flag check');
+ assert.doesNotMatch(handler,/supabaseAdmin|createStripeClient|\.(?:insert|update|upsert|rpc|delete)\s*\(/,'handler write');
+ for(const path of RECORD_RENTAL_FLAG_FILES){
+  const text=executableSource(read(path));
+  assert.doesNotMatch(text,/\|\|\s*__on/,'hidden record-rental gate: '+path);
+  assert.doesNotMatch(text,/RECORD_RENTAL_CONTRACT_ENABLED\s*=\s*true\b/,'Record Rental flag is true: '+path);
+ }
+}
+export function checkRecordRentalPins(read){
+ for(const path of RECORD_RENTAL_FLAG_FILES){
+  assert.equal(hash(read(path)),pinnedSha256(manifest.application[path],path),'Source hash: '+path);
+ }
 }
 export function checkOutput(suite,result){
  assert.equal(result.error,undefined,'Runner error');
@@ -62,11 +90,10 @@ export function inspect(options={}){
  assert.equal(git('diff','--name-only'),'','Unstaged tracked changes');
  assert.equal(git('diff','--cached','--name-only'),'','Staged changes');
  if(rc){
-  const contract=readFileSync('src/lib/record-rental-contract.ts').toString();
-  assert.match(contract,/export const RECORD_RENTAL_CONTRACT_ENABLED = false;/);
-  const handler=readFileSync('src/lib/record-rental.functions.ts').toString();
-  assert.doesNotMatch(handler,/supabaseAdmin|createStripeClient|\.insert\(|\.update\(/);
-  console.log('PASS RC ancestry and disabled record-rental flag; isolated path allowlist skipped');
+  const read=p=>readFileSync(p);
+  checkRecordRentalPins(read);
+  assertRecordRentalDisabled(read);
+  console.log('PASS RC ancestry, pinned record-rental sources, and disabled flag; isolated path allowlist skipped');
   return;
  }
  const changed=git('diff','--name-only',manifest.baseline,'HEAD').split('\n').filter(Boolean);

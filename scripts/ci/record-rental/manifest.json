@@ -39,8 +39,8 @@
     "scripts/ci/record-rental/network-check.mjs"
   ],
   "lockedFiles": {
-    "package.json": "5464637e84606efe9b165a3e276fc24843e8541123879cbb067be7206a265514",
-    "bun.lock": "bf1a5b1edfb91920d3be572a5a5614869c2c663fa799baeeb2edc5188a6afff6"
+    "package.json": "76cea7614c8b8617db3ea9f968c0fb64957100c8abc6105fa08434313a32f29c",
+    "bun.lock": "4935d5c63f3801ae82a9a0ab2769c7c4a6a862fbb0517ab626b6f2c72f152345"
   },
   "suites": [
     {
