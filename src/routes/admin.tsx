@@ -75,6 +75,8 @@ import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPane
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { BookingConversionPanel } from "@/components/admin/BookingConversionPanel";
+import { BOOKING_CONVERSION_ENABLED } from "@/lib/booking-conversion";
 import { TodaysOps } from "@/components/admin/TodaysOps";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FleetCalendar } from "@/components/admin/FleetCalendar";
@@ -417,6 +419,10 @@ function Admin() {
     if (urlTab === "funnel") {
       if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "funnel";
+    }
+    if (urlTab === "booking_conversion") {
+      if (!BOOKING_CONVERSION_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "booking_conversion";
     }
     if (urlTab === "todays_ops") {
       if (!TODAYS_OPS_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -997,6 +1003,7 @@ function Admin() {
             {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
             {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && <StripePayoutReconPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
+            {BOOKING_CONVERSION_ENABLED && tab === "booking_conversion" && <BookingConversionPanel />}
             {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
             {DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger" && <DepositLedgerPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}

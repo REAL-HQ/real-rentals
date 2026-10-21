@@ -56,6 +56,7 @@ import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-fla
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { BOOKING_CONVERSION_ENABLED } from "@/lib/booking-conversion";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
@@ -370,6 +371,16 @@ const BILLING_HEALTH_TAB: TabDef = {
   description: "Active Rentals Compared With Stripe Subscriptions",
 };
 
+/** Shown only while booking conversion is compiled on. Kept out of TABS so a dark build cannot list it. */
+const BOOKING_CONVERSION_TAB: TabDef = {
+  id: "booking_conversion",
+  label: "Booking Conversion",
+  icon: BarChart3,
+  minTier: "manager",
+  group: "PEOPLE",
+  description: "Waitlist To First Rental For An Eastern Date Range",
+};
+
 /** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FUNNEL_TAB: TabDef = {
   id: "funnel",
@@ -605,6 +616,12 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     const drivers = entries.findIndex((t) => t.id === "drivers");
     entries.splice(drivers + 1, 0, { ...FUNNEL_TAB, href: "funnel" });
   }
+  if (BOOKING_CONVERSION_ENABLED && tierAllows(tier, "manager")) {
+    const drivers = entries.findIndex((t) => t.id === "drivers");
+    const funnel = entries.findIndex((t) => t.id === "funnel");
+    const at = funnel >= 0 ? funnel : drivers;
+    entries.splice(at + 1, 0, { ...BOOKING_CONVERSION_TAB, href: "booking_conversion" });
+  }
   const extra: (TabDef & { href: string })[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
@@ -690,6 +707,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "funnel") {
     if (!APPLICANT_FUNNEL_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "funnel";
+  }
+  if (args.urlTab === "booking_conversion") {
+    if (!BOOKING_CONVERSION_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "booking_conversion";
   }
   if (args.urlTab === "todays_ops") {
     if (!TODAYS_OPS_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
