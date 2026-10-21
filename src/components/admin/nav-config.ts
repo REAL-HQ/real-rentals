@@ -29,6 +29,7 @@ import {
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 
 export type TabDef = {
   id: string;
@@ -139,14 +140,28 @@ const VEHICLE_PROFIT_TAB: TabDef = {
   description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
 };
 
+/** Shown only while the Incident Board flag is on. Kept out of TABS so a dark build cannot list it. */
+const INCIDENT_BOARD_TAB: TabDef = {
+  id: "incident_board",
+  label: "Incident Board",
+  icon: ShieldAlert,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Open Accidents, Damage And Breakdowns",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  const next = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = next.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
+    next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
+  }
   const extra: TabDef[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
-  if (!extra.length) return tabs;
-  const next = [...tabs];
+  if (!extra.length) return next;
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
   return next;
@@ -182,15 +197,19 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = entries.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
+    entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
+  }
   const extra: (TabDef & { href: string })[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (!extra.length) return entries;
-  const next = [...entries];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, ...extra);
-  return next;
+  const at = entries.findIndex((t) => t.id === "expenses");
+  entries.splice(at + 1, 0, ...extra);
+  return entries;
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
