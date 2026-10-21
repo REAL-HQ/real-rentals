@@ -4,12 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { fmtDate } from "@/lib/date-format";
 import { displayPersonName } from "@/lib/display-normalize";
 import { getOverviewToday } from "@/lib/overview-today.functions";
-import {
-  OVERVIEW_TODAY_ENABLED,
-  recordedAmount,
-  type OverviewTodayResult,
-  type OverviewTodaySection,
-} from "@/lib/overview-today";
+import { OVERVIEW_TODAY_ENABLED, recordedAmount } from "@/lib/overview-today-flag";
+import type { OverviewTodayResult, OverviewTodaySection } from "@/lib/overview-today";
 
 function showDetail(detail: string): string {
   const withDate = detail.replace(/\d{4}-\d{2}-\d{2}/g, (iso) => fmtDate(iso) || iso).replaceAll("_", " ");

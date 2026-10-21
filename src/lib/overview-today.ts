@@ -1,22 +1,11 @@
-import { leadBucket, leadToday, type LeadRow } from "@/lib/lead-priorities";
+import { leadBucket, type LeadRow } from "@/lib/lead-priorities";
+import { OUTSTANDING_STATUSES, owedOn } from "@/lib/payment-collection.server";
+import { disabledOverviewToday, overviewToday, recordedAmount } from "@/lib/overview-today-flag";
 
-/**
- * Overview Today is dark. This is a constant, not an environment variable.
- * Leaving it false keeps the live dashboard on its current reads.
- */
-export const OVERVIEW_TODAY_ENABLED: boolean = false;
+export { OUTSTANDING_STATUSES, owedOn, disabledOverviewToday, overviewToday, recordedAmount };
+export { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 
 export const OVERVIEW_TODAY_LIMIT = 25;
-
-/** Due and not received. Matches the Overview overdue strip. `current` is issued and not yet due. */
-export const OVERVIEW_TODAY_OVERDUE_STATUSES = [
-  "late",
-  "past_due",
-  "collections",
-  "overdue",
-  "failed",
-  "unpaid",
-] as const;
 
 /** Rentals that can still go out today. Ended and cancelled rows are not pickups. */
 export const PICKUP_STATUSES = ["active", "reserved", "pending", "upcoming"] as const;
@@ -45,6 +34,7 @@ export type TodayPayment = {
   status: string | null;
   type: string | null;
   amount: number | null;
+  balance_due: number | null;
   due_date: string | null;
   application_id: string | null;
 };
@@ -96,10 +86,6 @@ export type OverviewTodayResult = {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-export function overviewToday(now = new Date()): string {
-  return leadToday(now);
-}
-
 export function dateOnly(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -118,8 +104,15 @@ export function isTodayReturn(row: Pick<TodayRental, "status" | "end_date">, tod
   return dateOnly(row.end_date) === today && statusIn(row.status, RETURN_STATUSES);
 }
 
-export function isOverduePayment(status: string | null | undefined): boolean {
-  return statusIn(status, OVERVIEW_TODAY_OVERDUE_STATUSES);
+/** Outstanding, due before today (Eastern), and not a deposit. */
+export function isOverduePayment(
+  row: { status?: string | null; type?: string | null; due_date?: string | null },
+  today: string,
+): boolean {
+  if (String(row.type ?? "").trim().toLowerCase() === "deposit") return false;
+  const due = dateOnly(row.due_date);
+  if (!due || due >= today) return false;
+  return (OUTSTANDING_STATUSES as readonly string[]).includes(String(row.status ?? "").trim().toLowerCase());
 }
 
 export function isNewLead(
@@ -141,12 +134,6 @@ export function isNewLead(
   return leadBucket(lead, today) === "new";
 }
 
-/** A missing or negative amount stays unknown. Zero is a real recorded amount. */
-export function recordedAmount(value: unknown): number | null {
-  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN;
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
 export function vehicleLabel(row: Pick<TodayVehicle, "year" | "make" | "model" | "unit_number"> | null | undefined): string {
   if (!row) return "Vehicle";
   const name = [row.year, row.make, row.model]
@@ -155,10 +142,6 @@ export function vehicleLabel(row: Pick<TodayVehicle, "year" | "make" | "model" |
   const unit = row.unit_number?.trim() ?? "";
   if (name && unit) return `${name} · ${unit}`;
   return name || unit || "Vehicle";
-}
-
-export function disabledOverviewToday(today = overviewToday()): OverviewTodayResult {
-  return { enabled: false, today };
 }
 
 function section(rows: OverviewTodayItem[], total: number): OverviewTodaySection {
@@ -190,7 +173,7 @@ export function assembleOverviewToday(input: {
   });
   const pickups = input.pickups.rows.filter((row) => isTodayPickup(row, input.today));
   const returns = input.returns.rows.filter((row) => isTodayReturn(row, input.today));
-  const overdue = input.overduePayments.rows.filter((row) => isOverduePayment(row.status));
+  const overdue = input.overduePayments.rows.filter((row) => isOverduePayment(row, input.today));
   const leads = input.newLeads.rows.filter((row) => isNewLead(row, input.today));
   return {
     enabled: true,
@@ -204,12 +187,15 @@ export function assembleOverviewToday(input: {
       input.returns.total,
     ),
     overduePayments: section(
-      overdue.map((row) => ({
-        id: row.id,
-        title: personTitle(row.application_id ? names.get(row.application_id) : null),
-        detail: `${row.type?.trim() || "Payment"} · ${recordedAmount(row.amount) === null ? "Amount Unavailable" : String(recordedAmount(row.amount))} · ${dateOnly(row.due_date) ?? "No Due Date"}`,
-        href: null,
-      })),
+      overdue.map((row) => {
+        const owed = owedOn(row);
+        return {
+          id: row.id,
+          title: personTitle(row.application_id ? names.get(row.application_id) : null),
+          detail: `${row.type?.trim() || "Payment"} · ${Number.isFinite(owed) ? String(owed) : "Amount Unavailable"} · ${dateOnly(row.due_date) ?? "No Due Date"}`,
+          href: null,
+        };
+      }),
       input.overduePayments.total,
     ),
     newLeads: section(

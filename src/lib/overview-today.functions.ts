@@ -1,26 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import {
-  OVERVIEW_TODAY_ENABLED,
-  OVERVIEW_TODAY_LIMIT,
-  OVERVIEW_TODAY_OVERDUE_STATUSES,
-  PICKUP_STATUSES,
-  RETURN_STATUSES,
-  assembleOverviewToday,
-  disabledOverviewToday,
-  overviewToday,
-  recordedAmount,
-  type OverviewTodayResult,
-  type TodayLead,
-  type TodayName,
-  type TodayPayment,
-  type TodayRental,
-  type TodayVehicle,
+import { OVERVIEW_TODAY_ENABLED, disabledOverviewToday, overviewToday, recordedAmount } from "@/lib/overview-today-flag";
+import type {
+  OverviewTodayResult,
+  TodayLead,
+  TodayName,
+  TodayPayment,
+  TodayRental,
+  TodayVehicle,
 } from "@/lib/overview-today";
-import { requireStaff } from "@/lib/roles.server";
 
 const RENTAL_SELECT = "id,status,start_date,end_date,application_id,vehicle_id";
-const PAYMENT_SELECT = "id,status,type,amount,due_date,driver_id";
+const PAYMENT_SELECT = "id,status,type,amount,balance_due,due_date,driver_id";
 const LEAD_SELECT = "id,full_name,phone,status,created_at,contact_status,contact_follow_up_on";
 const NAME_SELECT = "id,full_name";
 const VEHICLE_SELECT = "id,year,make,model,unit_number";
@@ -46,8 +37,9 @@ function text(row: Record<string, unknown>, key: string): string | null {
 }
 
 /**
- * Read-only. Staff only. With the flag off this returns before any table read.
- * The flag-on path selects existing columns and never inserts, updates, or deletes.
+ * Read-only. Managers and owners only. With the flag off this returns before
+ * any role lookup or table read. The flag-on path selects existing columns
+ * and never inserts, updates, or deletes.
  */
 export async function loadOverviewToday(
   admin: { from: (table: string) => any },
@@ -56,6 +48,8 @@ export async function loadOverviewToday(
 ): Promise<OverviewTodayResult> {
   if (!enabled) return disabledOverviewToday(today);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error(UNAVAILABLE);
+  const { OVERVIEW_TODAY_LIMIT, PICKUP_STATUSES, RETURN_STATUSES, OUTSTANDING_STATUSES, assembleOverviewToday } =
+    await import("@/lib/overview-today");
 
   const rentals = (column: "start_date" | "end_date", statuses: readonly string[]) =>
     counted<TodayRental>(
@@ -86,7 +80,9 @@ export async function loadOverviewToday(
         let query = admin
           .from("payments")
           .select(head ? "id" : PAYMENT_SELECT, head ? { count: "exact", head: true } : undefined)
-          .in("status", [...OVERVIEW_TODAY_OVERDUE_STATUSES]);
+          .in("status", [...OUTSTANDING_STATUSES])
+          .lt("due_date", today)
+          .neq("type", "deposit");
         if (!head) query = query.order("due_date", { ascending: true }).order("id", { ascending: true }).limit(OVERVIEW_TODAY_LIMIT);
         return query;
       },
@@ -95,32 +91,12 @@ export async function loadOverviewToday(
         status: text(row, "status"),
         type: text(row, "type"),
         amount: recordedAmount(row.amount),
+        balance_due: recordedAmount(row.balance_due),
         due_date: text(row, "due_date"),
         application_id: text(row, "driver_id"),
       }),
     ),
-    counted<TodayLead>(
-      (head) => {
-        let query = admin
-          .from("applications")
-          .select(head ? "id" : LEAD_SELECT, head ? { count: "exact", head: true } : undefined)
-          .is("deleted_at", null)
-          .in("status", ["new", "reviewing", "approved"])
-          .eq("contact_status", "new")
-          .or(`contact_follow_up_on.is.null,contact_follow_up_on.gte.${today}`);
-        if (!head) query = query.order("created_at", { ascending: true }).order("id", { ascending: true }).limit(OVERVIEW_TODAY_LIMIT);
-        return query;
-      },
-      (row) => ({
-        id: String(row.id ?? ""),
-        full_name: text(row, "full_name"),
-        phone: text(row, "phone"),
-        status: text(row, "status") ?? "",
-        created_at: text(row, "created_at"),
-        contact_status: text(row, "contact_status") ?? "",
-        contact_follow_up_on: text(row, "contact_follow_up_on"),
-      }),
-    ),
+    loadNewLeads(admin, today, LEAD_SELECT, OVERVIEW_TODAY_LIMIT),
   ]);
 
   const applicationIds = [
@@ -156,12 +132,64 @@ export async function loadOverviewToday(
   return assembleOverviewToday({ today, pickups, returns, overduePayments, newLeads, names, vehicles });
 }
 
+function leadRow(row: Record<string, unknown>): TodayLead {
+  return {
+    id: String(row.id ?? ""),
+    full_name: text(row, "full_name"),
+    phone: text(row, "phone"),
+    status: text(row, "status") ?? "",
+    created_at: text(row, "created_at"),
+    contact_status: text(row, "contact_status") ?? "",
+    contact_follow_up_on: text(row, "contact_follow_up_on"),
+  };
+}
+
+/** New leads with no follow-up, plus new leads whose follow-up is today or later. Two reads, no interpolated filter. */
+async function loadNewLeads(
+  admin: { from: (table: string) => any },
+  today: string,
+  select: string,
+  limit: number,
+): Promise<Counted<TodayLead>> {
+  const query = (head: boolean) =>
+    admin
+      .from("applications")
+      .select(head ? "id" : select, head ? { count: "exact", head: true } : undefined)
+      .is("deleted_at", null)
+      .in("status", ["new", "reviewing", "approved"])
+      .eq("contact_status", "new");
+  const [openCount, laterCount] = await Promise.all([
+    query(true).is("contact_follow_up_on", null) as Promise<QueryResult>,
+    query(true).gte("contact_follow_up_on", today) as Promise<QueryResult>,
+  ]);
+  const readable = (result: QueryResult) =>
+    !result.error && Number.isSafeInteger(result.count) && (result.count ?? -1) >= 0;
+  if (!readable(openCount) || !readable(laterCount)) throw new Error(UNAVAILABLE);
+  const total = openCount.count! + laterCount.count!;
+  if (total === 0) return { rows: [], total: 0 };
+  const [openPage, laterPage] = await Promise.all([
+    query(false).is("contact_follow_up_on", null).order("created_at", { ascending: true }).order("id", { ascending: true }).limit(limit) as Promise<QueryResult>,
+    query(false).gte("contact_follow_up_on", today).order("created_at", { ascending: true }).order("id", { ascending: true }).limit(limit) as Promise<QueryResult>,
+  ]);
+  if (openPage.error || laterPage.error || !Array.isArray(openPage.data) || !Array.isArray(laterPage.data)) {
+    throw new Error(UNAVAILABLE);
+  }
+  const rows = [...openPage.data, ...laterPage.data]
+    .map((row) => leadRow(row as Record<string, unknown>))
+    .sort((a, b) => {
+      const created = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+      return created !== 0 ? created : a.id.localeCompare(b.id);
+    })
+    .slice(0, limit);
+  return { rows, total };
+}
+
 export const getOverviewToday = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<OverviewTodayResult> => {
-    await requireStaff(context.userId);
-    const today = overviewToday();
-    if (!OVERVIEW_TODAY_ENABLED) return disabledOverviewToday(today);
+    if (!OVERVIEW_TODAY_ENABLED) return disabledOverviewToday(overviewToday());
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    return loadOverviewToday(supabaseAdmin, today);
+    return loadOverviewToday(supabaseAdmin, overviewToday());
   });
