@@ -17,7 +17,12 @@ const SETUP_ERROR = "Could not start the card setup. Ask us for a new link and w
 
 const attempts = new Map<string, number[]>();
 
-/** True when this key has already been used `max` times inside the window. */
+/**
+ * Per-process counter only. Each server isolate has its own map, a deploy or
+ * restart clears it, and two instances do not share counts. This slows one
+ * process after someone is already authenticated. It is not a global lock.
+ * A rejected return URL is checked before this and does not consume an attempt.
+ */
 function rateLimited(key: string, max: number, windowMs: number): boolean {
   const now = Date.now();
   const kept = (attempts.get(key) ?? []).filter((at) => now - at < windowMs);
@@ -30,10 +35,28 @@ function rateLimited(key: string, max: number, windowMs: number): boolean {
   return false;
 }
 
+function httpsOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function allowedReturnOrigin(origin: string): boolean {
-  if (origin === 'https://drivereal.com') return true;
-  const site = process.env.SITE_URL?.replace(/\/$/, '');
-  if (site && origin === site) return true;
+  const allowed = new Set<string>(['https://drivereal.com', 'https://www.drivereal.com']);
+  const site = httpsOrigin(process.env.SITE_URL);
+  if (site) {
+    allowed.add(site);
+    const host = new URL(site).hostname;
+    allowed.add(host.startsWith('www.') ? `https://${host.slice(4)}` : `https://www.${host}`);
+  }
+  if (allowed.has(origin)) return true;
+  // Local return URLs are for the dev server only. Production must not accept them.
+  if (process.env.NODE_ENV === 'production') return false;
   try {
     const url = new URL(origin);
     return url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
@@ -108,8 +131,8 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
     if (!allowed && data.token) {
       try {
         const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-        const { resolveResumeToken } = await import('@/lib/resume-tokens.server');
-        const unlocked = await resolveResumeToken(supabaseAdmin, data.token);
+        const { resolveCardToken } = await import('@/lib/resume-tokens.server');
+        const unlocked = await resolveCardToken(supabaseAdmin, data.token);
         if (unlocked === data.applicationId) allowed = true;
       } catch {
         allowed = false;
@@ -161,13 +184,16 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
           { idempotencyKey: `card-on-file-customer:${app.id}` },
         );
         customerId = created.id;
-        const { data: saved } = await supabaseAdmin
+        const { data: saved, error: saveError } = await supabaseAdmin
           .from('applications')
           .update({ stripe_customer_id: customerId })
           .eq('id', app.id)
           .is('stripe_customer_id', null)
           .select('stripe_customer_id')
           .maybeSingle();
+        if (saveError) {
+          console.error('card-on-file: applications.stripe_customer_id update failed', saveError.message ?? saveError);
+        }
         if (!saved?.stripe_customer_id) {
           const { data: winner } = await supabaseAdmin
             .from('applications')
@@ -207,8 +233,11 @@ export const issueCardOnFileLink = createServerFn({ method: 'POST' })
     const { requireManager } = await import('@/lib/roles.server');
     await requireManager(context.userId);
     const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-    const { issueResumeToken } = await import('@/lib/resume-tokens.server');
-    const token = await issueResumeToken(supabaseAdmin, data.applicationId);
+    const { issueResumeToken, CARD_LINK_MS } = await import('@/lib/resume-tokens.server');
+    const token = await issueResumeToken(supabaseAdmin, data.applicationId, {
+      purpose: 'card',
+      ttlMs: CARD_LINK_MS,
+    });
     return { path: `/card/${data.applicationId}?t=${encodeURIComponent(token)}` };
   });
 

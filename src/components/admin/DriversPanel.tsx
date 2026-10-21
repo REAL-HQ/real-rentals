@@ -2805,30 +2805,81 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   );
 }
 
+const cardLinkCache = new Map<string, string>();
+const cardLinkPending = new Map<string, Promise<string>>();
+
 function useCardOnFileLink(applicationId: string) {
   const issue = useServerFn(issueCardOnFileLink);
-  const [link, setLink] = useState<string | null>(null);
-  return useCallback(async () => {
-    if (link) return link;
-    const res = await issue({ data: { applicationId } });
-    const next = `${window.location.origin}${res.path}`;
-    setLink(next);
+  const ensure = useCallback(() => {
+    const cached = cardLinkCache.get(applicationId);
+    if (cached) return Promise.resolve(cached);
+    const pending = cardLinkPending.get(applicationId);
+    if (pending) return pending;
+    const next = issue({ data: { applicationId } })
+      .then((res) => {
+        const link = `${window.location.origin}${res.path}`;
+        cardLinkCache.set(applicationId, link);
+        cardLinkPending.delete(applicationId);
+        return link;
+      })
+      .catch((error: unknown) => {
+        cardLinkPending.delete(applicationId);
+        throw error;
+      });
+    cardLinkPending.set(applicationId, next);
     return next;
-  }, [applicationId, issue, link]);
+  }, [applicationId, issue]);
+  return { ensure, ready: () => cardLinkCache.get(applicationId) ?? null };
+}
+
+/** Clipboard write during the click, before any await. Safari drops the gesture after await. */
+function copyTextNow(text: string) {
+  const clipboard = navigator.clipboard;
+  if (clipboard?.writeText) {
+    void clipboard.writeText(text).catch(() => copyTextFallback(text));
+    return;
+  }
+  copyTextFallback(text);
+}
+
+function copyTextFallback(text: string) {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "0";
+  area.style.left = "0";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  const copied = document.execCommand("copy");
+  area.remove();
+  if (!copied) throw new Error("Could not copy");
 }
 
 function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
-  const ensureLink = useCardOnFileLink(driver.id);
+  const { ensure: ensureLink, ready: readyLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
 
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(await ensureLink());
-      toast.success("Card-on-file link copied");
-    } catch {
-      toast.error("Failed to copy link");
+  function copyLink() {
+    const ready = readyLink();
+    if (ready) {
+      try {
+        copyTextNow(ready);
+        toast.success("Card-on-file link copied");
+      } catch {
+        toast.error("Failed to copy link");
+      }
+      return;
     }
+    void ensureLink()
+      .then((link) => {
+        copyTextFallback(link);
+        toast.success("Card-on-file link copied");
+      })
+      .catch(() => toast.error("Failed to copy link"));
   }
 
   async function openLink(kind: "sms" | "email") {
@@ -2866,7 +2917,7 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={(open) => { if (open) void ensureLink(); }}>
         <DropdownMenuTrigger title="Card On File" aria-label="Card On File" className="w-full inline-flex items-center rounded-sm px-2 py-1.5 text-sm outline-none text-[#111114] hover:bg-[#F4F4F6] focus:bg-[#F4F4F6] transition-colors cursor-pointer">
           <CreditCard className="w-4 h-4 mr-2" />
           {hasCard ? `Card ····${driver.card_last4}` : "Payment Card"}
@@ -3079,8 +3130,11 @@ function CardOnFileCard({
   driver: any;
   onUpdate: (p: any) => void;
 }) {
-  const ensureLink = useCardOnFileLink(driver.id);
+  const { ensure: ensureLink, ready: readyLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
+  useEffect(() => {
+    if (!hasCard) void ensureLink();
+  }, [ensureLink, hasCard]);
   return (
     <div className="rounded-xl border border-border bg-white p-5">
       <div className="flex items-center justify-between mb-3">
@@ -3127,13 +3181,23 @@ function CardOnFileCard({
           </p>
           <div className="flex gap-1.5">
             <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(await ensureLink());
-                  toast.success("Link copied");
-                } catch {
-                  toast.error("Failed to copy");
+              onClick={() => {
+                const ready = readyLink();
+                if (ready) {
+                  try {
+                    copyTextNow(ready);
+                    toast.success("Link copied");
+                  } catch {
+                    toast.error("Failed to copy");
+                  }
+                  return;
                 }
+                void ensureLink()
+                  .then((link) => {
+                    copyTextFallback(link);
+                    toast.success("Link copied");
+                  })
+                  .catch(() => toast.error("Failed to copy"));
               }}
               className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
             >

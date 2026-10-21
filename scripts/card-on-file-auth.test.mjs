@@ -15,7 +15,8 @@ globalThis.__stripe = { clients: 0, customers: [], sessions: [] };
 globalThis.__headers = {};
 globalThis.__claims = { data: { claims: null }, error: null };
 globalThis.__actors = {};
-globalThis.__tokens = {};
+globalThis.__cardTokens = {};
+globalThis.__customerUpdateError = null;
 globalThis.__app = null;
 
 const stub = {
@@ -57,19 +58,29 @@ const stub = {
             select() { return chain; },
             eq() { return chain; },
             is() { return chain; },
-            update() { return chain; },
-            maybeSingle: async () => ({ data: globalThis.__app, error: null }),
+            update() { chain.op = "update"; return chain; },
+            maybeSingle: async () => {
+              if (chain.op === "update" && globalThis.__customerUpdateError) {
+                return { data: null, error: globalThis.__customerUpdateError };
+              }
+              return { data: globalThis.__app, error: null };
+            },
           };
           return chain;
         } };
       `,
       "@/lib/resume-tokens.server": `
-        export async function resolveResumeToken(_admin, raw) {
-          const id = globalThis.__tokens[raw];
+        export const CARD_LINK_MS = 72 * 60 * 60 * 1000;
+        export async function resolveCardToken(_admin, raw) {
+          const id = globalThis.__cardTokens[raw];
           if (!id) throw new Error("This link is no longer valid.");
           return id;
         }
-        export async function issueResumeToken() { return "minted-resume-token-value"; }
+        export async function issueResumeToken(_admin, _id, opts) {
+          if (opts?.purpose !== "card") throw new Error("card link required");
+          if (!(opts.ttlMs > 60 * 60 * 1000)) throw new Error("ttl");
+          return "minted-card-token-value";
+        }
       `,
       "@/lib/roles.server": `
         export async function getActor(userId) { return globalThis.__actors[userId] ?? null; }
@@ -115,7 +126,10 @@ function reset() {
   globalThis.__headers = {};
   globalThis.__claims = { data: { claims: null }, error: { message: "none" } };
   globalThis.__actors = {};
-  globalThis.__tokens = {};
+  globalThis.__cardTokens = {};
+  globalThis.__customerUpdateError = null;
+  process.env.NODE_ENV = "development";
+  delete process.env.SITE_URL;
   globalThis.__app = {
     id: APP,
     user_id: "applicant-1",
@@ -147,7 +161,7 @@ assert.equal("clientSecret" in anon, false);
 ok("an unauthenticated request is refused before any Stripe call");
 
 reset();
-globalThis.__tokens[TOKEN] = OTHER;
+globalThis.__cardTokens[TOKEN] = OTHER;
 const wrong = await session({ token: TOKEN });
 assert.equal(wrong.error?.includes("no longer valid"), true);
 assert.equal(globalThis.__stripe.clients, 0);
@@ -163,7 +177,7 @@ assert.equal(globalThis.__stripe.clients, 0);
 ok("a signed-in applicant cannot open somebody else's application");
 
 reset();
-globalThis.__tokens[TOKEN] = APP;
+globalThis.__cardTokens[TOKEN] = APP;
 const right = await session({ token: TOKEN });
 assert.deepEqual(Object.keys(right), ["clientSecret"]);
 assert.equal(right.clientSecret, "cs_test_secret");
@@ -176,7 +190,7 @@ ok("the correct applicant reuses the existing customer and receives only the cli
 
 reset();
 globalThis.__app.stripe_customer_id = null;
-globalThis.__tokens[TOKEN] = APP;
+globalThis.__cardTokens[TOKEN] = APP;
 const created = await session({ token: TOKEN });
 assert.equal(created.clientSecret, "cs_test_secret");
 assert.equal(globalThis.__stripe.customers.length, 1);
@@ -220,6 +234,50 @@ const leaked = await session({ returnUrl: `https://evil.example/card/${APP}?stat
 assert.equal(leaked.error?.includes("no longer valid"), true);
 assert.equal(globalThis.__stripe.clients, 0);
 ok("a return URL on another site is refused before Stripe");
+
+reset();
+process.env.NODE_ENV = "production";
+globalThis.__headers.authorization = "Bearer manager-token";
+globalThis.__claims = { data: { claims: { sub: "manager-1" } }, error: null };
+globalThis.__actors["manager-1"] = { userId: "manager-1", tier: "manager" };
+const localProd = await session();
+assert.equal(localProd.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+const www = await session({ returnUrl: `https://www.drivereal.com/card/${APP}?status=success` });
+assert.equal(www.clientSecret, "cs_test_secret");
+const apex = await session({ returnUrl: `https://drivereal.com/card/${APP}?status=success` });
+assert.equal(apex.clientSecret, "cs_test_secret");
+process.env.SITE_URL = "https://preview.example.com";
+const derived = await session({ returnUrl: `https://www.preview.example.com/card/${APP}?status=success` });
+assert.equal(derived.clientSecret, "cs_test_secret");
+const stillLocal = await session({ returnUrl: `http://localhost:3000/card/${APP}?status=success` });
+assert.equal(stillLocal.error?.includes("no longer valid"), true);
+process.env.NODE_ENV = "development";
+delete process.env.SITE_URL;
+ok("production allows www and SITE_URL and refuses localhost");
+
+reset();
+globalThis.__cardTokens[TOKEN] = APP;
+globalThis.__app.stripe_customer_id = null;
+globalThis.__customerUpdateError = { message: "conditional update lost the race" };
+const logged = [];
+const originalError = console.error;
+console.error = (...args) => logged.push(args.map(String).join(" "));
+try {
+  const saved = await session({ token: TOKEN });
+  assert.equal(saved.clientSecret, "cs_test_secret");
+} finally {
+  console.error = originalError;
+}
+assert.equal(logged.some((line) => line.includes("stripe_customer_id update failed") && line.includes("conditional update lost the race")), true);
+assert.equal(globalThis.__stripe.customers.length, 1);
+ok("a failed customer-id update is logged and the setup still returns only the client secret");
+
+reset();
+const resumeShaped = await session({ token: "this-is-a-resume-token-not-a-card-link" });
+assert.equal(resumeShaped.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("a resume token is not a card link");
 
 rmSync(out, { recursive: true, force: true });
 console.log(`${passed} card-on-file checks passed`);

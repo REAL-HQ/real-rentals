@@ -63,8 +63,164 @@ export function newRawToken(): string {
     .replace(/=+$/, "");
 }
 
-/** How many unexpired links one application may have out at once. */
+/** How many unexpired links one application may have out at once, per purpose. */
 const MAX_LIVE_TOKENS = 5;
+
+/**
+ * Card-on-file links are 72 hours. That stays above the 1-hour recovery
+ * window, so a card link is never mistaken for a single-use recovery link.
+ */
+export const CARD_LINK_MS = 72 * 60 * 60 * 1000;
+
+type TokenPurpose = "card" | "resume";
+
+type TokenRow = {
+  id: string;
+  application_id: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  purpose?: string | null;
+};
+
+/**
+ * Plaintext of card links this process has minted. The table stores only the
+ * hash, so a still-valid card link can be handed out again only while this
+ * process remembers it. A different process mints another card link; that
+ * mint trims card links only and never a resume link.
+ */
+const cardPlaintext = new Map<string, { raw: string; expiresAt: number }>();
+const cardInflight = new Map<string, Promise<string>>();
+
+function missingPurposeColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const message = String(error.message ?? "").toLowerCase();
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    (message.includes("purpose") && (message.includes("does not exist") || message.includes("schema cache")))
+  );
+}
+
+function assertAboveRecoveryWindow(ttlMs: number) {
+  if (!(ttlMs > RECOVERY_MAX_MS)) {
+    throw new Error("Card link lifetime must be longer than one hour.");
+  }
+}
+
+async function loadToken(admin: AdminClient, raw: string): Promise<TokenRow | null> {
+  const hash = await hashResumeToken(raw);
+  const scoped = await admin
+    .from("application_resume_tokens")
+    .select("id,application_id,created_at,expires_at,revoked_at,purpose" as "*")
+    .eq("token_hash", hash)
+    .maybeSingle();
+  if (scoped.error && missingPurposeColumn(scoped.error)) {
+    const fallback = await admin
+      .from("application_resume_tokens")
+      .select("id,application_id,created_at,expires_at,revoked_at")
+      .eq("token_hash", hash)
+      .maybeSingle();
+    if (fallback.error || !fallback.data) return null;
+    return fallback.data as TokenRow;
+  }
+  if (scoped.error || !scoped.data) return null;
+  // purpose is proposed and is not in the generated row type yet.
+  return scoped.data as unknown as TokenRow;
+}
+
+async function trimLiveTokens(
+  admin: AdminClient,
+  applicationId: string,
+  keepId: string | undefined,
+  purpose: TokenPurpose,
+) {
+  const scoped = await admin
+    .from("application_resume_tokens")
+    .select("id,purpose" as "*")
+    .eq("application_id", applicationId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+  let rows = (scoped.data ?? []) as unknown as { id: string; purpose?: string | null }[];
+  if (scoped.error && missingPurposeColumn(scoped.error) && purpose === "resume") {
+    const fallback = await admin
+      .from("application_resume_tokens")
+      .select("id")
+      .eq("application_id", applicationId)
+      .is("revoked_at", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    rows = (fallback.data ?? []) as { id: string }[];
+  } else if (scoped.error) {
+    return;
+  }
+  const excess = rows
+    .filter((row) => (purpose === "card" ? row.purpose === "card" : row.purpose !== "card"))
+    .map((row) => row.id)
+    .filter((id) => id !== keepId)
+    .slice(MAX_LIVE_TOKENS - 1);
+  if (!excess.length) return;
+  await admin
+    .from("application_resume_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .in("id", excess);
+}
+
+async function reuseCardLink(admin: AdminClient, applicationId: string): Promise<string | null> {
+  const cached = cardPlaintext.get(applicationId);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    cardPlaintext.delete(applicationId);
+    return null;
+  }
+  const row = await loadToken(admin, cached.raw);
+  if (!row || row.revoked_at || row.purpose !== "card" || row.application_id !== applicationId) {
+    cardPlaintext.delete(applicationId);
+    return null;
+  }
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    cardPlaintext.delete(applicationId);
+    return null;
+  }
+  return cached.raw;
+}
+
+async function mintToken(
+  admin: AdminClient,
+  applicationId: string,
+  ttlMs: number,
+  purpose: TokenPurpose,
+): Promise<string> {
+  const raw = newRawToken();
+  const expiresAt = Date.now() + ttlMs;
+  const row: {
+    application_id: string;
+    token_hash: string;
+    expires_at: string;
+    purpose?: "card";
+  } = {
+    application_id: applicationId,
+    token_hash: await hashResumeToken(raw),
+    expires_at: new Date(expiresAt).toISOString(),
+  };
+  // Resume inserts omit purpose so they keep working before the column exists.
+  if (purpose === "card") row.purpose = "card";
+  const { data: inserted, error } = await admin
+    .from("application_resume_tokens")
+    // purpose is not in the generated types until proposed/card-link-purpose-v1.sql is installed.
+    .insert(row as never)
+    .select("id")
+    .single();
+  if (error) {
+    if (purpose === "card" && missingPurposeColumn(error)) {
+      throw new Error("Card links are not available until the card-purpose column is installed.");
+    }
+    throw new Error(error.message);
+  }
+  if (purpose === "card") cardPlaintext.set(applicationId, { raw, expiresAt });
+  await trimLiveTokens(admin, applicationId, inserted?.id as string | undefined, purpose);
+  return raw;
+}
 
 /**
  * Mint a resume token for an application.
@@ -75,58 +231,45 @@ const MAX_LIVE_TOKENS = 5;
  * email sent by the nightly cron would kill the link in the tab the applicant
  * already had open, and their next autosave would fail mid-sentence.
  *
- * Exposure is bounded instead: the oldest live tokens are revoked once an
- * application has more than MAX_LIVE_TOKENS out, and every one of them expires
- * on its own. Deliberate rotation is revokeResumeTokens() followed by this.
+ * Exposure is bounded instead: the oldest live tokens of the same purpose are
+ * revoked once an application has more than MAX_LIVE_TOKENS of that purpose
+ * out, and every one of them expires on its own. A card link never revokes a
+ * resume link. Deliberate rotation is revokeResumeTokens() followed by this.
  *
- * Returns the raw token. This is the only moment it exists in plaintext.
+ * `ttlMs` must stay above the one-hour recovery window. Card links pass
+ * purpose "card" and 72 hours. Until the purpose column exists, a card issue
+ * fails and does not fall back to an unscoped token.
+ *
+ * Returns the raw token. This is the only moment it exists in plaintext,
+ * except a card link re-read from this process's memory while it is still valid.
  */
 export async function issueResumeToken(
   admin: AdminClient,
   applicationId: string,
-  opts: { recovery?: boolean } = {},
+  opts: { recovery?: boolean; ttlMs?: number; purpose?: "card" } = {},
 ): Promise<string> {
-  const raw = newRawToken();
-  const ttl = opts.recovery ? RECOVERY_TOKEN_MINUTES * 60_000 : RESUME_TOKEN_DAYS * 86400_000;
-  const expires = new Date(Date.now() + ttl).toISOString();
-
-  const { data: inserted, error } = await admin
-    .from("application_resume_tokens")
-    .insert({
-      application_id: applicationId,
-      token_hash: await hashResumeToken(raw),
-      expires_at: expires,
-    })
-    .select("id")
-    .single();
-  if (error) throw new Error(error.message);
-
-  // Trim the tail. Best-effort: failing to tidy up must not fail the issue.
-  //
-  // created_at comes from the column default, so two links issued in the same
-  // instant tie, and a tie sorted the wrong way would revoke the token this
-  // call just minted — an applicant opening a link that was dead before the
-  // email arrived. The id is the tie-breaker, and the row we just wrote is
-  // excluded outright: whatever else gets trimmed, never this one.
-  const { data: live } = await admin
-    .from("application_resume_tokens")
-    .select("id")
-    .eq("application_id", applicationId)
-    .is("revoked_at", null)
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false });
-  const excess = (live ?? [])
-    .map((r: { id: string }) => r.id)
-    .filter((id: string) => id !== inserted?.id)
-    .slice(MAX_LIVE_TOKENS - 1);
-  if (excess.length) {
-    await admin
-      .from("application_resume_tokens")
-      .update({ revoked_at: new Date().toISOString() })
-      .in("id", excess);
+  if (opts.purpose === "card") {
+    const ttl = opts.ttlMs ?? CARD_LINK_MS;
+    assertAboveRecoveryWindow(ttl);
+    const pending = cardInflight.get(applicationId);
+    if (pending) return pending;
+    const job = (async () => {
+      const reused = await reuseCardLink(admin, applicationId);
+      if (reused) return reused;
+      return mintToken(admin, applicationId, ttl, "card");
+    })();
+    cardInflight.set(applicationId, job);
+    try {
+      return await job;
+    } finally {
+      cardInflight.delete(applicationId);
+    }
   }
-
-  return raw;
+  if (opts.ttlMs != null) assertAboveRecoveryWindow(opts.ttlMs);
+  const ttl = opts.recovery
+    ? RECOVERY_TOKEN_MINUTES * 60_000
+    : opts.ttlMs ?? RESUME_TOKEN_DAYS * 86400_000;
+  return mintToken(admin, applicationId, ttl, "resume");
 }
 
 /** Kill every live link for an application. Returns how many were revoked. */
@@ -168,16 +311,38 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
   if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
 
-  const { data: row } = await admin
-    .from("application_resume_tokens")
-    .select("id,application_id,created_at,expires_at,revoked_at")
-    .eq("token_hash", await hashResumeToken(raw))
-    .maybeSingle();
+  const row = await loadToken(admin, raw);
+  // purpose "card" opens the card page only. A missing purpose is a resume
+  // token, including every row written before the column exists.
+  if (!row || row.purpose === "card") throw new Error(generic);
+  return acceptResumeRow(admin, row, generic);
+}
 
-  if (!row) throw new Error(generic);
+/**
+ * The application id behind a card-on-file link. Resume tokens and recovery
+ * tokens are refused. Without the purpose column this fails closed: a link
+ * that can open /thank-you must not also be treated as a card link.
+ */
+export async function resolveCardToken(admin: AdminClient, raw: string): Promise<string> {
+  const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
+  if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
+  const row = await loadToken(admin, raw);
+  if (!row || row.revoked_at || row.purpose !== "card") throw new Error(generic);
+  const expires = new Date(row.expires_at).getTime();
+  const created = new Date(row.created_at).getTime();
+  if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now()) throw new Error(generic);
+  if (expires - created <= RECOVERY_MAX_MS) throw new Error(generic);
+  await admin
+    .from("application_resume_tokens")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("id", row.id);
+  return row.application_id;
+}
+
+async function acceptResumeRow(admin: AdminClient, row: TokenRow, generic: string): Promise<string> {
   if (row.revoked_at) throw new Error(generic);
-  const expires = new Date(row.expires_at as string).getTime();
-  const created = new Date(row.created_at as string).getTime();
+  const expires = new Date(row.expires_at).getTime();
+  const created = new Date(row.created_at).getTime();
   if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now())
     throw new Error(generic);
   // Recovery credentials must be consumed by exchangeResumeToken before any
@@ -203,14 +368,11 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
 export async function exchangeResumeToken(admin: AdminClient, raw: string): Promise<string> {
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
   if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
-  const { data: row } = await admin
-    .from("application_resume_tokens")
-    .select("id,application_id,created_at,expires_at,revoked_at")
-    .eq("token_hash", await hashResumeToken(raw))
-    .maybeSingle();
-  if (!row || row.revoked_at) throw new Error(generic);
-  const exp = new Date(row.expires_at as string).getTime();
-  const created = new Date(row.created_at as string).getTime();
+  const row = await loadToken(admin, raw);
+  // A card link is not an application session. /thank-you refuses it.
+  if (!row || row.revoked_at || row.purpose === "card") throw new Error(generic);
+  const exp = new Date(row.expires_at).getTime();
+  const created = new Date(row.created_at).getTime();
   if (!Number.isFinite(exp) || !Number.isFinite(created) || exp <= Date.now())
     throw new Error(generic);
   const isRecovery = exp - created <= RECOVERY_MAX_MS;
