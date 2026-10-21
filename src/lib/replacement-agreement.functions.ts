@@ -3,6 +3,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 
+// Replacement evidence is proposed/m2-packet/19b.sql on PR #190.
+// That function is granted to rr_record_executor only. authenticated cannot
+// call it. This server uses the service role and passes the manager id.
+// Do not copy 19b into this branch.
+
 const DISABLED = "Replacement agreement is disabled pending installation and acceptance";
 
 // issueAgreement names applications.vehicle_id unless a vehicle override is
@@ -80,6 +85,22 @@ async function currentVehicles(db: any, rentalId: string): Promise<VehicleBindin
   };
 }
 
+const previewInput = z.object({ rentalId: z.string().uuid() }).strict();
+
+/** Manager check, then a preview that names the rental's current vehicle. */
+export const previewReplacementAgreement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => previewInput.parse(input))
+  .handler(async ({ data, context }) => {
+    if (!SWAP_ENABLED) throw new Error(DISABLED);
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const vehicles = await currentVehicles(context.supabase, data.rentalId);
+    const { previewNamedAgreement } = await import("@/lib/agreements.functions");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return previewNamedAgreement(supabaseAdmin, vehicles.applicationId, vehicles.rentalVehicleId);
+  });
+
 /** Manager-only. Reads nothing and calls nothing while SWAP_ENABLED is false. */
 export const loadReplacementAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -123,7 +144,7 @@ export const sendReplacementAgreement = createServerFn({ method: "POST" })
       .parse(sent);
   });
 
-/** Manager-only. The database loads the signed archive. The client supplies no hash. */
+/** Manager check, then the service role. The client supplies no hash. */
 export const linkReplacementAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => linkInput.parse(input))
@@ -131,9 +152,11 @@ export const linkReplacementAgreement = createServerFn({ method: "POST" })
     if (!SWAP_ENABLED) throw new Error(DISABLED);
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    const { data: result, error } = await (context.supabase as any).rpc("link_replacement_agreement_v1", {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: result, error } = await (supabaseAdmin as any).rpc("link_replacement_agreement_v1", {
       _rental_id: data.rentalId,
       _agreement_id: data.agreementId,
+      _actor: context.userId,
     });
     if (error) throw new Error(error.message);
     const parsed = evidenceResult.parse(result);

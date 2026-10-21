@@ -8,6 +8,7 @@
 -- It is the same step as proposed/m2-packet/20.sql.
 -- Install it once, after M2 steps 19b and 19c.
 -- Do not install it before M2, and do not install it a second time after m2-packet/20.sql.
+-- The evidence table is proposed/m2-packet/19b.sql on PR #190. This branch does not copy that file.
 -- It reads private.agreement_evidence from 19b. It does not replace
 -- private.record_agreement_evidence(uuid, uuid, timestamptz, numeric).
 -- That four-argument function stays deny-all until M2 step 19c.

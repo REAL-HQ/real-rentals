@@ -67,9 +67,12 @@ ok(np === 6 && ns === 7, `preview 6 pages, signed 6 + certificate (${np}/${ns})`
 console.log("SERVER WIRING");
 const fn = readFileSync("src/lib/agreements.functions.ts", "utf8");
 ok(/prep: PrepSchema\.optional\(\)/.test(fn) && (fn.match(/prep: PrepSchema\.optional\(\)/g) ?? []).length === 2, "preview and send both accept validated choices");
-ok(/prepareAgreement\(admin, applicationId, opts\.prep, opts\.templateKey, opts\.vehicleId\)/.test(fn), "send re-renders from the same choices (fingerprint check)");
+ok(/prepareAgreement\(supabaseAdmin, data\.applicationId, data\.prep, data\.templateKey\)/.test(fn), "public preview re-renders without a vehicle override");
+ok(/const vehicleOverride = SWAP_ENABLED \? opts\.vehicleId : undefined/.test(fn), "a vehicle override is ignored while swap is off");
+ok(/prepareAgreement\(admin, applicationId, opts\.prep, opts\.templateKey, vehicleOverride\)/.test(fn), "send re-renders from the same choices (fingerprint check)");
 ok(/rental\.vehicle_id !== vehicleId/.test(fn), "an override must equal the rental's current vehicle");
 ok(/vehicleId\s*\?\s*await rentalVehicleForAgreement\(admin, applicationId, vehicleId\)\s*:\s*\(\(app\.vehicle_id as string \| null\) \?\? null\)/.test(fn), "without an override the application vehicle is unchanged");
+ok(!/vehicleId: z\.string\(\)\.uuid\(\)\.optional\(\)/.test(fn), "previewAgreement does not accept a vehicle id");
 ok(/if \(prep\.numberingPending\) throw/.test(fn), "v1.6 send refused until agreement numbering exists");
 ok(!/RR-\$\{/.test(fn), "no improvised agreement number");
 ok(/requireTierFor\(context\.userId, "manager"\)/.test(fn), "Manager+ only");

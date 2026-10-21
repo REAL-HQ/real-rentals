@@ -2,14 +2,16 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert/strict");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const { createRequire } = require("module");
+const { pgProgram, makeDataDir } = require("./pg-local.cjs");
 
 const root = path.resolve(__dirname, "..");
 const deps = createRequire(path.resolve(root, "package.json"));
 const ts = deps("typescript");
 const z = deps("zod");
 const results = [];
+let activeDir = null;
 function test(name, fn) {
   fn();
   results.push(name);
@@ -181,24 +183,24 @@ const swapData = {
 
 function psql(dir, sqlText) {
   return execFileSync(
-    "psql",
+    pgProgram("psql"),
     ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
     { input: sqlText, encoding: "utf8" },
   );
 }
 
 function startDatabase() {
-  const dir = "/tmp/vehicle-swap-pg";
-  fs.rmSync(dir, { recursive: true, force: true });
-  execFileSync("/usr/lib/postgresql/16/bin/initdb", ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p 55441 -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/createdb", ["-h", dir, "-p", "55441", "swap"], { stdio: "ignore" });
+  const dir = makeDataDir("vehicle-swap-pg-");
+  execFileSync(pgProgram("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+  execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p 55441 -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+  execFileSync(pgProgram("createdb"), ["-h", dir, "-p", "55441", "swap"], { stdio: "ignore" });
   return dir;
 }
 
 function stopDatabase(dir) {
+  if (!dir) return;
   try {
-    execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
   } catch { /* already stopped */ }
 }
 
@@ -392,9 +394,7 @@ function transactionTests(dir) {
     `);
   });
   test("a held rental lock fails nowait and rolls back", () => {
-    const holder = `${"/usr/lib/postgresql/16/bin/psql"}`;
-    const { spawn } = require("child_process");
-    const child = spawn("psql", ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
+    const child = spawn(pgProgram("psql"), ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
       stdio: ["pipe", "ignore", "pipe"],
     });
     child.stdin.write(`BEGIN; SELECT id FROM public.rentals WHERE id='${RENTAL}' FOR UPDATE; SELECT pg_sleep(20); COMMIT;\n`);
@@ -573,6 +573,7 @@ function transactionTests(dir) {
   console.log("PASS flag on names the swap rpc");
 
   const dir = startDatabase();
+  activeDir = dir;
   try {
     transactionTests(dir);
   } finally {
@@ -581,6 +582,6 @@ function transactionTests(dir) {
   console.log(JSON.stringify({ pass: results.length, fail: 0 }));
 })().catch((error) => {
   console.error(error);
-  try { stopDatabase("/tmp/vehicle-swap-pg"); } catch { /* already stopped */ }
+  try { stopDatabase(activeDir); } catch { /* already stopped */ }
   process.exit(1);
 });

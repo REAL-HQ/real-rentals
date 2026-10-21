@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { FileText, X } from "lucide-react";
-import { previewAgreement } from "@/lib/agreements.functions";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 import {
   linkReplacementAgreement,
   loadReplacementAgreement,
+  previewReplacementAgreement,
   sendReplacementAgreement,
   type ReplacementAgreementReadiness,
 } from "@/lib/replacement-agreement.functions";
@@ -43,7 +43,7 @@ export function ReplacementAgreement({ rentalId }: { rentalId: string }) {
 
 function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; onClose: () => void }) {
   const load = useServerFn(loadReplacementAgreement);
-  const preview = useServerFn(previewAgreement);
+  const preview = useServerFn(previewReplacementAgreement);
   const send = useServerFn(sendReplacementAgreement);
   const link = useServerFn(linkReplacementAgreement);
   const [readiness, setReadiness] = useState<ReplacementAgreementReadiness | null>(null);
@@ -75,7 +75,7 @@ function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; o
     setError(null);
     try {
       const result = (await preview({
-        data: { applicationId: readiness.applicationId, vehicleId: readiness.rentalVehicleId },
+        data: { rentalId },
       })) as PreviewShape;
       if (result.vehicleId !== readiness.rentalVehicleId) {
         setPreviewed(null);

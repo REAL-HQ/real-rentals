@@ -14,6 +14,7 @@ import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { SWAP_ENABLED } from "@/lib/record-numbers";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -616,15 +617,8 @@ export const listAgreements = createServerFn({ method: "GET" })
     return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [] })) as AgreementRow[];
   });
 
-export const previewAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional(), vehicleId: z.string().uuid().optional() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const actor = await requireTierFor(context.userId, "manager");
-    void actor;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey, data.vehicleId);
-    const { data: merge, app, blockers, tpl } = prep;
+async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepareAgreement>>, namedVehicle: boolean) {
+  const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
@@ -634,7 +628,7 @@ export const previewAgreement = createServerFn({ method: "POST" })
     // exactly what must not reach a signature.
     if (!blockers.length) {
       const { getCompanySigner } = await import("@/lib/esign.server");
-      const company = await getCompanySigner(supabaseAdmin);
+      const company = await getCompanySigner(admin);
       const { renderPreviewPdf } = await import("@/lib/esign-pdf.server");
       const bytes = await renderPreviewPdf({
         title: AGREEMENT_TITLE,
@@ -662,12 +656,30 @@ export const previewAgreement = createServerFn({ method: "POST" })
       terms: readTerms(tpl.body),
       missing,
       blockers,
-      vehicleId: prep.namedVehicleId,
+      vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
     };
+}
+
+export const previewAgreement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey);
+    return finishPreview(supabaseAdmin, prep, false);
   });
+
+/** Names the rental's current vehicle. Refuses before any read while swap is off. */
+export async function previewNamedAgreement(admin: any, applicationId: string, vehicleId: string) {
+  if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
+  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, vehicleId);
+  return finishPreview(admin, prep, true);
+}
 
 // ---------------------------------------------------------------- admin writes
 
@@ -685,8 +697,10 @@ export async function issueAgreement(
   opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string; vehicleId?: string } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
-  // on the server, never taken from the browser.
-  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, opts.vehicleId);
+  // on the server, never taken from the browser. A vehicle override exists
+  // only while swap is on. With the flag off this is the application vehicle.
+  const vehicleOverride = SWAP_ENABLED ? opts.vehicleId : undefined;
+  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride);
   const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -723,7 +737,7 @@ export async function issueAgreement(
       company_signer_name: company.name,
       company_signer_title: company.title,
       application_id: applicationId,
-      vehicle_id: prep.namedVehicleId,
+      vehicle_id: vehicleOverride ? prep.namedVehicleId : (app.vehicle_id ?? null),
       template_id: tpl.meta.id,
       body,
       merge_data: merge,
