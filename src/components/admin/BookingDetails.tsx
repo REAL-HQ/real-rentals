@@ -27,6 +27,9 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
+import { persistedNumber } from "@/lib/record-numbers";
+import { RecordNumber } from "@/components/admin/RecordNumber";
+import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
 
 // A booking, read.
 //
@@ -153,6 +156,7 @@ export function BookingDetails({
                     {BOOKING_PHASE_LABEL[b.phase]}
                   </StatusPill>
                 )}
+                {b && <RecordNumber label="Booking" value={persistedNumber(b, "bookingNumber")} />}
               </div>
               <p className="text-[13px] text-[#55555E] mt-1">
                 {b ? (
@@ -380,6 +384,10 @@ function Overview({
           ) : (
             <p className="text-[13px] text-[#55555E]">No vehicle is linked to this rental.</p>
           )}
+        </SectionCard>
+
+        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
         </SectionCard>
 
         <SectionCard

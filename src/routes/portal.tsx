@@ -1461,8 +1461,8 @@ function DashboardView({
           />
           <MetricTile
             label="Deposit Held"
-            value={fmt(rental.deposit_amount)}
-            sub={rental.deposit_held ? "On file" : "Not yet collected"}
+            value={rental.deposit_amount == null ? "Not Set" : fmt(rental.deposit_amount)}
+            sub={rental.deposit_held == null ? "Not Set" : rental.deposit_held ? "On file" : "Not yet collected"}
             tooltip="Your refundable deposit is held for the duration of your rental and refunded 14 to 30 days after your rental ends, less any unpaid balance."
           />
           <MetricTile
@@ -1892,9 +1892,9 @@ function DepositView({ data }: { data: DriverDashboard }) {
   return (
     <div className="rounded-2xl border border-border bg-white p-6 max-w-2xl">
       <h3 className="font-semibold">Refundable Deposit</h3>
-      <div className="mt-4 text-3xl font-semibold">{fmt(r?.deposit_amount ?? 0)}</div>
+      <div className="mt-4 text-3xl font-semibold">{r?.deposit_amount == null ? "Not Set" : fmt(r.deposit_amount)}</div>
       <div className="mt-1 text-sm text-muted-foreground">
-        {r?.deposit_held ? "Currently held on your rental." : "Not yet collected."}
+        {r?.deposit_held == null ? "Not Set" : r.deposit_held ? "Currently held on your rental." : "Not yet collected."}
       </div>
       <div className="mt-5 rounded-lg bg-soft p-4 text-sm text-muted-foreground">
         Your deposit is refunded 14 to 30 days after your rental ends, less any unpaid balance,

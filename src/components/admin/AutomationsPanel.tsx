@@ -44,6 +44,8 @@ const TRIGGERS = [
   { value: "application_abandoned", label: "Someone Abandons the Application" },
   { value: "application_approved", label: "An Application Is Approved" },
   { value: "rental_started", label: "A Rental Starts" },
+  { value: "rental_ended", label: "A Rental Ends" },
+  { value: "incident_logged", label: "An Incident Is Logged" },
   { value: "payment_past_due", label: "A Payment Goes Past Due" },
 ];
 

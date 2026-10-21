@@ -14,12 +14,15 @@ import {
   Truck,
   Receipt,
   ShieldAlert,
+  AlertTriangle,
   Wallet,
   Inbox,
   Upload,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
+import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 
 export type TabDef = {
   id: string;
@@ -55,6 +58,7 @@ export const TABS: readonly TabDef[] = [
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
   { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
+  { id: "driver_issues", label: "Driver Issues", icon: AlertTriangle, minTier: "manager", group: "FLEET", description: "Breakdowns And Other Reports From Renters" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
   { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
@@ -98,8 +102,23 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FINANCE_TAB: TabDef = {
+  id: "finance",
+  label: "Unified Finance",
+  icon: Landmark,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Combined Finance Coverage And Per-Vehicle Profitability",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  return TABS.filter((t) => tierAllows(tier, t.minTier));
+  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  next.splice(at + 1, 0, FINANCE_TAB);
+  return next;
 }
 
 /**
@@ -129,9 +148,13 @@ export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
 
 /** Rail entries: a workspace shows if any of its tabs is allowed; it links to the first allowed tab. */
 export function railEntries(tier: StaffTier | null): (TabDef & { href: string })[] {
-  return TABS.filter((t) => t.group)
+  const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
+  const at = entries.findIndex((t) => t.id === "expenses");
+  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  return entries;
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */

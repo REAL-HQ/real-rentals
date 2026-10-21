@@ -48,7 +48,10 @@ import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
+import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
+import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -88,6 +91,8 @@ type AdminSearch = {
   phase?: string;
   /** Bookings list: one vehicle's rentals. */
   vehicle?: string;
+  /** Incidents form prefilled from a driver issue. Does not create the incident. */
+  issue?: string;
 };
 
 /**
@@ -131,6 +136,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
+  issue: ["incidents"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -142,7 +148,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle"] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle", "issue"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -177,7 +183,7 @@ export const Route = createFileRoute("/admin")({
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
     if (typeof raw.q === "number") out.q = String(raw.q);
-    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle"] as const) if (str(raw[k])) out[k] = str(raw[k]);
+    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle", "issue"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
@@ -287,6 +293,11 @@ function Admin() {
   const tab: Tab = useMemo(() => {
     // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
     if (urlTab === "settings") return "settings";
+    // Reviewed Unified Finance is not an Overview block. This tab is the screen.
+    if (urlTab === "finance") {
+      if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "finance";
+    }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;
@@ -790,8 +801,10 @@ function Admin() {
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
-            {tab === "incidents" && <IncidentsPanel />}
+            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
+            {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

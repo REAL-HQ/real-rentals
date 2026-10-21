@@ -20,6 +20,8 @@ export type TriggerEvent =
   | "application_abandoned"
   | "application_approved"
   | "rental_started"
+  | "rental_ended"
+  | "incident_logged"
   | "payment_past_due";
 
 /** Business timezone used for quiet-hours math. */

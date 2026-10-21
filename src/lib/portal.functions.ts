@@ -19,8 +19,8 @@ export type DriverDashboard = {
   rental: {
     id: string;
     weekly_rate: number;
-    deposit_amount: number;
-    deposit_held: boolean;
+    deposit_amount: number | null;
+    deposit_held: boolean | null;
     next_payment_due: string | null;
     start_date: string | null;
     status: string;
@@ -297,8 +297,8 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
         ? {
             id: rental.id,
             weekly_rate: Number(rental.weekly_rate ?? 0),
-            deposit_amount: Number(rental.deposit_amount ?? 0),
-            deposit_held: Boolean(rental.deposit_held),
+            deposit_amount: rental.deposit_amount == null ? null : Number(rental.deposit_amount),
+            deposit_held: rental.deposit_held == null ? null : Boolean(rental.deposit_held),
             next_payment_due: rental.next_payment_due,
             start_date: rental.start_date,
             status: rental.status,
@@ -400,16 +400,34 @@ export const createDriverIssue = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
-    const { error } = await supabase.from("issues").insert({
-      driver_id: userId,
-      title: data.title,
-      body: data.body,
-      kind: data.kind,
-      severity: data.severity,
-      rental_id: rental?.id ?? null,
-      vehicle_id: rental?.vehicle_id ?? null,
-    });
+    const { data: created, error } = await supabase
+      .from("issues")
+      .insert({
+        driver_id: userId,
+        title: data.title,
+        body: data.body,
+        kind: data.kind,
+        severity: data.severity,
+        rental_id: rental?.id ?? null,
+        vehicle_id: rental?.vehicle_id ?? null,
+      })
+      .select("id")
+      .single();
     if (error) return { error: error.message };
+    // Staff email only. The driver still gets { ok: true } and the same portal list.
+    // Isolated from the dashboard deposit fields (PR #62 edits those, not this insert).
+    void import("@/lib/driver-issue-alert.server")
+      .then(({ notifyManagersOfDriverIssue }) =>
+        notifyManagersOfDriverIssue({
+          issueId: created?.id ?? null,
+          title: data.title,
+          kind: data.kind,
+          severity: data.severity,
+          rentalId: rental?.id ?? null,
+          vehicleId: rental?.vehicle_id ?? null,
+        }),
+      )
+      .catch((err) => console.error("[driver-issue] staff alert failed", err));
     return { ok: true };
   });
 

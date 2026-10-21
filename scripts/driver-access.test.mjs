@@ -161,9 +161,17 @@ ok(
 // Anyone can register an account for any address through the public sign-up
 // forms. Adopting one on trust hands the applicant's documents, agreement and
 // vehicle to whoever got there first.
+//
+// The one account that may be adopted without already owning an application
+// is one passwordless sign-in has flagged portal_verified: that flag is set
+// only after the code or link proves control of the inbox, so it is the same
+// person rather than whoever registered the address first. An unverified
+// pre-existing account is still a conflict, and the check has to name that
+// flag — `verified` alone would let a hardcoded true through.
 ok(
-  /if \(!created && !ownerId\)[\s\S]{0,700}conflict: true/.test(account),
-  "a pre-existing account with no application of its own is not adopted",
+  /portal_verified/.test(account) &&
+    /if \(!created && !ownerId && !verified\)[\s\S]{0,700}conflict: true/.test(account),
+  "an unverified pre-existing account with no application of its own is not adopted",
 );
 ok(
   /\.eq\("user_id", userId\)[\s\S]{0,60}\.limit\(1\)/.test(account),
