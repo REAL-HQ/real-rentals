@@ -44,6 +44,7 @@ import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 
 export type TabDef = {
@@ -172,6 +173,25 @@ const PAYOUT_BREAKDOWN_TAB: TabDef = {
   group: "BUSINESS",
   description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
 };
+
+/** Shown only while Finance Data Quality is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FINANCE_DATA_QUALITY_TAB: TabDef = {
+  id: "finance_data_quality",
+  label: "Finance Data Quality",
+  icon: ListChecks,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Gaps That Leave Finance Totals Partial Or Unavailable",
+};
+
+function withFinanceDataQuality<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_DATA_QUALITY_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...FINANCE_DATA_QUALITY_TAB, href } : FINANCE_DATA_QUALITY_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
 
 /** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
 const BILLING_HEALTH_TAB: TabDef = {
@@ -319,10 +339,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
-  if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  if (!extra.length) return withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  return withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
 }
 
 /**
@@ -374,11 +394,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (!extra.length) {
-    return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+    return withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+  return withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
