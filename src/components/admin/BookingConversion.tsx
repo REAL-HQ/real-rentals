@@ -58,19 +58,22 @@ function ConversionBody() {
         Booking Conversion
       </h2>
       <p className="mt-1 text-[13px] text-[#55555E]">
-        Leads And Booking Requests Through Application, Approved, And First Rental. Last 8 Eastern Weeks.
+        Leads And Booking Requests Through Application, Approved, And First Rental. Last 8 Eastern Weeks. Weeks Start Monday (Eastern).
       </p>
       {error ? (
         <p className="px-1 py-6 text-[13px] text-[#9A9AA3]">Booking Conversion Could Not Be Loaded.</p>
       ) : !report ? (
         <p className="px-1 py-6 text-[13px] text-[#9A9AA3]">Loading Booking Conversion…</p>
-      ) : report.truncated ? (
-        <p className="px-1 py-6 text-[13px] text-[#9A9AA3]">
-          This Range Has More Than {report.cap.toLocaleString()} Rows, So Counts Are Not Shown.
-        </p>
-      ) : report.rows.length === 0 ? (
-        <p className="px-1 py-6 text-[13px] text-[#9A9AA3]">No Leads Or Booking Requests In The Last 8 Weeks.</p>
       ) : (
+        <>
+          {report.truncated && (
+            <p className="mt-3 text-[13px] text-[#9A9AA3]">
+              Counts Are Capped At {report.cap.toLocaleString()} Rows.
+            </p>
+          )}
+          {report.rows.length === 0 ? (
+            <p className="px-1 py-6 text-[13px] text-[#9A9AA3]">No Leads Or Booking Requests In The Last 8 Weeks.</p>
+          ) : (
         <AdminTableScroll className="mt-3 rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-left text-[11px] text-muted-foreground">
@@ -110,6 +113,8 @@ function ConversionBody() {
             </tbody>
           </table>
         </AdminTableScroll>
+          )}
+        </>
       )}
     </section>
   );

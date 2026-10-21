@@ -2,7 +2,8 @@ import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   assertBookingConversionEnabled,
-  BOOKING_CONVERSION_ROW_CAP,
+  BOOKING_CONVERSION_MAX_PAGES,
+  BOOKING_CONVERSION_PAGE_SIZE,
   buildBookingConversion,
   conversionWindow,
   type ApplicationFact,
@@ -20,19 +21,27 @@ const bookingConversionGate = createMiddleware({ type: "function" }).server(asyn
   return next();
 });
 
-const CAP = BOOKING_CONVERSION_ROW_CAP;
-const PAGE = CAP + 1;
+const PAGE_SIZE = BOOKING_CONVERSION_PAGE_SIZE;
+const MAX_PAGES = BOOKING_CONVERSION_MAX_PAGES;
 
-type ReadResult<T> = { truncated: true } | { truncated: false; rows: T[] };
-
-async function take<T>(
-  query: PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<ReadResult<T>> {
-  const loaded = await query;
-  if (loaded.error) throw new Error(loaded.error.message);
-  const rows = loaded.data ?? [];
-  if (rows.length > CAP) return { truncated: true };
-  return { truncated: false, rows };
+/**
+ * Inclusive ranges of PAGE_SIZE, at most MAX_PAGES.
+ * A short page ends the read. A full final page sets truncated and keeps the rows.
+ */
+async function readPages<T>(
+  load: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ rows: T[]; truncated: boolean }> {
+  const rows: T[] = [];
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const loaded = await load(from, to);
+    if (loaded.error) throw new Error(loaded.error.message);
+    const batch = loaded.data ?? [];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
 }
 
 function chunks<T>(items: T[], size: number): T[][] {
@@ -51,7 +60,8 @@ export const getBookingConversion = createServerFn({ method: "GET" })
     const now = new Date();
     const window = conversionWindow(now);
 
-    const waitlist = await take(
+    let truncated = false;
+    const waitlist = await readPages((from, to) =>
       supabaseAdmin
         .from("waitlist")
         .select("id,created_at,source,utm_source,gclid,promoted_application_id")
@@ -59,11 +69,11 @@ export const getBookingConversion = createServerFn({ method: "GET" })
         .lt("created_at", new Date(window.endMs).toISOString())
         .order("created_at")
         .order("id")
-        .limit(PAGE),
+        .range(from, to),
     );
-    if (waitlist.truncated) return buildBookingConversion({ now, waitlist: [], applications: [], approvals: [], rentals: [], truncated: true });
+    truncated = truncated || waitlist.truncated;
 
-    const applications = await take(
+    const applications = await readPages((from, to) =>
       supabaseAdmin
         .from("applications")
         .select("id,created_at,status,source,utm_source,gclid,waitlist_source")
@@ -72,9 +82,9 @@ export const getBookingConversion = createServerFn({ method: "GET" })
         .lt("created_at", new Date(window.endMs).toISOString())
         .order("created_at")
         .order("id")
-        .limit(PAGE),
+        .range(from, to),
     );
-    if (applications.truncated) return buildBookingConversion({ now, waitlist: [], applications: [], approvals: [], rentals: [], truncated: true });
+    truncated = truncated || applications.truncated;
 
     const waitFacts: WaitlistFact[] = waitlist.rows.map((row) => ({
       id: row.id,
@@ -99,16 +109,16 @@ export const getBookingConversion = createServerFn({ method: "GET" })
     const known = new Set(appFacts.map((row) => row.id));
     const followIds = [...new Set(waitFacts.flatMap((row) => (row.promotedApplicationId && !known.has(row.promotedApplicationId) ? [row.promotedApplicationId] : [])))];
     for (const chunk of chunks(followIds, 100)) {
-      const follow = await take(
+      const follow = await readPages((from, to) =>
         supabaseAdmin
           .from("applications")
           .select("id,created_at,status,source,utm_source,gclid,waitlist_source")
           .in("id", chunk)
           .is("deleted_at", null)
           .order("id")
-          .limit(PAGE),
+          .range(from, to),
       );
-      if (follow.truncated) return buildBookingConversion({ now, waitlist: [], applications: [], approvals: [], rentals: [], truncated: true });
+      truncated = truncated || follow.truncated;
       for (const row of follow.rows) {
         if (!row.created_at || known.has(row.id)) continue;
         known.add(row.id);
@@ -126,10 +136,10 @@ export const getBookingConversion = createServerFn({ method: "GET" })
 
     const applicationIds = [...known];
     const approvals: { applicationId: string }[] = [];
-    const rentals: { applicationId: string }[] = [];
+    const rentals: { applicationId: string; status: string | null }[] = [];
     for (const chunk of chunks(applicationIds, 100)) {
       const [audit, rentalRows] = await Promise.all([
-        take(
+        readPages((from, to) =>
           supabaseAdmin
             .from("audit_log")
             .select("entity_id,created_at")
@@ -137,28 +147,27 @@ export const getBookingConversion = createServerFn({ method: "GET" })
             .in("entity_id", chunk)
             .order("created_at")
             .order("id")
-            .limit(PAGE),
+            .range(from, to),
         ),
-        take(
+        readPages((from, to) =>
           supabaseAdmin
             .from("rentals")
-            .select("application_id,created_at")
+            .select("application_id,created_at,status")
             .in("application_id", chunk)
+            .not("status", "in", "(cancelled,canceled,void,voided)")
             .order("created_at")
             .order("id")
-            .limit(PAGE),
+            .range(from, to),
         ),
       ]);
-      if (audit.truncated || rentalRows.truncated) {
-        return buildBookingConversion({ now, waitlist: [], applications: [], approvals: [], rentals: [], truncated: true });
-      }
+      truncated = truncated || audit.truncated || rentalRows.truncated;
       for (const row of audit.rows) {
         if (row.entity_id) approvals.push({ applicationId: row.entity_id });
       }
       for (const row of rentalRows.rows) {
-        if (row.application_id) rentals.push({ applicationId: row.application_id });
+        if (row.application_id) rentals.push({ applicationId: row.application_id, status: row.status });
       }
     }
 
-    return buildBookingConversion({ now, waitlist: waitFacts, applications: appFacts, approvals, rentals, truncated: false });
+    return buildBookingConversion({ now, waitlist: waitFacts, applications: appFacts, approvals, rentals, truncated });
   });

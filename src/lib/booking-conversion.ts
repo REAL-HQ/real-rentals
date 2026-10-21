@@ -16,13 +16,20 @@ export function assertBookingConversionEnabled(): void {
 export const BOOKING_TIME_ZONE = "America/New_York";
 /** Last eight Eastern weeks, including the week that contains today. */
 export const BOOKING_CONVERSION_WEEKS = 8;
-/**
- * Each read asks for one more row than this. The extra row is the overflow
- * sentinel and is not counted. A truncated report has no rates.
- */
-export const BOOKING_CONVERSION_ROW_CAP = 1000;
+/** One page of waitlist or application rows. */
+export const BOOKING_CONVERSION_PAGE_SIZE = 1000;
+/** The read walks this many pages, then returns the rows it has and marks the report capped. */
+export const BOOKING_CONVERSION_MAX_PAGES = 10;
+export const BOOKING_CONVERSION_ROW_CAP = BOOKING_CONVERSION_PAGE_SIZE;
 
-const APPROVED_STATUSES = new Set(["approved", "active", "closed"]);
+const APPROVED_STATUSES = new Set(["approved", "active"]);
+
+/** A cancelled or voided rental is not a first rental. Both spellings of cancelled appear in the data. */
+const RENTAL_EXCLUDED_STATUSES = new Set(["cancelled", "canceled", "void", "voided"]);
+
+export function countsAsFirstRental(status: string | null | undefined): boolean {
+  return !RENTAL_EXCLUDED_STATUSES.has(String(status ?? "").trim().toLowerCase());
+}
 
 export type WaitlistFact = {
   id: string;
@@ -64,18 +71,16 @@ export type ConversionRow = {
   rates: ConversionRates;
 };
 
-export type BookingConversionReport =
-  | { truncated: true; cap: number }
-  | {
-      truncated: false;
-      cap: number;
-      weeks: number;
-      from: string;
-      to: string;
-      rows: ConversionRow[];
-      totals: ConversionCounts;
-      rates: ConversionRates;
-    };
+export type BookingConversionReport = {
+  truncated: boolean;
+  cap: number;
+  weeks: number;
+  from: string;
+  to: string;
+  rows: ConversionRow[];
+  totals: ConversionCounts;
+  rates: ConversionRates;
+};
 
 export type ConversionWindow = {
   startMonday: string;
@@ -210,10 +215,9 @@ export function buildBookingConversion(input: {
   waitlist: WaitlistFact[];
   applications: ApplicationFact[];
   approvals: { applicationId: string }[];
-  rentals: { applicationId: string }[];
+  rentals: { applicationId: string; status?: string | null }[];
   truncated: boolean;
 }): BookingConversionReport {
-  if (input.truncated) return { truncated: true, cap: BOOKING_CONVERSION_ROW_CAP };
   const window = conversionWindow(input.now);
   const apps = new Map(input.applications.filter((row) => !isDuplicate(row.status)).map((row) => [row.id, row]));
   const people = new Map<string, Person>();
@@ -257,7 +261,10 @@ export function buildBookingConversion(input: {
   }
 
   const approved = new Set(input.approvals.map((row) => row.applicationId));
-  const rented = new Set(input.rentals.map((row) => row.applicationId));
+  // The same filter feeds First Rental and the rental proof of approval. A voided row is neither.
+  const rented = new Set(
+    input.rentals.filter((row) => countsAsFirstRental(row.status)).map((row) => row.applicationId),
+  );
   const cells = new Map<string, ConversionCounts>();
 
   for (const person of people.values()) {
@@ -295,8 +302,8 @@ export function buildBookingConversion(input: {
   }
 
   return {
-    truncated: false,
-    cap: BOOKING_CONVERSION_ROW_CAP,
+    truncated: input.truncated,
+    cap: BOOKING_CONVERSION_PAGE_SIZE * BOOKING_CONVERSION_MAX_PAGES,
     weeks: BOOKING_CONVERSION_WEEKS,
     from: window.startMonday,
     to: addCalendarDays(window.endMonday, -1),

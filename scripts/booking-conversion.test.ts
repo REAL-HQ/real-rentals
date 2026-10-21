@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   BOOKING_CONVERSION_ENABLED,
+  BOOKING_CONVERSION_MAX_PAGES,
+  BOOKING_CONVERSION_PAGE_SIZE,
   BOOKING_CONVERSION_ROW_CAP,
   addCalendarDays,
   assertBookingConversionEnabled,
@@ -47,9 +49,15 @@ describe("flag", () => {
     const manager = handler.indexOf("await requireManager(");
     const query = handler.indexOf('.from("waitlist")');
     assert.ok(enabled >= 0 && enabled < manager && manager < query);
-    assert.match(source, /const PAGE = CAP \+ 1/);
-    assert.match(source, /\.limit\(PAGE\)/);
+    assert.match(source, /readPages/);
+    assert.match(source, /\.range\(from, to\)/);
+    assert.match(source, /BOOKING_CONVERSION_PAGE_SIZE/);
+    assert.match(source, /BOOKING_CONVERSION_MAX_PAGES/);
+    assert.match(source, /\.not\("status", "in", "\(cancelled,canceled,void,voided\)"\)/);
+    assert.equal(source.includes("waitlist: []"), false);
     assert.match(source, /truncated/);
+    assert.equal(BOOKING_CONVERSION_PAGE_SIZE, 1000);
+    assert.equal(BOOKING_CONVERSION_MAX_PAGES, 10);
     assert.equal(BOOKING_CONVERSION_ROW_CAP, 1000);
     assert.equal(handler.includes(".insert("), false);
     assert.equal(handler.includes(".update("), false);
@@ -134,7 +142,7 @@ describe("funnel by source and week", () => {
     const ads = by("2026-06-01", "Google Ads");
     assert.deepEqual(ads?.counts, { leads: 1, applications: 1, approved: 1, firstRentals: 0 });
     const closed = by("2026-06-08", "Direct");
-    assert.deepEqual(closed?.counts, { leads: 1, applications: 1, approved: 1, firstRentals: 0 });
+    assert.deepEqual(closed?.counts, { leads: 1, applications: 1, approved: 0, firstRentals: 0 });
     const search = by("2026-06-08", "search");
     assert.deepEqual(search?.counts, { leads: 1, applications: 1, approved: 1, firstRentals: 1 });
     const opening = by("2026-04-27", "homepage");
@@ -143,14 +151,51 @@ describe("funnel by source and week", () => {
     assert.equal(report.rows.some((row) => row.weekStart === "2026-06-01" && row.source === "homepage"), false);
     assert.equal(report.totals.leads, 7);
     assert.equal(report.totals.applications, 6);
-    assert.equal(report.totals.approved, 4);
+    assert.equal(report.totals.approved, 3);
     assert.equal(report.totals.firstRentals, 2);
     assert.equal(report.rates.toApplication, 85.7);
-    assert.equal(report.rates.toApproved, 66.7);
-    assert.equal(report.rates.toFirstRental, 50);
+    assert.equal(report.rates.toApproved, 50);
+    assert.equal(report.rates.toFirstRental, 66.7);
   });
 
-  it("drops every rate when a read overflowed", () => {
+  it("does not treat a never-approved closed application as approved", () => {
+    const report = buildBookingConversion({
+      now: NOW,
+      waitlist: [],
+      applications: [app({ id: "closed-only", createdAt: "2026-06-08T15:00:00.000Z", status: "closed" })],
+      approvals: [],
+      rentals: [],
+      truncated: false,
+    });
+    assert.equal(report.truncated, false);
+    assert.equal(report.totals.leads, 1);
+    assert.equal(report.totals.applications, 1);
+    assert.equal(report.totals.approved, 0);
+    assert.equal(report.totals.firstRentals, 0);
+  });
+
+  it("does not count a cancelled or voided rental as the first rental", () => {
+    const report = buildBookingConversion({
+      now: NOW,
+      waitlist: [],
+      applications: [
+        app({ id: "voided", createdAt: "2026-06-02T15:00:00.000Z", status: "new" }),
+        app({ id: "kept", createdAt: "2026-06-02T16:00:00.000Z", status: "new" }),
+      ],
+      approvals: [],
+      rentals: [
+        { applicationId: "voided", status: "cancelled" },
+        { applicationId: "voided", status: "voided" },
+        { applicationId: "kept", status: "active" },
+      ],
+      truncated: false,
+    });
+    assert.equal(report.totals.applications, 2);
+    assert.equal(report.totals.approved, 1);
+    assert.equal(report.totals.firstRentals, 1);
+  });
+
+  it("keeps the counts and marks the report capped when a read stops early", () => {
     const report = buildBookingConversion({
       now: NOW,
       waitlist: [lead({ id: "w", createdAt: "2026-06-02T15:00:00.000Z", source: "city_lp" })],
@@ -159,7 +204,10 @@ describe("funnel by source and week", () => {
       rentals: [],
       truncated: true,
     });
-    assert.deepEqual(report, { truncated: true, cap: 1000 });
+    assert.equal(report.truncated, true);
+    assert.equal(report.cap, 10000);
+    assert.equal(report.totals.leads, 1);
+    assert.equal(report.rows.length, 1);
   });
 });
 
@@ -177,7 +225,8 @@ describe("screens", () => {
     const gate = view.indexOf("if (BOOKING_CONVERSION_ENABLED !== true || canView !== true) return null;");
     const fetch = view.indexOf("useServerFn(getBookingConversion)");
     assert.ok(gate >= 0 && gate < fetch);
-    assert.match(view, /This Range Has More Than/);
+    assert.match(view, /Weeks Start Monday \(Eastern\)/);
+    assert.match(view, /Counts Are Capped/);
     assert.match(view, /Leads \/ Requests/);
     assert.equal(/uppercase|lowercase|capitalize/.test(view), false);
     assert.equal(view.includes(".insert("), false);
