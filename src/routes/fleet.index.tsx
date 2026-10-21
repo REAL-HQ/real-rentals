@@ -175,7 +175,7 @@ function FleetPage() {
                     }`}
                   >
                     <span className="block font-medium">{c.label}</span>
-                    <span className="block text-[10px] opacity-90 leading-tight">{c.tagline}</span>
+                    <span className={`block text-[10px] leading-tight ${categories[c.k] ? "text-white" : "opacity-90"}`}>{c.tagline}</span>
                   </button>
                 ))}
               </div>
