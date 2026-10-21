@@ -3,7 +3,10 @@
  * byte strings the functional proof uses. The proof SQL must not contain a
  * typed 64-hex sha.
  */
+import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   DOCUMENT_CONTENT_SHA256_ENABLED,
   applyUploadedContentSha,
@@ -12,11 +15,14 @@ import {
 } from "../src/lib/document-content-sha";
 import { persistConfirmedDocument } from "../src/lib/documents.functions";
 import {
+  BACKFILL_PAGE_SIZE,
+  LICENSE_BACKFILL_SELECT,
   assertServiceRoleKey,
   backfillLicenseContentSha,
   classifyStorageFailure,
   classifyWriteDownloadFailure,
   contentShaBackfillExitCode,
+  formatContentShaBackfill,
   isRecordedHash,
   readDotenvAssignment,
   resolveSupabaseUrl,
@@ -218,35 +224,83 @@ console.error = originalError;
 resetUploadedContentShaProbe();
 if (missingLogs.length !== 1) throw new Error(`missing function was logged ${missingLogs.length} times`);
 
+const PII_COLUMNS = ["file_name", "notes", "label", "email", "full_name", "license_number", "phone"];
+
+type PageState = {
+  select: string;
+  eqs: { col: string; val: unknown }[];
+  ins: { col: string; val: unknown[] }[];
+  nots: { col: string; op: string; val: unknown }[];
+  ordered: boolean;
+  ranged: boolean;
+  from: number;
+  to: number;
+};
+
+function assertBackfillSelect(table: string, cols: string): void {
+  if (PII_COLUMNS.some((col) => cols.split(",").includes(col))) {
+    throw new Error(`backfill select reads ${cols}`);
+  }
+  if (table === "documents" && cols !== LICENSE_BACKFILL_SELECT) throw new Error(`document select ${cols}`);
+  if (table === "applications" && cols !== "id") throw new Error(`application select ${cols}`);
+}
+
+function pageBuilder(load: (state: PageState) => unknown[]): any {
+  const state: PageState = { select: "", eqs: [], ins: [], nots: [], ordered: false, ranged: false, from: 0, to: 0 };
+  const b: any = {
+    select(cols: string) { state.select = cols; return b; },
+    eq(col: string, val: unknown) { state.eqs.push({ col, val }); return b; },
+    in(col: string, val: unknown[]) { state.ins.push({ col, val }); return b; },
+    not(col: string, op: string, val: unknown) { state.nots.push({ col, op, val }); return b; },
+    order() { state.ordered = true; return b; },
+    range(from: number, to: number) { state.ranged = true; state.from = from; state.to = to; return b; },
+    then(resolve: (value: unknown) => void, reject?: (reason: unknown) => void) {
+      if (!state.ordered) throw new Error("page was not ordered by id");
+      return Promise.resolve()
+        .then(() => load(state))
+        .then((data) => ({ data, error: null }))
+        .then(resolve, reject);
+    },
+  };
+  return { state, builder: b };
+}
+
+function slicePage<T>(rows: T[], state: PageState, capWhenUnpaged: boolean): T[] {
+  const sorted = rows;
+  if (!state.ranged) return capWhenUnpaged ? sorted.slice(0, BACKFILL_PAGE_SIZE) : sorted;
+  return sorted.filter((_, index) => index >= state.from && index <= state.to);
+}
+
 const forged = "ab".repeat(32);
 const frontBytes = new TextEncoder().encode("m2-license-front-v1");
 const frontDigest = await contentSha256Hex(frontBytes);
 if (frontDigest === forged) throw new Error("fixture digest collided with the forged metadata");
 const rpcArgs: unknown[] = [];
 let downloads = 0;
+const backfillRows = [
+  {
+    id: "license-row",
+    driver_id: null as string | null,
+    storage_bucket: "driver-docs",
+    storage_path: "app/license_front.jpg",
+    content_sha256: null as string | null,
+    category: "license_front",
+    is_current: true,
+  },
+];
 const backfillAdmin = {
-  from() {
-    const filters: { col: string; val: unknown }[] = [];
-    const rows = [
-      {
-        id: "license-row",
-        storage_bucket: "driver-docs",
-        storage_path: "app/license_front.jpg",
-        content_sha256: null as string | null,
-        category: "license_front",
-        is_current: true,
-      },
-    ];
-    const b: any = {
-      select() { return b; },
-      eq(col: string, val: unknown) { filters.push({ col, val }); return b; },
-      in() { return b; },
-      then(resolve: (v: unknown) => void) {
-        const data = rows.filter((row) => filters.every((f) => (row as Record<string, unknown>)[f.col] === f.val));
-        return Promise.resolve({ data, error: null }).then(resolve);
-      },
-    };
-    return b;
+  from(table: string) {
+    const { builder } = pageBuilder((state) => {
+      assertBackfillSelect(table, state.select);
+      if (table === "applications") return [];
+      if (table !== "documents") throw new Error(`unexpected table ${table}`);
+      const matched = backfillRows.filter((row) =>
+        state.eqs.every((filter) => (row as Record<string, unknown>)[filter.col] === filter.val)
+        && state.ins.every((filter) => filter.val.includes((row as Record<string, unknown>)[filter.col] as never)),
+      );
+      return slicePage(matched, state, false);
+    });
+    return builder;
   },
   storage: {
     from() {
@@ -261,17 +315,29 @@ const backfillAdmin = {
       };
     },
   },
-  async rpc(_name: string, args: unknown) {
+  async rpc(_name: string, args: { p_bucket?: string; p_path?: string; p_sha256?: string }) {
     rpcArgs.push(args);
+    const row = backfillRows.find((item) => item.storage_bucket === args.p_bucket && item.storage_path === args.p_path);
+    if (row) row.content_sha256 = frontDigest;
     return { data: frontDigest, error: null };
   },
 };
 const dry = await backfillLicenseContentSha(backfillAdmin, { write: false });
-if (dry.pending !== 1 || dry.hashed !== 0 || downloads !== 0 || rpcArgs.length !== 0) {
+if (dry.pending !== 1 || dry.hashed !== 0 || dry.total !== 1 || dry.fingerprinted !== 0 || dry.mismatched !== 0 || downloads !== 0 || rpcArgs.length !== 0) {
   throw new Error(`dry-run touched storage: ${JSON.stringify(dry)} downloads=${downloads}`);
 }
+const dryLine = formatContentShaBackfill("dry-run", dry);
+if (!dryLine.includes("total=1") || !dryLine.includes("fingerprinted=0") || !dryLine.includes("missing_file=0") || !dryLine.includes("mismatched=0")) {
+  throw new Error(`dry-run line ${dryLine}`);
+}
 const wrote = await backfillLicenseContentSha(backfillAdmin, { write: true });
-if (wrote.hashed !== 1 || wrote.mismatched !== 0) throw new Error(`write counts ${JSON.stringify(wrote)}`);
+if (wrote.hashed !== 1 || wrote.mismatched !== 0 || wrote.fingerprinted !== 1 || wrote.total !== 1) {
+  throw new Error(`write counts ${JSON.stringify(wrote)}`);
+}
+const wroteAgain = await backfillLicenseContentSha(backfillAdmin, { write: true });
+if (wroteAgain.hashed !== 0 || wroteAgain.skipped !== 1 || wroteAgain.fingerprinted !== 1 || wroteAgain.mismatched !== 0 || rpcArgs.length !== 1 || downloads !== 2) {
+  throw new Error(`second write was not idempotent: ${JSON.stringify(wroteAgain)} rpc=${rpcArgs.length} downloads=${downloads}`);
+}
 const sent = rpcArgs[0] as { p_sha256?: string };
 if (sent.p_sha256 !== frontDigest || sent.p_sha256 === forged) {
   throw new Error("backfill sent the client metadata hash");
@@ -343,7 +409,7 @@ if (classifyWriteDownloadFailure(new Error("Uploaded bytes missing")) !== "stora
 if (classifyWriteDownloadFailure(new Error("socket hang up")) !== "abort") {
   throw new Error("a thrown network error was not left to abort");
 }
-const emptyCounts = { hashed: 0, skipped: 0, missing: 0, mismatched: 0, pending: 0, storageErrors: 0 };
+const emptyCounts = { total: 0, fingerprinted: 0, hashed: 0, skipped: 0, missing: 0, mismatched: 0, pending: 0, storageErrors: 0 };
 if (contentShaBackfillExitCode(false, { ...emptyCounts, missing: 1 }) !== 0) {
   throw new Error("dry-run missing exited");
 }
@@ -367,26 +433,27 @@ function licenseAdmin(
 ) {
   let downloads = 0;
   const rpcArgs: unknown[] = [];
+  const stored = rows.map((row) => ({
+    driver_id: null as string | null,
+    storage_bucket: "driver-docs",
+    storage_path: `${row.id}.jpg`,
+    category: "license_front",
+    is_current: true,
+    ...row,
+  }));
   const admin = {
-    from() {
-      const filters: { col: string; val: unknown }[] = [];
-      const stored = rows.map((row) => ({
-        storage_bucket: "driver-docs",
-        storage_path: `${row.id}.jpg`,
-        category: "license_front",
-        is_current: true,
-        ...row,
-      }));
-      const b: any = {
-        select() { return b; },
-        eq(col: string, val: unknown) { filters.push({ col, val }); return b; },
-        in() { return b; },
-        then(resolve: (v: unknown) => void) {
-          const data = stored.filter((row) => filters.every((f) => (row as Record<string, unknown>)[f.col] === f.val));
-          return Promise.resolve({ data, error: null }).then(resolve);
-        },
-      };
-      return b;
+    from(table: string) {
+      const { builder } = pageBuilder((state) => {
+        assertBackfillSelect(table, state.select);
+        if (table === "applications") return [];
+        if (table !== "documents") throw new Error(`unexpected table ${table}`);
+        const matched = stored.filter((row) =>
+          state.eqs.every((filter) => (row as Record<string, unknown>)[filter.col] === filter.val)
+          && state.ins.every((filter) => filter.val.includes((row as Record<string, unknown>)[filter.col] as never)),
+        );
+        return slicePage(matched, state, false);
+      });
+      return builder;
     },
     storage: {
       from() {
@@ -535,6 +602,94 @@ if (!networkThrew || network.downloads() !== 1) {
   throw new Error(`a thrown network error did not abort: threw=${networkThrew} downloads=${network.downloads()}`);
 }
 
+const deletedApps = Array.from({ length: 1001 }, (_, index) => ({
+  id: `app-${String(index).padStart(4, "0")}`,
+  deleted_at: "2026-01-01T00:00:00Z",
+}));
+const pageHash = "cd".repeat(32);
+const liveDocs = Array.from({ length: 1001 }, (_, index) => ({
+  id: `doc-${String(index + 1).padStart(4, "0")}`,
+  driver_id: "app-live",
+  storage_bucket: "driver-docs",
+  storage_path: `live/${index}.jpg`,
+  content_sha256: pageHash,
+  category: "license_front",
+  is_current: true,
+}));
+const pageDocs = [
+  {
+    id: "doc-0000",
+    driver_id: "app-1000",
+    storage_bucket: "driver-docs",
+    storage_path: "deleted.jpg",
+    content_sha256: pageHash,
+    category: "license_front",
+    is_current: true,
+  },
+  {
+    id: "doc-9999",
+    driver_id: "app-live",
+    storage_bucket: "driver-docs",
+    storage_path: "retired.jpg",
+    content_sha256: null as string | null,
+    category: "license_front",
+    is_current: false,
+  },
+  ...liveDocs,
+];
+let pageStorageCalls = 0;
+const pageAdmin = {
+  from(table: string) {
+    const { builder } = pageBuilder((state) => {
+      assertBackfillSelect(table, state.select);
+      if (table === "applications") {
+        const filtered = state.nots.some((item) => item.col === "deleted_at" && item.op === "is" && item.val === null);
+        if (!filtered) throw new Error("deleted applications were not filtered");
+        const ids = [...deletedApps].sort((a, b) => (a.id < b.id ? -1 : 1)).map((row) => ({ id: row.id }));
+        return slicePage(ids, state, true);
+      }
+      if (table !== "documents") throw new Error(`unexpected table ${table}`);
+      const matched = pageDocs
+        .filter((row) =>
+          state.eqs.every((filter) => (row as Record<string, unknown>)[filter.col] === filter.val)
+          && state.ins.every((filter) => filter.val.includes((row as Record<string, unknown>)[filter.col] as never)),
+        )
+        .sort((a, b) => (a.id < b.id ? -1 : 1));
+      return slicePage(matched, state, true);
+    });
+    return builder;
+  },
+  storage: {
+    from() {
+      return {
+        info() {
+          pageStorageCalls += 1;
+          throw new Error("dry-run read storage");
+        },
+        download() {
+          pageStorageCalls += 1;
+          throw new Error("dry-run downloaded");
+        },
+      };
+    },
+  },
+  async rpc() {
+    throw new Error("dry-run called record_uploaded_content_sha");
+  },
+};
+const paged = await backfillLicenseContentSha(pageAdmin, { write: false });
+if (
+  paged.total !== 1001
+  || paged.fingerprinted !== 1001
+  || paged.skipped !== 1001
+  || paged.pending !== 0
+  || paged.missing !== 0
+  || paged.mismatched !== 0
+  || pageStorageCalls !== 0
+) {
+  throw new Error(`page cap undercounted: ${JSON.stringify(paged)} storage=${pageStorageCalls}`);
+}
+
 if (/[0-9a-f]{64}/i.test(proof)) {
   throw new Error("functional proof contains a 64-hex literal");
 }
@@ -570,5 +725,347 @@ if (!url) {
     console.log(`back ${back.digest}`);
   } finally {
     await sql.end();
+  }
+}
+
+function assertLoopbackDatabase(url: string): void {
+  const parsed = new URL(url);
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost" && parsed.hostname !== "::1") {
+    throw new Error("refusing non-local database");
+  }
+  const name = parsed.pathname.replace(/^\//, "");
+  if (name === "m2") throw new Error("refusing to write the shared m2 database");
+}
+
+function assertScratchName(name: string): void {
+  if (name === "m2" || !/^m2bf[0-9a-f]+$/.test(name)) throw new Error("refusing to write the shared m2 database");
+}
+
+function psqlOn(database: string, args: string[], input?: string): string {
+  if (database !== "postgres") assertScratchName(database);
+  const url = `postgresql://postgres@127.0.0.1:55442/${database}?sslmode=disable`;
+  assertLoopbackDatabase(url);
+  const result = spawnSync("psql", [url, "-v", "ON_ERROR_STOP=1", "--no-psqlrc", ...args], {
+    input,
+    encoding: "utf8",
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+  });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `psql exit ${result.status}`);
+  return result.stdout ?? "";
+}
+
+let refusedShared = false;
+try {
+  assertLoopbackDatabase("postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable");
+} catch (error) {
+  refusedShared = error instanceof Error && error.message.includes("shared m2");
+}
+if (!refusedShared) throw new Error("a shared m2 url was accepted");
+let refusedRemote = false;
+try {
+  assertLoopbackDatabase("postgresql://postgres@db.example:5432/m2bf00?sslmode=disable");
+} catch (error) {
+  refusedRemote = error instanceof Error && error.message.includes("non-local");
+}
+if (!refusedRemote) throw new Error("a remote database url was accepted");
+
+const rehearsalStarted = Date.now();
+const rehearsalName = `m2bf${randomBytes(4).toString("hex")}`;
+assertScratchName(rehearsalName);
+const { default: rehearsalPostgres } = await import("postgres");
+let rehearsalUp = false;
+try {
+  const probe = rehearsalPostgres("postgresql://postgres@127.0.0.1:55442/postgres?sslmode=disable", { max: 1, connect_timeout: 3 });
+  await probe`select 1 as ok`;
+  await probe.end({ timeout: 1 });
+  rehearsalUp = true;
+} catch {
+  rehearsalUp = false;
+}
+if (!rehearsalUp) {
+  console.log("skip: local postgres on 127.0.0.1:55442 is not accepting connections, so the license backfill rehearsal did not run.");
+} else {
+  let rehearsalSql: { end: (options?: { timeout?: number }) => Promise<void> } | null = null;
+  let created = false;
+  try {
+    psqlOn("postgres", ["-c", `CREATE DATABASE ${rehearsalName}`]);
+    created = true;
+    psqlOn(rehearsalName, ["-f", "-"], `
+      CREATE SCHEMA IF NOT EXISTS private;
+      CREATE SCHEMA IF NOT EXISTS storage;
+      CREATE TABLE public.applications (
+        id uuid PRIMARY KEY,
+        deleted_at timestamptz,
+        license_photo_url text,
+        insurance_doc_url text,
+        profile_screenshot_url text,
+        trip_screenshots text[]
+      );
+      CREATE TABLE public.documents (
+        id uuid PRIMARY KEY,
+        driver_id uuid,
+        category text,
+        is_current boolean NOT NULL DEFAULT true,
+        storage_bucket text,
+        storage_path text,
+        content_sha256 text
+      );
+      CREATE TABLE storage.objects (
+        id uuid PRIMARY KEY,
+        bucket_id text NOT NULL,
+        name text NOT NULL,
+        user_metadata jsonb,
+        version text,
+        updated_at timestamptz
+      );
+    `);
+    psqlOn(rehearsalName, ["-f", "proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql"]);
+    const pageBytes = new TextEncoder().encode("m2-license-backfill-page");
+    const newBytes = new TextEncoder().encode("m2-license-backfill-new");
+    const pageDigest = await contentSha256Hex(pageBytes);
+    const newDigest = await contentSha256Hex(newBytes);
+    psqlOn(rehearsalName, ["-v", `digest=${pageDigest}`, "-f", "-"], `
+      INSERT INTO public.applications (id, deleted_at)
+      SELECT ('01000000-0000-4000-8000-' || lpad(to_hex(i), 12, '0'))::uuid,
+             timestamptz '2026-01-01+00'
+      FROM generate_series(0, 1000) AS i;
+      INSERT INTO public.applications (id)
+      VALUES ('02000000-0000-4000-8000-000000000001'::uuid);
+      INSERT INTO public.documents (id, driver_id, category, is_current, storage_bucket, storage_path, content_sha256)
+      SELECT ('10000000-0000-4000-8000-' || lpad(to_hex(i), 12, '0'))::uuid,
+             '02000000-0000-4000-8000-000000000001'::uuid,
+             'license_front', true, 'driver-docs', 'paged/' || i::text, :'digest'
+      FROM generate_series(1, 1001) AS i;
+      INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version, updated_at)
+      SELECT ('11000000-0000-4000-8000-' || lpad(to_hex(i), 12, '0'))::uuid,
+             'driver-docs', 'paged/' || i::text,
+             jsonb_build_object('sha256', :'digest'),
+             'v1', timestamptz '2026-10-21 00:00:00+00'
+      FROM generate_series(1, 1001) AS i;
+      INSERT INTO private.uploaded_content_sha (bucket_id, name, object_id, version, updated_at, user_metadata, sha256)
+      SELECT 'driver-docs', 'paged/' || i::text,
+             ('11000000-0000-4000-8000-' || lpad(to_hex(i), 12, '0'))::uuid,
+             'v1', timestamptz '2026-10-21 00:00:00+00',
+             jsonb_build_object('sha256', :'digest'),
+             :'digest'
+      FROM generate_series(1, 1001) AS i;
+      INSERT INTO public.documents (id, driver_id, category, is_current, storage_bucket, storage_path)
+      VALUES (
+        '00000000-0000-4000-8000-000000000001',
+        ('01000000-0000-4000-8000-' || lpad(to_hex(1000), 12, '0'))::uuid,
+        'license_front', true, 'driver-docs', 'deleted.jpg'
+      );
+      INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version, updated_at)
+      VALUES (
+        '00000000-0000-4000-8000-000000000002',
+        'driver-docs', 'deleted.jpg', '{}'::jsonb, 'v1', timestamptz '2026-10-21 00:00:00+00'
+      );
+      INSERT INTO public.documents (id, driver_id, category, is_current, storage_bucket, storage_path, content_sha256)
+      VALUES (
+        '30000000-0000-4000-8000-000000000001',
+        '02000000-0000-4000-8000-000000000001',
+        'license_front', false, 'driver-docs', 'retired.jpg', :'digest'
+      );
+      INSERT INTO public.documents (id, driver_id, category, is_current, storage_bucket, storage_path)
+      VALUES (
+        '20000000-0000-4000-8000-000000000001',
+        '02000000-0000-4000-8000-000000000001',
+        'license_front', true, 'driver-docs', 'new.jpg'
+      );
+      INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version, updated_at)
+      VALUES (
+        '20000000-0000-4000-8000-000000000002',
+        'driver-docs', 'new.jpg', '{}'::jsonb, 'v1', timestamptz '2026-10-21 00:00:00+00'
+      );
+    `);
+    const files = new Map<string, Uint8Array>();
+    for (let index = 1; index <= 1001; index += 1) files.set(`driver-docs/paged/${index}`, pageBytes);
+    files.set("driver-docs/new.jpg", newBytes);
+    files.set("driver-docs/deleted.jpg", new TextEncoder().encode("m2-license-backfill-deleted"));
+    let rehearsalDownloads = 0;
+    let rehearsalRpc = 0;
+    const rehearsalDb = rehearsalPostgres(`postgresql://postgres@127.0.0.1:55442/${rehearsalName}?sslmode=disable`, { max: 1 });
+    rehearsalSql = rehearsalDb;
+    const scratchAdmin = {
+      from(table: string) {
+        const { builder } = pageBuilder((state) => {
+          assertBackfillSelect(table, state.select);
+          if (table === "applications") {
+            const filtered = state.nots.some((item) => item.col === "deleted_at" && item.op === "is" && item.val === null);
+            if (!filtered) throw new Error("deleted applications were not filtered");
+            return rehearsalDb<{ id: string; deleted_at: string | null }[]>`
+              select id::text as id, deleted_at::text as deleted_at
+              from public.applications
+              order by id
+            `.then((rows) => slicePage(rows.filter((row) => row.deleted_at != null).map((row) => ({ id: row.id })), state, true));
+          }
+          if (table !== "documents") throw new Error(`unexpected table ${table}`);
+          return rehearsalDb<{
+            id: string;
+            driver_id: string | null;
+            storage_bucket: string | null;
+            storage_path: string | null;
+            content_sha256: string | null;
+            is_current: boolean;
+            category: string;
+          }[]>`
+            select id::text as id, driver_id::text as driver_id, storage_bucket, storage_path, content_sha256,
+                   is_current, category
+            from public.documents
+            order by id
+          `.then((rows) => {
+            const matched = rows.filter((row) =>
+              state.eqs.every((filter) => (row as Record<string, unknown>)[filter.col] === filter.val)
+              && state.ins.every((filter) => filter.val.includes((row as Record<string, unknown>)[filter.col] as never)),
+            );
+            return slicePage(matched, state, true).map((row) => ({
+              id: row.id,
+              driver_id: row.driver_id,
+              storage_bucket: row.storage_bucket,
+              storage_path: row.storage_path,
+              content_sha256: row.content_sha256,
+            }));
+          });
+        });
+        return builder;
+      },
+      storage: {
+        from(bucket: string) {
+          return {
+            async info(path: string) {
+              const [row] = await rehearsalDb<{ id: string; version: string | null; updated_at: Date | null }[]>`
+                select id::text as id, version, updated_at
+                from storage.objects
+                where bucket_id = ${bucket} and name = ${path}
+              `;
+              if (!row) return { data: null, error: { message: "Object not found", statusCode: "404" } };
+              return { data: { id: row.id, version: row.version, updatedAt: row.updated_at }, error: null };
+            },
+            async download(path: string) {
+              rehearsalDownloads += 1;
+              const bytes = files.get(`${bucket}/${path}`);
+              if (!bytes) return { data: null, error: { message: "Object not found", statusCode: "404" } };
+              return { data: new Blob([bytes]), error: null };
+            },
+          };
+        },
+      },
+      async rpc(_name: string, args: {
+        p_bucket: string;
+        p_path: string;
+        p_sha256: string;
+        p_object_id: string;
+        p_version: string | null;
+        p_updated_at: string | null;
+      }) {
+        rehearsalRpc += 1;
+        try {
+          const [row] = await rehearsalDb<{ sha: string }[]>`
+            select public.record_uploaded_content_sha(
+              ${args.p_bucket}, ${args.p_path}, ${args.p_sha256},
+              ${args.p_object_id}::uuid, ${args.p_version}, ${args.p_updated_at}::timestamptz
+            ) as sha
+          `;
+          return { data: row?.sha ?? null, error: null };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return { data: null, error: { message } };
+        }
+      },
+    };
+    const scratchDry = await backfillLicenseContentSha(scratchAdmin, { write: false });
+    if (
+      scratchDry.total !== 1002
+      || scratchDry.fingerprinted !== 1001
+      || scratchDry.pending !== 1
+      || scratchDry.missing !== 0
+      || scratchDry.mismatched !== 0
+      || rehearsalDownloads !== 0
+      || rehearsalRpc !== 0
+    ) {
+      throw new Error(`scratch dry-run ${JSON.stringify(scratchDry)} downloads=${rehearsalDownloads} rpc=${rehearsalRpc}`);
+    }
+    const scratchWrite = await backfillLicenseContentSha(scratchAdmin, { write: true });
+    if (
+      scratchWrite.total !== 1002
+      || scratchWrite.hashed !== 1
+      || scratchWrite.skipped !== 1001
+      || scratchWrite.fingerprinted !== 1002
+      || scratchWrite.missing !== 0
+      || scratchWrite.mismatched !== 0
+      || rehearsalRpc !== 1
+      || rehearsalDownloads !== 1002
+    ) {
+      throw new Error(`scratch write ${JSON.stringify(scratchWrite)} downloads=${rehearsalDownloads} rpc=${rehearsalRpc}`);
+    }
+    const [storedNew] = await rehearsalDb<{ content_sha256: string | null }[]>`
+      select content_sha256 from public.documents where storage_path = 'new.jpg'
+    `;
+    if (storedNew?.content_sha256 !== newDigest) throw new Error("stored hash is not the downloaded bytes");
+    const scratchAgain = await backfillLicenseContentSha(scratchAdmin, { write: true });
+    if (
+      scratchAgain.hashed !== 0
+      || scratchAgain.skipped !== 1002
+      || scratchAgain.fingerprinted !== 1002
+      || scratchAgain.mismatched !== 0
+      || scratchAgain.missing !== 0
+      || rehearsalRpc !== 1
+      || rehearsalDownloads !== 2004
+    ) {
+      throw new Error(`scratch second write ${JSON.stringify(scratchAgain)} downloads=${rehearsalDownloads} rpc=${rehearsalRpc}`);
+    }
+    const report = psqlOn(rehearsalName, ["-f", "proposed/backfill-document-content-sha.sql"]);
+    const reportLine = report.split("\n").map((line) => line.trim()).find((line) => line.startsWith("report"));
+    const reportCells = reportLine?.split("|").map((cell) => cell.trim()) ?? [];
+    if (reportCells[1] !== "0" || reportCells[2] !== "0" || reportCells[3] !== "0") {
+      throw new Error(`scratch sql report ${reportLine ?? report}`);
+    }
+    await rehearsalDb`update public.documents set content_sha256 = null where storage_path = 'new.jpg'`;
+    const [bindingLeft] = await rehearsalDb<{ n: number }[]>`
+      select count(*)::int as n from private.uploaded_content_sha where name = 'new.jpg'
+    `;
+    if (Number(bindingLeft?.n) !== 1) throw new Error("clearing the document hash removed the binding");
+    let serviceDenied = false;
+    try {
+      await rehearsalDb.begin(async (tx) => {
+        await tx.unsafe("set local role service_role");
+        await tx.unsafe("delete from private.uploaded_content_sha");
+      });
+    } catch (error) {
+      serviceDenied = /permission denied/i.test(error instanceof Error ? error.message : String(error));
+      if (!serviceDenied) throw error;
+    }
+    if (!serviceDenied) throw new Error("service_role deleted the binding");
+    psqlOn(rehearsalName, ["-f", "proposed/rollback/backfill-content-sha.sql"]);
+    const [currentLeft] = await rehearsalDb<{ n: number }[]>`
+      select count(*)::int as n from public.documents
+      where is_current is true
+        and category in ('license_front', 'license_back')
+        and content_sha256 is not null
+    `;
+    const [retiredLeft] = await rehearsalDb<{ n: number }[]>`
+      select count(*)::int as n from public.documents
+      where storage_path = 'retired.jpg' and content_sha256 is not null
+    `;
+    const [bindings] = await rehearsalDb<{ n: number }[]>`
+      select count(*)::int as n from private.uploaded_content_sha
+    `;
+    const [deletedLeft] = await rehearsalDb<{ content_sha256: string | null }[]>`
+      select content_sha256 from public.documents where storage_path = 'deleted.jpg'
+    `;
+    if (Number(currentLeft?.n) !== 0 || Number(retiredLeft?.n) !== 1 || Number(bindings?.n) !== 0 || deletedLeft?.content_sha256 != null) {
+      throw new Error(`undo left current=${currentLeft?.n} retired=${retiredLeft?.n} bindings=${bindings?.n} deleted=${deletedLeft?.content_sha256}`);
+    }
+    const seconds = ((Date.now() - rehearsalStarted) / 1000).toFixed(1);
+    console.log(formatContentShaBackfill("dry-run", scratchDry));
+    console.log(formatContentShaBackfill("write", scratchWrite));
+    console.log(formatContentShaBackfill("write", scratchAgain));
+    console.log(`license backfill rehearsal ${seconds}s`);
+  } finally {
+    try {
+      if (rehearsalSql) await rehearsalSql.end({ timeout: 5 });
+    } finally {
+      if (created) psqlOn("postgres", ["-c", `DROP DATABASE IF EXISTS ${rehearsalName} WITH (FORCE)`]);
+    }
   }
 }

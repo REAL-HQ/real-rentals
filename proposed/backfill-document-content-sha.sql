@@ -3,7 +3,9 @@
 -- SQL cannot download Storage, so this file cannot set a content hash.
 -- The writer is scripts/backfill-document-content-sha.ts --write.
 --
--- Counts current license_front and license_back rows:
+-- Counts current license_front and license_back rows.
+-- A row is omitted when is_current is false, and when driver_id is an
+-- application whose deleted_at is set. The script omits those same rows.
 --   missing: no single stored object, a blank content hash, or no server binding
 --   mismatched: a hash or object that does not match private.uploaded_content_sha
 --   skipped: more than one stored object for the path
@@ -60,6 +62,12 @@ BEGIN
       AND d.category IN ('license_front', 'license_back')
       AND nullif(btrim(d.storage_bucket), '') IS NOT NULL
       AND nullif(btrim(d.storage_path), '') IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.applications a
+        WHERE a.id = d.driver_id
+          AND a.deleted_at IS NOT NULL
+      )
   LOOP
     SELECT count(*) INTO n FROM storage.objects o
     WHERE o.bucket_id = rec.storage_bucket AND o.name = rec.storage_path;

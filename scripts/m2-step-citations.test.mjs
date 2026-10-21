@@ -175,13 +175,20 @@ for (const row of order) {
   }
 }
 const rollbackFiles = readdirSync(resolve(root, "proposed/rollback")).filter((name) => name.endsWith(".sql")).sort();
-if (rollbackFiles.length !== 30) throw new Error(`rollback directory has ${rollbackFiles.length} sql files`);
+if (rollbackFiles.length !== 31) throw new Error(`rollback directory has ${rollbackFiles.length} sql files`);
 for (const name of rollbackFiles) {
   const file = `proposed/rollback/${name}`;
   const lines = read(file).split("\n");
   const header = lines[0];
   if (header.includes("M2 rehearsal step")) throw new Error(`${file} still uses a rehearsal step number`);
   if (listed.has(file)) continue;
+  if (name === "backfill-content-sha.sql") {
+    const body = lines.join("\n");
+    if (body.includes("HOSTED-INSTALL") || /\bstep \d+\b/.test(body)) {
+      throw new Error("backfill undo cites an install step");
+    }
+    continue;
+  }
   if (name !== "00-approval-data-export.sql") throw new Error(`${file} is not in the HOSTED-INSTALL rollback column`);
   const exportLine = lines[3] ?? "";
   if (!exportLine.includes("HOSTED-INSTALL step 3: proposed/m2-with-approval-boundary/00-approval-boundary.sql")) {

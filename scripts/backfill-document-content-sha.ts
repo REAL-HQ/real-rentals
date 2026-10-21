@@ -20,11 +20,24 @@
  * and no HTTP status, and it still aborts the run. The unhashed write path
  * downloads once, inside writeUploadedContentSha.
  * --write exits nonzero when missing, mismatched, or storage_errors is
- * greater than 0. Clearing documents.content_sha256 does not remove
+ * greater than 0. The printed line includes total, fingerprinted,
+ * missing_file, and mismatched. missing_file is the same count as missing.
+ * fingerprinted counts a row that already has a 64-hex hash, including a
+ * mismatch, and a row this run hashes.
+ *
+ * Rows are read 1000 at a time, ordered by id, until a short page. The
+ * select list is id, driver_id, storage_bucket, storage_path, and
+ * content_sha256. A document is omitted when is_current is false, and when
+ * driver_id is an application whose deleted_at is set. Omitted rows are not
+ * in total. Deleted application ids are paged the same way, selecting id only.
+ *
+ * Clearing documents.content_sha256 does not remove
  * private.uploaded_content_sha.
  * That table is revoked from service_role and has no policy, so only the
- * table owner can delete the binding row. After that delete, set the
- * document hash back to null and run --write again.
+ * table owner can delete the binding row. The owner undo for every current
+ * license fingerprint is proposed/rollback/backfill-content-sha.sql. It is
+ * not an install step. After that delete, set the document hash back to
+ * null and run --write again.
  *
  * Bun loads the committed .env, which points at hosted. This script refuses
  * to run unless SUPABASE_URL is passed with --url or is a shell value
@@ -50,7 +63,12 @@ const DOTENV_FILES = [
   ".env.production.local",
 ];
 
+export const BACKFILL_PAGE_SIZE = 1000;
+export const LICENSE_BACKFILL_SELECT = "id,driver_id,storage_bucket,storage_path,content_sha256";
+
 export type ContentShaBackfillCounts = {
+  total: number;
+  fingerprinted: number;
   hashed: number;
   skipped: number;
   missing: number;
@@ -61,6 +79,7 @@ export type ContentShaBackfillCounts = {
 
 type LicenseRow = {
   id: string;
+  driver_id?: string | null;
   storage_bucket: string | null;
   storage_path: string | null;
   content_sha256: string | null;
@@ -233,11 +252,35 @@ async function objectSha(admin: any, bucket: string, path: string): Promise<
   return { kind: "ok", sha: await contentSha256Hex(bytes) };
 }
 
+async function deletedApplicationIds(admin: any): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let from = 0;
+  for (;;) {
+    const to = from + BACKFILL_PAGE_SIZE - 1;
+    const { data, error } = await admin
+      .from("applications")
+      .select("id")
+      .not("deleted_at", "is", null)
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message || "Could not list deleted applications");
+    const rows = (data ?? []) as { id?: string | null }[];
+    for (const row of rows) {
+      if (typeof row.id === "string" && row.id) ids.add(row.id);
+    }
+    if (rows.length < BACKFILL_PAGE_SIZE) break;
+    from += BACKFILL_PAGE_SIZE;
+  }
+  return ids;
+}
+
 export async function backfillLicenseContentSha(
   admin: any,
   options: { write: boolean },
 ): Promise<ContentShaBackfillCounts> {
   const counts: ContentShaBackfillCounts = {
+    total: 0,
+    fingerprinted: 0,
     hashed: 0,
     skipped: 0,
     missing: 0,
@@ -245,62 +288,76 @@ export async function backfillLicenseContentSha(
     pending: 0,
     storageErrors: 0,
   };
-  const { data, error } = await admin
-    .from("documents")
-    .select("id,storage_bucket,storage_path,content_sha256")
-    .eq("is_current", true)
-    .in("category", ["license_front", "license_back"]);
-  if (error) throw new Error(error.message || "Could not list license documents");
-  for (const row of (data ?? []) as LicenseRow[]) {
-    const bucket = row.storage_bucket?.trim() ?? "";
-    const path = row.storage_path?.trim() ?? "";
-    if (!bucket || !path) {
-      counts.skipped += 1;
-      continue;
-    }
-    const recorded = recordedHashHex(row.content_sha256);
-    if (recorded) {
-      if (!options.write) {
+  const deleted = await deletedApplicationIds(admin);
+  let from = 0;
+  for (;;) {
+    const to = from + BACKFILL_PAGE_SIZE - 1;
+    const { data, error } = await admin
+      .from("documents")
+      .select(LICENSE_BACKFILL_SELECT)
+      .eq("is_current", true)
+      .in("category", ["license_front", "license_back"])
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message || "Could not list license documents");
+    const page = (data ?? []) as LicenseRow[];
+    for (const row of page) {
+      if (typeof row.driver_id === "string" && deleted.has(row.driver_id)) continue;
+      counts.total += 1;
+      const bucket = row.storage_bucket?.trim() ?? "";
+      const path = row.storage_path?.trim() ?? "";
+      if (!bucket || !path) {
         counts.skipped += 1;
         continue;
       }
-      const hashed = await objectSha(admin, bucket, path);
-      if (hashed.kind === "missing") counts.missing += 1;
-      else if (hashed.kind === "error") counts.storageErrors += 1;
-      else if (hashed.sha === recorded) counts.skipped += 1;
-      else counts.mismatched += 1;
-      continue;
+      const recorded = recordedHashHex(row.content_sha256);
+      if (recorded) counts.fingerprinted += 1;
+      if (recorded) {
+        if (!options.write) {
+          counts.skipped += 1;
+          continue;
+        }
+        const hashed = await objectSha(admin, bucket, path);
+        if (hashed.kind === "missing") counts.missing += 1;
+        else if (hashed.kind === "error") counts.storageErrors += 1;
+        else if (hashed.sha === recorded) counts.skipped += 1;
+        else counts.mismatched += 1;
+        continue;
+      }
+      const info = await admin.storage.from(bucket).info(path);
+      const infoKind = classifyStorageFailure(info?.error ?? null, Boolean(info?.data?.id));
+      if (infoKind === "missing") {
+        counts.missing += 1;
+        continue;
+      }
+      if (infoKind === "error") {
+        counts.storageErrors += 1;
+        continue;
+      }
+      if (!options.write) {
+        counts.pending += 1;
+        continue;
+      }
+      try {
+        await writeUploadedContentSha(admin, bucket, path);
+        counts.hashed += 1;
+        counts.fingerprinted += 1;
+      } catch (caught) {
+        const kind = classifyWriteDownloadFailure(caught);
+        if (kind === "missing") counts.missing += 1;
+        else if (kind === "mismatched") counts.mismatched += 1;
+        else if (kind === "storage") counts.storageErrors += 1;
+        else throw caught;
+      }
     }
-    const info = await admin.storage.from(bucket).info(path);
-    const infoKind = classifyStorageFailure(info?.error ?? null, Boolean(info?.data?.id));
-    if (infoKind === "missing") {
-      counts.missing += 1;
-      continue;
-    }
-    if (infoKind === "error") {
-      counts.storageErrors += 1;
-      continue;
-    }
-    if (!options.write) {
-      counts.pending += 1;
-      continue;
-    }
-    try {
-      await writeUploadedContentSha(admin, bucket, path);
-      counts.hashed += 1;
-    } catch (caught) {
-      const kind = classifyWriteDownloadFailure(caught);
-      if (kind === "missing") counts.missing += 1;
-      else if (kind === "mismatched") counts.mismatched += 1;
-      else if (kind === "storage") counts.storageErrors += 1;
-      else throw caught;
-    }
+    if (page.length < BACKFILL_PAGE_SIZE) break;
+    from += BACKFILL_PAGE_SIZE;
   }
   return counts;
 }
 
 export function formatContentShaBackfill(mode: "dry-run" | "write", counts: ContentShaBackfillCounts): string {
-  return `mode=${mode} hashed=${counts.hashed} skipped=${counts.skipped} missing=${counts.missing} mismatched=${counts.mismatched} pending=${counts.pending} storage_errors=${counts.storageErrors}`;
+  return `mode=${mode} total=${counts.total} fingerprinted=${counts.fingerprinted} missing_file=${counts.missing} hashed=${counts.hashed} skipped=${counts.skipped} missing=${counts.missing} mismatched=${counts.mismatched} pending=${counts.pending} storage_errors=${counts.storageErrors}`;
 }
 
 if (import.meta.main) {

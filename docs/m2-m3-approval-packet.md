@@ -55,3 +55,13 @@ A half-finished M2 leaves Approve and signing on a partial database. Stop at the
 Installing these files does not turn on identity check, new-upload fingerprints, swap, or extend. Each of those is a later decision.
 
 The waitlist limit counts the email only. A limit by network address would be a separate decision.
+
+## Backfill
+
+A person with the service_role key runs the license-byte backfill. The preflight reader does not. Dry-run is the default and does not download a file. Before M2 step 3, the script `--write` line must show `missing_file=0` and `mismatched=0`, and `proposed/backfill-document-content-sha.sql` must show `missing=0` and `mismatched=0`. A dry-run `mismatched=0` is not that gate.
+
+The script reads the license file bytes and the document id it updates. It also reads the application id, and only so it can skip a deleted application. It does not read a name, an email, a phone number, or a license number. It asks for 1000 rows at a time, then the next 1000, until a short page. A document is left out when `is_current` is false, and when its `driver_id` is an application whose `deleted_at` is set. Those rows are not in `total`. `fingerprinted` counts a row that already has a fingerprint and a row this run hashes.
+
+On the local scratch rehearsal this run finished in 0.7 seconds. It counted 1001 fingerprints already stored, hashed one new file, skipped that file on the second run, and the report showed zero missing and zero mismatched. Each file is one download. That time is not a production window.
+
+The table owner runs `proposed/rollback/backfill-content-sha.sql`. That file is not an install step. It clears the current license fingerprints and the matching server bindings. Clearing only the document fingerprint leaves the binding. `service_role` cannot delete the binding table.
