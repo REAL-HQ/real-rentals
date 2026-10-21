@@ -13,6 +13,7 @@ import {
   type BookingRow,
 } from "@/lib/bookings-list";
 import { BookingDetails } from "./BookingDetails";
+import { BookingConversion } from "./BookingConversion";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { EmptyState, StatusPill } from "./ui";
 import { fmtDate } from "@/lib/date-format";
@@ -77,7 +78,14 @@ export function BookingsPanel({
   externalSearch = "",
   openId = null,
   listState = {},
-}: { externalSearch?: string; openId?: string | null; listState?: ListState } = {}) {
+  canViewConversion = false,
+}: {
+  externalSearch?: string;
+  openId?: string | null;
+  listState?: ListState;
+  /** Owner and Manager. The conversion server function requires a manager, and the flag still has to be on. */
+  canViewConversion?: boolean;
+} = {}) {
   const navigate = useNavigate();
 
   // List state lives in the URL so refresh, back and shared links keep it.
@@ -224,6 +232,8 @@ export function BookingsPanel({
           )}
         </div>
       </div>
+
+      <BookingConversion canView={canViewConversion} />
 
       {rows.length > 0 && (
         <AdminTableScroll className="hidden md:block rounded-xl border border-border bg-white">
