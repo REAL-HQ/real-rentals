@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
@@ -145,9 +146,27 @@ const stepUpdateSchema = z.object({
 // link. Rate limit per application, tracked in resubmission_history: one send
 // per LINK_RETRY_SECONDS and at most LINK_DAILY_MAX per 24h. Only sends the
 // email provider actually accepted are recorded as sent.
+//
+// APPLICATION_RESUME_ATOMIC_ENABLED=true (exact string) switches the send to
+// the 0023 reservation functions. Any other value, including unset, keeps
+// this history path. The reservation RPCs are not named in this file.
 export const LINK_RETRY_SECONDS = 120;
 const LINK_DAILY_MAX = 6;
 type LinkOutcome = "sent" | "recent" | "failed";
+/** Keep successful-send evidence when anonymous retries fill the history. Atomic path only. */
+function boundedRecoveryHistory(history: unknown[]): unknown[] {
+  const sent = history
+    .filter(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "link_sent" in entry &&
+        (entry as { link_sent?: unknown }).link_sent === true,
+    )
+    .slice(-LINK_DAILY_MAX);
+  const other = history.filter((entry) => !sent.includes(entry)).slice(-(25 - sent.length));
+  return [...sent, ...other];
+}
 /** Seconds until another send is allowed (0 = allowed now). */
 function linkWaitSeconds(history: unknown[]): number {
   const now = Date.now();
@@ -182,6 +201,9 @@ async function sendRecoveryLink(
   entry: Record<string, unknown>,
   extra: Record<string, unknown> = {},
 ): Promise<{ outcome: LinkOutcome; wait: number }> {
+  if (applicationResumeAtomicEnabled()) {
+    return sendAtomicRecoveryLink(supabaseAdmin, primaryId, entry, extra);
+  }
   const { data: row } = await supabaseAdmin
     .from("applications")
     .select("resubmission_history, purged_at")
@@ -231,10 +253,53 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
     if (hit) {
       outcome = (await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" })).outcome;
     }
-    // Same answer and same countdown for unmatched, sent and recently-sent
-    // addresses, so this public endpoint can't be used to test for an application.
+    // Flag on: accepting the request never asserts delivery, so a provider
+    // failure cannot be used to test whether an address is on file.
+    // Flag off: same answer and same countdown for unmatched, sent and
+    // recently-sent addresses; a real provider failure is still reported.
+    if (applicationResumeAtomicEnabled()) {
+      return { ok: true, retryAfterSeconds: LINK_RETRY_SECONDS };
+    }
     return { ok: outcome !== "failed", retryAfterSeconds: outcome === "failed" ? 30 : LINK_RETRY_SECONDS };
   });
+
+/**
+ * Flag-on delivery. PostgreSQL owns the quota. History here is display only.
+ * Defined after requestApplicationLink so the history function above stays
+ * the one the flag-off path runs.
+ */
+async function sendAtomicRecoveryLink(
+  supabaseAdmin: any,
+  primaryId: string,
+  entry: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+): Promise<{ outcome: LinkOutcome; wait: number }> {
+  let result: { outcome: LinkOutcome; wait: number };
+  try {
+    result = await deliverApplicationRecovery(supabaseAdmin, primaryId);
+  } catch {
+    result = { outcome: "failed", wait: LINK_RETRY_SECONDS };
+  }
+  const { data: row } = await supabaseAdmin
+    .from("applications")
+    .select("resubmission_history, purged_at")
+    .eq("id", primaryId)
+    .maybeSingle();
+  if (row && !row.purged_at) {
+    const history = Array.isArray(row.resubmission_history) ? [...row.resubmission_history] : [];
+    history.push({
+      at: new Date().toISOString(),
+      ...entry,
+      link_sent: result.outcome === "sent",
+      link_failed: result.outcome === "failed",
+    });
+    await supabaseAdmin
+      .from("applications")
+      .update({ resubmission_history: boundedRecoveryHistory(history), ...extra } as any)
+      .eq("id", primaryId);
+  }
+  return result;
+}
 
 export const savePartialApplication = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
@@ -392,9 +457,16 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           submitted_full_name: data.full_name, submitted_email: emailLower,
           submitted_phone: data.phone, source: data.source ?? null,
         });
-        if (revErr && (revErr as any).code !== "23505") console.error("identity review insert failed", revErr.message);
+        if (revErr && (revErr as any).code !== "23505") {
+          console.error("identity review insert failed", revErr.message);
+          // Flag off keeps today's log-and-continue. Flag on, a failed review
+          // insert must not look like a successful filing.
+          if (applicationResumeAtomicEnabled()) {
+            throw new Error("Could not record your request. Please retry or contact our team.");
+          }
+        }
         await supabaseAdmin.from("applications").update({
-          resubmission_history: h.slice(-25),
+          resubmission_history: applicationResumeAtomicEnabled() ? boundedRecoveryHistory(h) : h.slice(-25),
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);
@@ -1358,6 +1430,10 @@ export const openResumeLink = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { exchangeResumeToken } = await import("@/lib/resume-tokens.server");
+    // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
+    // single-use consume of a recovery credential before a session is issued.
+    // resolveResumeToken rejects recovery-lifetime tokens, so calling it here
+    // would refuse every emailed link.
     try {
       return { token: await exchangeResumeToken(supabaseAdmin, data.token) };
     } catch {

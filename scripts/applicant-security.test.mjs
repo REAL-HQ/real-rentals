@@ -95,19 +95,31 @@ console.log("\nEVERY APPLICATION ENDPOINT NAMES ITS AUTHORIZATION");
   // The public lead forms have to be callable by a stranger: that is what a
   // lead form is. It creates a row, and on a match it writes nothing and
   // returns no token — see resume-payload.test.mjs.
-  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication"]);
+  //
+  // requestApplicationLink is the public Continue Application form. It accepts
+  // only {email}, returns the same neutral answer for a match, a miss and a
+  // recent send, and emails only the address already on file. It is not a
+  // credential. Adding middleware would take the form off the public site.
+  const ANONYMOUS_BY_DESIGN = new Set(["savePartialApplication", "requestApplicationLink"]);
   let checked = 0;
   for (let i = 1; i < parts.length; i += 2) {
     const [name, body] = [parts[i], parts[i + 1]];
     checked++;
     if (ANONYMOUS_BY_DESIGN.has(name)) {
-      ok(true, `${name} is anonymous by design (the public lead form)`);
+      ok(true, `${name} is anonymous by design`);
       continue;
     }
     // Either spelling — updateApplicationStep destructures `token` out of
     // `data` before resolving it — but the argument must still be the one
     // that came off the request body, never an id.
-    const tokenGated = /resolveResumeToken\(supabaseAdmin, (data\.token|token)\)/.test(body);
+    //
+    // exchangeResumeToken is the open-link gate (hash lookup, expiry,
+    // revocation, then consume a recovery credential before issuing a
+    // session). This matches that call. It is not an allowlist of the
+    // function name. Recovery links must not pass resolveResumeToken: that
+    // function rejects recovery-lifetime tokens, so every emailed link would
+    // be refused.
+    const tokenGated = /(resolveResumeToken|exchangeResumeToken)\(supabaseAdmin, (data\.token|token)\)/.test(body);
     const staffGated = /\.middleware\(/.test(body);
     ok(tokenGated || staffGated,
        `${name} is ${tokenGated ? "token-gated" : staffGated ? "staff-gated" : "UNGATED"}`);

@@ -331,6 +331,51 @@ export type Database = {
           },
         ]
       }
+      application_recovery_attempts: {
+        Row: {
+          application_id: string
+          created_at: string
+          finished_at: string | null
+          id: string
+          provider_id: string | null
+          status: string
+          token_id: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          provider_id?: string | null
+          status?: string
+          token_id?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          provider_id?: string | null
+          status?: string
+          token_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_recovery_attempts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_recovery_attempts_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "application_resume_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_resume_tokens: {
         Row: {
           application_id: string

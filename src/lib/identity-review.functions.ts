@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireManager } from "@/lib/roles.server";
+import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { applicationResumeAtomicEnabled } from "@/lib/application-recovery.server";
 
 /**
  * Durable identity reviews (application_identity_reviews). Rows are written
@@ -13,12 +14,13 @@ export const listIdentityReviews = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    await requireStaff(context.userId);
     const { data: rows, error } = await context.supabase
       .from("application_identity_reviews")
       .select("id,kind,submitted_full_name,submitted_email,submitted_phone,source,status,resolution,resolution_note,resolved_at,created_at")
       .eq("application_id", data.applicationId)
       .order("created_at", { ascending: false });
-    if (error) return { rows: [] as any[] };
+    if (error) throw new Error("Could not load identity reviews. Please retry.");
     return { rows: rows ?? [] };
   });
 
@@ -33,6 +35,24 @@ export const resolveIdentityReview = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const actor = await requireManager(context.userId);
+    if (applicationResumeAtomicEnabled()) {
+      // The user's client, so auth.uid() and private.is_manager() apply.
+      // The service role must not be the one that resolves a review.
+      const { data: result, error } = await (
+        context.supabase as unknown as {
+          rpc: (
+            name: string,
+            args: Record<string, unknown>,
+          ) => Promise<{ data: unknown; error: { message?: string } | null }>;
+        }
+      ).rpc("resolve_application_identity_review", {
+        _review_id: data.id,
+        _resolution: data.resolution,
+        _note: data.note,
+      });
+      if (error) throw new Error("Could not resolve identity review. Please retry.");
+      return z.object({ ok: z.literal(true), changed: z.boolean() }).parse(result);
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row } = await supabaseAdmin
       .from("application_identity_reviews")
