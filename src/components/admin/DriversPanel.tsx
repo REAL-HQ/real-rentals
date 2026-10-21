@@ -1146,7 +1146,7 @@ setDocCounts(requiredDocCounts(rows));
     );
   }
   return (
-    <div>
+    <div className="max-lg:min-w-0">
       {deleteDialog}
       {APPLICATION_DOC_GAPS_ENABLED === true && driversLoaded && canSeeSensitive ? (
         <ApplicationDocGaps canView={canSeeSensitive} result={docGaps} />
@@ -1160,7 +1160,8 @@ setDocCounts(requiredDocCounts(rows));
       {ONBOARDING_CHECKLIST_ENABLED === true && (
         <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
-      <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-1 text-xs lg:flex-row lg:overflow-x-auto lg:-mx-1 lg:px-1">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 lg:contents">
         {filterButtons}
         {canManageWaitlist && (
           <button
@@ -1216,11 +1217,12 @@ setDocCounts(requiredDocCounts(rows));
             Recently Deleted
           </button>
         )}
-        <div className="ml-auto shrink-0">
+        </div>
+        <div className="shrink-0 lg:ml-auto max-lg:w-full">
           <button
             onClick={handleMerge}
             disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50 max-lg:w-full max-lg:justify-center"
           >
             <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
           </button>
@@ -1264,8 +1266,8 @@ setDocCounts(requiredDocCounts(rows));
       {DOCUMENT_REVIEW_AGING_ENABLED === true ? (
         <DocumentReviewAging canView={canSeeSensitive} result={reviewAging} />
       ) : null}
-      <AdminTableScroll className="rounded-lg border border-border bg-white">
-          <table className="w-full text-sm">
+      <AdminTableScroll className="max-lg:min-w-0 rounded-lg border border-border bg-white">
+          <table className="w-full text-sm max-lg:min-w-[56rem]">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
@@ -1316,7 +1318,7 @@ setDocCounts(requiredDocCounts(rows));
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
                     <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 max-w-[105px]">
+                      <span className="inline-flex items-center gap-1.5 max-w-[105px] max-lg:max-w-[12rem]">
                         <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
                       <SourceBadge
@@ -1416,7 +1418,7 @@ setDocCounts(requiredDocCounts(rows));
                         <a
                           href={`mailto:${a.email}`}
                           title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline max-lg:max-w-[16rem] max-lg:min-w-0"
                         >
                           <Mail className="w-3 h-3 shrink-0" />
                           <span className="truncate">{a.email}</span>
@@ -2209,7 +2211,7 @@ function DriverDetail({
   ] as const;
 
   return (
-    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
+    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
         <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
@@ -2221,7 +2223,7 @@ function DriverDetail({
           </button>
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="mt-3 rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
 
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
@@ -2245,7 +2247,7 @@ function DriverDetail({
                     </span>
                   )}
                 </div>
-                <div className="mt-1 hidden sm:flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]">
                   {(driver.city || driver.state) && (
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-[#9A9AA3]" />{" "}
@@ -2258,7 +2260,7 @@ function DriverDetail({
                     </span>
                   )}
                   {driver.email && (
-                    <span className="inline-flex items-center gap-1 truncate max-w-[240px]">
+                    <span className="inline-flex items-center gap-1 truncate max-w-[240px] max-lg:max-w-full max-lg:min-w-0">
                       <Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}
                     </span>
                   )}
