@@ -48,10 +48,24 @@ const APP_COLUMNS_WITHOUT_CONTACT = APP_COLUMNS.replace(`,${CONTACT_COLUMNS}`, "
 
 /** First 500 applications. range() is inclusive, so the request asks for one extra row. */
 const STALLED_ROW_CAP = 500;
-/** PostgREST returns at most 1000 rows. A shorter page means the read is finished. */
-const RELATED_PAGE = 1000;
+/**
+ * Related pages stay at 500. range() is inclusive, so each request asks for
+ * one extra row. A server max below 1000 still returns the page.
+ */
+const RELATED_PAGE = 500;
 
-export type StalledApplicationRow = StalledApplication;
+export type StalledContact = {
+  contact_status: string | null;
+  contact_status_note: string | null;
+  contact_follow_up_on: string | null;
+  contact_status_at: string | null;
+  contact_status_by: string | null;
+};
+
+export type StalledApplicationRow = StalledApplication & {
+  /** Null when the contact columns are not on this database yet. */
+  contact: StalledContact | null;
+};
 
 type LoadedApplications = {
   rows: Array<Record<string, unknown>>;
@@ -89,17 +103,18 @@ type IdentityRow = { application_id: string | null; status: string | null; creat
 
 async function readPages<T>(
   fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<T[]> {
+): Promise<{ rows: T[]; truncated: boolean }> {
   const rows: T[] = [];
   let from = 0;
   for (;;) {
-    const loaded = await fetchPage(from, from + RELATED_PAGE - 1);
+    const loaded = await fetchPage(from, from + RELATED_PAGE);
     if (loaded.error) throw new Error(loaded.error.message);
     const page = loaded.data ?? [];
-    rows.push(...page);
-    if (page.length < RELATED_PAGE) return rows;
-    from += page.length;
-    if (from > RELATED_PAGE * 20) throw new Error("Stalled related rows overflowed.");
+    const more = page.length > RELATED_PAGE;
+    rows.push(...(more ? page.slice(0, RELATED_PAGE) : page));
+    if (!more) return { rows, truncated: false };
+    from += RELATED_PAGE;
+    if (from >= RELATED_PAGE * 20) return { rows, truncated: true };
   }
 }
 
@@ -111,8 +126,9 @@ async function loadRelated(ids: string[]) {
   const openIdentity = new Set<string>();
   const identityActivity = new Map<string, string[]>();
   if (!ids.length) {
-    return { docsByDriver, docActivity, agreements, agreementActivity, openIdentity, identityActivity };
+    return { docsByDriver, docActivity, agreements, agreementActivity, openIdentity, identityActivity, truncated: false };
   }
+  let truncated = false;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
@@ -142,7 +158,8 @@ async function loadRelated(ids: string[]) {
           .range(from, to),
       ),
     ]);
-    for (const doc of docs) {
+    truncated = truncated || docs.truncated || agreementRows.truncated || identityRows.truncated;
+    for (const doc of docs.rows) {
       const driverId = String(doc.driver_id ?? "");
       if (!driverId) continue;
       if (doc.is_current && doc.category) {
@@ -156,7 +173,7 @@ async function loadRelated(ids: string[]) {
         docActivity.set(driverId, stamps);
       }
     }
-    for (const row of agreementRows) {
+    for (const row of agreementRows.rows) {
       const applicationId = String(row.application_id ?? "");
       if (!applicationId) continue;
       const list = agreements.get(applicationId) ?? [];
@@ -168,7 +185,7 @@ async function loadRelated(ids: string[]) {
       }
       agreementActivity.set(applicationId, stamps);
     }
-    for (const row of identityRows) {
+    for (const row of identityRows.rows) {
       const applicationId = String(row.application_id ?? "");
       if (!applicationId) continue;
       if (String(row.status ?? "").trim().toLowerCase() === "open") openIdentity.add(applicationId);
@@ -179,12 +196,12 @@ async function loadRelated(ids: string[]) {
       }
     }
   }
-  return { docsByDriver, docActivity, agreements, agreementActivity, openIdentity, identityActivity };
+  return { docsByDriver, docActivity, agreements, agreementActivity, openIdentity, identityActivity, truncated };
 }
 
 export const listStalledApplications = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: StalledApplicationRow[]; truncated: boolean }> => {
+  .handler(async ({ context }): Promise<{ rows: StalledApplicationRow[]; truncated: boolean; relatedTruncated: boolean }> => {
     assertStalledApplicationsEnabled();
     await requireManager(context.userId);
 
@@ -246,7 +263,16 @@ export const listStalledApplications = createServerFn({ method: "GET" })
         today,
       );
       if (!stalled) continue;
-      rows.push(stalled);
+      const contact: StalledContact | null = withContact
+        ? {
+            contact_status: (row.contact_status as string | null) ?? null,
+            contact_status_note: (row.contact_status_note as string | null) ?? null,
+            contact_follow_up_on: (row.contact_follow_up_on as string | null) ?? null,
+            contact_status_at: (row.contact_status_at as string | null) ?? null,
+            contact_status_by: (row.contact_status_by as string | null) ?? null,
+          }
+        : null;
+      rows.push({ ...stalled, contact });
     }
-    return { rows: sortStalled(rows), truncated: loaded.truncated };
+    return { rows: sortStalled(rows), truncated: loaded.truncated, relatedTruncated: related.truncated };
   });
