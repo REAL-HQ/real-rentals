@@ -46,6 +46,7 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
+import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 
 export type TabDef = {
   id: string;
@@ -194,6 +195,16 @@ const RENT_RECONCILIATION_TAB: TabDef = {
   description: "Rent Payments Compared With Stripe For One Eastern Time Week",
 };
 
+/** Shown only while Owner Weekly Finance Snapshot is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const OWNER_FINANCE_SNAPSHOT_TAB: TabDef = {
+  id: "owner_finance_snapshot",
+  label: "Weekly Finance Snapshot",
+  icon: LayoutGrid,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "One Eastern Time Week Of Rent, Balances, Deposits And Exceptions",
+};
+
 /** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FUNNEL_TAB: TabDef = {
   id: "funnel",
@@ -331,6 +342,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push(RENT_RECONCILIATION_TAB);
+  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -386,6 +398,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
+  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push({ ...OWNER_FINANCE_SNAPSHOT_TAB, href: "owner_finance_snapshot" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }

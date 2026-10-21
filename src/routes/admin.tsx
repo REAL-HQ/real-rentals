@@ -65,6 +65,8 @@ import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { RentReconciliationPanel } from "@/components/admin/RentReconciliationPanel";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
+import { OwnerFinanceSnapshotPanel } from "@/components/admin/OwnerFinanceSnapshotPanel";
+import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
@@ -369,6 +371,11 @@ function Admin() {
     if (urlTab === "rent_reconciliation") {
       if (!RENT_RECONCILIATION_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "rent_reconciliation";
+    }
+    // Owner Weekly Finance Snapshot is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "owner_finance_snapshot") {
+      if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "owner_finance_snapshot";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -894,6 +901,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
+            {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && <OwnerFinanceSnapshotPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
