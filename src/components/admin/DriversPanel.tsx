@@ -1,5 +1,10 @@
-import { OnboardingChecklist } from "./OnboardingChecklist";
-import { ONBOARDING_CHECKLIST_ENABLED, onboardingCohort } from "@/lib/onboarding-checklist";
+import { OnboardingChecklist, OnboardingLoadError, OnboardingReadinessRows } from "./OnboardingChecklist";
+import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
+import {
+  ONBOARDING_CHECKLIST_ENABLED,
+  onboardingCohort,
+  type OnboardingChecklistResult,
+} from "@/lib/onboarding-checklist";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -355,6 +360,8 @@ export function DriversPanel({
    * param is claimed.
    */
   const [contactFilter, setContactFilter] = useState<string>("all");
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingChecklistResult | null>(null);
+  const [onboardingFailed, setOnboardingFailed] = useState(false);
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -524,6 +531,23 @@ export function DriversPanel({
    * blanked or hidden.
    */
   const loadDriverRows = useServerFn(listDriverRows);
+  const loadOnboarding = useServerFn(getOnboardingChecklist);
+  useEffect(() => {
+    if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
+    let cancel = false;
+    void loadOnboarding()
+      .then((result) => {
+        if (cancel) return;
+        setOnboardingResult(result);
+        setOnboardingFailed(result.failed === true);
+      })
+      .catch(() => {
+        if (!cancel) setOnboardingFailed(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadOnboarding, canViewOnboarding]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -781,6 +805,8 @@ setDocCounts(requiredDocCounts(rows));
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         canViewOnboarding={canViewOnboarding}
+        onboardingResult={onboardingResult}
+        onboardingFailed={onboardingFailed}
       />
       {deleteDialog}
       </>
@@ -821,7 +847,9 @@ setDocCounts(requiredDocCounts(rows));
           onRestored={() => refreshDrivers()}
         />
       )}
-      {ONBOARDING_CHECKLIST_ENABLED === true && <OnboardingChecklist canView={canViewOnboarding} />}
+      {ONBOARDING_CHECKLIST_ENABLED === true && (
+        <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
+      )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
         {/*
@@ -1172,6 +1200,8 @@ function DriverDetail({
   hasActiveRental,
   onRentalStarted,
   canViewOnboarding = false,
+  onboardingResult = null,
+  onboardingFailed = false,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1186,6 +1216,8 @@ function DriverDetail({
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
   canViewOnboarding?: boolean;
+  onboardingResult?: OnboardingChecklistResult | null;
+  onboardingFailed?: boolean;
 }) {
   const rentalActiveFlag = hasActiveRental;
   const rentalActive = hasActiveRental;
@@ -1544,6 +1576,15 @@ function DriverDetail({
     return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
   }, [driver, screening, vaultDocs]);
 
+  const sharedDriver =
+    ONBOARDING_CHECKLIST_ENABLED === true &&
+    canViewOnboarding &&
+    onboardingCohort(driver.status) &&
+    onboardingResult &&
+    onboardingResult.failed !== true
+      ? (onboardingResult.drivers.find((row) => row.id === driver.id) ?? null)
+      : null;
+
   const requirements: { ok: boolean; label: string }[] = [
     { ok: screeningDone, label: "Interview Complete" },
     { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
@@ -1622,24 +1663,36 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* Flag off: the boolean rental checklist on this card. Flag on, a
-          manager sees the approved-driver steps, with source and time, here. */}
+      {/* Flag off: the boolean rows this card already had. Flag on, a manager
+          looking at an approved driver sees the same shared facts as the
+          cohort list, from the read that already finished. Opening this
+          drawer does not start another list read. */}
       <SectionCard
         title="Rental Readiness"
         right={
-          ONBOARDING_CHECKLIST_ENABLED === true && canViewOnboarding && onboardingCohort(driver.status) ? undefined : (
-            <span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>
-          )
+          <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+            {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver
+              ? `${sharedDriver.steps.filter((step) => step.state === "done").length}/${sharedDriver.steps.length}`
+              : `${reqDone}/${requirements.length}`}
+          </span>
         }
       >
-        {ONBOARDING_CHECKLIST_ENABLED === true && canViewOnboarding && onboardingCohort(driver.status) ? (
-          <OnboardingChecklist canView={canViewOnboarding} focusId={driver.id} />
+        {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver ? (
+          <OnboardingReadinessRows driver={sharedDriver} />
         ) : (
-          <dl className="space-y-2 text-[12px]">
-            {requirements.map((r) => (
-              <SignalRow key={r.label} label={r.label} ok={r.ok} />
-            ))}
-          </dl>
+          <>
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingFailed ? (
+              <OnboardingLoadError />
+            ) : null}
+            <dl className="space-y-2 text-[12px]">
+              {requirements.map((r) => (
+                <SignalRow key={r.label} label={r.label} ok={r.ok} />
+              ))}
+            </dl>
+          </>
         )}
       </SectionCard>
     </div>

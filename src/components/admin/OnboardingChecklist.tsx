@@ -1,6 +1,3 @@
-import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
 import {
   ONBOARDING_CHECKLIST_ENABLED,
   ONBOARDING_ROW_CAP,
@@ -34,7 +31,8 @@ function formatWhen(at: string | null): string {
 }
 
 function StepFact({ step }: { step: OnboardingStep }) {
-  if (!step.done) return <span className="text-[#9A9AA3]">Missing</span>;
+  if (step.state === "unknown") return <span className="text-[#9A9AA3]">Unknown</span>;
+  if (step.state !== "done") return <span className="text-[#9A9AA3]">Missing</span>;
   return (
     <span className="block text-right">
       <span className="block text-[#111114]">{step.source ?? "—"}</span>
@@ -43,7 +41,8 @@ function StepFact({ step }: { step: OnboardingStep }) {
   );
 }
 
-function DriverSteps({ driver }: { driver: OnboardingDriver }) {
+export function OnboardingReadinessRows({ driver }: { driver: OnboardingDriver }) {
+  if (ONBOARDING_CHECKLIST_ENABLED !== true) return null;
   return (
     <div className="space-y-2 text-[12px]">
       {driver.steps.map((step) => (
@@ -60,60 +59,42 @@ function DriverSteps({ driver }: { driver: OnboardingDriver }) {
   );
 }
 
-export function OnboardingChecklist({ canView, focusId }: { canView: boolean; focusId?: string }) {
-  if (ONBOARDING_CHECKLIST_ENABLED !== true || canView !== true) return null;
-  return <OnboardingChecklistLive focusId={focusId} />;
+export function OnboardingLoadError() {
+  if (ONBOARDING_CHECKLIST_ENABLED !== true) return null;
+  return <p className="mb-2 text-[12px] text-[#9B2C2C]">Could Not Load Onboarding Checklist</p>;
 }
 
-function OnboardingChecklistLive({ focusId }: { focusId?: string }) {
-  const load = useServerFn(getOnboardingChecklist);
-  const [result, setResult] = useState<OnboardingChecklistResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+function statusLabel(status: string): string {
+  if (status === "active") return "Active";
+  if (status === "closed") return "Closed";
+  return "Approved";
+}
 
-  useEffect(() => {
-    let cancel = false;
-    setLoading(true);
-    setFailed(false);
-    load()
-      .then((loaded) => {
-        if (cancel) return;
-        setResult(loaded);
-      })
-      .catch(() => {
-        if (cancel) return;
-        setFailed(true);
-        setResult(null);
-      })
-      .finally(() => {
-        if (!cancel) setLoading(false);
-      });
-    return () => {
-      cancel = true;
-    };
-  }, [load]);
-
-  if (loading) return <p className="text-[12px] text-[#55555E]">Loading Onboarding Checklist</p>;
-  if (failed || !result) return <p className="text-[12px] text-[#9B2C2C]">Could Not Load Onboarding Checklist</p>;
-  if (result.truncated) {
-    return (
-      <p className="text-[12px] text-[#55555E]">
-        Checked The First {ONBOARDING_ROW_CAP} Approved Drivers. The Checklist Is Not Shown Because The Read Was Capped.
-      </p>
-    );
-  }
-
-  if (focusId) {
-    const driver = result.drivers.find((row) => row.id === focusId);
-    if (!driver) return <p className="text-[12px] text-[#55555E]">This Driver Is Not On The Approved Checklist</p>;
-    return <DriverSteps driver={driver} />;
-  }
+export function OnboardingChecklist({
+  canView,
+  result,
+  failed,
+}: {
+  canView: boolean;
+  result: OnboardingChecklistResult | null;
+  failed: boolean;
+}) {
+  if (ONBOARDING_CHECKLIST_ENABLED !== true || canView !== true) return null;
+  if (failed || result?.failed) return <OnboardingLoadError />;
+  if (!result) return <p className="mb-4 text-[12px] text-[#55555E]">Loading Onboarding Checklist</p>;
 
   return (
     <section className="mb-4 rounded-lg border border-[#EDEDF0] bg-white">
       <div className="border-b border-[#EDEDF0] px-4 py-3">
         <h2 className="text-[15px] font-semibold text-[#111114]">Onboarding Checklist</h2>
-        <p className="mt-0.5 text-[12px] text-[#55555E]">Approved, Active, And Closed Drivers, With The Source And Time Of Each Step</p>
+        <p className="mt-0.5 text-[12px] text-[#55555E]">
+          Approved, Active, And Closed Drivers, With The Source And Time Of Each Step
+        </p>
+        {result.truncated ? (
+          <p className="mt-1 text-[12px] text-[#55555E]">
+            Showing The First {result.cap || ONBOARDING_ROW_CAP} Approved Drivers. Later Drivers Were Not Read.
+          </p>
+        ) : null}
       </div>
       {result.drivers.length === 0 ? (
         <p className="px-4 py-3 text-[12px] text-[#55555E]">No Approved Drivers</p>
@@ -125,7 +106,7 @@ function OnboardingChecklistLive({ focusId }: { focusId?: string }) {
                 <th className="px-3 py-2 font-medium">Driver</th>
                 {result.drivers[0].steps.map((step) => (
                   <th key={step.key} className="px-3 py-2 font-medium">
-                    {step.label}
+                    {step.key === "documents" ? "Documents" : step.label}
                   </th>
                 ))}
                 <th className="px-3 py-2 font-medium">Next Missing Step</th>
@@ -136,9 +117,7 @@ function OnboardingChecklistLive({ focusId }: { focusId?: string }) {
                 <tr key={driver.id} className="border-t border-[#EDEDF0]">
                   <td className="px-3 py-2 align-top text-[#111114]">
                     <span className="block font-medium">{driver.name}</span>
-                    <span className="block text-[#55555E]">
-                      {driver.status === "active" ? "Active" : driver.status === "closed" ? "Closed" : "Approved"}
-                    </span>
+                    <span className="block text-[#55555E]">{statusLabel(driver.status)}</span>
                   </td>
                   {driver.steps.map((step) => (
                     <td key={step.key} className="px-3 py-2 align-top">
