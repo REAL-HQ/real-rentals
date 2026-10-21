@@ -5,6 +5,7 @@
 import {
   assertBookingFollowupEnabled,
   buildBookingFollowups,
+  isApprovedStatus,
   isSentDelivery,
   takeUnbooked,
   type BookingFollowupList,
@@ -15,6 +16,10 @@ import {
 
 const CANDIDATE_LIMIT = 200;
 const PAGE = 200;
+/** Stop scanning once this many pages have been read. Another full page means the list is incomplete. */
+const PAGE_CAP = 20;
+/** Latest contact is one batch per this many applications, not one query per row. */
+const CONTACT_CHUNK = 50;
 /**
  * PostgREST returns at most this many rows and drops the rest with no error.
  * The readable cap is one below that, so limit(READ_CAP + 1) is a row the
@@ -92,7 +97,9 @@ async function rentalsFor(admin: Admin, apps: FollowupApplication[]): Promise<Fo
 /** Booked rows are removed before this page counts toward the candidate cap. */
 async function collectUnbooked(admin: Admin, mode: "approved" | "verified"): Promise<FollowupApplication[]> {
   const kept: FollowupApplication[] = [];
-  for (let from = 0; kept.length < CANDIDATE_LIMIT; from += PAGE) {
+  for (let pageIndex = 0; kept.length < CANDIDATE_LIMIT; pageIndex += 1) {
+    if (pageIndex >= PAGE_CAP) throw new Error("Booking follow-up could not be listed.");
+    const from = pageIndex * PAGE;
     const page =
       mode === "approved"
         ? await admin
@@ -101,6 +108,7 @@ async function collectUnbooked(admin: Admin, mode: "approved" | "verified"): Pro
             .is("deleted_at", null)
             .eq("status", "approved")
             .order("updated_at", { ascending: false })
+            .order("id", { ascending: true })
             .range(from, from + PAGE)
         : await admin
             .from("applications")
@@ -112,6 +120,7 @@ async function collectUnbooked(admin: Admin, mode: "approved" | "verified"): Pro
             .eq("rideshare_history_status", "passed")
             .eq("earnings_verified_status", "passed")
             .order("updated_at", { ascending: false })
+            .order("id", { ascending: true })
             .range(from, from + PAGE);
     if (page.error) throw new Error(page.error.message);
     const rows = (page.data ?? []) as Record<string, unknown>[];
@@ -124,37 +133,65 @@ async function collectUnbooked(admin: Admin, mode: "approved" | "verified"): Pro
   return kept;
 }
 
-async function latestContact(admin: Admin, applicationId: string): Promise<FollowupStamp | null> {
-  const message = await admin
-    .from("messages")
-    .select("created_at,delivery_state")
-    .eq("application_id", applicationId)
-    .eq("direction", "outbound")
-    .in("delivery_state", ["accepted", "sent", "delivered"])
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (message.error) throw new Error(message.error.message);
-  const outbound = await admin
-    .from("outbound_messages")
-    .select("sent_at,created_at,status")
-    .eq("application_id", applicationId)
-    .in("status", ["sent", "delivered"])
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (outbound.error) throw new Error(outbound.error.message);
+function firstPerApplication<T extends { application_id?: unknown }>(
+  rows: readonly T[],
+  atFor: (row: T) => string | null,
+): Map<string, string> {
+  const best = new Map<string, string>();
+  for (const row of rows) {
+    const applicationId = text(row.application_id);
+    if (!applicationId || best.has(applicationId)) continue;
+    const at = atFor(row);
+    if (at) best.set(applicationId, at);
+  }
+  return best;
+}
 
-  const marks: FollowupStamp[] = [];
-  const sent = message.data?.[0];
-  if (sent && isSentDelivery(sent.delivery_state) && text(sent.created_at)) {
-    marks.push({ applicationId, at: text(sent.created_at) as string, source: "message" });
+/** Latest sent contact for each application, in batches. A truncated batch is a refusal. */
+async function latestContacts(admin: Admin, ids: readonly string[]): Promise<FollowupStamp[]> {
+  const stamps: FollowupStamp[] = [];
+  for (let index = 0; index < ids.length; index += CONTACT_CHUNK) {
+    const chunk = ids.slice(index, index + CONTACT_CHUNK);
+    const message = await admin
+      .from("messages")
+      .select("application_id,created_at,delivery_state")
+      .in("application_id", chunk)
+      .eq("direction", "outbound")
+      .in("delivery_state", ["accepted", "sent", "delivered"])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(READ_CAP + 1);
+    if (message.error) throw new Error(message.error.message);
+    const messageRows = message.data ?? [];
+    refuseIfTruncated(messageRows.length);
+
+    const outbound = await admin
+      .from("outbound_messages")
+      .select("application_id,sent_at,created_at,status")
+      .in("application_id", chunk)
+      .in("status", ["sent", "delivered"])
+      .order("sent_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(READ_CAP + 1);
+    if (outbound.error) throw new Error(outbound.error.message);
+    const outboundRows = outbound.data ?? [];
+    refuseIfTruncated(outboundRows.length);
+
+    const messageAt = firstPerApplication(messageRows, (row) =>
+      isSentDelivery(row.delivery_state) ? text(row.created_at) : null,
+    );
+    const outboundAt = firstPerApplication(outboundRows, (row) =>
+      isSentDelivery(row.status) ? text(row.sent_at) ?? text(row.created_at) : null,
+    );
+    for (const applicationId of chunk) {
+      const at = [messageAt.get(applicationId), outboundAt.get(applicationId)]
+        .filter((value): value is string => !!value)
+        .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+      if (at) stamps.push({ applicationId, at, source: "message" });
+    }
   }
-  const logged = outbound.data?.[0];
-  const loggedAt = logged ? text(logged.sent_at) ?? text(logged.created_at) : null;
-  if (logged && isSentDelivery(logged.status) && loggedAt) {
-    marks.push({ applicationId, at: loggedAt, source: "message" });
-  }
-  marks.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  return marks[0] ?? null;
+  return stamps;
 }
 
 export async function loadBookingFollowups(now = new Date()): Promise<BookingFollowupList> {
@@ -168,28 +205,31 @@ export async function loadBookingFollowups(now = new Date()): Promise<BookingFol
   const applications = [...byId.values()];
   if (applications.length === 0) return { rows: [] };
 
-  const ids = applications.map((app) => app.id);
-  const approvalsQuery = await supabaseAdmin
-    .from("audit_log")
-    .select("entity_id,created_at")
-    .eq("action", "application.approved")
-    .eq("entity_type", "application")
-    .in("entity_id", ids)
-    .order("created_at", { ascending: true })
-    .limit(READ_CAP + 1);
-  if (approvalsQuery.error) throw new Error(approvalsQuery.error.message);
-  const approvalRows = approvalsQuery.data ?? [];
-  refuseIfTruncated(approvalRows.length);
-  const approvals: FollowupStamp[] = approvalRows.map((row) => ({
-    applicationId: String(row.entity_id ?? ""),
-    at: String(row.created_at ?? ""),
-  }));
-
-  const contacts: FollowupStamp[] = [];
-  for (const id of ids) {
-    const latest = await latestContact(supabaseAdmin, id);
-    if (latest) contacts.push(latest);
+  const approvedIds = applications.filter((app) => isApprovedStatus(app.status)).map((app) => app.id);
+  let approvals: FollowupStamp[] = [];
+  if (approvedIds.length > 0) {
+    const approvalsQuery = await supabaseAdmin
+      .from("audit_log")
+      .select("entity_id,created_at")
+      .eq("action", "application.approved")
+      .eq("entity_type", "application")
+      .in("entity_id", approvedIds)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(READ_CAP + 1);
+    if (approvalsQuery.error) throw new Error(approvalsQuery.error.message);
+    const approvalRows = approvalsQuery.data ?? [];
+    refuseIfTruncated(approvalRows.length);
+    approvals = approvalRows.map((row) => ({
+      applicationId: String(row.entity_id ?? ""),
+      at: String(row.created_at ?? ""),
+    }));
   }
+
+  const contacts = await latestContacts(
+    supabaseAdmin,
+    applications.map((app) => app.id),
+  );
 
   return {
     rows: buildBookingFollowups({

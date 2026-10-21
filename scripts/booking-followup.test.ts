@@ -79,7 +79,19 @@ describe("booking follow-up flag", () => {
     assert.match(server, /const READ_CAP = POSTGREST_MAX_ROWS - 1/);
     assert.match(server, /\.limit\(READ_CAP \+ 1\)/);
     assert.match(server, /if \(count > READ_CAP\) throw new Error\("Booking follow-up could not be listed\."\)/);
-    assert.match(server, /\.order\("created_at", \{ ascending: false \}\)\s*\.limit\(1\)/);
+    assert.match(server, /const PAGE_CAP = 20/);
+    assert.match(collectBody, /if \(pageIndex >= PAGE_CAP\) throw new Error\("Booking follow-up could not be listed\."\)/);
+    assert.match(server, /\.order\("updated_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: true \}\)/);
+    assert.match(server, /const CONTACT_CHUNK = 50/);
+    assert.match(server, /\.in\("application_id", chunk\)/);
+    assert.match(
+      server,
+      /\.order\("sent_at", \{ ascending: false, nullsFirst: false \}\)\s*\.order\("created_at", \{ ascending: false \}\)/,
+    );
+    assert.match(loader, /isApprovedStatus\(app\.status\)/);
+    assert.match(loader, /\.in\("entity_id", approvedIds\)/);
+    assert.doesNotMatch(loader, /\.in\("entity_id", ids\)/);
+    assert.doesNotMatch(server, /\.limit\(1\)/);
     assert.doesNotMatch(server, /CONTACT_LIMIT|2000/);
     assert.doesNotMatch(server, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
     assert.doesNotMatch(server, /contacted_at/);
