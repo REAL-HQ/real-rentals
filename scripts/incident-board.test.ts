@@ -8,9 +8,13 @@ import {
   formatCents,
   incidentBoardShowsClaims,
   incidentBoardTierAllowed,
+  OPEN_INCIDENT_TOTALS_LABEL,
+  chooseIncidentTotals,
   incidentClaimFacts,
   incidentClaimTotals,
   incidentCostCents,
+  incidentMoneyText,
+  incidentRentalLabel,
   incidentCreateBlockers,
   incidentStatusMove,
   incidentWhenEt,
@@ -165,12 +169,15 @@ const linked = incidentClaimFacts({
     { id: "link-none", incident_id: incidentId, document_id: null, inspection_id: null },
     { id: "link-missing", incident_id: incidentId, document_id: "doc-missing", inspection_id: null },
   ],
-  documents: [{ id: "doc-1", file_name: "bumper.jpg", category: "damage" }],
-  inspections: [{ id: "insp-1", inspection_type: "checkin", status: "passed" }],
+  documents: [{ id: "doc-1", file_name: "bumper.jpg", category: "damage", driver_id: driverId }],
+  inspections: [{ id: "insp-1", inspection_type: "checkin", status: "passed", vehicle_id: vehicleId }],
 });
 ok(linked.get(incidentId)?.amountRecoveredCents === 8050, "a recovered dollar amount is integer cents");
 ok(linked.get(incidentId)?.photos?.map((photo) => photo.id).join(",") === "link-doc,link-insp", "only a single document or inspection link is kept");
 ok(linked.get(incidentId)?.photos?.[0]?.label === "bumper.jpg" && linked.get(incidentId)?.photos?.[1]?.label === "Checkin · Passed", "photo links use the document name and the inspection");
+ok(linked.get(incidentId)?.photos?.[0]?.href === `/admin?tab=drivers&id=${driverId}`, "a document link opens the driver");
+ok(linked.get(incidentId)?.photos?.[1]?.href === `/admin?tab=inspections&id=${vehicleId}`, "an inspection link opens that vehicle's inspections");
+ok(!String(linked.get(incidentId)?.photos?.[0]?.href).includes("supabase.co"), "a photo link is not a storage host");
 ok(linked.get(secondId)?.actualCostCents === 0 && linked.get(secondId)?.amountRecoveredCents === null && linked.get(secondId)?.photos?.length === 0, "zero stays zero, a null recovery stays null, and no links is an empty list");
 
 function claimRow(id: string, vehicle: string, vehicleLabel: string, driver: string | null, driverLabel: string | null, rentalId: string | null) {
@@ -210,8 +217,36 @@ const otherTotal = totals.vehicleTotals.find((item) => item.id === otherVehicle)
 ok(vehicleTotal.incidents === 2 && vehicleTotal.estimatedCostCents === 50000 && vehicleTotal.actualCostCents === 25000, "vehicle totals sum known cents and keep a recorded zero");
 ok(vehicleTotal.recoveredCostCents === 8050 && vehicleTotal.recoveredUnknown === 1, "a missing recovery is not treated as zero");
 ok(totals.driverTotals.length === 1 && totals.driverTotals[0]?.incidents === 2 && totals.driverTotals[0]?.recoveredUnknown === 1, "an incident with no driver is left out of driver totals");
-ok(otherTotal.estimatedCostCents === 5000 && otherTotal.actualCostCents === null && otherTotal.recoveredCostCents === null && otherTotal.recoveredUnknown === 1, "a null actual cost and a missing recovery stay unknown");
-ok(claimedRows[0]?.rental === "22222222-2222-4222-8222-222222222222" && claimedRows[2]?.rental === "No Rental", "a rental id is shown and a missing rental says No Rental");
+ok(otherTotal.estimatedCostCents === 5000 && otherTotal.actualCostCents === null && otherTotal.actualUnknown === 1 && otherTotal.recoveredCostCents === null && otherTotal.recoveredUnknown === 1, "a null actual cost and a missing recovery stay unknown");
+ok(vehicleTotal.estimatedUnknown === 0 && vehicleTotal.actualUnknown === 0, "known estimated and actual costs are not counted as missing");
+ok(incidentMoneyText(5000, 1) === "$50.00 · 1 Not Recorded" && incidentMoneyText(null, 2) === "Not Recorded", "a known total names how many amounts were not recorded");
+ok(claimedRows[0]?.rental === "Rental Not On File" && claimedRows[0]?.rentalHref === "/admin?tab=bookings&id=22222222-2222-4222-8222-222222222222", "a rental links to Bookings instead of showing the id");
+ok(claimedRows[2]?.rental === "No Rental" && claimedRows[2]?.rentalHref === null, "a missing rental says No Rental");
+ok(incidentRentalLabel({ status: "active", startDate: "2026-10-01" }) === "Active · 2026-10-01", "a rental label uses the status and start date");
+
+const blankVehicle = claimRow("blank-vehicle", "", "", null, null, null);
+const unknownVehicle = claimRow("unknown-vehicle", "missing-vehicle", "", null, null, null);
+blankVehicle.claims = linked.get(otherId) ?? null;
+unknownVehicle.claims = linked.get(secondId) ?? null;
+blankVehicle.vehicleOnFile = false;
+unknownVehicle.vehicleOnFile = false;
+const buckets = incidentClaimTotals([blankVehicle, unknownVehicle]);
+ok(buckets.vehicleTotals.find((item) => item.id === "vehicle:unknown")?.label === "Unknown Vehicle", "a missing vehicle record is an Unknown Vehicle bucket");
+ok(buckets.vehicleTotals.find((item) => item.id === "vehicle:blank")?.label === "No Vehicle" && buckets.vehicleTotals.find((item) => item.id === "vehicle:blank")?.incidents === 1, "a blank vehicle id stays out of the Unknown Vehicle bucket");
+
+const capped = chooseIncidentTotals({ capped: true, allRows: null, openRows: claimedRows });
+ok(capped.totalsCapped && capped.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL, "a capped scan labels totals as the latest 200 open incidents");
+const closedRow = claimRow("closed-row", vehicleId, "Unit 12 · 2020 Honda Civic", driverId, "Ada Lovelace", null);
+closedRow.claims = linked.get(incidentId) ?? null;
+const full = chooseIncidentTotals({ capped: false, allRows: [...claimedRows, closedRow], openRows: claimedRows });
+ok(!full.totalsCapped && full.totalsLabel === null && full.vehicleTotals.find((item) => item.id === vehicleId)?.incidents === 3, "a finished scan includes closed incidents in the totals");
+const overflowClaims = linked.get(incidentId)!;
+const overflowRows = [
+  { ...claimedRows[0]!, claims: { ...overflowClaims, estimatedCostCents: Number.MAX_SAFE_INTEGER } },
+  { ...claimedRows[1]!, claims: { ...overflowClaims, estimatedCostCents: 1 } },
+];
+const overflow = chooseIncidentTotals({ capped: false, allRows: overflowRows, openRows: [claimedRows[0]!] });
+ok(overflow.totalsCapped && overflow.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL && overflow.vehicleTotals[0]?.estimatedCostCents === 40000, "a cent overflow falls back to the open incidents");
 
 const columns = fn.slice(fn.indexOf("const COLUMNS ="), fn.indexOf("function missingIssueColumn"));
 ok(!columns.includes("estimated_cost") && !columns.includes("actual_cost") && !columns.includes("claim_number"), "the operational select does not name claim columns");
@@ -224,13 +259,19 @@ ok(claimSrc.includes("proposedTableMissing(") && !claimSrc.includes("PGRST204") 
 const listBody = fn.slice(fn.indexOf("export const listIncidentBoard"), fn.indexOf("export const createIncidentBoard"));
 const listGate = listBody.indexOf("assertIncidentBoardEnabled()");
 ok(listBody.indexOf("await requireStaff(") < listGate && listGate < listBody.indexOf("incidentBoardShowsClaims(") && listBody.indexOf("incidentBoardShowsClaims(") < listBody.indexOf("loadIncidentClaims("), "claim reads run after the flag check and the manager check");
+ok(listBody.indexOf("incidentBoardShowsClaims(") < listBody.indexOf("loadIncidentTotals("), "totals are loaded only for a manager or owner");
+const totalsSrc = fn.slice(fn.indexOf("async function loadIncidentTotals"), fn.indexOf("async function eachClaimPage"));
+const pageSrc = fn.slice(fn.indexOf("async function eachClaimPage"), fn.indexOf("async function rowsById"));
+ok(totalsSrc.includes("estimated_cost") && totalsSrc.includes("actual_cost") && !totalsSrc.includes('.in("status"'), "totals read every incident, including closed and written off");
+ok(pageSrc.includes("INCIDENT_CLAIM_MAX_PAGES") && pageSrc.includes("proposedTableMissing(") && !pageSrc.includes('.in("status"'), "the totals scan stops at the page cap and does not filter status");
 ok(!fn.includes("deposit_deductions") && !fn.includes("driver_responsible_amount"), "the board does not read deductions or the responsibility amount");
 ok(!fn.includes("company_share") && !fn.includes("createStripeClient") && !fn.includes("IncidentsLog"), "the board does not touch maintenance shares, Stripe, or a second screen");
 
 const ui = readFileSync("src/components/admin/IncidentBoard.tsx", "utf8");
 const admin = readFileSync("src/routes/admin.tsx", "utf8");
 ok(ui.includes("Estimated Cost") && ui.includes("Actual Cost") && ui.includes("Claim Number") && ui.includes("Amount Recovered") && ui.includes("Photo Links Not Installed"), "the board shows the claim columns");
-ok(ui.includes("claimsVisible") && ui.includes("open.claims"), "claim columns render only when the server included them");
+ok(ui.includes("claimsVisible") && ui.includes("open.claims") && ui.includes("open.rentalHref") && ui.includes("incidentMoneyText") && ui.includes("totalsLabel"), "claim columns, rental links, unknown counts, and the cap label render from the server");
+ok(ui.includes("href={photo.href}"), "photo rows are links");
 ok(ui.includes("does not create a charge or deduct a deposit"), "the board says recovery is not a charge or a deduction");
 ok(ui.includes("Vehicle Totals") && ui.includes("Driver Totals"), "vehicle and driver totals stay on the board");
 ok(!/uppercase|text-transform/.test(ui), "labels are Title Case in the strings");

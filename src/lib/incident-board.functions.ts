@@ -16,16 +16,20 @@ import {
   INCIDENT_TYPES,
   OPEN_INCIDENT_STATUSES,
   assertIncidentBoardEnabled,
+  INCIDENT_CLAIM_MAX_PAGES,
+  INCIDENT_CLAIM_PAGE,
+  chooseIncidentTotals,
   incidentBoardShowsClaims,
   incidentClaimFacts,
-  incidentClaimTotals,
   incidentCreateBlockers,
   incidentStatusLabel,
+  incidentRentalLabel,
   incidentStatusMove,
   incidentTypeLabel,
   proposedTableMissing,
   toIncidentBoardRow,
   type IncidentBoardList,
+  type IncidentBoardRow,
   type IncidentBoardSource,
   type IncidentCostSource,
   type IncidentDocumentSource,
@@ -62,6 +66,13 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
     const claimsVisible = incidentBoardShowsClaims(actor.tier);
     const claimRead = claimsVisible && loaded.rows.length ? await loadIncidentClaims(supabaseAdmin, loaded.rows) : null;
     const facts = claimRead ? incidentClaimFacts(claimRead) : null;
+    const rentalRows = await rowsById(
+      supabaseAdmin,
+      "rentals",
+      "id,status,start_date",
+      uniqueIds(loaded.rows.map((row) => (row.rental_id as string | null) ?? null)),
+    );
+    const rentalById = new Map(rentalRows.map((row) => [String(row.id), row]));
     const rows = loaded.rows.map((row) =>
       toIncidentBoardRow({
         id: String(row.id),
@@ -84,18 +95,27 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
         issueTitle: loaded.linkColumn && row.issue_id ? issueTitles.get(String(row.issue_id)) ?? null : null,
         vehicleId: row.vehicle_id ? String(row.vehicle_id) : null,
         driverId: row.application_id ? String(row.application_id) : null,
+        vehicleOnFile: Boolean(row.vehicle_id && vehicles.has(String(row.vehicle_id))),
         rentalId: (row.rental_id as string | null) ?? null,
+        rentalLabel: rentalById.has(String(row.rental_id ?? ""))
+          ? incidentRentalLabel({
+              status: rentalById.get(String(row.rental_id))?.status as string | null,
+              startDate: rentalById.get(String(row.rental_id))?.start_date as string | null,
+            })
+          : null,
         claims: facts ? (facts.get(String(row.id)) ?? null) : null,
       } satisfies IncidentBoardSource),
     );
-    const totals = facts ? incidentClaimTotals(rows) : null;
+    const totals = claimsVisible ? await loadIncidentTotals(supabaseAdmin, rows) : null;
     return {
       rows,
       claimsVisible,
-      recoveryInstalled: claimRead ? claimRead.recoveryInstalled : null,
+      recoveryInstalled: claimRead ? claimRead.recoveryInstalled : (totals?.recoveryInstalled ?? null),
       photoLinksInstalled: claimRead ? claimRead.photoLinksInstalled : null,
       vehicleTotals: totals ? totals.vehicleTotals : null,
       driverTotals: totals ? totals.driverTotals : null,
+      totalsCapped: totals?.totalsCapped ?? false,
+      totalsLabel: totals?.totalsLabel ?? null,
     };
   });
 
@@ -214,10 +234,10 @@ async function loadIncidentClaims(
   const links = await readProposed(sb, "incidents_log_v1_links", "id,incident_id,document_id,inspection_id", ids);
   const linkRows = (links.installed ? links.rows : []) as IncidentPhotoLinkSource[];
   const documents = links.installed
-    ? await rowsById(sb, "documents", "id,file_name,category", uniqueIds(linkRows.map((row) => row.document_id)))
+    ? await rowsById(sb, "documents", "id,file_name,category,driver_id", uniqueIds(linkRows.map((row) => row.document_id)))
     : [];
   const inspections = links.installed
-    ? await rowsById(sb, "inspections", "id,inspection_type,status", uniqueIds(linkRows.map((row) => row.inspection_id)))
+    ? await rowsById(sb, "inspections", "id,inspection_type,status,vehicle_id", uniqueIds(linkRows.map((row) => row.inspection_id)))
     : [];
   return {
     ids,
@@ -255,7 +275,85 @@ async function readProposed(
   return { installed: true, rows: loaded };
 }
 
-async function rowsById(sb: any, table: "documents" | "inspections", columns: string, ids: string[]): Promise<any[]> {
+async function loadIncidentTotals(
+  sb: any,
+  openRows: IncidentBoardRow[],
+): Promise<{
+  vehicleTotals: IncidentBoardList["vehicleTotals"];
+  driverTotals: IncidentBoardList["driverTotals"];
+  totalsCapped: boolean;
+  totalsLabel: string | null;
+  recoveryInstalled: boolean;
+}> {
+  const incidents = await eachClaimPage(sb, "incidents", "id,vehicle_id,application_id,estimated_cost,actual_cost", "id");
+  if (incidents.capped) {
+    return { ...chooseIncidentTotals({ capped: true, allRows: null, openRows }), recoveryInstalled: false };
+  }
+  const recovery = await eachClaimPage(sb, "incidents_log_v1", "incident_id,amount_recovered", "incident_id");
+  if (recovery.capped) {
+    return { ...chooseIncidentTotals({ capped: true, allRows: null, openRows }), recoveryInstalled: recovery.installed };
+  }
+  const facts = incidentClaimFacts({
+    ids: incidents.rows.map((row) => String(row.id)),
+    costs: incidents.rows.map((row) => ({
+      id: String(row.id),
+      estimated_cost: row.estimated_cost,
+      actual_cost: row.actual_cost,
+      claim_number: null,
+    })),
+    recoveryInstalled: recovery.installed,
+    photoLinksInstalled: false,
+    recovery: recovery.installed ? (recovery.rows as IncidentRecoverySource[]) : [],
+    links: [],
+    documents: [],
+    inspections: [],
+  });
+  const vehicleIds = uniqueIds(incidents.rows.map((row) => (row.vehicle_id ? String(row.vehicle_id) : null)));
+  const driverIds = uniqueIds(incidents.rows.map((row) => (row.application_id ? String(row.application_id) : null)));
+  const vehicleNames = await labelsFor(sb, "vehicles", vehicleIds, vehicleLabel);
+  const driverNames = await labelsFor(sb, "applications", driverIds, (row) => String(row.full_name ?? "").trim());
+  const allRows = incidents.rows.map((row) => {
+    const vehicleId = row.vehicle_id ? String(row.vehicle_id) : "";
+    const onFile = Boolean(vehicleId && vehicleNames.has(vehicleId));
+    const driverId = row.application_id ? String(row.application_id) : null;
+    return {
+      vehicleId,
+      vehicle: onFile ? (vehicleNames.get(vehicleId) ?? "") : "",
+      vehicleOnFile: onFile,
+      driverId,
+      driver: driverId ? (driverNames.get(driverId) ?? "") : "",
+      claims: facts.get(String(row.id)) ?? null,
+    };
+  });
+  return { ...chooseIncidentTotals({ capped: false, allRows, openRows }), recoveryInstalled: recovery.installed };
+}
+
+async function eachClaimPage(
+  sb: any,
+  table: "incidents" | "incidents_log_v1",
+  columns: string,
+  orderColumn: "id" | "incident_id",
+): Promise<{ capped: boolean; installed: boolean; rows: any[] }> {
+  const rows: any[] = [];
+  for (let page = 0; page < INCIDENT_CLAIM_MAX_PAGES; page += 1) {
+    const from = page * INCIDENT_CLAIM_PAGE;
+    const { data, error } = await sb
+      .from(table)
+      .select(columns)
+      .order(orderColumn, { ascending: true })
+      .range(from, from + INCIDENT_CLAIM_PAGE - 1);
+    if (error) {
+      if (table !== "incidents" && proposedTableMissing(error)) return { capped: false, installed: false, rows: [] };
+      throw new Error(error.message);
+    }
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < INCIDENT_CLAIM_PAGE) return { capped: false, installed: true, rows };
+  }
+  return { capped: true, installed: true, rows: [] };
+}
+
+async function rowsById(sb: any, table: "documents" | "inspections" | "rentals", columns: string, ids: string[]): Promise<any[]> {
   const loaded: any[] = [];
   for (let index = 0; index < ids.length; index += 100) {
     const slice = ids.slice(index, index + 100);

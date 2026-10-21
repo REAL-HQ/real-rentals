@@ -186,6 +186,8 @@ export type IncidentBoardSource = {
   vehicleId?: string | null;
   driverId?: string | null;
   rentalId?: string | null;
+  rentalLabel?: string | null;
+  vehicleOnFile?: boolean;
   claims?: IncidentClaimFacts | null;
 };
 
@@ -211,7 +213,9 @@ export type IncidentBoardRow = {
   reportedEt: string;
   vehicleId: string;
   driverId: string | null;
+  vehicleOnFile: boolean;
   rental: string;
+  rentalHref: string | null;
   claims: IncidentClaimFacts | null;
 };
 
@@ -240,9 +244,41 @@ export function toIncidentBoardRow(source: IncidentBoardSource): IncidentBoardRo
     reportedEt: incidentWhenEt(source.reportedAt),
     vehicleId: source.vehicleId?.trim() ? source.vehicleId.trim() : "",
     driverId: source.driverId?.trim() ? source.driverId.trim() : null,
-    rental: source.rentalId?.trim() ? source.rentalId.trim() : "No Rental",
+    vehicleOnFile: source.vehicleOnFile ?? Boolean(source.vehicleLabel?.trim()),
+    rental: rentalText(source.rentalId, source.rentalLabel),
+    rentalHref: incidentRentalHref(source.rentalId),
     claims: source.claims ?? null,
   };
+}
+
+export function incidentRentalHref(rentalId: string | null | undefined): string | null {
+  const id = rentalId?.trim();
+  if (!id) return null;
+  return `/admin?tab=bookings&id=${encodeURIComponent(id)}`;
+}
+
+export function incidentRentalLabel(input: { status?: string | null; startDate?: string | null } | null): string {
+  if (!input) return "Rental Not On File";
+  const status = titled(input.status, "");
+  const day = input.startDate?.trim().slice(0, 10) ?? "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+  return [status, date].filter(Boolean).join(" · ") || "Rental";
+}
+
+function rentalText(rentalId: string | null | undefined, rentalLabel: string | null | undefined): string {
+  if (!rentalId?.trim()) return "No Rental";
+  const label = rentalLabel?.trim();
+  return label || "Rental Not On File";
+}
+
+function titled(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return fallback;
+  return trimmed
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 export type IncidentCostSource = {
@@ -268,18 +304,21 @@ export type IncidentDocumentSource = {
   id: string;
   file_name: string | null;
   category: string | null;
+  driver_id?: string | null;
 };
 
 export type IncidentInspectionSource = {
   id: string;
   inspection_type: string | null;
   status: string | null;
+  vehicle_id?: string | null;
 };
 
 export type IncidentClaimPhoto = {
   id: string;
   kind: "document" | "inspection";
   label: string;
+  href: string | null;
 };
 
 export type IncidentClaimFacts = {
@@ -296,9 +335,16 @@ export type IncidentClaimTotal = {
   incidents: number;
   estimatedCostCents: number | null;
   actualCostCents: number | null;
+  estimatedUnknown: number;
+  actualUnknown: number;
   recoveredCostCents: number | null;
   recoveredUnknown: number;
 };
+
+/** Shown when the full incident scan passes the page cap or a cent sum overflows. */
+export const OPEN_INCIDENT_TOTALS_LABEL = "Open Incidents (Latest 200)";
+export const INCIDENT_CLAIM_PAGE = 1000;
+export const INCIDENT_CLAIM_MAX_PAGES = 100;
 
 export type IncidentBoardList = {
   rows: IncidentBoardRow[];
@@ -307,7 +353,15 @@ export type IncidentBoardList = {
   photoLinksInstalled: boolean | null;
   vehicleTotals: IncidentClaimTotal[] | null;
   driverTotals: IncidentClaimTotal[] | null;
+  totalsCapped: boolean;
+  totalsLabel: string | null;
 };
+
+export function incidentMoneyText(cents: number | null, unknown: number): string {
+  if (cents == null || !Number.isSafeInteger(cents)) return "Not Recorded";
+  if (unknown <= 0) return formatCents(cents);
+  return `${formatCents(cents)} · ${unknown} Not Recorded`;
+}
 
 export function incidentClaimFacts(input: {
   ids: string[];
@@ -348,28 +402,71 @@ export function incidentClaimFacts(input: {
   return byId;
 }
 
-export function incidentClaimTotals(
-  rows: Array<Pick<IncidentBoardRow, "vehicleId" | "vehicle" | "driverId" | "driver" | "claims">>,
-): { vehicleTotals: IncidentClaimTotal[]; driverTotals: IncidentClaimTotal[] } {
+type ClaimTotalRow = Pick<IncidentBoardRow, "vehicleId" | "vehicle" | "vehicleOnFile" | "driverId" | "driver" | "claims">;
+
+export function incidentClaimTotals(rows: ClaimTotalRow[]): {
+  vehicleTotals: IncidentClaimTotal[];
+  driverTotals: IncidentClaimTotal[];
+  overflow: boolean;
+} {
   const claimed = rows.filter((row) => row.claims);
+  const vehicle = groupClaimTotals(claimed, vehicleGroupId, vehicleGroupLabel);
+  const driver = groupClaimTotals(
+    claimed.filter((row) => row.driverId),
+    (row) => row.driverId as string,
+    (row) => row.driver,
+  );
   return {
-    vehicleTotals: groupClaimTotals(claimed, (row) => row.vehicleId, (row) => row.vehicle),
-    driverTotals: groupClaimTotals(
-      claimed.filter((row) => row.driverId),
-      (row) => row.driverId as string,
-      (row) => row.driver,
-    ),
+    vehicleTotals: vehicle.rows,
+    driverTotals: driver.rows,
+    overflow: vehicle.overflow || driver.overflow,
   };
 }
 
+export function chooseIncidentTotals(input: {
+  capped: boolean;
+  allRows: ClaimTotalRow[] | null;
+  openRows: ClaimTotalRow[];
+}): {
+  vehicleTotals: IncidentClaimTotal[];
+  driverTotals: IncidentClaimTotal[];
+  totalsCapped: boolean;
+  totalsLabel: string | null;
+} {
+  if (!input.capped && input.allRows) {
+    const all = incidentClaimTotals(input.allRows);
+    if (!all.overflow) {
+      return {
+        vehicleTotals: all.vehicleTotals,
+        driverTotals: all.driverTotals,
+        totalsCapped: false,
+        totalsLabel: null,
+      };
+    }
+  }
+  const open = incidentClaimTotals(input.openRows);
+  return {
+    vehicleTotals: open.vehicleTotals,
+    driverTotals: open.driverTotals,
+    totalsCapped: true,
+    totalsLabel: OPEN_INCIDENT_TOTALS_LABEL,
+  };
+}
+
+function vehicleGroupId(row: ClaimTotalRow): string {
+  if (!row.vehicleId) return "vehicle:blank";
+  if (!row.vehicleOnFile) return "vehicle:unknown";
+  return row.vehicleId;
+}
+
+function vehicleGroupLabel(row: ClaimTotalRow): string {
+  if (!row.vehicleId) return "No Vehicle";
+  if (!row.vehicleOnFile) return "Unknown Vehicle";
+  return row.vehicle;
+}
+
 function claimLabel(value: string | null | undefined, fallback: string): string {
-  const trimmed = value?.trim();
-  if (!trimmed) return fallback;
-  return trimmed
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
+  return titled(value, fallback);
 }
 
 function claimPhotos(
@@ -386,7 +483,12 @@ function claimPhotos(
       const document = documents.get(link.document_id);
       if (!document) continue;
       const name = document.file_name?.trim();
-      photos.push({ id: link.id, kind: "document", label: name || claimLabel(document.category, "Document") });
+      photos.push({
+        id: link.id,
+        kind: "document",
+        label: name || claimLabel(document.category, "Document"),
+        href: incidentDocumentHref(document.driver_id),
+      });
       continue;
     }
     const inspection = inspections.get(link.inspection_id as string);
@@ -397,29 +499,42 @@ function claimPhotos(
       id: link.id,
       kind: "inspection",
       label: [typeLabel, statusLabel].filter(Boolean).join(" · "),
+      href: incidentInspectionHref(inspection.vehicle_id),
     });
   }
   return photos;
 }
 
-function sumKnownCents(values: Array<number | null>): number | null {
+export function incidentDocumentHref(driverId: string | null | undefined): string | null {
+  const id = driverId?.trim();
+  if (!id) return null;
+  return `/admin?tab=drivers&id=${encodeURIComponent(id)}`;
+}
+
+export function incidentInspectionHref(vehicleId: string | null | undefined): string | null {
+  const id = vehicleId?.trim();
+  if (!id) return null;
+  return `/admin?tab=inspections&id=${encodeURIComponent(id)}`;
+}
+
+function sumKnownCents(values: Array<number | null>): { total: number | null; overflow: boolean } {
   let total = 0;
   let known = false;
   for (const value of values) {
     if (value == null) continue;
     known = true;
     const next = total + value;
-    if (!Number.isSafeInteger(next)) return null;
+    if (!Number.isSafeInteger(next)) return { total: null, overflow: true };
     total = next;
   }
-  return known ? total : null;
+  return { total: known ? total : null, overflow: false };
 }
 
 function groupClaimTotals<T extends { claims: IncidentClaimFacts | null }>(
   rows: T[],
   idOf: (row: T) => string,
   labelOf: (row: T) => string,
-): IncidentClaimTotal[] {
+): { rows: IncidentClaimTotal[]; overflow: boolean } {
   const groups = new Map<string, T[]>();
   for (const row of rows) {
     const id = idOf(row);
@@ -427,18 +542,29 @@ function groupClaimTotals<T extends { claims: IncidentClaimFacts | null }>(
     list.push(row);
     groups.set(id, list);
   }
-  return [...groups.entries()]
-    .map(([id, list]) => {
-      const recovered = list.map((row) => row.claims?.amountRecoveredCents ?? null);
-      return {
-        id,
-        label: labelOf(list[0]),
-        incidents: list.length,
-        estimatedCostCents: sumKnownCents(list.map((row) => row.claims?.estimatedCostCents ?? null)),
-        actualCostCents: sumKnownCents(list.map((row) => row.claims?.actualCostCents ?? null)),
-        recoveredCostCents: sumKnownCents(recovered),
-        recoveredUnknown: recovered.filter((value) => value == null).length,
-      };
-    })
-    .sort((a, b) => a.label.localeCompare(b.label) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let overflow = false;
+  const totals = [...groups.entries()].map(([id, list]) => {
+    const estimated = list.map((row) => row.claims?.estimatedCostCents ?? null);
+    const actual = list.map((row) => row.claims?.actualCostCents ?? null);
+    const recovered = list.map((row) => row.claims?.amountRecoveredCents ?? null);
+    const estimatedSum = sumKnownCents(estimated);
+    const actualSum = sumKnownCents(actual);
+    const recoveredSum = sumKnownCents(recovered);
+    overflow = overflow || estimatedSum.overflow || actualSum.overflow || recoveredSum.overflow;
+    return {
+      id,
+      label: labelOf(list[0]),
+      incidents: list.length,
+      estimatedCostCents: estimatedSum.total,
+      actualCostCents: actualSum.total,
+      estimatedUnknown: estimated.filter((value) => value == null).length,
+      actualUnknown: actual.filter((value) => value == null).length,
+      recoveredCostCents: recoveredSum.total,
+      recoveredUnknown: recovered.filter((value) => value == null).length,
+    };
+  });
+  return {
+    rows: totals.sort((a, b) => a.label.localeCompare(b.label) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    overflow,
+  };
 }

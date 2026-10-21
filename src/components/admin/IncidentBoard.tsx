@@ -9,6 +9,7 @@ import {
   INCIDENT_STATUSES,
   INCIDENT_TYPES,
   formatCents,
+  incidentMoneyText,
   incidentStatusLabel,
   incidentTypeLabel,
   type IncidentBoardRow,
@@ -29,6 +30,8 @@ export function IncidentBoard() {
   const [recoveryInstalled, setRecoveryInstalled] = useState<boolean | null>(null);
   const [vehicleTotals, setVehicleTotals] = useState<IncidentClaimTotal[] | null>(null);
   const [driverTotals, setDriverTotals] = useState<IncidentClaimTotal[] | null>(null);
+  const [totalsCapped, setTotalsCapped] = useState(false);
+  const [totalsLabel, setTotalsLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
@@ -49,6 +52,8 @@ export function IncidentBoard() {
       setRecoveryInstalled(res.recoveryInstalled);
       setVehicleTotals(res.vehicleTotals);
       setDriverTotals(res.driverTotals);
+      setTotalsCapped(res.totalsCapped);
+      setTotalsLabel(res.totalsLabel);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load the Incident Board");
     } finally {
@@ -231,7 +236,7 @@ export function IncidentBoard() {
           <h2 className="text-sm font-semibold">{open.typeLabel} · {open.vehicle}</h2>
           <dl className="grid gap-2 sm:grid-cols-2 text-sm">
             <Fact label="Driver" value={open.driver} />
-            <Fact label="Rental" value={open.rental} />
+            <Fact label="Rental" value={open.rental} href={open.rentalHref} />
             <Fact label="Date" value={open.occurredEt} />
             <Fact label="Reported" value={open.reportedEt} />
             <Fact label="Status" value={open.statusLabel} />
@@ -274,8 +279,10 @@ export function IncidentBoard() {
         </section>
       )}
 
-      {claimsVisible && rows.length > 0 && vehicleTotals && driverTotals && (
+      {claimsVisible && vehicleTotals && driverTotals && (
         <div className="space-y-4">
+          {totalsLabel ? <h2 className="text-sm font-semibold">{totalsLabel}</h2> : null}
+          {totalsCapped ? <p className="text-sm text-muted-foreground">The full incident list is past the page cap.</p> : null}
           <ClaimTotals title="Vehicle Totals" rows={vehicleTotals} recoveryInstalled={recoveryInstalled === true} />
           <ClaimTotals title="Driver Totals" rows={driverTotals} recoveryInstalled={recoveryInstalled === true} />
         </div>
@@ -291,7 +298,15 @@ function PhotoLinks({ photos }: { photos: IncidentClaimPhoto[] | null }) {
     <ul className="space-y-1 text-sm">
       {photos.map((photo) => (
         <li key={photo.id}>
-          {photo.kind === "document" ? "Document" : "Inspection"}: {photo.label}
+          {photo.href ? (
+            <a href={photo.href} className="underline">
+              {photo.kind === "document" ? "Document" : "Inspection"}: {photo.label}
+            </a>
+          ) : (
+            <span>
+              {photo.kind === "document" ? "Document" : "Inspection"}: {photo.label}
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -308,7 +323,7 @@ function ClaimTotals({ title, rows, recoveryInstalled }: { title: string; rows: 
         <ul className="mt-2 space-y-2 text-sm">
           {rows.map((row) => (
             <li key={row.id}>
-              {row.label} · {row.incidents} {row.incidents === 1 ? "Incident" : "Incidents"} · Estimated {formatCents(row.estimatedCostCents)} · Actual {formatCents(row.actualCostCents)} · Recovered {recoveredText(row, recoveryInstalled)}
+              {row.label} · {row.incidents} {row.incidents === 1 ? "Incident" : "Incidents"} · Estimated {incidentMoneyText(row.estimatedCostCents, row.estimatedUnknown)} · Actual {incidentMoneyText(row.actualCostCents, row.actualUnknown)} · Recovered {recoveredText(row, recoveryInstalled)}
             </li>
           ))}
         </ul>
@@ -323,11 +338,11 @@ function recoveredText(total: IncidentClaimTotal, installed: boolean): string {
   return `${formatCents(total.recoveredCostCents)} · ${total.recoveredUnknown} Not Recorded`;
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, href }: { label: string; value: string; href?: string | null }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd>{value}</dd>
+      <dd>{href ? <a href={href} className="underline">{value}</a> : value}</dd>
     </div>
   );
 }
