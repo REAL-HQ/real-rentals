@@ -3,9 +3,10 @@
 // `node scripts/ci/record-rental/guard.mjs --rc` is the RC checklist. It still
 // requires a full fetch (a shallow clone is refused) and the three manifest
 // commits to be ancestors. It skips checkPaths. It still hash-pins the Record
-// Rental contract, handler, and the other files that read that flag, and it
-// rejects a true flag, a deleted handler check, a hidden `|| __on` gate, and
-// handler writes. Do not pass --rc on release/record-rental-base.
+// Rental contract, handler, the other files that read that flag, the three
+// contract importers, and the locked package.json and bun.lock. It rejects a
+// true flag, a deleted handler check, a hidden `|| __on` gate, and handler
+// writes. Do not pass --rc on release/record-rental-base.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -68,6 +69,22 @@ export function checkRecordRentalPins(read){
   assert.equal(hash(read(path)),pinnedSha256(manifest.application[path],path),'Source hash: '+path);
  }
 }
+export const RECORD_RENTAL_CONTRACT_IMPORTERS=[
+ 'src/lib/record-rental-operation.server.ts',
+ 'src/lib/record-rental-recovery.ts',
+ 'src/lib/record-rental-evidence.server.ts',
+];
+export function checkLockedFilePins(read){
+ for(const [path,expected] of Object.entries(manifest.lockedFiles)){
+  assert.equal(hash(read(path)),pinnedSha256(expected,path),'Locked hash: '+path);
+ }
+}
+export function checkContractImporterPins(read){
+ const pins={...manifest.application,...manifest.evidence};
+ for(const path of RECORD_RENTAL_CONTRACT_IMPORTERS){
+  assert.equal(hash(read(path)),pinnedSha256(pins[path],path),'Contract importer hash: '+path);
+ }
+}
 export function checkOutput(suite,result){
  assert.equal(result.error,undefined,'Runner error');
  assert.equal(result.signal,null,'Runner signal');
@@ -92,8 +109,10 @@ export function inspect(options={}){
  if(rc){
   const read=p=>readFileSync(p);
   checkRecordRentalPins(read);
+  checkLockedFilePins(read);
+  checkContractImporterPins(read);
   assertRecordRentalDisabled(read);
-  console.log('PASS RC ancestry, pinned record-rental sources, and disabled flag; isolated path allowlist skipped');
+  console.log('PASS RC ancestry, pinned record-rental sources, locked files, contract importers, and disabled flag; isolated path allowlist skipped');
   return;
  }
  const changed=git('diff','--name-only',manifest.baseline,'HEAD').split('\n').filter(Boolean);

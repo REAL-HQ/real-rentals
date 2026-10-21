@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {assertRecordRentalDisabled,checkPaths,checkDigest,checkOutput,checkRecordRentalPins,checkScope,inspectOptionsFromArgv} from './guard.mjs';
+import {assertRecordRentalDisabled,checkContractImporterPins,checkLockedFilePins,checkPaths,checkDigest,checkOutput,checkRecordRentalPins,checkScope,inspectOptionsFromArgv} from './guard.mjs';
 const m=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
 const paths=Object.keys({...m.application,...m.evidence});let count=0;
 function test(name,fn){fn();console.log('PASS '+name);count++;}
@@ -16,6 +16,8 @@ test('rc mode is opt-in and does not replace checkPaths',()=>{
  assert.throws(()=>checkPaths([...paths,'docs/stripe-reconciliation-review.md']));
  assertRecordRentalDisabled(readFileSync);
  checkRecordRentalPins(readFileSync);
+ checkLockedFilePins(readFileSync);
+ checkContractImporterPins(readFileSync);
 });
 function mutate(path,change){
  return p=>p===path?change(readFileSync(p).toString()):readFileSync(p);
@@ -39,6 +41,15 @@ test('handler upsert, rpc, and delete are rejected',()=>{
  for(const call of ['.upsert(','.rpc(','.delete(']){
   assert.throws(()=>assertRecordRentalDisabled(mutate('src/lib/record-rental.functions.ts',src=>src+`\nvoid db${call}row);\n`)));
  }
+});
+test('locked package.json and bun.lock are pinned in the RC check',()=>{
+ assert.throws(()=>checkLockedFilePins(mutate('package.json',src=>src+'\n')));
+ assert.throws(()=>checkLockedFilePins(mutate('bun.lock',src=>src+'\n')));
+});
+test('an insert in a contract importer is rejected',()=>{
+ assert.throws(()=>checkContractImporterPins(mutate('src/lib/record-rental-operation.server.ts',src=>src+"\nvoid db.insert(row);\n")));
+ assert.throws(()=>checkContractImporterPins(mutate('src/lib/record-rental-recovery.ts',src=>src+'\n')));
+ assert.throws(()=>checkContractImporterPins(mutate('src/lib/record-rental-evidence.server.ts',src=>src+'\n')));
 });
 const bytes=Buffer.from('reviewed'),digest=createHash('sha256').update(bytes).digest('hex');
 test('exact bytes accepted',()=>checkDigest(bytes,digest));

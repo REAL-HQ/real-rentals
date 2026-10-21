@@ -57,4 +57,4 @@ p = buildProposal({ fields: F({ vin: V2, purchase_price: "9000", lienholder: "Ba
 ok(!p.changes.some((c) => ["purchase_price", "lienholder"].includes(c.field)), "Finance facts never appear as vehicle-record changes");
 
 console.log(fail ? `\n${fail} failed` : "\nall assertions passed");
-process.exit(fail ? 1 : 0);
+if (fail) process.exit(1);
