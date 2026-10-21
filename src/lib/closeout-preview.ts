@@ -63,6 +63,7 @@ export type CloseoutPreviewInput = {
     estimated_cost: unknown;
     driver_responsible_amount: unknown;
     drivable: boolean | null;
+    payment_id?: string | null;
   }>;
   payments: RowLoad<{
     status: string | null;
@@ -356,6 +357,14 @@ type TollRow = {
   payment_id?: string | null;
 };
 
+type IncidentRow = {
+  id: string;
+  status: string | null;
+  driver_responsible_amount: unknown;
+  /** Set when a payment row bills this incident. Incidents have no such column today, so a live row counts as unbilled. */
+  payment_id?: string | null;
+};
+
 type DeductionRow = { amount: unknown; incident_id?: string | null };
 
 type PaymentRow = {
@@ -370,6 +379,20 @@ function chargePosted(row: { status: string | null; payment_id?: string | null }
   return isSettledToll(row.status) || (row.payment_id != null && String(row.payment_id).length > 0);
 }
 
+function isDisputedCharge(status: string | null): boolean {
+  return String(status ?? "").trim().toLowerCase() === "disputed";
+}
+
+function isDepositPayment(row: { type: string | null }): boolean {
+  return String(row.type ?? "").trim().toLowerCase() === "deposit";
+}
+
+function linkedPaymentId(row: { payment_id?: string | null }): string | null {
+  if (row.payment_id == null) return null;
+  const id = String(row.payment_id).trim();
+  return id.length > 0 ? id : null;
+}
+
 /** A payment whose balance cannot be read. Matches Closeout Readiness: both fields null is Unknown, even though owedOn would return 0. */
 function paymentUnreadable(row: { status: string | null; amount: unknown; balance_due: unknown }): boolean {
   return !isOutstanding(row.status) || (row.balance_due == null && row.amount == null) || !Number.isFinite(owedOn(row));
@@ -381,25 +404,32 @@ function tollFigure(
   key: string,
   title: string,
 ): CloseoutFigure | null {
-  const source = "toll_charges for this rental; open means status is not rebilled, paid, or written_off and no payment row is posted";
+  const source = "toll_charges for this rental; open means status is not rebilled, paid, written_off, or disputed, and no payment row is posted";
   if (!rows) return unknown(key, title, source);
-  const open = rows.filter((row) => !chargePosted(row));
+  const disputed = rows.filter((row) => isDisputedCharge(row.status) && classifyCharge(row.charge_type) === kind);
+  const open = rows.filter((row) => !chargePosted(row) && !isDisputedCharge(row.status));
   const mine = open.filter((row) => classifyCharge(row.charge_type) === kind);
-  if (kind === "other" && mine.length === 0) return null;
+  if (kind === "other" && mine.length === 0 && disputed.length === 0) return null;
   const amounts = mine.map(chargeAmount);
   if (amounts.some((amount) => amount == null)) return unknown(key, title, source);
   const total = sumCents(amounts as number[]);
   if (total == null) return unknown(key, title, source);
+  const noun = kind === "toll" ? "toll" : kind === "ticket" ? "ticket" : "charge";
+  const disputedNote = disputed.length
+    ? ` ${disputed.length} disputed ${noun}${disputed.length === 1 ? "" : "s"} ${disputed.length === 1 ? "is" : "are"} informational and ${disputed.length === 1 ? "is" : "are"} not subtracted.`
+    : "";
+  const onlyDisputed = mine.length === 0 && disputed.length > 0;
   return {
     key,
     title,
     state: mine.length || total > 0 ? "Needs Attention" : "Ready",
-    value: `${mine.length} · ${money(fromCents(total))}`,
+    value: onlyDisputed ? `${disputed.length} disputed` : `${mine.length} · ${money(fromCents(total))}`,
     source,
     explanation:
-      kind === "other"
+      (kind === "other"
         ? "Open toll_charges rows whose type is neither toll nor ticket. Their amounts are not added to Open Tolls or Open Tickets."
-        : `Open ${kind === "toll" ? "toll" : "ticket"} rows. Amount is the charge plus its admin fee. A rebilled row is left to the payments balance so it is not counted twice.`,
+        : `Open ${noun} rows. Amount is the charge plus its admin fee. A rebilled row is left to the payments balance so it is not counted twice.`) +
+      disputedNote,
   };
 }
 
@@ -415,7 +445,7 @@ function chargesFigure(input: CloseoutPreviewInput): CloseoutFigure {
   const balance = sumCents(unpaid.map((row) => owedOn(row)));
   if (balance == null) return unknown("charges", "Outstanding Charges", source);
   const pending = unpaid.filter((row) => row.status === "pending").length;
-  const unposted = tolls.filter((row) => !chargePosted(row)).length;
+  const unposted = tolls.filter((row) => !chargePosted(row) && !isDisputedCharge(row.status)).length;
   return {
     key: "charges",
     title: "Outstanding Charges",
@@ -480,11 +510,11 @@ function billingFigure(input: CloseoutPreviewInput): CloseoutFigure {
   };
 }
 
-/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. */
+/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. A deposit row is the deposit itself and is not subtracted from the refund. */
 function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string): number | null {
   let total = 0;
   for (const row of payments) {
-    if (isTerminalPayment(row.status)) continue;
+    if (isTerminalPayment(row.status) || isDepositPayment(row)) continue;
     const due = calendarDay(row.due_date);
     if (!due) return null;
     if (due > day) continue;
@@ -497,7 +527,7 @@ function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string): nu
 function openChargeCents(rows: TollRow[], kind: "toll" | "ticket"): number | null {
   let total = 0;
   for (const row of rows) {
-    if (chargePosted(row) || classifyCharge(row.charge_type) !== kind) continue;
+    if (chargePosted(row) || isDisputedCharge(row.status) || classifyCharge(row.charge_type) !== kind) continue;
     const amount = chargeAmount(row);
     if (amount == null) return null;
     total += cents(amount);
@@ -505,11 +535,14 @@ function openChargeCents(rows: TollRow[], kind: "toll" | "ticket"): number | nul
   return total;
 }
 
-/** Driver responsibility left after deductions that name the incident. The deduction itself is still subtracted in full. */
-function uncoveredDriverCents(
-  incidents: Array<{ id: string; driver_responsible_amount: unknown }>,
-  deductions: DeductionRow[],
-): number | null {
+/**
+ * Driver responsibility left after deductions that name the incident.
+ * Open incidents count. A closed incident counts only when no payment row is
+ * linked, so a closed incident that was already billed is not subtracted again.
+ * Incident Costs still lists open incidents only. The deduction itself is still
+ * subtracted in full.
+ */
+function uncoveredDriverCents(incidents: IncidentRow[], deductions: DeductionRow[]): number | null {
   const covered = new Map<string, number>();
   for (const row of deductions) {
     if (!row.incident_id) continue;
@@ -519,6 +552,7 @@ function uncoveredDriverCents(
   }
   let total = 0;
   for (const row of incidents) {
+    if (!isOpenIncident(row.status) && linkedPaymentId(row)) continue;
     const amount = finite(row.driver_responsible_amount);
     if (amount == null || amount < 0) return null;
     total += Math.max(0, cents(amount) - (covered.get(row.id) ?? 0));
@@ -568,7 +602,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
             };
     }
   }
-  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day; open tolls and tickets that are not already a payment; incidents.driver_responsible_amount not covered by a linked deduction`;
+  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day, excluding deposit rows; open tolls and tickets that are not already a payment and are not disputed; incidents.driver_responsible_amount for open incidents and for closed incidents with no linked payment, after a linked deduction`;
   const canPropose = held === true && !settled && amount != null && deductionCents != null;
   const noProposal = (why: string): [CloseoutFigure, CloseoutFigure] => [
     {
@@ -631,7 +665,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
       const refund = Math.max(0, net);
       const due = Math.max(0, -net);
       const settledAgainst =
-        "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day, open tolls and tickets that are not already a payment, and driver responsibility not already covered by a linked deduction. Unpaid rent is included only inside that payment balance. Staff must settle manually.";
+        "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day (deposit rows excluded), open tolls and tickets that are not already a payment and are not disputed, and driver responsibility on open incidents or on closed incidents with no linked payment. Unpaid rent is included only inside that payment balance. Staff must settle manually.";
       proposedRefund = {
         key: "proposed-refund",
         title: "Proposed Refund",

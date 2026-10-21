@@ -367,5 +367,121 @@ ok(
 const paymentsUnread = buildCloseoutPreview(input({ payments: failed() }));
 ok(figure(paymentsUnread, "proposed-refund").value === "No Proposal", "no settlement is proposed when payments could not be read");
 
+const closedUnbilled = buildCloseoutPreview(
+  input({
+    rentalIncidents: loaded([
+      { id: "inc-closed", status: "closed", actual_cost: 80, estimated_cost: 80, driver_responsible_amount: 80, drivable: true },
+    ]),
+  }),
+);
+ok(figure(closedUnbilled, "incident-costs").value === "$0.00", "Incident Costs still leaves a closed incident out of the open-cost total");
+ok(
+  figure(closedUnbilled, "proposed-refund").value === "$420.00" && figure(closedUnbilled, "balance-due").value === "$0.00",
+  "a closed incident with no linked payment still reduces the refund",
+);
+
+const closedBilled = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 80, balance_due: 80, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([
+      {
+        id: "inc-billed",
+        status: "closed",
+        actual_cost: 80,
+        estimated_cost: 80,
+        driver_responsible_amount: 80,
+        drivable: true,
+        payment_id: "pay-damage",
+      },
+    ]),
+  }),
+);
+ok(
+  figure(closedBilled, "proposed-refund").value === "$420.00" && figure(closedBilled, "balance-due").value === "$0.00",
+  "a closed incident that already has a payment is subtracted once, through that payment",
+);
+
+const closedPaid = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "paid", amount: 80, balance_due: 0, type: "damage", due_date: "2026-10-18" }]),
+    rentalIncidents: loaded([
+      {
+        id: "inc-paid",
+        status: "closed",
+        actual_cost: 80,
+        estimated_cost: 80,
+        driver_responsible_amount: 80,
+        drivable: true,
+        payment_id: "pay-paid",
+      },
+    ]),
+  }),
+);
+ok(
+  figure(closedPaid, "proposed-refund").value === "$500.00",
+  "a closed incident whose payment is already paid is not subtracted again",
+);
+
+const openBilled = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 80, balance_due: 80, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([
+      {
+        id: "inc-open",
+        status: "open",
+        actual_cost: 80,
+        estimated_cost: 80,
+        driver_responsible_amount: 80,
+        drivable: true,
+        payment_id: "pay-open",
+      },
+    ]),
+  }),
+);
+ok(
+  figure(openBilled, "proposed-refund").value === "$340.00",
+  "an open incident still counts even when a payment row is linked",
+);
+
+const depositCharge = buildCloseoutPreview(
+  input({
+    payments: loaded([
+      { status: "pending", amount: 500, balance_due: 500, type: "deposit", due_date: "2026-10-21" },
+      { status: "pending", amount: 40, balance_due: 40, type: "rent", due_date: "2026-10-21" },
+    ]),
+  }),
+);
+ok(figure(depositCharge, "charges").value === "$540.00", "an outstanding deposit row is still a recorded charge");
+ok(
+  figure(depositCharge, "proposed-refund").value === "$460.00" && figure(depositCharge, "balance-due").value === "$0.00",
+  "an outstanding deposit row is not subtracted from the deposit refund",
+);
+
+const disputedToll = buildCloseoutPreview(
+  input({
+    tolls: loaded([{ status: "disputed", amount: 15, admin_fee: 0, charge_type: "toll" }]),
+  }),
+);
+ok(figure(disputedToll, "tolls").value === "1 disputed", "a disputed toll is shown as disputed");
+ok(figure(disputedToll, "tolls").state === "Ready", "a disputed toll is informational and does not need settlement attention");
+ok(figure(disputedToll, "tolls").explanation.toLowerCase().includes("not subtracted"), "the disputed toll line says it is not subtracted");
+ok(
+  figure(disputedToll, "proposed-refund").value === "$500.00" && figure(disputedToll, "balance-due").value === "$0.00",
+  "a disputed toll is not subtracted from the refund",
+);
+ok(figure(disputedToll, "charges").value === "$0.00", "a disputed toll is not counted as an unposted charge");
+
+const disputedBesideOpen = buildCloseoutPreview(
+  input({
+    tolls: loaded([
+      { status: "open", amount: 10, admin_fee: 0, charge_type: "toll" },
+      { status: "disputed", amount: 15, admin_fee: 0, charge_type: "toll" },
+    ]),
+  }),
+);
+ok(figure(disputedBesideOpen, "tolls").value === "1 · $10.00", "an open toll is still totaled when a disputed toll sits beside it");
+ok(figure(disputedBesideOpen, "tolls").explanation.toLowerCase().includes("disputed"), "the open toll line still names the disputed toll");
+ok(figure(disputedBesideOpen, "proposed-refund").value === "$490.00", "only the open toll is subtracted when another toll is disputed");
+
 console.log(fails ? `\n${fails} failed` : "\ncloseout preview checks passed");
 process.exit(fails ? 1 : 0);
