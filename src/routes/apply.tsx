@@ -12,9 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
-
-/** Duplicated so this route does not import the resume module while the flag is off. */
-const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -146,9 +144,9 @@ function SavedApplicationSlot({ draft }: { draft: unknown }) {
   useEffect(() => {
     if (APPLICATION_RESUME_ENABLED !== true) return;
     let live = true;
-    void import("@/components/site/ContinueApplicationBanner").then((ui) => {
+    void import("@/components/site/SignedInContinueBanner").then((ui) => {
       if (!live) return;
-      setBanner(<ui.ContinueApplicationBanner draft={draft as never} showAnswers />);
+      setBanner(<ui.SignedInContinueBanner draft={draft as never} />);
     });
     return () => {
       live = false;

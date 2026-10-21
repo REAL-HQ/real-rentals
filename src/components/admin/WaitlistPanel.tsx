@@ -22,9 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
-
-/** Duplicated so this panel does not import the resume module while the flag is off. */
-const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 // Waitlist back office.
 //
@@ -57,7 +55,7 @@ export function WaitlistPanel({
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   const [reviewId, setReviewId] = useState<string | null>(null);
-  const [resumeLink, setResumeLink] = useState<string | null>(null);
+  const [resumeLink, setResumeLink] = useState<{ href: string; name: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -136,9 +134,11 @@ export function WaitlistPanel({
 
   async function handlePromote(entry: WaitlistEntry) {
     setPromotingId(entry.id);
+    if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
     try {
       const res = await promote({ data: { entryId: entry.id } });
       if (!res.ok) {
+        if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
         if ("conflict" in res && res.conflict) {
           setConflictIds((s) => new Set(s).add(entry.id));
           toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
@@ -148,16 +148,13 @@ export function WaitlistPanel({
       }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
       if (APPLICATION_RESUME_ENABLED === true) {
-        if (res.token) {
-          const { resumeLinkForToken } = await import("@/lib/application-resume");
-          setResumeLink(resumeLinkForToken(res.token));
-        } else {
-          setResumeLink(null);
-        }
+        const { resumeLinkForPromotion } = await import("@/lib/application-resume");
+        setResumeLink(resumeLinkForPromotion({ ok: res.ok, token: res.token, name: entry.full_name }));
       }
       await refresh();
       onPromoted?.();
     } catch (e: any) {
+      if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
       toast.error(e?.message ?? "Could not promote.");
     } finally {
       setPromotingId(null);
@@ -171,7 +168,7 @@ export function WaitlistPanel({
   async function copyResumeLink() {
     if (!resumeLink) return;
     try {
-      await navigator.clipboard.writeText(resumeLink);
+      await navigator.clipboard.writeText(resumeLink.href);
       toast.success("Link copied.");
     } catch {
       toast.error("Select the link and copy it.");
@@ -181,16 +178,16 @@ export function WaitlistPanel({
   return (
     <div className="space-y-4">
       {APPLICATION_RESUME_ENABLED === true && resumeLink ? (
-        <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label="Resume Link">
-          <div className="text-sm font-semibold text-[#111114]">Resume Link</div>
+        <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label={`Resume Link For ${resumeLink.name}`}>
+          <div className="text-sm font-semibold text-[#111114]">Resume Link For {resumeLink.name}</div>
           <p className="mt-1 text-[13px] leading-snug text-[#55555E]">
-            Promotion created this application. Copy this link and give it to the applicant. This page does not send an email.
+            Promotion created this application for {resumeLink.name}. Copy this link and give it to them. This page does not send an email.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               readOnly
-              aria-label="Resume Link"
-              value={resumeLink}
+              aria-label={`Resume Link For ${resumeLink.name}`}
+              value={resumeLink.href}
               className="min-h-11 w-full rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] px-3 text-sm text-[#111114]"
               onFocus={(e) => e.currentTarget.select()}
             />

@@ -3,15 +3,22 @@ import type { ContinueDraft } from "@/lib/application-resume";
 
 /**
  * Shown on / and /apply only after APPLICATION_RESUME_ENABLED is on and a
- * draft was read. The link opens the existing wizard when this tab already
- * holds a resume token. It never sends a link.
+ * draft was read. A signed-in draft continues through onContinue, which mints
+ * a token for that account. This component never reads a token from the tab
+ * and never sends a link.
  */
 export function ContinueApplicationBanner({
   draft,
   showAnswers = false,
+  onContinue,
+  continuing = false,
+  continueError = null,
 }: {
   draft: ContinueDraft;
   showAnswers?: boolean;
+  onContinue?: () => void | Promise<void>;
+  continuing?: boolean;
+  continueError?: string | null;
 }) {
   const { progress, answers } = draft;
   const missing = progress.missingDocuments.length
@@ -43,10 +50,18 @@ export function ContinueApplicationBanner({
         >
           Continue
         </Link>
-      ) : showAnswers ? (
-        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-          These are the answers already saved on your application. This page does not send a link or change the application. Saving the next answer still uses the resume link you already have.
-        </p>
+      ) : onContinue ? (
+        <>
+          <button
+            type="button"
+            onClick={() => void onContinue()}
+            disabled={continuing}
+            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-real-red px-5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            Continue
+          </button>
+          {continueError ? <p className="mt-2 text-sm text-real-red">{continueError}</p> : null}
+        </>
       ) : (
         <Link
           to="/apply"

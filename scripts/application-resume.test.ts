@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { resumeUrl } from "../src/lib/resume-tokens.server";
+import { APPLICATION_RESUME_ENABLED, isClosedResumeStatus } from "../src/lib/application-resume-flag";
 import {
-  APPLICATION_RESUME_ENABLED,
   OWN_DRAFT_COLUMNS,
   canContinuePromotedApplication,
   continuationApplicationId,
@@ -11,15 +11,17 @@ import {
   progressFromSnapshot,
   progressFromWizard,
   promotedApplicationLinkAllowed,
+  resumeLinkForPromotion,
   resumeLinkForToken,
   snapshotFromOwnRow,
-  stashedTokenContinuesApplication,
   type ResumeSnapshot,
 } from "../src/lib/application-resume";
 
+const flagFile = readFileSync("src/lib/application-resume-flag.ts", "utf8");
 const lib = readFileSync("src/lib/application-resume.ts", "utf8");
 const client = readFileSync("src/lib/application-resume-client.ts", "utf8");
 const banner = readFileSync("src/components/site/ContinueApplicationBanner.tsx", "utf8");
+const signedIn = readFileSync("src/components/site/SignedInContinueBanner.tsx", "utf8");
 const home = readFileSync("src/routes/index.tsx", "utf8");
 const apply = readFileSync("src/routes/apply.tsx", "utf8");
 const wizard = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8");
@@ -55,21 +57,26 @@ const filled: ResumeSnapshot = {
 };
 
 describe("application resume flag", () => {
-  it("is a hard false, and / and /apply do not load the module", () => {
+  it("is a hard false, declared once, and / and /apply do not load the resume module", () => {
     assert.equal(APPLICATION_RESUME_ENABLED, false);
-    for (const source of [lib, home, apply, wizard]) {
-      assert.equal(flagValue(source), "false");
+    assert.equal(flagValue(flagFile), "false");
+    const declarations = [flagFile, lib, client, banner, home, apply, wizard, panel, portal].filter((source) => flagValue(source));
+    assert.equal(declarations.length, 1);
+    for (const source of [lib, client, home, apply, wizard, panel, portal]) {
+      assert.match(source, /from ["']@\/lib\/application-resume-flag["']/);
     }
     for (const source of [home, apply, wizard]) {
-      assert.doesNotMatch(source, /from ["']@\/lib\/application-resume/);
-      assert.doesNotMatch(source, /from ["']@\/lib\/application-resume-client/);
-      assert.doesNotMatch(source, /from ["']@\/components\/site\/ContinueApplicationBanner/);
+      assert.doesNotMatch(source, /from ["']@\/lib\/application-resume["']/);
+      assert.doesNotMatch(source, /from ["']@\/lib\/application-resume-client["']/);
+      assert.doesNotMatch(source, /from ["']@\/components\/site\/ContinueApplicationBanner["']/);
       const load = source.indexOf('import("@/lib/application-resume');
       assert.ok(load !== -1);
       assert.match(source.slice(0, load), /APPLICATION_RESUME_ENABLED (?:!== true\) return|=== true\))/);
     }
     assert.doesNotMatch(home, /Continue Your Application/);
     assert.doesNotMatch(apply, /Continue Your Application/);
+    assert.doesNotMatch(lib, /stashedTokenContinuesApplication/);
+    assert.doesNotMatch(client, /stashedTokenContinuesApplication/);
   });
 
   it("reads the signed-in applicant's own row, and does not write or send", () => {
@@ -80,7 +87,7 @@ describe("application resume flag", () => {
     assert.match(client, /\.from\("applications"\)\s*\.select\(OWN_DRAFT_COLUMNS\)\s*\.eq\("user_id", uid\)/);
     assert.doesNotMatch(client, /select\("\*"\)/);
     assert.doesNotMatch(client, /readResumeToken|getApplicationForWizard|sessionStorage|applications\.functions/);
-    assert.match(client, /stashedTokenContinuesApplication\(null\)/);
+    assert.match(client, /continueDraft\(snapshotFromOwnRow\([\s\S]*?\), false\)/);
     assert.doesNotMatch(OWN_DRAFT_COLUMNS, /email|phone|policy|notes|stripe|dob|license_number|user_id|score|card_/i);
     assert.match(banner, /Continue Your Application/);
     assert.match(banner, /Step \{progress\.step\} Of \{progress\.total\}/);
@@ -88,14 +95,26 @@ describe("application resume flag", () => {
   });
 
   it("does not continue an application from a token left in the tab", () => {
-    assert.equal(stashedTokenContinuesApplication("previous-person-token"), false);
-    assert.equal(stashedTokenContinuesApplication(""), false);
-    assert.equal(stashedTokenContinuesApplication(null), false);
     assert.match(apply, /allowStashed:\s*false/);
     assert.doesNotMatch(apply, /allowStashed:\s*true/);
     assert.doesNotMatch(apply, /allowStashed:\s*APPLICATION_RESUME_ENABLED/);
     assert.doesNotMatch(client, /readResumeToken|sessionStorage/);
     assert.doesNotMatch(home, /readResumeToken|sessionStorage/);
+    assert.doesNotMatch(signedIn, /readResumeToken|sessionStorage/);
+  });
+
+  it("gives a signed-in draft on /apply a Continue path through the account", () => {
+    assert.match(banner, /onContinue/);
+    assert.match(banner, />\s*Continue\s*</);
+    assert.doesNotMatch(banner, /These are the answers already saved/);
+    assert.match(signedIn, /openMyApplication/);
+    assert.match(signedIn, /onContinue=/);
+    assert.doesNotMatch(signedIn, /to="\/thank-you"/);
+    const slot = apply.indexOf("function SavedApplicationSlot");
+    const load = apply.indexOf('import("@/components/site/SignedInContinueBanner")', slot);
+    assert.ok(slot !== -1 && load !== -1);
+    assert.match(apply.slice(slot, load), /APPLICATION_RESUME_ENABLED !== true\) return/);
+    assert.doesNotMatch(apply, /from ["']@\/components\/site\/SignedInContinueBanner["']/);
   });
 });
 
@@ -171,27 +190,40 @@ describe("application resume progress", () => {
 
 describe("waitlist promotion resume", () => {
   it("shows the minted link in admin and does not email it", () => {
-    assert.equal(flagValue(panel), "false");
+    assert.equal(flagValue(panel), null);
     assert.equal(APPLICATION_RESUME_ENABLED, false);
-    assert.doesNotMatch(panel, /from ["']@\/lib\/application-resume/);
+    assert.doesNotMatch(panel, /from ["']@\/lib\/application-resume["']/);
     assert.doesNotMatch(panel, /sendEmail|sendApplication|sendSms/);
     const load = panel.indexOf('import("@/lib/application-resume")');
     assert.ok(load !== -1);
     assert.match(panel.slice(0, load), /APPLICATION_RESUME_ENABLED === true/);
     assert.match(panel, /Copy Link/);
     assert.match(panel, /This page does not send an email/);
+    assert.match(panel, /Resume Link For \{resumeLink\.name\}/);
+    const promoteFn = panel.slice(panel.indexOf("async function handlePromote"), panel.indexOf("const statusTone"));
+    const cleared = promoteFn.indexOf("setResumeLink(null)");
+    const request = promoteFn.indexOf("promote(");
+    assert.ok(cleared !== -1 && request !== -1 && cleared < request);
+    assert.match(promoteFn, /if \(!res\.ok\) \{[\s\S]*setResumeLink\(null\)/);
+    assert.match(promoteFn, /resumeLinkForPromotion\(\{ ok: res\.ok, token: res\.token, name: entry\.full_name \}\)/);
+    const token = "abc+def/ghi";
+    const named = resumeLinkForPromotion({ ok: true, token, name: "Ada Lovelace" });
+    assert.deepEqual(named, { href: resumeUrl(token), name: "Ada Lovelace" });
+    assert.equal(resumeLinkForPromotion({ ok: false, token, name: "Ada Lovelace" }), null);
+    assert.equal(resumeLinkForPromotion({ ok: false, token: null, name: "Ada Lovelace" }), null);
+    assert.equal(resumeLinkForPromotion({ ok: true, token: null, name: "Ada Lovelace" }), null);
+    assert.equal(resumeLinkForPromotion({ ok: true, token, name: "  " }), null);
     const promoteStart = waitlistFns.indexOf("export const promoteToApplicant");
     const promoteEnd = waitlistFns.indexOf("export const listWaitlistHolds");
     const promote = waitlistFns.slice(promoteStart, promoteEnd);
     assert.match(promote, /if \(r\.created\) \{[\s\S]*issueResumeToken/);
     assert.doesNotMatch(promote, /sendEmail|sendApplication|sendSms/);
-    const token = "abc+def/ghi";
     assert.equal(resumeLinkForToken(token), resumeUrl(token));
     assert.equal(resumeLinkForToken(token).startsWith("https://drivereal.com/thank-you?t="), true);
   });
 
   it("continues the application promotion already created or linked", () => {
-    assert.equal(flagValue(portal), "false");
+    assert.equal(flagValue(portal), null);
     assert.doesNotMatch(portal, /from ["']@\/lib\/application-resume["']/);
     assert.doesNotMatch(portal, /sendEmail|sendSms/);
     const calls = [...portal.matchAll(/applicationFromPromotion\(/g)];
@@ -213,7 +245,16 @@ describe("waitlist promotion resume", () => {
     const reviewRefuse = open.indexOf('decision === "review"');
     const issue = open.indexOf("issueResumeToken");
     assert.ok(reviewRefuse !== -1 && issue !== -1 && reviewRefuse < issue);
+    const closed = open.indexOf("isClosedResumeStatus(app.status)");
+    assert.ok(closed !== -1 && closed < issue);
+    assert.doesNotMatch(open, /\["declined", "closed"\]/);
     assert.doesNotMatch(open, /applicationFromPromotion/);
+    for (const status of ["approved", "active", "suspended", "declined", "closed", "duplicate", "complete"]) {
+      assert.equal(isClosedResumeStatus(status), true);
+    }
+    assert.equal(isClosedResumeStatus("partial"), false);
+    assert.equal(isClosedResumeStatus("new"), false);
+    assert.equal(isClosedResumeStatus("  Approved "), true);
 
     const promoted = "11111111-1111-4111-8111-111111111111";
     assert.equal(

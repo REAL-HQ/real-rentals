@@ -27,9 +27,7 @@ import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
-
-/** Duplicated so this file does not import the resume module while the flag is off. */
-const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 /*
  * ONE application, TWO parts.

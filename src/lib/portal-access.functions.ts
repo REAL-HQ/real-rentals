@@ -1,8 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-/** Duplicated so this module does not import the resume module while the flag is off. */
-const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { APPLICATION_RESUME_ENABLED, isClosedResumeStatus } from "@/lib/application-resume-flag";
 
 /**
  * Stage-based access for signed-in people who are not (yet) drivers: Lead /
@@ -153,7 +151,7 @@ export const openMyApplication = createServerFn({ method: "POST" })
       }
     }
     if (!app) throw new Error("No application is linked to this account.");
-    if (["declined", "closed"].includes(String(app.status))) throw new Error("This application is closed. Contact us to reopen it.");
+    if (isClosedResumeStatus(app.status)) throw new Error("This application is closed. Contact us to reopen it.");
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
     const raw = await issueResumeToken(supabaseAdmin, app.id, { recovery: true });
     return { path: `/thank-you?t=${encodeURIComponent(raw)}` };

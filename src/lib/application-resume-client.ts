@@ -1,10 +1,9 @@
 import { supabase } from "@/integrations/supabase/client";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 import {
-  APPLICATION_RESUME_ENABLED,
   OWN_DRAFT_COLUMNS,
   continueDraft,
   snapshotFromOwnRow,
-  stashedTokenContinuesApplication,
   type ContinueDraft,
 } from "@/lib/application-resume";
 
@@ -16,8 +15,6 @@ import {
  */
 export async function loadContinueDraft(): Promise<ContinueDraft | null> {
   if (APPLICATION_RESUME_ENABLED !== true) return null;
-  // The argument stays empty on purpose. There is no stash to honor.
-  if (stashedTokenContinuesApplication(null)) return null;
 
   const { data } = await supabase.auth.getSession();
   const uid = data.session?.user?.id ?? null;

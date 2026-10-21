@@ -14,9 +14,7 @@ import { HeroQuoteBar } from "@/components/site/HeroQuoteBar";
 import { StickyCallBar } from "@/components/site/StickyCallBar";
 import { DEFAULT_BUSINESS_PHONE } from "@/lib/company";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
-
-/** Duplicated so this route does not import the resume module while the flag is off. */
-const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 const FAQS = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },

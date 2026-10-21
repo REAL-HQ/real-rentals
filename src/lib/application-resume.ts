@@ -1,13 +1,12 @@
 /**
- * Application resume. The flag is a hard false constant. Routes duplicate it
- * and do not import this module until the check passes, so a flag-off visit
- * to / or /apply never loads it.
+ * Application resume rules. The flag lives in application-resume-flag.ts.
+ * Routes import that light module and do not import this file until the
+ * check passes, so a flag-off visit to / or /apply never loads it.
  *
  * Nothing here writes, sends mail, or talks to the database. The browser
- * loader in application-resume-client.ts reads with the applicant's own
- * session or the existing resume-token endpoint.
+ * loader in application-resume-client.ts reads with the applicant's own session.
  */
-export const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+import { isClosedResumeStatus } from "@/lib/application-resume-flag";
 
 /** Columns a signed-in applicant may read for their own draft. No contact secrets, no staff fields, no payment fields. */
 export const OWN_DRAFT_COLUMNS = [
@@ -33,16 +32,6 @@ export const OWN_DRAFT_COLUMNS = [
 ].join(",");
 
 export const RESUME_STEP_TOTAL = 4;
-
-const CLOSED_STATUSES = new Set([
-  "approved",
-  "active",
-  "suspended",
-  "declined",
-  "closed",
-  "duplicate",
-  "complete",
-]);
 
 const DURATION_LABELS: Record<string, string> = {
   "1_month": "1 Month",
@@ -275,7 +264,7 @@ export function progressFromWizard(row: Parameters<typeof snapshotFromWizard>[0]
 
 export function isOpenDraft(snapshot: ResumeSnapshot): boolean {
   if (snapshot.deleted) return false;
-  if (CLOSED_STATUSES.has(snapshot.status.trim().toLowerCase())) return false;
+  if (isClosedResumeStatus(snapshot.status)) return false;
   return !progressFromSnapshot(snapshot).complete;
 }
 
@@ -323,22 +312,31 @@ export function continueDraft(snapshot: ResumeSnapshot, canOpenWizard: boolean):
 }
 
 /**
- * A resume token left in this tab is whoever used the device last.
- * sessionStorage is shared by the next person who sits down at that tab.
- * It never authorizes Continue Your Application. A signed-in applicant is
- * read from their own row. An explicit resume link still arrives as a URL
- * token on /thank-you, which this banner does not consult.
- */
-export function stashedTokenContinuesApplication(_stashedToken: string | null): boolean {
-  return false;
-}
-
-/**
  * The link promotion already minted. Same address resumeUrl() builds for
  * /thank-you. Plaintext exists only in the admin session that just promoted.
  */
 export function resumeLinkForToken(token: string): string {
   return `https://drivereal.com/thank-you?t=${encodeURIComponent(token)}`;
+}
+
+export type PromotionResumeLink = { href: string; name: string };
+
+/**
+ * A resume link is shown only for a promotion that succeeded and minted a
+ * token, and only with the applicant's name. A failed promotion, an identity
+ * review, a link to an existing application, or a missing name leaves nothing
+ * on screen, so a previous person's link cannot stay up unlabeled.
+ */
+export function resumeLinkForPromotion(input: {
+  ok: boolean;
+  token?: string | null;
+  name?: string | null;
+}): PromotionResumeLink | null {
+  if (!input.ok) return null;
+  const token = typeof input.token === "string" ? input.token.trim() : "";
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!token || !name) return null;
+  return { href: resumeLinkForToken(token), name };
 }
 
 /**
