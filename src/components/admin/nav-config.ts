@@ -31,6 +31,7 @@ import {
   FileSpreadsheet,
   HeartPulse,
   BarChart3,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -45,6 +46,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 
 export type TabDef = {
   id: string;
@@ -152,6 +154,16 @@ function spliceAfter<T extends { id: string }>(entries: T[], afterId: string, it
   next.splice(at === -1 ? next.length : at + 1, 0, item);
   return next;
 }
+
+/** Shown only while Today's Ops is compiled on. Kept out of TABS so a dark build cannot list it. */
+const TODAYS_OPS_TAB: TabDef = {
+  id: "todays_ops",
+  label: "Today's Ops",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "HOME",
+  description: "Pickups, Returns, Payments And Open Issues For Today",
+};
 
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
@@ -305,6 +317,9 @@ function insertFunnel(tabs: TabDef[]): TabDef[] {
 
 function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   let next = tabs;
+  if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, "overview", TODAYS_OPS_TAB);
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
@@ -355,6 +370,9 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "overview", { ...TODAYS_OPS_TAB, href: "todays_ops" });
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
@@ -390,6 +408,70 @@ export const CREATE_ACTIONS: readonly CreateAction[] = [
   { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];
+
+/**
+ * Where the admin shell is. An unknown tab renders Overview. A direct link to
+ * a flag-gated screen falls back while that flag is off, including before the
+ * role lookup returns.
+ */
+export function resolveAdminTab(args: {
+  urlTab: string | null;
+  tier: StaffTier | null;
+  navTabs: readonly { id: string }[];
+}): string {
+  if (args.urlTab === "settings") return "settings";
+  if (args.urlTab === "finance") {
+    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance";
+  }
+  if (args.urlTab === "vehicle_profit") {
+    if (!VEHICLE_PROFITABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "vehicle_profit";
+  }
+  if (args.urlTab === "incident_board") {
+    if (!INCIDENT_BOARD_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
+    return "incident_board";
+  }
+  if (args.urlTab === "fleet_availability") {
+    if (!FLEET_AVAILABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
+    return "fleet_availability";
+  }
+  if (args.urlTab === "partner_statement") {
+    if (!PARTNER_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "partner_statement";
+  }
+  if (args.urlTab === "owner_pnl") {
+    if (!OWNER_PNL_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "owner_pnl";
+  }
+  if (args.urlTab === "expense_entry") {
+    if (!OWNER_EXPENSE_ENTRY_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "expense_entry";
+  }
+  if (args.urlTab === "accountant_export") {
+    if (!ACCOUNTANT_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "accountant_export";
+  }
+  if (args.urlTab === "payout_breakdown") {
+    if (!PAYOUT_BREAKDOWN_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "payout_breakdown";
+  }
+  if (args.urlTab === "billing_health") {
+    if (!BILLING_HEALTH_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "billing_health";
+  }
+  if (args.urlTab === "funnel") {
+    if (!APPLICANT_FUNNEL_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "funnel";
+  }
+  if (args.urlTab === "todays_ops") {
+    if (!TODAYS_OPS_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "todays_ops";
+  }
+  if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
+  if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
+  return args.urlTab;
+}
 
 export function visibleCreateActions(tier: StaffTier | null): CreateAction[] {
   return CREATE_ACTIONS.filter((a) => tierAllows(tier, a.minTier));

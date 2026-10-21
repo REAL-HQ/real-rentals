@@ -219,3 +219,18 @@ export function buildCollectionsWatch(input: {
   const dueSoon = [...fromInvoices, ...fromPeriods].sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "") || a.id.localeCompare(b.id));
   return { overdue, failedCharges, dueSoon, upcomingInvoiceNote: UPCOMING_INVOICE_NOTE };
 }
+
+/**
+ * Payments statuses the Overview card and the Payments overdue filter share.
+ * `current` is issued and not yet due, so it is absent. This list does not call Stripe.
+ */
+export const COLLECTIONS_WATCH_STATUSES = [
+  "late",
+  "past_due",
+  "collections",
+  "overdue",
+  "failed",
+  "unpaid",
+] as const;
+
+export type CollectionsWatchPaymentStatus = (typeof COLLECTIONS_WATCH_STATUSES)[number];
