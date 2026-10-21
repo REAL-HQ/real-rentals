@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,6 +72,9 @@ export const Route = createFileRoute("/portal")({
   }),
   component: Portal,
 });
+
+/** Duplicated so this route does not import the checklist module while the flag is off. */
+const PICKUP_CHECKLIST_ENABLED: boolean = false as boolean;
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -1353,6 +1356,27 @@ function PreRentalPanel({
   );
 }
 
+function PickupChecklistSlot({ onNavigate }: { onNavigate: (tab: "documents" | "payments") => void }) {
+  const previewId = usePreviewDriver();
+  const [card, setCard] = useState<ReactNode>(null);
+  useEffect(() => {
+    if (PICKUP_CHECKLIST_ENABLED !== true) return;
+    if (previewId) return;
+    let live = true;
+    void import("@/lib/pickup-checklist-client").then(async (mod) => {
+      const checklist = await mod.loadPickupChecklist();
+      if (!live || !checklist) return;
+      const ui = await import("@/components/portal/PickupChecklistCard");
+      if (!live) return;
+      setCard(<ui.PickupChecklistCard checklist={checklist} onNavigate={onNavigate} />);
+    });
+    return () => {
+      live = false;
+    };
+  }, [onNavigate, previewId]);
+  return card;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1367,6 +1391,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      {PICKUP_CHECKLIST_ENABLED === true ? <PickupChecklistSlot onNavigate={onNavigate} /> : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
