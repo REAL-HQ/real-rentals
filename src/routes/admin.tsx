@@ -73,6 +73,8 @@ import { RevenueForecastPanel } from "@/components/admin/RevenueForecastPanel";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 import { ReceivablesAgingPanel } from "@/components/admin/ReceivablesAgingPanel";
 import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
+import { DepositLedgerPanel } from "@/components/admin/DepositLedgerPanel";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -387,6 +389,11 @@ function Admin() {
     if (urlTab === "receivables_aging") {
       if (!RECEIVABLES_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "receivables_aging";
+    }
+    // Deposit Ledger is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "deposit_ledger") {
+      if (!DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "deposit_ledger";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -916,6 +923,7 @@ function Admin() {
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
+            {DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger" && <DepositLedgerPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

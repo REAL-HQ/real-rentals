@@ -51,6 +51,7 @@ import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 
 export type TabDef = {
   id: string;
@@ -187,6 +188,16 @@ const AGING_TAB: TabDef = {
   minTier: "manager",
   group: "BUSINESS",
   description: "Unpaid Rent By How Long It Has Been Due",
+};
+
+/** Shown only while Deposit Ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const DEPOSIT_TAB: TabDef = {
+  id: "deposit_ledger",
+  label: "Deposit Ledger",
+  icon: Banknote,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Security Deposits Held, Due Back, Or Unknown",
 };
 
 /** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
@@ -372,6 +383,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
   if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push(AGING_TAB);
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push(DEPOSIT_TAB);
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
@@ -434,6 +446,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push({ ...AGING_TAB, href: "receivables_aging" });
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
@@ -523,6 +536,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "receivables_aging") {
     if (!RECEIVABLES_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "receivables_aging";
+  }
+  if (args.urlTab === "deposit_ledger") {
+    if (!DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "deposit_ledger";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";

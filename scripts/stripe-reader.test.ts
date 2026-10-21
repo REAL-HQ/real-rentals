@@ -40,6 +40,7 @@ const READERS = [
   "src/lib/weekly-cash-flow-read.server.ts",
   "src/lib/stripe-collections.server.ts",
   "src/lib/partner-statement-read.server.ts",
+  "src/lib/deposit-ledger-stripe.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
