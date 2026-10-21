@@ -163,8 +163,15 @@ console.log("\nTHE NEW SURFACES CANNOT LEAK A RESTRICTED DOCUMENT");
      "the list query still excludes restricted rows for non-Owners");
   ok(/export const ownerListVerificationRecordings[\s\S]{0,400}requireOwner/.test(docsFn),
      "recordings remain behind their own Owner-only function");
-  ok(/await requireStaff\(context\.userId\)/.test(docsFn),
-     "and the list is still Coordinator-and-above only");
+  // The list returns storage paths. Coordinator-and-above was the earlier
+  // gate; the reviewed position is Manager, which is stricter. Requiring
+  // requireStaff here would only pass if that gate were lowered again.
+  const listFn = docsFn.slice(
+    docsFn.indexOf("export const adminListDriverDocuments"),
+    docsFn.indexOf("export const ownerListVerificationRecordings"),
+  );
+  ok(/await requireManager\(context\.userId\)/.test(listFn),
+     "and the list is Manager-and-above — storage paths are not a Coordinator read");
 
   // The drawer must not have reached around the server function.
   ok(!/from\("documents"\)/.test(panel.slice(panel.indexOf("function DriverDetail"))),

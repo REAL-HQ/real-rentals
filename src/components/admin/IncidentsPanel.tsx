@@ -11,6 +11,8 @@ import {
   INCIDENT_TYPES,
   type Incident,
 } from "@/lib/incidents.functions";
+import { incidentSeedForIssue } from "@/lib/driver-issues.functions";
+import type { IssueIncidentSeed } from "@/lib/driver-issues";
 import { fmtDateTime } from "@/lib/date-format";
 
 type VehicleLite = {
@@ -30,9 +32,10 @@ function money(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-export function IncidentsPanel() {
+export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | null }) {
   const fetchList = useServerFn(listIncidents);
   const remove = useServerFn(deleteIncident);
+  const fetchSeed = useServerFn(incidentSeedForIssue);
 
   const [rows, setRows] = useState<Incident[]>([]);
   const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
@@ -40,6 +43,7 @@ export function IncidentsPanel() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState<Incident | "new" | null>(null);
+  const [seed, setSeed] = useState<IssueIncidentSeed | null>(null);
 
   async function load() {
     setLoading(true);
@@ -63,6 +67,24 @@ export function IncidentsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
+  useEffect(() => {
+    if (!seedIssueId) return;
+    let cancelled = false;
+    void fetchSeed({ data: { id: seedIssueId } })
+      .then((next) => {
+        if (cancelled || !next) return;
+        setSeed(next);
+        setEditing("new");
+      })
+      .catch(() => {
+        /* The incidents list still works if the issue cannot be read. */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedIssueId]);
+
   const openCount = rows.filter((r) => r.status !== "closed" && r.status !== "written_off").length;
 
   return (
@@ -73,7 +95,10 @@ export function IncidentsPanel() {
           {openCount > 0 ? <StatusPill tone="amber">{openCount} open</StatusPill> : null}
         </div>
         <button
-          onClick={() => setEditing("new")}
+          onClick={() => {
+            setSeed(null);
+            setEditing("new");
+          }}
           className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90"
         >
           <Plus className="w-4 h-4" /> Log Incident
@@ -193,7 +218,9 @@ export function IncidentsPanel() {
 
       {editing ? (
         <IncidentForm
+          key={editing === "new" ? (seed ? `seed-${seedIssueId ?? "x"}` : "blank") : editing.id}
           incident={editing === "new" ? null : editing}
+          seed={editing === "new" ? seed : null}
           vehicles={vehicles}
           vendors={vendors}
           onClose={() => setEditing(null)}
@@ -218,12 +245,14 @@ function Fig({ label, text, strong }: { label: string; text: string; strong?: bo
 
 function IncidentForm({
   incident,
+  seed,
   vehicles,
   vendors,
   onClose,
   onSaved,
 }: {
   incident: Incident | null;
+  seed?: IssueIncidentSeed | null;
   vehicles: VehicleLite[];
   vendors: Vendor[];
   onClose: () => void;
@@ -231,11 +260,11 @@ function IncidentForm({
 }) {
   const save = useServerFn(saveIncident);
   const [f, setF] = useState({
-    vehicleId: incident?.vehicle_id ?? vehicles[0]?.id ?? "",
-    incidentType: incident?.incident_type ?? "accident",
-    occurredAt: (incident?.occurred_at ?? new Date().toISOString()).slice(0, 16),
+    vehicleId: incident?.vehicle_id ?? seed?.vehicleId ?? (seed ? "" : vehicles[0]?.id ?? ""),
+    incidentType: incident?.incident_type ?? seed?.incidentType ?? "accident",
+    occurredAt: (incident?.occurred_at ?? seed?.occurredAt ?? new Date().toISOString()).slice(0, 16),
     location: incident?.location ?? "",
-    description: incident?.description ?? "",
+    description: incident?.description ?? seed?.description ?? "",
     atFault: incident?.at_fault ?? "unknown",
     injuries: incident?.injuries ?? false,
     drivable: incident?.drivable ?? null,
@@ -327,7 +356,12 @@ function IncidentForm({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-[#EDEDF0] sticky top-0 bg-white">
-          <h3 className="font-semibold">{incident ? "Edit Incident" : "Log Incident"}</h3>
+          <div>
+            <h3 className="font-semibold">{incident ? "Edit Incident" : "Log Incident"}</h3>
+            {seed && !incident ? (
+              <p className="text-[12px] text-[#55555E]">Prefilled from a driver issue. Nothing is saved until you log it.</p>
+            ) : null}
+          </div>
           <button onClick={onClose} className="text-[#55555E] hover:text-[#111114]">
             <X className="w-4 h-4" />
           </button>
