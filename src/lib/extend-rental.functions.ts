@@ -98,8 +98,8 @@ export const loadExtendContext = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ rentalId: z.string().uuid() }).strict().parse(input))
   .handler(async ({ data, context }): Promise<ExtendRentalContext> => {
-    await requireManager(context.userId);
     if (!EXTEND_RENTAL_ENABLED) throw new Error(DISABLED);
+    await requireManager(context.userId);
     const { data: row, error } = await (context.supabase as any)
       .from("rentals")
       .select("id,status,end_date,weekly_rate,next_payment_due,stripe_subscription_id")
@@ -130,8 +130,8 @@ export const extendRental = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }): Promise<ExtendRentalResult> => {
-    await requireManager(context.userId);
     if (!EXTEND_RENTAL_ENABLED) throw new Error(DISABLED);
+    await requireManager(context.userId);
     const { data: result, error } = await (context.supabase as any).rpc("extend_rental_tx", {
       _operation_id: data.operationId,
       _rental_id: data.rentalId,

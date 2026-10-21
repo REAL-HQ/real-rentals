@@ -70,7 +70,8 @@ test("server throws on the flag before any read or rpc", () => {
         return at === -1 ? Number.MAX_SAFE_INTEGER : at;
       }),
     );
-    assert.ok(flag !== -1 && flag < io, name);
+    const role = body.indexOf("requireManager");
+    assert.ok(flag !== -1 && flag < role && role < io, name);
   }
   assert.match(server, /requireManager/);
   assert.equal(server.includes("stripe.subscriptions.update("), false);
