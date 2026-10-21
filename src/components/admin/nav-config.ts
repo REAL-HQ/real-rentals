@@ -36,6 +36,7 @@ import {
   CalendarRange,
   RotateCcw,
   RefreshCw,
+  BadgeCheck,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -65,6 +66,8 @@ import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { RENEWAL_CANDIDATES_ENABLED } from "@/lib/renewal-candidates-flag";
+
 export type TabDef = {
   id: string;
   label: string;
@@ -220,6 +223,16 @@ const RENEWALS_DUE_TAB: TabDef = {
   minTier: "manager",
   group: "RENTALS",
   description: "Active Rentals With A Billing Or End Date In The Next 7 Days",
+};
+
+/** Shown only while Renewal Candidates is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RENEWAL_CANDIDATES_TAB: TabDef = {
+  id: "renewal_candidates",
+  label: "Renewal Candidates",
+  icon: BadgeCheck,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Active Rentals Ending Within 14 Days With Good Payment History",
 };
 
 /** Shown only while Fleet Calendar is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -523,6 +536,9 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
     next = spliceAfter(next, "bookings", RENEWALS_DUE_TAB);
   }
+  if (RENEWAL_CANDIDATES_ENABLED === true && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, next.some((tab) => tab.id === "renewals_due") ? "renewals_due" : "bookings", RENEWAL_CANDIDATES_TAB);
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
@@ -591,6 +607,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   }
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "bookings", { ...RENEWALS_DUE_TAB, href: "renewals_due" });
+  }
+  if (RENEWAL_CANDIDATES_ENABLED === true && tierAllows(tier, "manager")) {
+    const after = entries.some((tab) => tab.id === "renewals_due") ? "renewals_due" : "bookings";
+    entries = spliceAfter(entries, after, { ...RENEWAL_CANDIDATES_TAB, href: "renewal_candidates" });
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
@@ -729,6 +749,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "renewals_due") {
     if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "renewals_due";
+  }
+  if (args.urlTab === "renewal_candidates") {
+    if (RENEWAL_CANDIDATES_ENABLED !== true || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "renewal_candidates";
   }
   if (args.urlTab === "stripe_payout_recon") {
     if (!STRIPE_PAYOUT_RECON_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";

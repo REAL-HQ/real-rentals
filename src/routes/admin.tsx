@@ -93,6 +93,8 @@ import { OwnerFinanceSnapshotPanel } from "@/components/admin/OwnerFinanceSnapsh
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RenewalsDue } from "@/components/admin/RenewalsDue";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { RenewalCandidates } from "@/components/admin/RenewalCandidates";
+import { RENEWAL_CANDIDATES_ENABLED } from "@/lib/renewal-candidates-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -459,6 +461,11 @@ function Admin() {
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "renewals_due";
+    }
+    // Renewal Candidates is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "renewal_candidates") {
+      if (RENEWAL_CANDIDATES_ENABLED !== true || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "renewal_candidates";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -944,6 +951,7 @@ function Admin() {
             {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
             {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && <OwnerFinanceSnapshotPanel />}
             {RENEWALS_DUE_ENABLED && tab === "renewals_due" && <RenewalsDue />}
+            {RENEWAL_CANDIDATES_ENABLED === true && tab === "renewal_candidates" && <RenewalCandidates />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
