@@ -14,6 +14,9 @@ import { persistConfirmedDocument } from "../src/lib/documents.functions";
 import {
   assertServiceRoleKey,
   backfillLicenseContentSha,
+  classifyStorageFailure,
+  contentShaBackfillExitCode,
+  isRecordedHash,
   readDotenvAssignment,
   resolveSupabaseUrl,
   targetHost,
@@ -313,7 +316,37 @@ if (readDotenvAssignment('SUPABASE_URL="https://hosted.example"\n', "SUPABASE_UR
 }
 
 const otherHash = "ab".repeat(32);
-function licenseAdmin(rows: { content_sha256: string | null; id: string }[], info: { error: { message: string; statusCode: string } | null; data: { id: string } | null }) {
+if (!isRecordedHash(otherHash) || !isRecordedHash(otherHash.toUpperCase()) || isRecordedHash("zz".repeat(32))) {
+  throw new Error("isRecordedHash did not normalize 64 hex");
+}
+if (classifyStorageFailure({ message: "Object not found" }, false) !== "error") {
+  throw new Error("a not-found message without status 404 was counted missing");
+}
+if (classifyStorageFailure({ message: "NoSuchKey", statusCode: "404" }, false) !== "missing") {
+  throw new Error("HTTP 404 was not counted missing");
+}
+const emptyCounts = { hashed: 0, skipped: 0, missing: 0, mismatched: 0, pending: 0, storageErrors: 0 };
+if (contentShaBackfillExitCode(false, { ...emptyCounts, missing: 1 }) !== 0) {
+  throw new Error("dry-run missing exited");
+}
+if (contentShaBackfillExitCode(true, { ...emptyCounts, missing: 1 }) !== 1) {
+  throw new Error("write missing did not exit");
+}
+if (contentShaBackfillExitCode(true, { ...emptyCounts, mismatched: 1 }) !== 1) {
+  throw new Error("write mismatched did not exit");
+}
+if (contentShaBackfillExitCode(false, { ...emptyCounts, storageErrors: 1 }) !== 1) {
+  throw new Error("storage_errors did not exit");
+}
+type StorageResult = {
+  data: Blob | { id: string } | null;
+  error: { message: string; statusCode?: string; status?: number } | null;
+};
+function licenseAdmin(
+  rows: { content_sha256: string | null; id: string }[],
+  info: StorageResult,
+  download?: StorageResult | "throw500",
+) {
   let downloads = 0;
   const rpcArgs: unknown[] = [];
   const admin = {
@@ -343,6 +376,12 @@ function licenseAdmin(rows: { content_sha256: string | null; id: string }[], inf
           async info() { return info; },
           async download() {
             downloads += 1;
+            if (download === "throw500") {
+              const failure = new Error("Internal Server Error") as Error & { statusCode: string };
+              failure.statusCode = "500";
+              throw failure;
+            }
+            if (download) return download;
             return { data: new Blob([frontBytes]), error: null };
           },
         };
@@ -386,6 +425,41 @@ const absentWrite = await backfillLicenseContentSha(absent.admin, { write: true 
 if (absentWrite.missing !== 1 || absentWrite.storageErrors !== 0) {
   throw new Error(`missing object was a storage error: ${JSON.stringify(absentWrite)}`);
 }
+const upper = licenseAdmin([{ id: "upper", content_sha256: frontDigest.toUpperCase() }], { data: { id: "obj" }, error: null });
+const upperWrite = await backfillLicenseContentSha(upper.admin, { write: true });
+if (upperWrite.skipped !== 1 || upperWrite.mismatched !== 0 || upper.downloads() !== 1 || upper.rpcArgs.length !== 0) {
+  throw new Error(`uppercase hash was not a match: ${JSON.stringify(upperWrite)} downloads=${upper.downloads()}`);
+}
+const serverError = licenseAdmin(
+  [{ id: "boom", content_sha256: null }],
+  { data: { id: "obj" }, error: null },
+  { data: null, error: { message: "Object not found", statusCode: "500" } },
+);
+let serverThrew = false;
+let serverWrite: Awaited<ReturnType<typeof backfillLicenseContentSha>> | null = null;
+try {
+  serverWrite = await backfillLicenseContentSha(serverError.admin, { write: true });
+} catch {
+  serverThrew = true;
+}
+if (serverThrew || !serverWrite || serverWrite.storageErrors !== 1 || serverWrite.missing !== 0 || serverError.rpcArgs.length !== 0) {
+  throw new Error(`download 500 threw or was counted missing: threw=${serverThrew} ${JSON.stringify(serverWrite)}`);
+}
+const thrownServer = licenseAdmin(
+  [{ id: "thrown", content_sha256: null }],
+  { data: { id: "obj" }, error: null },
+  "throw500",
+);
+let thrownServerError = false;
+let thrownWrite: Awaited<ReturnType<typeof backfillLicenseContentSha>> | null = null;
+try {
+  thrownWrite = await backfillLicenseContentSha(thrownServer.admin, { write: true });
+} catch {
+  thrownServerError = true;
+}
+if (thrownServerError || !thrownWrite || thrownWrite.storageErrors !== 1 || thrownWrite.missing !== 0) {
+  throw new Error(`thrown download 500 was not a storage error: threw=${thrownServerError} ${JSON.stringify(thrownWrite)}`);
+}
 
 if (/[0-9a-f]{64}/i.test(proof)) {
   throw new Error("functional proof contains a 64-hex literal");
@@ -393,31 +467,34 @@ if (/[0-9a-f]{64}/i.test(proof)) {
 
 const samples = ["m2-license-front-v1", "m2-license-back-v1", "m2-signed-agreement-v1", "signed terms"];
 const url = process.env.M2_DATABASE_URL;
-if (!url) throw new Error("M2_DATABASE_URL is required");
-
-const { default: postgres } = await import("postgres");
-const sql = postgres(url, { max: 1 });
-try {
-  for (const sample of samples) {
-    const app = await contentSha256Hex(new TextEncoder().encode(sample));
-    const [row] = await sql<{ digest: string }[]>`
-      select encode(extensions.digest(convert_to(${sample}, 'UTF8'), 'sha256'), 'hex') as digest
-    `;
-    if (app !== row.digest) {
-      throw new Error(`hash mismatch for ${JSON.stringify(sample)}: app ${app} postgres ${row.digest}`);
+if (!url) {
+  console.log("skip: M2_DATABASE_URL is not set, so the extensions.digest comparison did not run.");
+  console.log("usage: M2_DATABASE_URL=postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable bun scripts/m2-content-sha.test.ts");
+} else {
+  const { default: postgres } = await import("postgres");
+  const sql = postgres(url, { max: 1 });
+  try {
+    for (const sample of samples) {
+      const app = await contentSha256Hex(new TextEncoder().encode(sample));
+      const [row] = await sql<{ digest: string }[]>`
+        select encode(extensions.digest(convert_to(${sample}, 'UTF8'), 'sha256'), 'hex') as digest
+      `;
+      if (app !== row.digest) {
+        throw new Error(`hash mismatch for ${JSON.stringify(sample)}: app ${app} postgres ${row.digest}`);
+      }
+      if (!/^[0-9a-f]{64}$/.test(app)) throw new Error(`digest is not 64 hex for ${sample}`);
     }
-    if (!/^[0-9a-f]{64}$/.test(app)) throw new Error(`digest is not 64 hex for ${sample}`);
+    const [front] = await sql<{ digest: string }[]>`
+      select encode(extensions.digest(convert_to('m2-license-front-v1', 'UTF8'), 'sha256'), 'hex') as digest
+    `;
+    const [back] = await sql<{ digest: string }[]>`
+      select encode(extensions.digest(convert_to('m2-license-back-v1', 'UTF8'), 'sha256'), 'hex') as digest
+    `;
+    if (front.digest === back.digest) throw new Error("front and back digests must differ");
+    console.log("content sha matches extensions.digest");
+    console.log(`front ${front.digest}`);
+    console.log(`back ${back.digest}`);
+  } finally {
+    await sql.end();
   }
-  const [front] = await sql<{ digest: string }[]>`
-    select encode(extensions.digest(convert_to('m2-license-front-v1', 'UTF8'), 'sha256'), 'hex') as digest
-  `;
-  const [back] = await sql<{ digest: string }[]>`
-    select encode(extensions.digest(convert_to('m2-license-back-v1', 'UTF8'), 'sha256'), 'hex') as digest
-  `;
-  if (front.digest === back.digest) throw new Error("front and back digests must differ");
-  console.log("content sha matches extensions.digest");
-  console.log(`front ${front.digest}`);
-  console.log(`back ${back.digest}`);
-} finally {
-  await sql.end();
 }

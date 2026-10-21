@@ -1,7 +1,10 @@
 /**
  * Live install citations must use the HOSTED-INSTALL step numbers.
- * Historical rehearsal notes are not scanned.
+ * docs/m2-rehearsal.md is scanned, including the recommended install order
+ * and the current-file SHA-256 table. Older narrative that still says
+ * "step N" without "HOSTED-INSTALL" is historical and is not rewritten.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -47,12 +50,67 @@ if (hosted.includes("Step 11 already creates")) {
   throw new Error("HOSTED-INSTALL still says step 11 creates approval_scope");
 }
 
+const rehearsal = read("docs/m2-rehearsal.md");
+const evidence = read("proposed/m2-packet/19b.sql");
+const authRollback = read("proposed/rollback/01-auth-binding.sql");
+const swapRollback = read("proposed/rollback/20-vehicle-swap.sql");
+if (rehearsal.includes("010-auth-binding.sql") || authRollback.includes("010-auth-binding.sql")) {
+  throw new Error("a citation still names 010-auth-binding.sql");
+}
+const recommended = rehearsal.split("## Recommended install order")[1]?.split("\n## ")[0] ?? "";
+if (!recommended.includes("29-row table") || !recommended.includes("`proposed/HOSTED-INSTALL.md`")) {
+  throw new Error("recommended install order does not point at the 29-row HOSTED-INSTALL table");
+}
+const contentShaAt = recommended.indexOf("record-uploaded-content-sha.sql");
+const boundaryAt = recommended.indexOf("00-approval-boundary.sql");
+if (contentShaAt < 0 || boundaryAt < 0 || contentShaAt > boundaryAt) {
+  throw new Error("recommended install order places the approval boundary before content-sha");
+}
+if (!recommended.includes("HOSTED-INSTALL step 2 is `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql`")) {
+  throw new Error("recommended install order does not cite content-sha as HOSTED-INSTALL step 2");
+}
+if (!recommended.includes("HOSTED-INSTALL step 3 is `proposed/m2-with-approval-boundary/00-approval-boundary.sql`")) {
+  throw new Error("recommended install order does not cite the boundary as HOSTED-INSTALL step 3");
+}
+for (const file of [
+  "06b-approval-identity-check.sql",
+  "10b-approval-executor-writes.sql",
+  "19c-agreement-contract.sql",
+  "21-revoke-executor-create.sql",
+]) {
+  if (!recommended.includes(file)) throw new Error(`recommended install order omits ${file}`);
+}
+if (!authRollback.startsWith("-- Rollback for HOSTED-INSTALL step 1: proposed/m2-packet/01.sql")) {
+  throw new Error("rollback 01 does not cite proposed/m2-packet/01.sql as HOSTED-INSTALL step 1");
+}
+if (!swapRollback.startsWith("-- Rollback for HOSTED-INSTALL step 26: proposed/m2-packet/20.sql")) {
+  throw new Error("rollback 20 does not cite proposed/m2-packet/20.sql as HOSTED-INSTALL step 26");
+}
+const evidenceHeader = evidence.split("\n").slice(3, 12).join("\n");
+for (const phrase of [
+  "proposed/m2-packet/19.sql (HOSTED-INSTALL step 23)",
+  "proposed/m2-packet/20.sql (HOSTED-INSTALL step 26)",
+  "proposed/m2-packet/03.sql",
+  "(HOSTED-INSTALL step 5)",
+  "proposed/m2-packet/01.sql",
+  "(HOSTED-INSTALL step 1)",
+]) {
+  if (!evidenceHeader.includes(phrase)) throw new Error(`19b.sql header is missing ${phrase}`);
+}
+if (evidenceHeader.includes("signed-archive-protection-v1.sql") || evidenceHeader.includes("packet step")) {
+  throw new Error("19b.sql header still cites a packet-file step");
+}
+
 const scanned = [
   ["proposed/HOSTED-INSTALL.md", hosted],
   ["proposed/INSTALL.md", install],
   ["proposed/vehicle-swap-v1.sql", swap],
   ["proposed/m2-packet/extend.sql", extend],
   ["proposed/m2-preflight.sql", preflight],
+  ["docs/m2-rehearsal.md", rehearsal],
+  ["proposed/m2-packet/19b.sql", evidence],
+  ["proposed/rollback/01-auth-binding.sql", authRollback],
+  ["proposed/rollback/20-vehicle-swap.sql", swapRollback],
 ];
 const stepAt = /HOSTED-INSTALL step (\d+)/g;
 for (const [name, text] of scanned) {
@@ -84,5 +142,15 @@ if (byFile.get("proposed/m2-with-approval-boundary/record-uploaded-content-sha.s
   throw new Error("content-sha is not step 2");
 }
 if (byFile.get("proposed/m2-packet/21-revoke-executor-create.sql") !== 29) throw new Error("revoke is not step 29");
+
+const shaHeading = rehearsal.indexOf("SHA-256 of the current files:");
+if (shaHeading < 0) throw new Error("rehearsal SHA-256 table is missing");
+const shaTable = rehearsal.slice(shaHeading, rehearsal.indexOf("\n### ", shaHeading));
+const digests = [...shaTable.matchAll(/^\| `([^`]+)` \| `([0-9a-f]{64})` \|$/gm)];
+if (digests.length !== 13) throw new Error(`SHA-256 table has ${digests.length} rows`);
+for (const [, file, digest] of digests) {
+  const actual = createHash("sha256").update(readFileSync(resolve(root, file))).digest("hex");
+  if (actual !== digest) throw new Error(`${file} SHA-256 is ${actual}, table says ${digest}`);
+}
 
 console.log("step citations match HOSTED-INSTALL");

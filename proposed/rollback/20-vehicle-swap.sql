@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 20: proposed/m2-packet/20.sql
+-- Rollback for HOSTED-INSTALL step 26: proposed/m2-packet/20.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

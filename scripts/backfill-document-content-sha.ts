@@ -6,11 +6,14 @@
  * nothing is compared. That 0 is not evidence. The gate is the SQL report in
  * proposed/backfill-document-content-sha.sql.
  *
- * --write downloads each current license object. A row with no 64-hex
- * content_sha256 is hashed through writeUploadedContentSha. A row that
- * already has one is downloaded and compared: a match is skipped, a
- * difference is counted mismatched and is not replaced. Clearing
- * documents.content_sha256 does not remove private.uploaded_content_sha.
+ * --write downloads each current license object. A row whose
+ * content_sha256 is not 64 hex is hashed through writeUploadedContentSha.
+ * A stored hash is compared after lowercasing. A match is skipped, a
+ * difference is counted mismatched and is not replaced. Missing is HTTP
+ * 404. A download 5xx is storage_errors and does not abort the run.
+ * --write exits nonzero when missing, mismatched, or storage_errors is
+ * greater than 0. Clearing documents.content_sha256 does not remove
+ * private.uploaded_content_sha.
  * That table is revoked from service_role and has no policy, so only the
  * table owner can delete the binding row. After that delete, set the
  * document hash back to null and run --write again.
@@ -56,16 +59,33 @@ type LicenseRow = {
 
 type StorageError = { message?: string; status?: number | string; statusCode?: number | string } | null;
 
+export function recordedHashHex(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const hex = value.trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+}
+
 export function isRecordedHash(value: string | null | undefined): boolean {
-  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+  return recordedHashHex(value) !== null;
+}
+
+export function storageHttpStatus(error: unknown): number {
+  if (!error || typeof error !== "object") return 0;
+  const record = error as { status?: unknown; statusCode?: unknown };
+  const status = Number(record.status ?? record.statusCode ?? 0);
+  return Number.isFinite(status) ? status : 0;
 }
 
 export function classifyStorageFailure(error: StorageError, hasId: boolean): "ok" | "missing" | "error" {
   if (!error && hasId) return "ok";
-  const status = Number(error?.status ?? error?.statusCode ?? 0);
-  const message = String(error?.message ?? "");
-  if (status === 404 || /not found/i.test(message)) return "missing";
+  if (storageHttpStatus(error) === 404) return "missing";
   return "error";
+}
+
+export function contentShaBackfillExitCode(write: boolean, counts: ContentShaBackfillCounts): number {
+  if (counts.storageErrors > 0) return 1;
+  if (write && (counts.missing > 0 || counts.mismatched > 0)) return 1;
+  return 0;
 }
 
 export function readDotenvAssignment(text: string, name: string): string | null {
@@ -195,7 +215,8 @@ export async function backfillLicenseContentSha(
       counts.skipped += 1;
       continue;
     }
-    if (isRecordedHash(row.content_sha256)) {
+    const recorded = recordedHashHex(row.content_sha256);
+    if (recorded) {
       if (!options.write) {
         counts.skipped += 1;
         continue;
@@ -203,7 +224,7 @@ export async function backfillLicenseContentSha(
       const hashed = await objectSha(admin, bucket, path);
       if (hashed.kind === "missing") counts.missing += 1;
       else if (hashed.kind === "error") counts.storageErrors += 1;
-      else if (hashed.sha === row.content_sha256) counts.skipped += 1;
+      else if (hashed.sha === recorded) counts.skipped += 1;
       else counts.mismatched += 1;
       continue;
     }
@@ -221,12 +242,33 @@ export async function backfillLicenseContentSha(
       counts.pending += 1;
       continue;
     }
+    let download: { data?: unknown; error?: StorageError };
+    try {
+      download = await admin.storage.from(bucket).download(path);
+    } catch (caught) {
+      const status = storageHttpStatus(caught);
+      if (status === 404) counts.missing += 1;
+      else if (status >= 500 && status <= 599) counts.storageErrors += 1;
+      else throw caught;
+      continue;
+    }
+    const downloadKind = classifyStorageFailure(download?.error ?? null, Boolean(download?.data));
+    if (downloadKind === "missing") {
+      counts.missing += 1;
+      continue;
+    }
+    if (downloadKind === "error") {
+      counts.storageErrors += 1;
+      continue;
+    }
     try {
       await writeUploadedContentSha(admin, bucket, path);
       counts.hashed += 1;
     } catch (caught) {
+      const status = storageHttpStatus(caught);
       const message = caught instanceof Error ? caught.message : String(caught);
-      if (message === "Uploaded object missing" || message === "Uploaded bytes missing" || /not found/i.test(message)) {
+      if (status >= 500 && status <= 599) counts.storageErrors += 1;
+      else if (status === 404 || message === "Uploaded object missing" || message === "Uploaded bytes missing") {
         counts.missing += 1;
       } else if (message.includes("content_sha256_mismatch") || message === "Uploaded object changed") {
         counts.mismatched += 1;
@@ -255,5 +297,5 @@ if (import.meta.main) {
   const { supabaseAdmin } = await import("../src/integrations/supabase/client.server");
   const counts = await backfillLicenseContentSha(supabaseAdmin, { write });
   console.log(formatContentShaBackfill(write ? "write" : "dry-run", counts));
-  if (counts.storageErrors > 0) process.exit(1);
+  if (contentShaBackfillExitCode(write, counts) !== 0) process.exit(1);
 }

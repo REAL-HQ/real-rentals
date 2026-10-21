@@ -1,11 +1,14 @@
 -- Proposed packet step. Not a migration. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- NOT EXECUTED.
 --
--- Install after packet step 19 (corrected signed-archive-protection-v1.sql)
--- and before swap step 20 (proposed/m2-packet/20.sql). The swap SQL lives
--- only in that file. proposed/vehicle-swap-v1.sql is a pointer, not a source.
--- Requires private.record_immutable() from packet step 3, and
--- private.approval_lock() / private.approval_actor() from packet step 1.
+-- Install after proposed/m2-packet/19.sql (HOSTED-INSTALL step 23)
+-- and before proposed/m2-packet/20.sql (HOSTED-INSTALL step 26).
+-- The swap SQL lives only in that file. proposed/vehicle-swap-v1.sql is a
+-- pointer, not a source.
+-- Requires private.record_immutable() from proposed/m2-packet/03.sql
+-- (HOSTED-INSTALL step 5), and private.approval_lock() /
+-- private.approval_actor() from proposed/m2-packet/01.sql
+-- (HOSTED-INSTALL step 1).
 -- This file does not replace those functions and does not weaken their grants.
 --
 -- private.record_agreement_evidence(uuid, uuid, timestamptz, numeric) stays a
