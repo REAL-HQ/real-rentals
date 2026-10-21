@@ -23,7 +23,7 @@ const progress='.identity-build/docs.mjs  147.1kb\n\n⚡ Done in 7ms\n\n  .ident
 const built={status:0,signal:null,stdout:identity.stdout,stderr:progress};
 test('specific successful esbuild progress accepted',()=>checkOutput(identity,built));
 test('additional error after progress rejected',()=>assert.throws(()=>checkOutput(identity,{...built,stderr:progress+'\nerror: failure'})));
-assert.equal(m.suites.filter(x=>x.kind==='application assertions').reduce((a,x)=>a+x.checks,0),126);
+assert.equal(m.suites.filter(x=>x.kind==='application assertions').reduce((a,x)=>a+x.checks,0),130);
 assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,2);
 assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
 test('full source including evidence hashes accepted',()=>checkScope(paths,readFileSync));
