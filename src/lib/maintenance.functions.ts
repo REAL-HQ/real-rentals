@@ -10,6 +10,7 @@ import {
   dueStatus, sortTimeline, netServiceCost, milesDriven, categoryLabel, normalizeCategory, SOURCE_LABELS,
   type DueResult, type TimelineEvent,
 } from "@/lib/maintenance-rules";
+import { mergeSchedules, withHistory } from "@/lib/maintenance-schedule";
 import { scrubMoney } from "@/lib/service-transaction";
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
@@ -27,38 +28,10 @@ async function sha256Hex(bytes: Uint8Array) {
 /** Resolve schedules for a vehicle: company defaults + this vehicle's overrides/extras. */
 async function loadSchedules(sb: any, vehicleId: string) {
   const [{ data: defs }, { data: own }] = await Promise.all([
-    sb.from("maintenance_defaults").select("*").eq("is_active", true).order("item"),
-    sb.from("maintenance_schedules").select("*").eq("vehicle_id", vehicleId).eq("is_active", true),
+    sb.from("maintenance_defaults").select("*").eq("is_active", true).order("item").order("id"),
+    sb.from("maintenance_schedules").select("*").eq("vehicle_id", vehicleId).eq("is_active", true).order("item").order("id"),
   ]);
-  const byDefault = new Map((own ?? []).filter((s: any) => s.default_id).map((s: any) => [s.default_id, s]));
-  const rows: any[] = [];
-  for (const d of defs ?? []) {
-    const s: any = byDefault.get(d.id);
-    rows.push({
-      key: `d:${d.id}`, default_id: d.id, schedule_id: s?.id ?? null, item: d.item, category: d.category,
-      interval_miles: s?.is_override ? s.interval_miles : d.interval_miles,
-      interval_days: s?.is_override ? s.interval_days : d.interval_days,
-      company_miles: d.interval_miles, company_days: d.interval_days, is_override: !!s?.is_override,
-      last_done_on: s?.last_done_on ?? null, last_done_miles: s?.last_done_miles ?? null,
-    });
-  }
-  for (const s of own ?? []) if (!s.default_id) rows.push({
-    key: `s:${s.id}`, default_id: null, schedule_id: s.id, item: s.item, category: s.category,
-    interval_miles: s.interval_miles, interval_days: s.interval_days, company_miles: null, company_days: null,
-    is_override: false, last_done_on: s.last_done_on, last_done_miles: s.last_done_miles,
-  });
-  return rows;
-}
-
-/** Last completed service per normalized category → fills last_done when a schedule row has none. */
-function withHistory(rows: any[], records: any[]) {
-  return rows.map((r) => {
-    if (r.last_done_on) return r;
-    const cat = normalizeCategory(r.item);
-    const hit = records.filter((m) => m.status === "completed" && m.performed_on && (normalizeCategory(m.category) === cat || (m.items ?? []).some((i: any) => normalizeCategory(i.category) === cat)))
-      .sort((a, b) => (a.performed_on < b.performed_on ? 1 : -1))[0];
-    return hit ? { ...r, last_done_on: hit.performed_on, last_done_miles: hit.odometer ?? null } : r;
-  });
+  return mergeSchedules(defs, own);
 }
 
 export const getVehicleService = createServerFn({ method: "POST" })
@@ -71,7 +44,7 @@ export const getVehicleService = createServerFn({ method: "POST" })
     const sb = await admin();
     const [{ data: v }, { data: recs }, { data: readings }, { data: down }] = await Promise.all([
       sb.from("vehicles").select("id,current_odometer,odometer_updated_at,status").eq("id", data.vehicleId).single(),
-      sb.from("maintenance_records").select("*, vendors(name), maintenance_record_items(*)").eq("vehicle_id", data.vehicleId).order("performed_on", { ascending: false, nullsFirst: true }).limit(300),
+      sb.from("maintenance_records").select("*, vendors(name), maintenance_record_items(*)").eq("vehicle_id", data.vehicleId).order("performed_on", { ascending: false, nullsFirst: false }).limit(300),
       sb.from("odometer_readings").select("*").eq("vehicle_id", data.vehicleId).order("observed_on", { ascending: false }).order("mileage", { ascending: false }).limit(500),
       sb.from("vehicle_downtime").select("*").eq("vehicle_id", data.vehicleId).order("started_at", { ascending: false }).limit(50),
     ]);

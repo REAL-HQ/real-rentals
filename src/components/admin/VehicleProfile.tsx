@@ -47,7 +47,7 @@ import { VehicleDocuments } from "./VehicleDocuments";
 import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
-import { MaintenanceDueSchedule, MaintenanceLogHistory } from "./MaintenanceLog";
+import { MaintenanceLogHistory } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import { VehicleTimeline } from "./VehicleTimeline";
 import { BookingVehicleHistory } from "./BookingVehicleHistory";
@@ -331,7 +331,6 @@ export function VehicleProfile({
               )}
               {tab === "service" && (
                 <>
-                  <MaintenanceDueSchedule vehicleId={vehicleId} />
                   {MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}
                   <VehicleService vehicleId={vehicleId} />
                 </>

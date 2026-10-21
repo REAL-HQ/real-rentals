@@ -1,8 +1,8 @@
-// Next Service stays dark, manager/team, and read-only (run: bun scripts/maintenance-due-schedule.test.ts).
+// Next Service stays on the existing Maintenance Due list (run: bun scripts/maintenance-due-schedule.test.ts).
 import { readFileSync } from "node:fs";
 import { MAINTENANCE_DUE_ENABLED } from "../src/lib/maintenance-due";
-import { addCalendarDays } from "../src/lib/maintenance-log";
-import { buildMaintenanceDueSchedule } from "../src/lib/maintenance-due-schedule";
+import { dueStatus } from "../src/lib/maintenance-rules";
+import { mergeSchedules, withHistory, type CompanyDefault, type VehicleSchedule } from "../src/lib/maintenance-schedule";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -11,10 +11,13 @@ const ok = (c: boolean, m: string) => {
 };
 
 const flag = readFileSync("src/lib/maintenance-due.ts", "utf8");
-const rules = readFileSync("src/lib/maintenance-due-schedule.ts", "utf8");
+const rules = readFileSync("src/lib/maintenance-schedule.ts", "utf8");
 const server = readFileSync("src/lib/maintenance-due-schedule.functions.ts", "utf8");
+const service = readFileSync("src/lib/maintenance.functions.ts", "utf8");
+const dueRules = readFileSync("src/lib/maintenance-rules.ts", "utf8");
 const existing = readFileSync("src/lib/maintenance-due.functions.ts", "utf8");
-const ui = readFileSync("src/components/admin/MaintenanceLog.tsx", "utf8");
+const ui = readFileSync("src/components/admin/VehicleService.tsx", "utf8");
+const log = readFileSync("src/components/admin/MaintenanceLog.tsx", "utf8");
 const profile = readFileSync("src/components/admin/VehicleProfile.tsx", "utf8");
 const nav = readFileSync("src/components/admin/nav-config.ts", "utf8");
 
@@ -22,25 +25,34 @@ ok(MAINTENANCE_DUE_ENABLED === false, "MAINTENANCE_DUE_ENABLED is false");
 ok(flag.split("MAINTENANCE_DUE_ENABLED =").length === 2, "the hard-false flag is declared once");
 ok(!rules.includes("MAINTENANCE_DUE_ENABLED ="), "the schedule does not declare a second flag");
 ok(!/process\.env/.test(flag + rules + server), "no environment variable can open the flag");
+ok(server.startsWith("// Maintenance due for one vehicle, using the vehicle-service schedule"), "the header names the vehicle-service computation");
 
 const handler = server.slice(server.indexOf(".handler"));
 const thrown = handler.indexOf("if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED)");
 const role = handler.indexOf("requireManager");
-const read = handler.indexOf('.from("maintenance_records")');
+const read = handler.indexOf('.from("maintenance_defaults")');
 ok(thrown >= 0 && thrown < role && role < read, "the schedule throws before requireManager and before any read");
 ok(thrown < handler.indexOf("import("), "the throw happens before any dynamic import");
 ok(!server.slice(0, server.indexOf("export const listMaintenanceDueSchedule")).includes("roles.server"), "the role module is not a static import");
-ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 3, "service, interval, and vehicle reads each use limit plus one");
+ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 4, "defaults, schedules, records, and the vehicle each use limit plus one");
 ok(
-  server.includes("recordPage.length > LIMIT") &&
-    server.includes("schedulePage.length > LIMIT") &&
-    server.includes("vehiclePage.length > LIMIT"),
+  server.includes("defaults.truncated") &&
+    server.includes("schedules.truncated") &&
+    server.includes("records.truncated") &&
+    server.includes("vehicles.truncated"),
   "a long page sets truncated and is not thrown",
 );
+ok(server.includes("mergeSchedules") && server.includes("withHistory") && server.includes("dueStatus"), "the reader uses the vehicle-service schedule computation");
+ok(service.includes("return mergeSchedules(defs, own)") && service.includes("withHistory("), "vehicle service loads schedules through the same computation");
+ok(rules.includes('m.status === "completed" && m.performed_on'), "only a completed record with performed_on counts as last service");
+ok(server.includes('nullsFirst: false') && service.includes("nullsFirst: false"), "record reads put null dates last");
+ok(!service.includes("nullsFirst: true"), "the vehicle service record read no longer puts null dates first");
+ok(server.includes('.eq("is_active", true)') && rules.includes("is_active !== false"), "inactive defaults and schedules are ignored");
+ok(dueRules.includes('reason = "No Mileage On Record"'), "a mileage interval without a current odometer names that reason");
 ok(!/\.(insert|update|delete|upsert|rpc)\(/.test(server + rules), "the schedule does not write");
 ok(!/stripe|total_cost|notes|labor_cost/i.test(server), "the schedule does not read money, notes, or Stripe");
-ok(server.includes('.select("id,item,performed_on,odometer,schedule_id")'), "service reads are the last logged row");
-ok(server.includes('.select("id,item,interval_days,interval_miles,is_active")'), "intervals are the stored date and mileage intervals");
+ok(server.includes('.from("maintenance_defaults")'), "company defaults are part of the read");
+ok(server.includes("last_done_on,last_done_miles"), "vehicle overrides keep last_done_on");
 
 const existingHandler = existing.slice(existing.indexOf(".handler"));
 const existingGate = existingHandler.indexOf('if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);');
@@ -48,56 +60,117 @@ const existingRole = existingHandler.indexOf("requireManager");
 const existingRead = existingHandler.indexOf('.from("vehicles")');
 ok(existingGate >= 0 && existingGate < existingRole && existingRole < existingRead, "the existing reader also throws before the role check");
 
-ok(ui.indexOf("if (!MAINTENANCE_DUE_ENABLED) return null") < ui.indexOf("useServerFn(listMaintenanceDueSchedule)"), "the schedule returns before its server call");
-ok(ui.includes('title="Next Service"') && ui.includes("Next Service Is Capped"), "the log screen shows Next Service and the cap");
-ok(profile.includes("<MaintenanceDueSchedule vehicleId={vehicleId} />"), "vehicle detail mounts the schedule on the service tab");
+ok(ui.indexOf("if (!MAINTENANCE_DUE_ENABLED) return children") < ui.indexOf("useServerFn(listMaintenanceDueSchedule)"), "the schedule returns before its server call");
+ok(ui.includes('title="Maintenance Due"') && ui.includes('label="Next Service"') && ui.includes("Maintenance Due Is Capped"), "due rows stay on the existing list and Next Service stat");
+ok(!log.includes("listMaintenanceDueSchedule") && !log.includes('title="Next Service"'), "the log screen does not add a second card");
+ok(!profile.includes("MaintenanceDueSchedule"), "vehicle detail does not mount a second card");
 ok(profile.includes("{MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}"), "the log history stays behind its own flag");
+ok(profile.includes("<VehicleService vehicleId={vehicleId} />"), "vehicle detail keeps the existing service list");
 ok(!nav.includes("maintenance_due_schedule"), "there is no new screen");
 
-const today = "2026-10-21";
-const none = buildMaintenanceDueSchedule({ today, currentMiles: 10000, services: [], intervals: [] });
-ok(none.length === 1 && none[0].state === "unknown" && none[0].flag === "Unknown" && none[0].reason === "No Service History", "no history is Unknown");
+type RecordRow = {
+  id: string;
+  status: string;
+  item?: string | null;
+  category?: string | null;
+  performed_on: string | null;
+  odometer: number | null;
+  items?: { category?: string | null }[];
+};
 
-const oil = "10000000-0000-4000-8000-000000000001";
-const tires = "10000000-0000-4000-8000-000000000002";
-const olderOil = "10000000-0000-4000-8000-000000000003";
-const rows = buildMaintenanceDueSchedule({
+function listed(input: {
+  today: string;
+  currentMiles: number | null;
+  defaults: CompanyDefault[];
+  schedules: VehicleSchedule[];
+  records: RecordRow[];
+}) {
+  return withHistory(mergeSchedules(input.defaults, input.schedules), input.records).map((row) => ({
+    ...row,
+    due: dueStatus(row, input.currentMiles, input.today),
+  }));
+}
+
+const today = "2026-10-21";
+const oil = "10000000-0000-4000-8000-0000000000b2";
+const olderOil = "10000000-0000-4000-8000-0000000000a1";
+const defaults: CompanyDefault[] = [
+  { id: "d-tires", item: "Tires", category: "tire_replacement", interval_miles: null, interval_days: 30, is_active: true },
+  { id: "d-brakes", item: "Brakes", category: "brakes", interval_miles: 10000, interval_days: 365, is_active: true },
+  { id: "d-oil", item: "Oil Change", category: "oil_change", interval_miles: 5000, interval_days: 180, is_active: true },
+  { id: "d-align", item: "Alignment", category: "alignment", interval_miles: 1, interval_days: 1, is_active: false },
+];
+const schedules: VehicleSchedule[] = [
+  {
+    id: "s-oil",
+    default_id: "d-oil",
+    item: "Oil Change",
+    category: "oil_change",
+    is_override: true,
+    interval_miles: 7500,
+    interval_days: 180,
+    last_done_on: null,
+    last_done_miles: null,
+    is_active: true,
+  },
+  {
+    id: "s-dead",
+    default_id: null,
+    item: "Inactive Extra",
+    interval_miles: 1,
+    interval_days: 1,
+    is_active: false,
+  },
+];
+const rows = listed({
   today,
-  currentMiles: 14900,
-  services: [
-    { id: olderOil, item: "Oil Change", performedOn: "2026-01-01", odometer: 1000, scheduleId: null },
-    { id: oil, item: "Oil Change", performedOn: "2026-10-01", odometer: 10000, scheduleId: "sched-oil" },
-    { id: tires, item: "Tires", performedOn: "2026-09-01", odometer: 12000, scheduleId: null },
-  ],
-  intervals: [
-    { id: "sched-oil", item: "Oil Change", intervalDays: 30, intervalMiles: 5000, active: true },
-    { id: "sched-tires", item: "Tires", intervalDays: 30, intervalMiles: null, active: true },
-    { id: "sched-other", item: "Brakes", intervalDays: 1, intervalMiles: 1, active: true },
+  currentMiles: 17400,
+  defaults,
+  schedules,
+  records: [
+    { id: olderOil, status: "completed", item: "Oil Change", category: "Oil Change", performed_on: "2026-01-01", odometer: 1000 },
+    { id: "10000000-0000-4000-8000-0000000000c3", status: "open", item: "Oil Change", category: "Oil Change", performed_on: "2026-10-20", odometer: 20000 },
+    { id: "10000000-0000-4000-8000-0000000000d4", status: "completed", item: "Oil Change", category: "Oil Change", performed_on: null, odometer: 20000 },
+    { id: oil, status: "completed", item: "Oil Change", category: "Oil Change", performed_on: "2026-10-01", odometer: 10000 },
+    { id: olderOil, status: "completed", item: "Oil Change", category: "Oil Change", performed_on: "2026-10-01", odometer: 11111 },
   ],
 });
+const names = rows.map((row) => row.item);
+const brakes = rows.find((row) => row.item === "Brakes");
 const oilRow = rows.find((row) => row.item === "Oil Change");
-const tireRow = rows.find((row) => row.item === "Tires");
-ok(oilRow?.lastOn === "2026-10-01" && oilRow.lastMiles === 10000, "the later logged oil service is the one that counts");
-ok(oilRow?.nextOn === "2026-10-31" && oilRow.nextMiles === 15000, "next service adds the date interval and the mileage interval");
-ok(oilRow?.state === "due_soon" && oilRow.flag === "Due Soon", "100 miles remaining is Due Soon and does not use the tire interval");
-ok(tireRow?.nextOn === "2026-10-01" && tireRow.state === "overdue" && tireRow.flag === "Overdue" && tireRow.reason === "20 Days Overdue", "the tire date interval is overdue on its own");
-ok(tireRow?.nextMiles == null, "a tire row with no mileage interval does not borrow the oil interval");
+ok(names.join(",") === "Brakes,Oil Change,Tires", "defaults stay in item order and inactive rows drop out");
+ok(brakes?.due.state === "unknown" && brakes.due.reason === "No Service On Record" && brakes.last_done_on == null, "Brakes with no history stays Unknown");
+ok(oilRow?.is_override === true && oilRow.interval_miles === 7500 && oilRow.company_miles === 5000, "a vehicle override replaces the company interval and keeps the company miles");
+ok(oilRow?.last_done_on === "2026-10-01" && oilRow.last_done_miles === 10000, "the later completed oil service wins, including an equal-date id tie");
+ok(oilRow?.due.state === "due_soon" && oilRow.due.reason === "Due In 100 Miles", "remaining miles use the override interval");
+ok(!rows.some((row) => row.item === "Alignment" || row.item === "Inactive Extra"), "inactive defaults and extra schedules are ignored");
 
-const drifted = buildMaintenanceDueSchedule({
+const sameDay = listed({
+  today,
+  currentMiles: null,
+  defaults: [],
+  schedules: [{ id: "s-brakes", item: "Brakes", interval_miles: 5000, interval_days: null, last_done_on: null, last_done_miles: 1000, is_active: true }],
+  records: [],
+});
+ok(sameDay[0]?.item === "Brakes" && sameDay[0].due.reason === "No Mileage On Record", "Brakes with a mileage interval and no current odometer says No Mileage On Record");
+
+const tied = withHistory(
+  mergeSchedules([], [{ id: "s-oil", item: "Oil Change", interval_miles: 5000, interval_days: null, is_active: true }]),
+  [
+    { id: "b", status: "completed", category: "oil_change", performed_on: "2026-10-01", odometer: 2 },
+    { id: "a", status: "completed", category: "oil_change", performed_on: "2026-10-01", odometer: 1 },
+  ],
+);
+ok(tied[0]?.last_done_miles === 2, "equal performed_on dates break the tie by id");
+
+const spring = listed({
   today: "2026-03-09",
   currentMiles: null,
-  services: [{ id: oil, item: "Oil Change", performedOn: "2026-03-08", odometer: null, scheduleId: "sched-oil" }],
-  intervals: [{ id: "sched-oil", item: "Oil Change", intervalDays: 1, intervalMiles: null, active: true }],
+  defaults: [{ id: "d-oil", item: "Oil Change", interval_miles: null, interval_days: 1, is_active: true }],
+  schedules: [],
+  records: [{ id: oil, status: "completed", category: "Oil Change", performed_on: "2026-03-08", odometer: null }],
 });
-ok(addCalendarDays("2026-03-08", 1) === "2026-03-09" && drifted[0].nextOn === "2026-03-09" && drifted[0].reason === "Due Today", "a spring-forward day still counts as one calendar day");
-
-const bare = buildMaintenanceDueSchedule({
-  today,
-  currentMiles: 1000,
-  services: [{ id: oil, item: "Oil Change", performedOn: "2026-10-01", odometer: 1000, scheduleId: null }],
-  intervals: [],
-});
-ok(bare[0].state === "unknown" && bare[0].reason === "No Interval On Record", "history without an interval stays Unknown");
+ok(spring[0]?.due.dueOn === "2026-03-09" && spring[0].due.reason === "Due Today", "one interval day is the next calendar date");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall next service checks pass");
 process.exit(fails ? 1 : 0);
