@@ -1,5 +1,4 @@
 import { COUNTED_ID_BATCH, readCounted, readInIdBatches } from "./count-paged-read";
-import { READINESS_DOCUMENT_CATEGORIES } from "./driver-readiness-facts";
 import { ONBOARDING_ROW_CAP, ONBOARDING_STATUSES, type OnboardingChecklistResult } from "./onboarding-checklist";
 import { buildOnboardingChecklist } from "./onboarding-checklist-build";
 import type { ReadinessAgreement } from "./driver-readiness-facts";
@@ -44,9 +43,12 @@ export async function loadOnboardingChecklist(admin: {
   const documents = await readInIdBatches(ids, (chunk, from, to) =>
     admin
       .from("documents")
-      .select("id,driver_id,category,is_current,reviewed_at,created_at", { count: "exact" })
+      // No category list. canonicalRequiredDoc trims and maps vault names,
+      // and an exact category match would hide a row that rule still counts.
+      // Superseded rows stay out because is_current is false. A rejected
+      // current row is selected, and review_status keeps it from counting.
+      .select("id,driver_id,category,is_current,review_status,reviewed_at,created_at", { count: "exact" })
       .in("driver_id", chunk)
-      .in("category", [...READINESS_DOCUMENT_CATEGORIES])
       .eq("is_current", true)
       .order("id", { ascending: true })
       .range(from, to),

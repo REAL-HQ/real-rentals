@@ -246,6 +246,58 @@ describe("onboarding checklist", () => {
     assert.equal(pickup?.at, "2026-06-15");
   });
 
+  it("does not count a rejected or superseded upload toward licence or documents", () => {
+    const facts = readinessFacts({
+      application: app({ id: "rej" }),
+      documents: [
+        {
+          driver_id: "rej",
+          category: "license_front",
+          is_current: true,
+          review_status: "rejected",
+          reviewed_at: "2026-04-02T15:00:00.000Z",
+          created_at: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          driver_id: "rej",
+          category: "license_back",
+          is_current: false,
+          review_status: "uploaded",
+          reviewed_at: "2026-04-03T15:00:00.000Z",
+          created_at: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          driver_id: "rej",
+          category: " insurance_card ",
+          is_current: true,
+          review_status: "uploaded",
+          reviewed_at: null,
+          created_at: "2026-04-04T00:00:00.000Z",
+        },
+        {
+          driver_id: "rej",
+          category: "gig_profile",
+          is_current: true,
+          review_status: "verified",
+          reviewed_at: null,
+          created_at: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+      screening: null,
+      agreements: [],
+      payments: [],
+      rentals: [],
+    });
+    assert.equal(facts.find((step) => step.key === "license")?.state, "missing");
+    assert.equal(facts.find((step) => step.key === "license")?.source, null);
+    assert.equal(facts.find((step) => step.key === "documents")?.label, "Documents 2/4");
+    assert.equal(facts.find((step) => step.key === "documents")?.state, "missing");
+    const load = read("src/lib/onboarding-checklist-load.ts");
+    assert.match(load, /review_status/);
+    assert.match(load, /canonicalRequiredDoc/);
+    assert.match(read("src/lib/driver-readiness-facts.ts"), /canonicalRequiredDoc/);
+  });
+
   it("does not treat a refunded deposit as received when the held flag is still true", () => {
     const facts = readinessFacts({
       application: app({ id: "d" }),

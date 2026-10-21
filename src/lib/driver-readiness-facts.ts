@@ -1,3 +1,6 @@
+import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
+import { canonicalRequiredDoc } from "./required-docs";
+
 /**
  * One definition of driver readiness facts.
  *
@@ -13,13 +16,6 @@
  * passed background check is not one either. With no ID-verification column,
  * that fact stays Unknown.
  */
-
-export const READINESS_DOCUMENT_CATEGORIES = [
-  "license_front",
-  "license_back",
-  "insurance",
-  "gig_profile",
-] as const;
 
 export const READINESS_FACT_KEYS = [
   "license",
@@ -86,6 +82,7 @@ export type ReadinessDocument = {
   driver_id: string | null;
   category: string | null;
   is_current: boolean | null;
+  review_status?: string | null;
   reviewed_at: string | null;
   created_at: string | null;
 };
@@ -187,20 +184,18 @@ function liveRental(rental: ReadinessRental): boolean {
   return !CANCELLED_RENTAL.has((rental.status ?? "").toLowerCase());
 }
 
-function currentDocs(id: string, documents: readonly ReadinessDocument[]): ReadinessDocument[] {
-  return documents.filter(
-    (doc) => doc.driver_id === id && doc.is_current === true && text(doc.category) != null,
-  );
-}
-
 function docTime(doc: ReadinessDocument): string | null {
   return text(doc.reviewed_at) ?? text(doc.created_at);
 }
 
+function countedDoc(doc: ReadinessDocument): string | null {
+  return canonicalRequiredDoc(doc);
+}
+
 function licenseFact(id: string, documents: readonly ReadinessDocument[]): ReadinessFact {
-  const mine = currentDocs(id, documents);
-  const front = mine.filter((doc) => doc.category === "license_front");
-  const back = mine.filter((doc) => doc.category === "license_back");
+  const mine = documents.filter((doc) => doc.driver_id === id && countedDoc(doc) != null);
+  const front = mine.filter((doc) => countedDoc(doc) === "license_front");
+  const back = mine.filter((doc) => countedDoc(doc) === "license_back");
   if (front.length === 0 || back.length === 0) {
     return fact("license", READINESS_FACT_LABELS.license, "missing", null, null);
   }
@@ -210,17 +205,17 @@ function licenseFact(id: string, documents: readonly ReadinessDocument[]): Readi
 }
 
 function documentsFact(id: string, documents: readonly ReadinessDocument[]): ReadinessFact {
-  const mine = currentDocs(id, documents);
   const present = new Set<string>();
   let at: string | null = null;
-  for (const doc of mine) {
-    const category = text(doc.category);
-    if (!category || !(READINESS_DOCUMENT_CATEGORIES as readonly string[]).includes(category)) continue;
-    present.add(category);
+  for (const doc of documents) {
+    if (doc.driver_id !== id) continue;
+    const canonical = countedDoc(doc);
+    if (!canonical) continue;
+    present.add(canonical);
     at = later(at, docTime(doc));
   }
   const count = present.size;
-  const total = READINESS_DOCUMENT_CATEGORIES.length;
+  const total = REQUIRED_DOC_TYPES.length;
   const label = `Documents ${count}/${total}`;
   if (count < total) return fact("documents", label, "missing", null, null);
   return fact("documents", label, "done", "Document Vault", at);
