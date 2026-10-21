@@ -37,7 +37,9 @@ ok(!fn.slice(0, fn.indexOf("export const getFleetCalendar")).includes("roles.ser
 ok(!fn.slice(0, fn.indexOf("export const getFleetCalendar")).includes("client.server"), "the admin client is not a static import");
 ok(!/stripe/i.test(fn) && !/stripe/i.test(board) && !/stripe/i.test(panel), "Fleet Calendar does not mention Stripe");
 ok(!/\.(insert|update|delete|upsert|rpc)\(/.test(fn), "the server function does not write");
-ok(fn.includes('.eq("status", "active"') && fn.includes("end_date.is.null"), "active rentals include an open end date");
+ok(fn.includes('.eq("status", "active"') && fn.includes('.is("end_date", null)') && fn.includes('.gte("end_date", weekStart)'), "active rentals include an open end date and a dated end as separate queries");
+ok(!/\.(or|filter)\(\s*`/.test(fn), "calendar filters are not interpolated");
+ok(fn.includes('.gte("performed_on", weekStart)') && fn.includes('.lte("performed_on", weekEnd)') && fn.includes('.gte("due_date", weekStart)') && fn.includes('.lte("due_date", weekEnd)'), "service days use performed_on or due_date as query arguments");
 ok(fn.includes(".in(\"status\", [...PICKUP_STATUSES])") && fn.includes('.not("vehicle_id", "is", null)'), "pickups are scheduled applications that already have a vehicle");
 ok(fn.includes(".in(\"status\", [...OPEN_MAINTENANCE_STATUSES])"), "service blocks use open maintenance record statuses");
 ok(fn.includes('.is("archived_at", null)'), "archived vehicles are not loaded");
