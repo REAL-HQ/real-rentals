@@ -278,7 +278,9 @@ function serverFn(name, input) {
     return { rows: APPLICANTS.map((person) => ({ id: person.id, full_name: person.full_name, email: null, phone: null, created_at: person.created_at, status: person.status })) };
   }
   if (/listConversations/.test(name)) return { unread: 0, conversations: [] };
-  if (/getFleetMaintenance/.test(name)) return { counts: { overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 } };
+  if (/getFleetMaintenance/.test(name)) {
+    return { counts: { overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 }, attention: [], upcoming: [] };
+  }
   if (/listDriverRows/.test(name)) return { rows: [], canSeeSensitive: true };
   if (/listExpiring|getContactStatusHistory/.test(name)) return [];
   return null;
@@ -474,7 +476,90 @@ async function prepare(viewport) {
   return opened;
 }
 
+/**
+ * Phone bars other than Payments. Scroll stays at 0. No style writes.
+ * Maintenance counts come from the vehicles fixture. The vehicles list
+ * server function is not stubbed, so that shot is the toolbar only.
+ */
+async function assertWrappedBar(page, viewport, label) {
+  const placed = await page.evaluate(() => {
+    const bar = document.querySelector(".admin-sticky-bar");
+    const style = getComputedStyle(bar);
+    const box = bar.getBoundingClientRect();
+    const inner = bar.querySelector(":scope > .flex-wrap");
+    const innerStyle = inner ? getComputedStyle(inner) : null;
+    const innerBox = inner ? inner.getBoundingClientRect() : null;
+    return {
+      scrollY: window.scrollY,
+      inline: bar.getAttribute("style"),
+      position: style.position,
+      flexWrap: style.flexWrap,
+      flexDirection: style.flexDirection,
+      overflowX: style.overflowX,
+      scrollLeft: bar.scrollLeft,
+      top: box.top,
+      bottom: box.bottom,
+      left: box.left,
+      right: box.right,
+      height: box.height,
+      innerWrap: innerStyle?.flexWrap ?? null,
+      innerHeight: innerBox?.height ?? null,
+      innerRight: innerBox?.right ?? null,
+    };
+  });
+  console.log(label, JSON.stringify(placed));
+  if (placed.scrollY !== 0) throw new Error(`${label} page was scrolled (${placed.scrollY})`);
+  if (placed.inline) throw new Error(`${label} toolbar has an injected style (${placed.inline})`);
+  if (placed.scrollLeft !== 0) throw new Error(`${label} toolbar is scrolled sideways (${placed.scrollLeft})`);
+  if (placed.position === "sticky") throw new Error(`${label} phone toolbar is sticky`);
+  if (placed.overflowX === "auto" || placed.overflowX === "scroll") throw new Error(`${label} still scrolls sideways (${placed.overflowX})`);
+  if (placed.left < -1 || placed.right > viewport.width + 1) throw new Error(`${label} bar is wider than 390px`);
+  if (placed.top < 0 || placed.bottom > viewport.height) throw new Error(`${label} bar is outside the viewport`);
+  const wrapped = placed.flexWrap === "wrap" || placed.innerWrap === "wrap";
+  const tall = placed.height > 56 || (placed.innerHeight != null && placed.innerHeight > 48);
+  if (!wrapped || !tall) throw new Error(`${label} did not wrap into a taller bar`);
+  return placed;
+}
+
+async function captureWrappedBars() {
+  const viewport = { width: 390, height: 844 };
+  const { ctx, page, errors } = await open(viewport);
+  await page.goto(`${BASE}/admin?tab=maintenance`, { waitUntil: "domcontentloaded" });
+  await assertUtcBrowser(page);
+  await page.getByRole("button", { name: /Needs Odometer/ }).waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "Log Odometer" }).waitFor({ timeout: 15000 });
+  await assertWrappedBar(page, viewport, "maintenance");
+  await shot(page, "phone-390-maintenance");
+  await shotOf(page.locator(".admin-sticky-bar"), "phone-390-maintenance-bar");
+
+  await page.goto(`${BASE}/admin?tab=vehicles`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Search vehicles").waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "Add Vehicle" }).waitFor({ timeout: 15000 });
+  await assertWrappedBar(page, viewport, "vehicles");
+  await shot(page, "phone-390-vehicles");
+  await shotOf(page.locator(".admin-sticky-bar"), "phone-390-vehicles-bar");
+
+  if (errors.length) {
+    console.error("bar page errors", errors);
+    throw new Error(errors.join("\n"));
+  }
+  await ctx.close();
+}
+
 let failed = 0;
+if (process.env.SHOT_BARS_ONLY) {
+  try {
+    await captureWrappedBars();
+  } catch (error) {
+    failed++;
+    console.error(error);
+  } finally {
+    await browser.close();
+  }
+  if (failed) process.exit(1);
+  console.log("wrapped bars written");
+  process.exit(0);
+}
 try {
   const viewports = process.env.SHOT_PHONE_ONLY
     ? [{ width: 390, height: 844 }]
