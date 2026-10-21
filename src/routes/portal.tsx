@@ -88,6 +88,31 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 /**
+ * Hard off. The same constant lives in src/lib/driver-doc-expiry.ts. While
+ * both are false the card module is not imported and this page does not
+ * mount it.
+ */
+const DRIVER_DOC_EXPIRY_CARD_ENABLED: boolean = false;
+
+function DocExpiryGate({ onOpenDocuments }: { onOpenDocuments: () => void }) {
+  const [View, setView] = useState<
+    null | ((props: { onOpenDocuments: () => void }) => React.ReactNode)
+  >(null);
+  useEffect(() => {
+    if (DRIVER_DOC_EXPIRY_CARD_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/portal/DriverDocExpiryCard").then((mod) => {
+      if (live) setView(() => mod.DriverDocExpiryCard);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (DRIVER_DOC_EXPIRY_CARD_ENABLED !== true || View == null) return null;
+  return <View onOpenDocuments={onOpenDocuments} />;
+}
+
+/**
  * Tabs that only make sense once a vehicle is actually assigned.
  *
  * An approved applicant has an account from the moment we approve them, which
@@ -1367,6 +1392,9 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      {DRIVER_DOC_EXPIRY_CARD_ENABLED ? (
+        <DocExpiryGate onOpenDocuments={() => onNavigate("documents")} />
+      ) : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
