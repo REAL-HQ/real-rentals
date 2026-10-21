@@ -77,6 +77,9 @@ import {
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
 import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
 import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
+import { PickupChecklistCard } from "@/components/portal/PickupChecklistCard";
+import { PORTAL_PICKUP_CHECKLIST_ENABLED } from "@/lib/portal-pickup-checklist";
+import { getPortalPickupChecklist } from "@/lib/portal-pickup-checklist.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -1592,6 +1595,17 @@ function PortalPaymentHistory() {
   return <PaymentHistoryCard items={data} />;
 }
 
+function PortalPickupChecklist() {
+  const previewId = usePreviewDriver();
+  const fetchChecklist = usePortalRead(getPortalPickupChecklist);
+  const { data } = useQuery({
+    queryKey: ["portal-pickup-checklist", previewId ?? "self"],
+    queryFn: () => fetchChecklist(),
+  });
+  if (!data?.show) return null;
+  return <PickupChecklistCard items={data.items} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1632,6 +1646,7 @@ function DashboardView({
       <PortalDocumentUpdate />
       <PortalMyRental />
       <PortalPaymentHistory />
+      {PORTAL_PICKUP_CHECKLIST_ENABLED ? <PortalPickupChecklist /> : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
