@@ -26,13 +26,16 @@ function dayLabel(days: number): string {
 export function StalledApplications({
   rows,
   loading,
+  truncated = false,
 }: {
   rows: StalledApplicationRow[];
   loading: boolean;
+  truncated?: boolean;
 }) {
   return (
     <div>
       <h2 className="mb-2 text-sm font-medium text-[#111114]">Stalled Applications</h2>
+      {truncated ? <p className="mb-2 text-[13px] text-[#9A9AA3]">Showing First 500</p> : null}
       {loading ? (
         <p className="px-1 py-8 text-[13px] text-[#9A9AA3]">Loading Stalled Applications…</p>
       ) : rows.length === 0 ? (

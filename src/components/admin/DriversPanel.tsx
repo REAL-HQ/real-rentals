@@ -456,15 +456,22 @@ export function DriversPanel({
   // stage underneath is never changed, so Remove restores it automatically.
   const loadStalled = useServerFn(listStalledApplications);
   const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  const [stalledTruncated, setStalledTruncated] = useState(false);
   useEffect(() => {
     if (!stalledOn) return;
     let cancelled = false;
     loadStalled()
       .then((result) => {
-        if (!cancelled) setStalledRows(result.rows);
+        if (!cancelled) {
+          setStalledRows(result.rows);
+          setStalledTruncated(result.truncated);
+        }
       })
       .catch(() => {
-        if (!cancelled) setStalledRows([]);
+        if (!cancelled) {
+          setStalledRows([]);
+          setStalledTruncated(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -1060,7 +1067,7 @@ setDocCounts(requiredDocCounts(rows));
           onContactSaved={applyFunnelContact}
         />
       ) : filter === "stalled" && stalledOn ? (
-        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} />
+        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} truncated={stalledTruncated} />
       ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">

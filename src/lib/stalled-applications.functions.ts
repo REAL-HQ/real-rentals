@@ -46,15 +46,33 @@ const APP_COLUMNS = [
 
 const APP_COLUMNS_WITHOUT_CONTACT = APP_COLUMNS.replace(`,${CONTACT_COLUMNS}`, "");
 
+/** First 500 applications. range() is inclusive, so the request asks for one extra row. */
+const STALLED_ROW_CAP = 500;
+/** PostgREST returns at most 1000 rows. A shorter page means the read is finished. */
+const RELATED_PAGE = 1000;
+
 export type StalledApplicationRow = StalledApplication;
 
-async function loadApplications(withContact: boolean) {
+type LoadedApplications = {
+  rows: Array<Record<string, unknown>>;
+  truncated: boolean;
+  error: { message: string } | null;
+};
+
+async function loadApplications(withContact: boolean): Promise<LoadedApplications> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return supabaseAdmin
+  const loaded = await supabaseAdmin
     .from("applications")
     .select(withContact ? APP_COLUMNS : APP_COLUMNS_WITHOUT_CONTACT)
     .is("deleted_at", null)
-    .in("status", [...STALLED_STATUSES]);
+    .in("status", [...STALLED_STATUSES])
+    .order("created_at")
+    .order("id")
+    .range(0, STALLED_ROW_CAP);
+  if (loaded.error) return { rows: [], truncated: false, error: loaded.error };
+  const data = (loaded.data ?? []) as unknown as Array<Record<string, unknown>>;
+  const truncated = data.length > STALLED_ROW_CAP;
+  return { rows: truncated ? data.slice(0, STALLED_ROW_CAP) : data, truncated, error: null };
 }
 
 type DocRow = { driver_id: string | null; category: string | null; created_at: string | null; is_current: boolean | null };
@@ -68,6 +86,22 @@ type AgreementRow = {
   voided_at: string | null;
 };
 type IdentityRow = { application_id: string | null; status: string | null; created_at: string | null };
+
+async function readPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const loaded = await fetchPage(from, from + RELATED_PAGE - 1);
+    if (loaded.error) throw new Error(loaded.error.message);
+    const page = loaded.data ?? [];
+    rows.push(...page);
+    if (page.length < RELATED_PAGE) return rows;
+    from += page.length;
+    if (from > RELATED_PAGE * 20) throw new Error("Stalled related rows overflowed.");
+  }
+}
 
 async function loadRelated(ids: string[]) {
   const docsByDriver = new Map<string, string[]>();
@@ -83,20 +117,32 @@ async function loadRelated(ids: string[]) {
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     const [docs, agreementRows, identityRows] = await Promise.all([
-      supabaseAdmin.from("documents").select("driver_id,category,created_at,is_current").in("driver_id", chunk),
-      supabaseAdmin
-        .from("agreements")
-        .select("application_id,status,signed_at,sent_at,created_at,updated_at,voided_at")
-        .in("application_id", chunk),
-      supabaseAdmin
-        .from("application_identity_reviews")
-        .select("application_id,status,created_at")
-        .in("application_id", chunk),
+      readPages<DocRow>((from, to) =>
+        supabaseAdmin
+          .from("documents")
+          .select("driver_id,category,created_at,is_current")
+          .in("driver_id", chunk)
+          .order("id")
+          .range(from, to),
+      ),
+      readPages<AgreementRow>((from, to) =>
+        supabaseAdmin
+          .from("agreements")
+          .select("application_id,status,signed_at,sent_at,created_at,updated_at,voided_at")
+          .in("application_id", chunk)
+          .order("id")
+          .range(from, to),
+      ),
+      readPages<IdentityRow>((from, to) =>
+        supabaseAdmin
+          .from("application_identity_reviews")
+          .select("application_id,status,created_at")
+          .in("application_id", chunk)
+          .order("id")
+          .range(from, to),
+      ),
     ]);
-    if (docs.error) throw new Error(docs.error.message);
-    if (agreementRows.error) throw new Error(agreementRows.error.message);
-    if (identityRows.error) throw new Error(identityRows.error.message);
-    for (const doc of (docs.data ?? []) as DocRow[]) {
+    for (const doc of docs) {
       const driverId = String(doc.driver_id ?? "");
       if (!driverId) continue;
       if (doc.is_current && doc.category) {
@@ -110,7 +156,7 @@ async function loadRelated(ids: string[]) {
         docActivity.set(driverId, stamps);
       }
     }
-    for (const row of (agreementRows.data ?? []) as AgreementRow[]) {
+    for (const row of agreementRows) {
       const applicationId = String(row.application_id ?? "");
       if (!applicationId) continue;
       const list = agreements.get(applicationId) ?? [];
@@ -122,7 +168,7 @@ async function loadRelated(ids: string[]) {
       }
       agreementActivity.set(applicationId, stamps);
     }
-    for (const row of (identityRows.data ?? []) as IdentityRow[]) {
+    for (const row of identityRows) {
       const applicationId = String(row.application_id ?? "");
       if (!applicationId) continue;
       if (String(row.status ?? "").trim().toLowerCase() === "open") openIdentity.add(applicationId);
@@ -138,7 +184,7 @@ async function loadRelated(ids: string[]) {
 
 export const listStalledApplications = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: StalledApplicationRow[] }> => {
+  .handler(async ({ context }): Promise<{ rows: StalledApplicationRow[]; truncated: boolean }> => {
     assertStalledApplicationsEnabled();
     await requireManager(context.userId);
 
@@ -150,7 +196,7 @@ export const listStalledApplications = createServerFn({ method: "GET" })
     }
     if (loaded.error) throw new Error(loaded.error.message);
 
-    const apps = (loaded.data ?? []) as unknown as Array<Record<string, unknown>>;
+    const apps = loaded.rows;
     const ids = apps.map((row) => String(row.id));
     const related = await loadRelated(ids);
     const today = new Date();
@@ -202,5 +248,5 @@ export const listStalledApplications = createServerFn({ method: "GET" })
       if (!stalled) continue;
       rows.push(stalled);
     }
-    return { rows: sortStalled(rows) };
+    return { rows: sortStalled(rows), truncated: loaded.truncated };
   });

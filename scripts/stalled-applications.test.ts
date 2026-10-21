@@ -192,6 +192,11 @@ describe("flag off", () => {
     const related = handler.indexOf("loadRelated(");
     assert.ok(enabled >= 0 && enabled < manager && manager < query && query < related);
     assert.match(source, /\.from\("applications"\)/);
+    assert.match(source, /STALLED_ROW_CAP = 500/);
+    assert.match(source, /\.order\("created_at"\)\s*\.order\("id"\)\s*\.range\(0, STALLED_ROW_CAP\)/);
+    assert.match(source, /truncated/);
+    assert.match(source, /\.range\(from, to\)/);
+    assert.match(source, /page\.length < RELATED_PAGE/);
     assert.match(source, /\.from\("agreements"\)/);
     assert.match(source, /\.in\("status", \[\.\.\.STALLED_STATUSES\]\)/);
     assert.equal(handler.includes(".insert("), false);
@@ -218,6 +223,8 @@ describe("applications screen", () => {
     assert.match(list, /Last Contact/);
     assert.match(list, /STALLED_GAP_LABEL/);
     assert.match(list, /tel:/);
+    assert.match(list, /Showing First 500/);
+    assert.match(list, /truncated/);
     assert.equal(list.includes("showMarkContacted"), false);
     assert.equal(list.includes("setContactStatus"), false);
     assert.equal(list.includes("ContactStatusCell"), false);
