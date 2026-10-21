@@ -23,6 +23,8 @@ import { vehicleProfitLabel, type ProfitVehicle } from "./unified-finance-vehicl
  *
  * PARTNER_REVENUE_BASE is the only switch for which payment types enter the
  * split. It stays null until the owner chooses rent only or all revenue types.
+ * While it is null, a charge matched only through payments.stripe_subscription_id
+ * is not rent. It is withheld with the subscription note.
  *
  * Partner income is partners.revenue_split_pct of net income. The company
  * keeps the remainder. A missing percent is "Split Not Configured".
@@ -194,7 +196,7 @@ export type JvStatementResponse =
 
 const SPLIT_MISSING = "Split Not Configured";
 const UNMATCHED_REASON = "No Payment Intent, charge, invoice, or payment reference.";
-const REFUND_SKIP = new Set(["pending", "failed", "canceled", "cancelled"]);
+const REFUND_SKIP = new Set(["failed", "canceled", "cancelled"]);
 const COLLECTED = new Set(["paid", "refunded"]);
 const ALL_REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
 const DISPUTED_REVENUE_TYPES = new Set(["late_fee", "other", "toll", "damage", "fee"]);
@@ -357,10 +359,11 @@ export function splitBps(value: number | string | null | undefined): number | nu
 }
 
 function shareOf(cents: number, bps: number): number | null {
+  if (cents < 0) return null;
   const product = cents * bps;
   if (!Number.isSafeInteger(product)) return null;
   const share = Math.round(product / 10000);
-  return Number.isSafeInteger(share) ? share : null;
+  return Number.isSafeInteger(share) && share >= 0 ? share : null;
 }
 
 function normalizeMethod(value: string | null | undefined): string {
@@ -533,6 +536,18 @@ function decideCharge(
         (charge.invoiceId && payment.invoiceId === charge.invoiceId) ||
         (charge.subscriptionId && payment.subscriptionId === charge.subscriptionId)),
   );
+  const subscriptionOnly =
+    paymentHits.length > 0 &&
+    paymentHits.every((payment) => {
+      const byIntent = Boolean(
+        charge.paymentIntentId && payment.paymentIntentId === charge.paymentIntentId,
+      );
+      const byInvoice = Boolean(charge.invoiceId && payment.invoiceId === charge.invoiceId);
+      const bySubscription = Boolean(
+        charge.subscriptionId && payment.subscriptionId === charge.subscriptionId,
+      );
+      return bySubscription && !byIntent && !byInvoice;
+    });
   const subscriptionHits = charge.subscriptionId
     ? rentals.filter(
         (rental) => rental.vehicleId && rental.subscriptionId === charge.subscriptionId,
@@ -554,7 +569,9 @@ function decideCharge(
       vehicleId,
       basis:
         paymentHits.length > 0
-          ? revenueBasis(paymentHits)
+          ? PARTNER_REVENUE_BASE === null && subscriptionOnly
+            ? "subscription"
+            : revenueBasis(paymentHits)
           : PARTNER_REVENUE_BASE === null
             ? "subscription"
             : "rent",
@@ -989,18 +1006,38 @@ export function buildJvStatement(
   };
   for (const refund of input.refunds) {
     const place = placed([refund.createdAt]);
-    if (place.date && !inWindow(place.date)) continue;
+    const status = (refund.status ?? "").trim().toLowerCase();
+    const linkedPayments = refund.paymentIds.map((id) => paymentsById.get(id));
+    const knownPayments = linkedPayments.every((payment) => payment);
+    const rows = knownPayments ? (linkedPayments as JvPayment[]) : [];
+    const vehicles = new Set(
+      rows.map((payment) => paymentVehicleId(payment, input.rentals) ?? ""),
+    );
+    const onlyThisVehicle =
+      refund.paymentIds.length > 0 &&
+      knownPayments &&
+      vehicles.size === 1 &&
+      vehicles.has(input.vehicleId);
+    if (place.date && !inWindow(place.date)) {
+      if (onlyThisVehicle && status === "pending") {
+        notes.push(
+          `A refund dated ${monthName(place.date)} is still pending. It is not counted as money returned.`,
+        );
+      } else if (onlyThisVehicle && status === "succeeded") {
+        notes.push(
+          `A refund is dated ${monthName(place.date)}. It is counted in that period, not this one.`,
+        );
+      }
+      continue;
+    }
     if (!refund.paymentIds.length) {
       refundsComplete = false;
       continue;
     }
-    const linkedPayments = refund.paymentIds.map((id) => paymentsById.get(id));
-    if (linkedPayments.some((payment) => !payment)) {
+    if (!knownPayments) {
       refundsComplete = false;
       continue;
     }
-    const rows = linkedPayments as JvPayment[];
-    const vehicles = new Set(rows.map((payment) => paymentVehicleId(payment, input.rentals) ?? ""));
     const touches = vehicles.has(input.vehicleId);
     if (!touches && vehicles.size > 0 && ![...vehicles].includes("")) continue;
     if (vehicles.size !== 1 || !touches) {
@@ -1011,7 +1048,10 @@ export function buildJvStatement(
       refundsComplete = false;
       continue;
     }
-    const status = (refund.status ?? "").trim().toLowerCase();
+    if (status === "pending") {
+      notes.push("A refund is still pending. It is not counted as money returned.");
+      continue;
+    }
     if (REFUND_SKIP.has(status)) continue;
     if (status !== "succeeded") {
       refundsComplete = false;
@@ -1044,6 +1084,10 @@ export function buildJvStatement(
     const place = placed([payment.refundedAt, payment.paidDate]);
     if (place.invalid || !place.date || !inWindow(place.date)) {
       if (place.invalid || !place.date) refundsComplete = false;
+      else
+        notes.push(
+          `A refund is dated ${monthName(place.date)}. It is counted in that period, not this one.`,
+        );
       continue;
     }
     addRefund(refunded.cents, false);
@@ -1059,7 +1103,11 @@ export function buildJvStatement(
       : null;
   let companyIncomeCents: number | null = null;
   let partnerIncomeCents: number | null = null;
-  if (bps !== null && netIncomeCents !== null) {
+  if (bps !== null && netIncomeCents !== null && netIncomeCents < 0) {
+    notes.push(
+      "Refunds are larger than income for this period, so the partner share and the company share are withheld.",
+    );
+  } else if (bps !== null && netIncomeCents !== null) {
     const partnerShare = shareOf(netIncomeCents, bps);
     if (partnerShare !== null && Number.isSafeInteger(netIncomeCents - partnerShare)) {
       partnerIncomeCents = partnerShare;

@@ -828,6 +828,194 @@ describe("partner statement worked example", () => {
     expect(statement?.notes.join(" ")).toContain("matched only by subscription id");
   });
 
+  it("withholds a rent payment matched only by stripe subscription id", () => {
+    expect(PARTNER_REVENUE_BASE).toBeNull();
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.refunds = [];
+    directory.payments = [
+      pay({
+        id: "pay-sub",
+        type: "rent",
+        amount: "80.00",
+        paymentMethod: "stripe",
+        subscriptionId: "sub_1",
+        paymentIntentId: null,
+        invoiceId: null,
+        paidDate: "2026-10-06",
+      }),
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_sub_pay",
+          customerId: null,
+          paymentIntentId: null,
+          invoiceId: null,
+          subscriptionId: "sub_1",
+          amountCents: 8000,
+          currency: "usd",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: [],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(false);
+    expect(statement?.incomeCents).toBeNull();
+    expect(statement?.partnerIncomeCents).toBeNull();
+    expect(statement?.companyIncomeCents).toBeNull();
+    expect(statement?.notes.join(" ")).toContain("matched only by subscription id");
+  });
+
+  it("keeps a rent charge matched by payment intent when the subscription id also matches", () => {
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.refunds = [];
+    directory.payments = [
+      pay({
+        id: "pay-rent",
+        type: "rent",
+        amount: "80.00",
+        paymentMethod: "stripe",
+        paymentIntentId: "pi_rent",
+        subscriptionId: "sub_1",
+        paidDate: "2026-10-06",
+      }),
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_rent_sub",
+          customerId: null,
+          paymentIntentId: "pi_rent",
+          invoiceId: null,
+          subscriptionId: "sub_1",
+          amountCents: 8000,
+          currency: "usd",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: [],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(true);
+    expect(statement?.incomeCents).toBe(8000);
+    expect(statement?.partnerIncomeCents).toBe(4800);
+    expect(statement?.notes.join(" ")).not.toContain("matched only by subscription id");
+  });
+
+  it("withholds the split when refunds are larger than income", () => {
+    const { directory } = worked();
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [
+      pay({ id: "pay-cash", amount: "10.00", paymentMethod: "cash", paidDate: "2026-10-06" }),
+    ];
+    directory.refunds = [
+      {
+        id: "re-over",
+        amount: "25.00",
+        status: "succeeded",
+        createdAt: "2026-10-08T15:00:00Z",
+        paymentIds: ["pay-cash"],
+      },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(statement?.incomeComplete).toBe(true);
+    expect(statement?.refundsComplete).toBe(true);
+    expect(statement?.incomeCents).toBe(1000);
+    expect(statement?.refundsCents).toBe(2500);
+    expect(statement?.netIncomeCents).toBe(-1500);
+    expect(statement?.partnerIncomeCents).toBeNull();
+    expect(statement?.companyIncomeCents).toBeNull();
+    expect(statement?.partnerNetCents).toBeNull();
+    expect(statement?.companyNetCents).toBeNull();
+    expect(statement?.notes.join(" ")).toContain("Refunds are larger than income");
+  });
+
+  it("notes a refund dated in another period without blanking this one", () => {
+    const { directory } = worked();
+    directory.payments = [
+      pay({ id: "pay-cash", amount: "40.00", paymentMethod: "cash", paidDate: "2026-10-06" }),
+    ];
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.refunds = [
+      {
+        id: "re-sep",
+        amount: "5.00",
+        status: "succeeded",
+        createdAt: "2026-09-02T15:00:00Z",
+        paymentIds: ["pay-cash"],
+      },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(statement?.refundsComplete).toBe(true);
+    expect(statement?.coverage).toBe("complete");
+    expect(statement?.refundsCents).toBe(0);
+    expect(statement?.incomeCents).toBe(4000);
+    expect(statement?.notes.join(" ")).toContain("September 2026");
+    expect(statement?.notes.join(" ")).toContain("counted in that period, not this one");
+  });
+
+  it("surfaces a pending refund and does not count it as money returned", () => {
+    const { directory } = worked();
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [
+      pay({ id: "pay-cash", amount: "40.00", paymentMethod: "cash", paidDate: "2026-10-06" }),
+    ];
+    directory.refunds = [
+      {
+        id: "re-pending",
+        amount: "15.00",
+        status: "pending",
+        createdAt: "2026-10-08T15:00:00Z",
+        paymentIds: ["pay-cash"],
+      },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(statement?.refundsComplete).toBe(true);
+    expect(statement?.refundsCents).toBe(0);
+    expect(statement?.incomeCents).toBe(4000);
+    expect(statement?.partnerIncomeCents).toBe(2400);
+    expect(statement?.notes.join(" ")).toContain("still pending");
+    expect(statement?.notes.join(" ")).toContain("not counted as money returned");
+  });
+
   it("withholds a customer-only Stripe charge while the revenue base is unset", () => {
     expect(PARTNER_REVENUE_BASE).toBeNull();
     const { directory } = worked();
