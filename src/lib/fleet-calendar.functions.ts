@@ -22,6 +22,26 @@ const weekInput = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+type QueryRows<T> = { data: T[] | null; error: { message: string } | null };
+
+/** Union of disjoint reads. The combined list still stops at the same row cap. */
+function mergeLimited<T extends { id: string }>(limit: number, ...parts: QueryRows<T>[]): QueryRows<T> {
+  for (const part of parts) {
+    if (part.error) return { data: [], error: part.error };
+  }
+  const seen = new Set<string>();
+  const data: T[] = [];
+  for (const part of parts) {
+    for (const row of part.data ?? []) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      data.push(row);
+      if (data.length >= limit) return { data, error: null };
+    }
+  }
+  return { data, error: null };
+}
+
 export const getFleetCalendar = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => weekInput.parse(data ?? {}))
@@ -34,7 +54,13 @@ export const getFleetCalendar = createServerFn({ method: "POST" })
     const weekStart = mondayOf(data.weekStart ?? easternCalendarDate());
     const weekEnd = addCalendarDays(weekStart, 6);
 
-    const [vehiclesQ, rentalsQ, pickupsQ, servicesQ] = await Promise.all([
+    // Two queries each, not one `.or()`.
+    // A template literal inside `.or()` is a PostgREST filter expression, and a
+    // comma in that expression starts another clause. weekStart is an Eastern
+    // YYYY-MM-DD from mondayOf, but the value still belongs in `.is` / `.gte` /
+    // `.lte`, where the client sends it as a parameter. The maintenance read
+    // was the same shape across two lines, so the line guard did not see it.
+    const [vehiclesQ, rentalsOpenQ, rentalsDatedQ, pickupsQ, servicesPerformedQ, servicesDueQ] = await Promise.all([
       supabaseAdmin
         .from("vehicles")
         .select("id,year,make,model,license_plate,unit_number,status,archived_at", { count: "exact" })
@@ -46,7 +72,14 @@ export const getFleetCalendar = createServerFn({ method: "POST" })
         .select("id,vehicle_id,driver_id,status,start_date,end_date")
         .eq("status", "active")
         .lte("start_date", weekEnd)
-        .or(`end_date.is.null,end_date.gte.${weekStart}`)
+        .is("end_date", null)
+        .limit(FLEET_ROW_LIMIT),
+      supabaseAdmin
+        .from("rentals")
+        .select("id,vehicle_id,driver_id,status,start_date,end_date")
+        .eq("status", "active")
+        .lte("start_date", weekEnd)
+        .gte("end_date", weekStart)
         .limit(FLEET_ROW_LIMIT),
       supabaseAdmin
         .from("applications")
@@ -61,11 +94,19 @@ export const getFleetCalendar = createServerFn({ method: "POST" })
         .from("maintenance_records")
         .select("id,vehicle_id,status,item,performed_on,due_date")
         .in("status", [...OPEN_MAINTENANCE_STATUSES])
-        .or(
-          `and(performed_on.gte.${weekStart},performed_on.lte.${weekEnd}),and(due_date.gte.${weekStart},due_date.lte.${weekEnd})`,
-        )
+        .gte("performed_on", weekStart)
+        .lte("performed_on", weekEnd)
+        .limit(FLEET_ROW_LIMIT),
+      supabaseAdmin
+        .from("maintenance_records")
+        .select("id,vehicle_id,status,item,performed_on,due_date")
+        .in("status", [...OPEN_MAINTENANCE_STATUSES])
+        .gte("due_date", weekStart)
+        .lte("due_date", weekEnd)
         .limit(FLEET_ROW_LIMIT),
     ]);
+    const rentalsQ = mergeLimited(FLEET_ROW_LIMIT, rentalsOpenQ, rentalsDatedQ);
+    const servicesQ = mergeLimited(FLEET_ROW_LIMIT, servicesPerformedQ, servicesDueQ);
     for (const result of [vehiclesQ, rentalsQ, pickupsQ, servicesQ]) {
       if (result.error) throw new Error(result.error.message);
     }
