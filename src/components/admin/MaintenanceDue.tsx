@@ -64,7 +64,7 @@ export function MaintenanceDue({
   }
 
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-white">
+    <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-white max-lg:min-w-0">
       <table className="w-full min-w-[960px] text-sm">
         <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
           <tr>
