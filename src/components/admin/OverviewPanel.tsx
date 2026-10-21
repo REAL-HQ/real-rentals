@@ -30,6 +30,7 @@ import {
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
 import { compareReadiness, selectHotProspects, type ReadinessResult } from "@/lib/readiness";
 import { isRevenuePayment, readEveryPage, revenuePaymentsSearch, summarizePayments, type RefundLink, type ReportingPayment } from "@/lib/payment-reporting";
+import { loadReportingPayments } from "@/lib/reporting-payments";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
@@ -276,14 +277,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     let live = true;
     setRevenueLoading(true);
     (async () => {
-      const payments = await readEveryPage<ReportingPayment>((from, to) =>
-        supabase
-          .from("payments")
-          .select("id,amount,balance_due,refunded_amount,status,type,paid_date,refunded_at,payment_method,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id,rental_id,notes", { count: "exact" })
-          .in("status", ["paid", "refunded"])
-          .order("id", { ascending: true })
-          .range(from, to),
-      );
+      const payments = await loadReportingPayments();
       const links = await readEveryPage<RefundLink>((from, to) =>
         supabase
           .from("payment_refunds")
@@ -293,7 +287,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       );
       if (!live) return;
       setLedger({
-        payments: payments.rows,
+        payments: payments.rows as ReportingPayment[],
         refundLinks: links.complete ? links.rows : null,
         complete: payments.complete && links.complete,
       });

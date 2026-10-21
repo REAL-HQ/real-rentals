@@ -353,6 +353,20 @@ const byIds = summarize({
 });
 check(byIds.grossCollected.amount === 100 && byIds.fees.amount === -3 && byIds.netCollected.amount === 97, "a charge whose payment ids are all deposits is not revenue");
 
+const unpaidDeposit = summarize({
+  source: "stripe",
+  payments: [pay({ id: "dep-pending", type: "deposit", status: "pending", paid_date: null, amount: 50 })],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 15000, refunds: 0, fees: 500, net: 14500 }],
+    charges: [
+      counted({ id: "ch_rent", amount: 10000, fee: 300, reason: "rent" }),
+      counted({ id: "ch_dep", paymentIds: ["dep-pending"], amount: 5000, fee: 200 }),
+    ],
+    refunds: [],
+  }),
+});
+check(unpaidDeposit.grossCollected.amount === 100 && unpaidDeposit.netCollected.amount === 97, "a succeeded deposit charge is excluded when its row is not marked paid");
+
 const missingId = summarize({
   source: "stripe",
   payments: [pay({ id: "dep-row", type: "deposit", amount: 50 })],
@@ -458,7 +472,25 @@ check(!overview.includes("Hot Prospects"), "the separate Hot Prospects section i
 check(overview.includes("Billed vs Collected"), "the billed versus collected chart stays");
 check(overview.includes("isRevenuePayment") && overview.includes('select("net_collected, paid_date, type")') && overview.includes('select("amount, due_date, type")'), "the 84-day trend uses the same deposit exclusion as the tile");
 check(!overview.includes("REVENUE_TYPES"), "the trend keeps tolls, damage, and fees that the tile counts");
-check(payments.includes("Export CSV") && payments.includes("paymentsCsv") && payments.includes("rowInReportRange"), "payments exports the visible rows for the selected source and range");
+check(
+  /\{filtered\.map\(\(p\) =>/.test(payments)
+    && /const lines = filtered\.map\(\(p\) =>/.test(payments)
+    && !payments.includes("filtered.filter")
+    && payments.includes("rowInReportRange(p, range)"),
+  "the payments table rows and the csv rows are the same filtered list",
+);
+const download = payments.slice(payments.indexOf("function downloadPaymentsCsv"), payments.indexOf("function downloadPaymentsCsv") + 1400);
+check(
+  download.includes("document.body.appendChild(link)")
+    && download.includes("link.click()")
+    && download.includes("window.setTimeout")
+    && download.includes("link.remove()")
+    && download.includes("URL.revokeObjectURL(url)")
+    && !/link\.click\(\);\s*URL\.revokeObjectURL/.test(download),
+  "the csv link is appended, clicked, then removed after a short timeout",
+);
+check(payments.includes("easternToday()") && !payments.includes('paid_date: s === "paid" ? new Date()'), "marking a row paid stamps the Eastern day");
+check(overview.includes("loadReportingPayments") && payments.includes("loadReportingPayments"), "overview and payments load the same payment rows for deposit detection");
 check(leads.includes("hot.prospects.length") && leads.includes("hot.prospects.map"), "the hot count and the modal render one list");
 check(leads.includes("View All Follow-ups") && leads.includes("ALL_FOLLOW_UPS_PAGE = 25") && leads.includes('limit: ALL_FOLLOW_UPS_PAGE'), "all follow-ups opens the 25-row list");
 check(payments.includes("readEveryPage") && payments.includes("rangeMessage") && payments.includes('role="alert"'), "payments pages its reads and shows a range message");

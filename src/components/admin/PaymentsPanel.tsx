@@ -25,7 +25,8 @@ import {
   type RefundLink,
   type SourceFilter,
 } from "@/lib/payment-reporting";
-import { rangeMessage } from "@/lib/eastern-day";
+import { easternToday, rangeMessage } from "@/lib/eastern-day";
+import { loadReportingPayments } from "@/lib/reporting-payments";
 import {
   Select,
   SelectContent,
@@ -124,9 +125,7 @@ export function PaymentsPanel({
       .then(({ data }) => { if (live) setVehicles((data as any) || []); });
     (async () => {
       const [paymentPage, refundPage, rentalPage] = await Promise.all([
-        readEveryPage<Payment>((from, to) =>
-          supabase.from("payments").select("*", { count: "exact" }).order("id", { ascending: true }).range(from, to),
-        ),
+        loadReportingPayments(),
         readEveryPage<RefundLink>((from, to) =>
           supabase.from("payment_refunds").select("stripe_charge_id,stripe_payment_intent_id,payment_ids", { count: "exact" }).order("id", { ascending: true }).range(from, to),
         ),
@@ -135,7 +134,7 @@ export function PaymentsPanel({
         ),
       ]);
       if (!live) return;
-      setPayments(paymentPage.rows);
+      setPayments(paymentPage.rows as Payment[]);
       setRefundLinks(refundPage.complete ? refundPage.rows : null);
       setDepositRentals(rentalPage.complete ? rentalPage.rows : null);
       setReadsComplete(paymentPage.complete && refundPage.complete && rentalPage.complete);
@@ -175,6 +174,7 @@ export function PaymentsPanel({
   }
 
   const sourced = source === "all" ? payments : payments.filter((p) => classifyPaymentSource(p) === source);
+  const inRangeRows = sourced.filter((p) => rowInReportRange(p, range));
   const loadCollections = useServerFn(getStripeCollections);
   const stripeQuery = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, canSeeCollections && (source === "all" || source === "stripe")));
   const rangeProblem = rangeMessage(range);
@@ -217,10 +217,10 @@ export function PaymentsPanel({
 
   const filtered = (
     statusFilter === "all"
-      ? sourced
+      ? inRangeRows
       : statusFilter === "overdue"
-        ? sourced.filter((p) => OVERDUE_SET.has(p.status as string))
-        : sourced.filter((p) => p.status === statusFilter)
+        ? inRangeRows.filter((p) => OVERDUE_SET.has(p.status as string))
+        : inRangeRows.filter((p) => p.status === statusFilter)
   )
     .slice()
     .sort((a, b) => {
@@ -239,7 +239,7 @@ export function PaymentsPanel({
 
   function downloadPaymentsCsv() {
     if (rangeMessage(range)) return;
-    const lines = filtered.filter((p) => rowInReportRange(p, range)).map((p) => {
+    const lines = filtered.map((p) => {
       const d = p.driver_id ? driverMap[p.driver_id] : null;
       const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
       const lateFees = Number(p.late_fees || 0);
@@ -260,8 +260,12 @@ export function PaymentsPanel({
     const link = document.createElement("a");
     link.href = url;
     link.download = paymentsExportFilename(source, range);
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 1000);
   }
 
   return (
@@ -291,8 +295,8 @@ export function PaymentsPanel({
               {s !== "all" &&
                 `(${
                   s === "overdue"
-                    ? sourced.filter((p) => OVERDUE_SET.has(p.status as string)).length
-                    : sourced.filter((p) => p.status === s).length
+                    ? inRangeRows.filter((p) => OVERDUE_SET.has(p.status as string)).length
+                    : inRangeRows.filter((p) => p.status === s).length
                 })`}
             </button>
           ))}
@@ -391,6 +395,9 @@ export function PaymentsPanel({
         </ul>
       </details>
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
+      <p className="mb-2 text-sm text-muted-foreground">
+        {filtered.length.toLocaleString()} {filtered.length === 1 ? "Payment" : "Payments"}
+      </p>
       <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
@@ -435,7 +442,7 @@ export function PaymentsPanel({
                       onValueChange={(s) =>
                         update(p.id, {
                           status: s,
-                          paid_date: s === "paid" ? new Date().toISOString().slice(0, 10) : null,
+                          paid_date: s === "paid" ? easternToday() : null,
                         })
                       }
                     >
@@ -475,7 +482,7 @@ export function PaymentsPanel({
                           onClick={() =>
                             update(p.id, {
                               status: "paid",
-                              paid_date: new Date().toISOString().slice(0, 10),
+                              paid_date: easternToday(),
                             })
                           }
                         >
@@ -500,8 +507,8 @@ export function PaymentsPanel({
               <tr>
                 <td colSpan={10} className="p-4">
                   <EmptyState
-                    title="No Payments Yet"
-                    hint="Payments appear here once a driver is charged or a rental invoice is created."
+                    title={payments.length > 0 ? "No Payments in This Range" : "No Payments Yet"}
+                    hint={payments.length > 0 ? "Change the date range or the status filter to see other rows." : "Payments appear here once a driver is charged or a rental invoice is created."}
                   />
                 </td>
               </tr>
