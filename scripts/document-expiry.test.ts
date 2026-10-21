@@ -13,7 +13,7 @@ import {
   sortExpiringRenters,
   type RenterExpiryInput,
 } from "../src/lib/document-expiry";
-import { enrollDocumentExpiringNotices } from "../src/lib/document-expiry.server";
+import { enrollDocumentExpiringNotices, runDocumentExpiryEnrollment } from "../src/lib/document-expiry.server";
 
 const TODAY = "2026-10-21";
 const FLAG = "DOCUMENT_EXPIRY_NOTICES_ENABLED";
@@ -158,8 +158,8 @@ describe("population", () => {
 });
 
 describe("DOCUMENT_EXPIRY_NOTICES_ENABLED", () => {
-  it("does not load or enroll when the flag is off", async () => {
-    for (const value of [undefined, "", "false", "TRUE", "1"]) {
+  it("does not load or enroll while the constant is false, even if the env var is true", async () => {
+    for (const value of [undefined, "", "false", "true", "TRUE", "1"]) {
       if (value === undefined) delete process.env[FLAG];
       else process.env[FLAG] = value;
       let calls = 0;
@@ -179,7 +179,6 @@ describe("DOCUMENT_EXPIRY_NOTICES_ENABLED", () => {
   });
 
   it("enrolls expired and 30-day renters and skips Unknown-only", async () => {
-    process.env[FLAG] = "true";
     const expired = classifyActiveRenter(renter({ applicationId: "expired", licenseExpiration: "2026-10-01" }), TODAY);
     const window = classifyActiveRenter(renter({ applicationId: "window", rentalId: "rent-2", licenseExpiration: "2026-11-20" }), TODAY);
     const unknown = classifyActiveRenter(
@@ -188,7 +187,7 @@ describe("DOCUMENT_EXPIRY_NOTICES_ENABLED", () => {
     );
     assert.ok(expired && window && unknown);
     const seen: string[] = [];
-    const result = await enrollDocumentExpiringNotices({
+    const result = await runDocumentExpiryEnrollment({
       load: async () => [expired, window, unknown],
       enroll: async (args) => {
         seen.push(args.applicationId);
@@ -202,10 +201,9 @@ describe("DOCUMENT_EXPIRY_NOTICES_ENABLED", () => {
   });
 
   it("swallows an enroll failure", async () => {
-    process.env[FLAG] = "true";
     const expired = classifyActiveRenter(renter({ licenseExpiration: "2026-10-01" }), TODAY);
     assert.ok(expired);
-    const result = await enrollDocumentExpiringNotices({
+    const result = await runDocumentExpiryEnrollment({
       load: async () => [expired],
       enroll: async () => {
         throw new Error("transport down");
@@ -221,8 +219,13 @@ describe("wiring", () => {
     const cron = readFileSync(new URL("../src/routes/api/public/cron/automations.ts", import.meta.url), "utf8");
     const overview = readFileSync(new URL("../src/components/admin/OverviewPanel.tsx", import.meta.url), "utf8");
     const helper = readFileSync(new URL("../src/lib/document-expiry.server.ts", import.meta.url), "utf8");
+    const flag = readFileSync(new URL("../src/lib/document-expiry-flag.ts", import.meta.url), "utf8");
     const panel = readFileSync(new URL("../src/components/admin/AutomationsPanel.tsx", import.meta.url), "utf8");
-    assert.match(cron, /DOCUMENT_EXPIRY_NOTICES_ENABLED === "true"/);
+    assert.match(flag, /export const DOCUMENT_EXPIRY_NOTICES_ENABLED = false/);
+    assert.match(cron, /if \(DOCUMENT_EXPIRY_NOTICES_ENABLED\)/);
+    assert.doesNotMatch(cron, /process\.env\.DOCUMENT_EXPIRY_NOTICES_ENABLED/);
+    assert.match(helper, /if \(!DOCUMENT_EXPIRY_NOTICES_ENABLED\) return/);
+    assert.doesNotMatch(helper, /process\.env\.DOCUMENT_EXPIRY_NOTICES_ENABLED/);
     assert.match(cron, /runDueAutomations\(\)/);
     assert.equal(overview.match(/<DocumentsExpiringChip \/>/g)?.length, 1);
     assert.match(panel, /document_expiring/);

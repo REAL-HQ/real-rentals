@@ -1,20 +1,14 @@
 // A *_ENABLED flag must not read process.env or import.meta.env.
-// Dark screens are hard-false constants. The names below stay on the
-// environment because production may already have them set to "true".
-// A new env read fails. An allowlisted name that stops reading the
-// environment fails too, so this list cannot go stale.
+// Dark screens are hard-false constants. Names that stay on the environment
+// are the live env-gated flags in scripts/live-enabled-flags.mjs (the same
+// module the flag scanner imports). A new env read fails. An allowlisted
+// name that stops reading the environment fails too, so the list cannot go stale.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { LIVE_ENV_GATED_FLAGS } from "./live-enabled-flags.mjs";
 
-const ALLOWED = new Map([
-  ["DOCUMENT_EXPIRY_NOTICES_ENABLED", "document-expiry cron notices; production may already be sending them"],
-  ["DRIVER_ISSUE_ALERTS_ENABLED", "staff email when a driver files an issue; production may already send it"],
-  ["ROADSIDE_SMS_ALERTS_ENABLED", "roadside SMS to staff; production may already send it"],
-  ["STRIPE_RECONCILIATION_ENABLED", "reconciliation activation pin; the review doc turns it on with the live or sandbox environment"],
-  ["APPLICATION_RESUME_ATOMIC_ENABLED", "switches live application resume onto the atomic SQL path after that migration"],
-  ["RENTER_LIFECYCLE_NOTICES_ENABLED", "enrolls renter lifecycle notices after a rental or incident write; production may already send them"],
-]);
+const ALLOWED = new Map(LIVE_ENV_GATED_FLAGS.map((flag) => [flag.name, flag.reason]));
 
 const ENABLED = /^[A-Z][A-Z0-9_]*_ENABLED$/;
 
