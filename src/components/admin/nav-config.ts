@@ -11,6 +11,7 @@ import {
   Wrench,
   LayoutDashboard,
   ClipboardCheck,
+  ClipboardList,
   Truck,
   Receipt,
   ShieldAlert,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { RETURN_INSPECTION_VIEW_ENABLED } from "@/lib/return-inspection-flag";
 
 export type TabDef = {
   id: string;
@@ -112,13 +114,53 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Return Inspection is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RETURN_INSPECTION_TAB: TabDef = {
+  id: "return_inspection",
+  label: "Return Inspection",
+  icon: ClipboardList,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Return Mileage, Fuel, Photos, Damage Notes And Fees",
+};
+
+function insertAfter(tabs: TabDef[], id: string, tab: TabDef): TabDef[] {
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === id);
+  next.splice(at + 1, 0, tab);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
-  return next;
+  const withFinance =
+    UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager") ? insertAfter(tabs, "expenses", FINANCE_TAB) : tabs;
+  if (!RETURN_INSPECTION_VIEW_ENABLED || !tierAllows(tier, "manager")) return withFinance;
+  return insertAfter(withFinance, "bookings", RETURN_INSPECTION_TAB);
+}
+
+/**
+ * Where the admin shell is. An unknown tab renders Overview. Return Inspection
+ * and Unified Finance stay off the rail while their flags are false, including
+ * a direct link, and that decision does not wait on the role lookup.
+ */
+export function resolveAdminTab(args: {
+  urlTab: string | null;
+  tier: StaffTier | null;
+  navTabs: readonly { id: string }[];
+}): string {
+  if (args.urlTab === "settings") return "settings";
+  if (args.urlTab === "finance") {
+    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance";
+  }
+  if (args.urlTab === "return_inspection") {
+    if (!RETURN_INSPECTION_VIEW_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "return_inspection";
+  }
+  if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
+  if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
+  return args.urlTab;
 }
 
 /**
@@ -151,9 +193,14 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  if (UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "expenses");
+    entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  }
+  if (RETURN_INSPECTION_VIEW_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "bookings");
+    entries.splice(at + 1, 0, { ...RETURN_INSPECTION_TAB, href: "return_inspection" });
+  }
   return entries;
 }
 
