@@ -282,8 +282,10 @@
             th then sticks below chrome + filter row. When the table is
             wider than the card the wrapper falls back to a horizontal
             scroller and headers scroll with it.
-   Mobile (<768px): only the top bar locks; filter chips scroll sideways;
-            table headers do not stick. */
+   Mobile (<768px): only the top bar locks. The filter toolbar wraps so
+            every control stays in the 390px width. It does not stick, so a
+            wrapped row cannot cover the section under it. Table headers
+            do not stick. */
 .admin-sticky-bar {
   background: #fafafb;
   padding-top: 4px;
@@ -302,13 +304,16 @@
   }
 }
 @media (max-width: 767px) {
-  .admin-sticky-bar,
-  .admin-sticky-bar > .flex-wrap {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+  .admin-sticky-bar { overflow-x: visible; }
+  /* Column toolbars (vehicles, bookings) stay stacked. Row toolbars wrap. */
+  .admin-sticky-bar:not(.flex-col),
+  .admin-sticky-bar:not(.flex-col) > .flex-wrap {
+    flex-wrap: wrap;
   }
-  .admin-sticky-bar > * { flex-shrink: 0; }
+  .admin-sticky-bar:not(.flex-col) > * {
+    flex-shrink: 0;
+    max-width: 100%;
+  }
   .admin-sticky-bar.flex-col > * { flex-shrink: 1; }
 }
 
