@@ -1,7 +1,13 @@
 import { type StripeEnv } from "./stripe.server";
 import { createReadOnlyStripe } from "./stripe-reader.server";
 import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
-import { aggregateCollections, collectionsWindow, readAllPages, type CollectionCharge, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
+import { aggregateCollections, collectionsWindow, readAllPages, verifyCollectedCharges, type CollectionBalanceEvidence, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
+
+function balanceEvidence(balance: unknown): CollectionBalanceEvidence | null {
+  if (!balance || typeof balance !== "object") return null;
+  const row = balance as { created?: unknown; currency?: unknown; amount?: unknown; fee?: unknown };
+  return { created: row.created, currency: row.currency, amount: row.amount, fee: row.fee };
+}
 
 const idOf = (v: string | { id: string } | null | undefined) => typeof v === "string" ? v : v?.id;
 
@@ -18,66 +24,51 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     readAllPages(cursor => stripe.charges.list({ created: { lt: window.lt }, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
     readAllPages(cursor => stripe.refunds.list({ created: window, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
   ]);
-  const subscriptionIndex = new Map(subscriptions.map(s => [s.id, s]));
-  const invoiceIndex = new Map(invoices.map(i => [i.id, i]));
-  const linkedIntents = new Map<string, Set<string>>();
-  const linkedCharges = new Map<string, Set<string>>();
-  let externalRecords = false;
-  let collectionsComplete = true;
-  const incompletePortions: CollectionsReport["incompletePortions"] = [];
-  const incomplete = (source: "InvoicePayment" | "Charge" | "Refund", id: string, reason: string) => {
-    collectionsComplete = false;
-    incompletePortions.push({ source, id, reason });
-  };
-  const unresolvedIntents = new Set<string>(), unresolvedCharges = new Set<string>();
-  for (const payment of invoicePayments) {
-    const invoice = invoiceIndex.get(idOf(payment.invoice) || "");
-    const subId = idOf(invoice?.parent?.subscription_details?.subscription);
-    const subscription = subscriptionIndex.get(subId || "");
-    const customer = idOf(subscription?.customer);
-    if (!invoice || !subscription || !customer || idOf(invoice.customer) !== customer) {
-      incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
-      const intent = idOf(payment.payment.payment_intent), charge = idOf(payment.payment.charge);
-      if (intent) unresolvedIntents.add(intent);
-      if (charge) unresolvedCharges.add(charge);
-      continue;
-    }
-    if (payment.payment.type === "payment_record") externalRecords = true;
-    const intent = idOf(payment.payment.payment_intent), charge = idOf(payment.payment.charge);
-    const add = (map: Map<string, Set<string>>, id: string | undefined) => {
-      if (!id) return;
-      const owners = map.get(id) || new Set<string>(); owners.add(customer); map.set(id, owners);
-    };
-    add(linkedIntents, intent); add(linkedCharges, charge);
-  }
   // Refunds in this range can relate to collections from an earlier range.
   const chargeIndex = new Map(charges.map(c => [c.id, c]));
   for (const refund of refunds) {
     const chargeId = idOf(refund.charge);
     if (chargeId && !chargeIndex.has(chargeId)) chargeIndex.set(chargeId, await stripe.charges.retrieve(chargeId, { expand: ["balance_transaction"] }));
   }
-  const verifiedCharges: CollectionCharge[] = [];
-  for (const charge of chargeIndex.values()) {
-    const customerId = idOf(charge.customer);
-    const balance = charge.balance_transaction;
-    const collected = charge.paid && charge.captured && charge.status === "succeeded" && charge.amount_captured > 0;
-    const capturedAt = balance && typeof balance !== "string" ? balance.created : undefined;
-    const dated = typeof capturedAt === "number" && Number.isFinite(capturedAt);
-    const refundInRange = refunds.some(r => idOf(r.charge) === charge.id && r.status === "succeeded");
-    const relevant = refundInRange || (collected && (!dated || (capturedAt >= window.gte && capturedAt < window.lt))) || (charge.status === "failed" && charge.created >= window.gte);
-    const owners = new Set([...(linkedCharges.get(charge.id) || []), ...(linkedIntents.get(idOf(charge.payment_intent) || "") || [])]);
-    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolvedCharges.has(charge.id) || unresolvedIntents.has(idOf(charge.payment_intent) || "")) {
-      // Never guess the ownership of unlinked cash or silently report zero.
-      if (relevant) incomplete("Charge", charge.id, "Payment ownership or invoice relationship unverified");
-      continue;
-    }
-    if (collected && (!dated || (balance && typeof balance !== "string" && balance.currency === charge.currency && balance.amount !== charge.amount_captured))) {
-      if (relevant) incomplete("Charge", charge.id, "Capture date or settlement amount unverified");
-      continue;
-    }
-    const fee = balance && typeof balance !== "string" && balance.currency === charge.currency ? balance.fee : null;
-    verifiedCharges.push({ id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency, amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee });
-  }
+  const normalizedRefunds = refunds.map(r => ({
+    id: r.id, chargeId: idOf(r.charge) || "", created: r.created, amount: r.amount, currency: r.currency, status: r.status,
+    fee: r.balance_transaction && typeof r.balance_transaction !== "string" && r.balance_transaction.currency === r.currency ? r.balance_transaction.fee : null,
+  }));
+  const verified = verifyCollectedCharges({
+    window,
+    invoicePayments: invoicePayments.map(payment => ({
+      id: payment.id,
+      invoiceId: idOf(payment.invoice) || null,
+      intentId: idOf(payment.payment.payment_intent) || null,
+      chargeId: idOf(payment.payment.charge) || null,
+      externalRecord: payment.payment.type === "payment_record",
+    })),
+    invoices: invoices.map(invoice => ({
+      id: invoice.id,
+      customerId: idOf(invoice.customer) || null,
+      subscriptionId: idOf(invoice.parent?.subscription_details?.subscription) || null,
+    })),
+    subscriptions: subscriptions.map(subscription => ({
+      id: subscription.id,
+      customerId: idOf(subscription.customer) || null,
+    })),
+    charges: [...chargeIndex.values()].map(charge => ({
+      id: charge.id,
+      customerId: idOf(charge.customer) || null,
+      paymentIntentId: idOf(charge.payment_intent) || null,
+      currency: charge.currency,
+      amountCaptured: charge.amount_captured,
+      paid: charge.paid,
+      captured: charge.captured,
+      status: charge.status,
+      created: charge.created,
+      balance: balanceEvidence(charge.balance_transaction),
+    })),
+    refunds: normalizedRefunds,
+  });
+  const { collectionsComplete, incompletePortions, externalRecords } = verified;
+  const verifiedCharges = verified.charges;
+  const verifiedRefunds = verified.refunds;
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {
     const customer = s.customer;
     const items = s.items.data;
@@ -93,13 +84,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       scheduledAmount: complete ? items.reduce((sum, i) => sum + (i.price.unit_amount ?? 0) * (i.quantity ?? 1), 0) : null,
     };
   });
-  const normalizedRefunds = refunds.map(r => ({
-    id: r.id, chargeId: idOf(r.charge) || "", created: r.created, amount: r.amount, currency: r.currency, status: r.status,
-    fee: r.balance_transaction && typeof r.balance_transaction !== "string" && r.balance_transaction.currency === r.currency ? r.balance_transaction.fee : null,
-  }));
-  const verifiedRefunds = normalizedRefunds.filter(r => verifiedCharges.some(c => c.id === r.chargeId && c.captured && c.paid && c.amount > 0 && c.status === "succeeded" && c.currency === r.currency) && r.status === "succeeded");
   const report = aggregateCollections({ charges: verifiedCharges, refunds: verifiedRefunds, subscriptions: normalizedSubs, window, now: Math.floor(Date.now() / 1000) });
-  for (const r of normalizedRefunds) if (r.status === "succeeded" && !verifiedRefunds.some(v => v.id === r.id)) incomplete("Refund", r.id, "Captured charge relationship or currency unverified");
   const warnings: string[] = ["Linked Failures covers verified invoice-linked Charge attempts only; attempts without a Charge or unavailable retry links are not included."];
   if (!collectionsComplete) warnings.push("Some payment history or capture evidence could not be verified. Complete collection totals are unavailable. Verified Only amounts exclude incomplete portions and must not be treated as complete totals.");
   if (normalizedSubs.some(s => s.scheduledAmount === null)) warnings.push("Some base rates are unavailable because subscription items are incomplete or use different billing periods.");
