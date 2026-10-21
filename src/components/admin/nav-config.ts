@@ -24,6 +24,7 @@ import {
   Inbox,
   Upload,
   Landmark,
+  Ticket,
   PieChart,
   LayoutGrid,
   ScrollText,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -320,6 +322,34 @@ const REVENUE_FORECAST_TAB: TabDef = {
   description: "Projected Rental Income For The Next 4 Weeks",
 };
 
+/** Shown only while Tolls And Tickets is compiled on. Kept out of TABS so a dark build cannot list it. */
+const TOLLS_TAB: TabDef = {
+  id: "tolls_tickets",
+  label: "Tolls And Tickets",
+  icon: Ticket,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Tolls, Tickets, And Violations For Each Rental And Vehicle",
+};
+
+function withTolls(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
+  if (!TOLLS_TICKETS_LEDGER_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "payments");
+  next.splice(at + 1, 0, TOLLS_TAB);
+  return next;
+}
+
+/**
+ * Direct ?tab=tolls_tickets. Null means this URL is some other tab.
+ * While the flag is off, Overview is chosen before the role lookup returns.
+ */
+export function resolveTollsTicketsTab(urlTab: string | null | undefined, tier: StaffTier | null): "tolls_tickets" | "overview" | null {
+  if (urlTab !== "tolls_tickets") return null;
+  if (!TOLLS_TICKETS_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+  return "tolls_tickets";
+}
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -511,7 +541,7 @@ function insertFunnel(tabs: TabDef[]): TabDef[] {
 }
 
 function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
-  let next = tabs;
+  let next = withTolls(tabs, tier);
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     next = spliceAfter(next, "overview", TODAYS_OPS_TAB);
   }
@@ -581,6 +611,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (TOLLS_TICKETS_LEDGER_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "payments");
+    entries.splice(at + 1, 0, { ...TOLLS_TAB, href: "tolls_tickets" });
+  }
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "overview", { ...TODAYS_OPS_TAB, href: "todays_ops" });
   }

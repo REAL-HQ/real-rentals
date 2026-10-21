@@ -31,6 +31,7 @@ import {
   visibleCreateActions,
   navOwner,
   railEntries,
+  resolveTollsTicketsTab,
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
@@ -56,6 +57,8 @@ import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
+import { TollsTickets } from "@/components/admin/TollsTickets";
 import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
@@ -348,6 +351,8 @@ function Admin() {
   const tab: Tab = useMemo(() => {
     // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
     if (urlTab === "settings") return "settings";
+    const tollsTab = resolveTollsTicketsTab(urlTab, tier);
+    if (tollsTab) return tollsTab;
     // Reviewed Unified Finance is not an Overview block. This tab is the screen.
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -980,6 +985,7 @@ function Admin() {
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}
             {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
             {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
               <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
