@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "../src/lib/portal-payment-history-flag";
 import {
   buildPortalPaymentHistory,
+  readOwnPaymentHistory,
   receiptText,
+  verifiedPaymentSource,
   verifiedSourceLabel,
   type HistoryRow,
 } from "../src/lib/portal-payment-history";
@@ -27,6 +29,8 @@ function row(over: Partial<HistoryRow> & { id: string }): HistoryRow {
     paid_date: "2026-10-01",
     created_at: "2026-10-01T12:00:00.000Z",
     payment_method: "cash",
+    stripe_payment_intent_id: null,
+    stripe_invoice_id: null,
     ...over,
   };
 }
@@ -49,18 +53,19 @@ describe("portal payment history", () => {
     const handler = fn.slice(fn.indexOf(".handler"));
     const thrown = handler.indexOf("PORTAL_PAYMENT_HISTORY_ENABLED !== true");
     const user = handler.indexOf("context.userId");
-    const read = handler.indexOf('import("@/integrations/supabase/client.server")');
+    const read = handler.indexOf("readOwnPaymentHistory(context.supabase, userId)");
     assert.ok(thrown !== -1 && user !== -1 && read !== -1 && thrown < user && user < read);
-    assert.doesNotMatch(fn, /previewDriverId|data\.id|input\./);
-    assert.match(fn, /ownedIds\(supabaseAdmin, "applications", "user_id", userId\)/);
-    assert.match(fn, /ownedIds\(supabaseAdmin, "rentals", "driver_id", userId\)/);
-    assert.match(fn, /\.eq\(column, userId\)/);
-    assert.match(fn, /HISTORY_CHUNK/);
-    assert.match(fn, /HISTORY_READ_CAP \+ 1/);
-    assert.doesNotMatch(fn, /sendEmail|sendSms|stripe|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
-    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true \? <PortalPaymentHistory \/>/);
+    assert.doesNotMatch(fn, /previewDriverId|data\.id|input\.|supabaseAdmin|client\.server|rentals/);
+    assert.doesNotMatch(rules, /\.from\("rentals"\)|\.in\("rental_id"/);
+    assert.match(rules, /\.eq\("user_id", userId\)/);
+    assert.match(rules, /\.in\("driver_id", group\)/);
+    assert.match(rules, /HISTORY_CHUNK/);
+    assert.match(rules, /HISTORY_READ_CAP \+ 1/);
+    assert.doesNotMatch(fn, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
+    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? <PortalPaymentHistory \/>/);
     assert.match(panel, /if \(PORTAL_PAYMENT_HISTORY_ENABLED !== true\) return null/);
     assert.match(panel, /Download Receipt/);
+    assert.match(panel, /Unknown/);
     assert.doesNotMatch(panel, /reason\.message|previewDriverId|text-transform|uppercase/);
     assert.doesNotMatch(portal, /from ["']@\/lib\/portal-payment-history\.functions["']/);
   });
@@ -76,7 +81,8 @@ describe("portal payment history", () => {
       truncated: false,
       rows: [
         row({ id: "cash", payment_method: "cash", amount: 200, net_collected: 200, balance_due: 0, status: "paid" }),
-        row({ id: "card", payment_method: "Card", amount: 250, net_collected: 250, balance_due: 0, status: "paid", created_at: "2026-10-08T00:00:00.000Z" }),
+        row({ id: "card", payment_method: "Card", amount: 250, net_collected: 250, balance_due: 0, status: "paid", created_at: "2026-10-08T00:00:00.000Z", stripe_payment_intent_id: "pi_card" }),
+        row({ id: "card-unlinked", payment_method: "ach", amount: 40, net_collected: 40, balance_due: 0, status: "paid", created_at: "2026-10-07T00:00:00.000Z" }),
         row({ id: "zelle", payment_method: "zelle", amount: 100, net_collected: 100, balance_due: 0, status: "refunded", refunded_amount: 40 }),
         row({ id: "open", payment_method: null, amount: 250, net_collected: 0, balance_due: 80, status: "past_due", paid_date: null }),
         row({ id: "unknown", payment_method: "bitcoin", amount: 50, net_collected: 50, balance_due: 0, status: "paid" }),
@@ -85,18 +91,75 @@ describe("portal payment history", () => {
       ],
     });
 
-    assert.deepEqual(history.charges.map((charge) => charge.id), ["card", "cash", "deposit", "open", "unknown", "void", "zelle"]);
+    assert.deepEqual(history.charges.map((charge) => charge.id), ["card", "card-unlinked", "cash", "deposit", "open", "unknown", "void", "zelle"]);
     assert.deepEqual(history.payments.map((payment) => payment.id), ["card", "cash", "deposit", "zelle"]);
     assert.deepEqual(history.payments.map((payment) => payment.sourceLabel), ["Card", "Cash", "Cash", "Zelle"]);
-    assert.equal(history.balanceDue, 80);
+    assert.equal(verifiedPaymentSource(row({ id: "bare-card", payment_method: "card" })), null);
+    assert.equal(verifiedPaymentSource(row({ id: "invoiced", payment_method: "ach", stripe_invoice_id: "in_1" })), "Card");
+    assert.equal(history.balanceDueCents, 8000);
+    assert.equal(history.balanceState, "known");
     assert.equal(history.truncated, false);
     const receipt = receiptText(history.payments[1]);
     assert.match(receipt, /Receipt cash/);
     assert.match(receipt, /Source: Cash/);
-    assert.doesNotMatch(receipt, /bitcoin|card_last4|stripe|@/i);
+    assert.match(receipt, /Amount: \$200\.00/);
+    assert.doesNotMatch(receipt, /bitcoin|card_last4|pi_|stripe|@/i);
 
     const capped = buildPortalPaymentHistory({ truncated: true, rows: [row({ id: "open", status: "past_due", balance_due: 80, payment_method: null, paid_date: null })] });
-    assert.equal(capped.balanceDue, null);
-    assert.equal(capped.truncated, true);
+    assert.equal(capped.balanceDueCents, null);
+    assert.equal(capped.balanceState, "not_checked");
+    const invalid = buildPortalPaymentHistory({
+      truncated: false,
+      rows: [row({ id: "bad", status: "past_due", balance_due: "80.555", payment_method: null, paid_date: null, amount: "nope" })],
+    });
+    assert.equal(invalid.balanceState, "unknown");
+    assert.equal(invalid.balanceDueCents, null);
+    assert.equal(invalid.charges[0].amountCents, null);
+    assert.equal(invalid.charges[0].balanceDueCents, null);
+  });
+
+  it("returns only the rows RLS would show for this user's applications", async () => {
+    const ownApp = "app-own";
+    const otherApp = "app-other";
+    const fixture = [
+      row({ id: "mine", status: "past_due", amount: "80.00", balance_due: "80.00", net_collected: 0, payment_method: null, paid_date: null, driver_id: ownApp } as HistoryRow & { driver_id: string }),
+      row({ id: "hidden-on-my-rental", status: "past_due", amount: "500.00", balance_due: "500.00", net_collected: 0, payment_method: null, paid_date: null, driver_id: otherApp, rental_id: "rental-mine" } as HistoryRow & { driver_id: string; rental_id: string }),
+      row({ id: "hidden-other", status: "paid", payment_method: "cash", driver_id: otherApp } as HistoryRow & { driver_id: string }),
+    ];
+    const asked: string[] = [];
+    const client = {
+      from(table: string) {
+        const filters: Array<[string, string, unknown]> = [];
+        const query = {
+          select() { return query; },
+          eq(column: string, value: string) { filters.push(["eq", column, value]); return query; },
+          in(column: string, values: readonly string[]) { filters.push(["in", column, values]); return query; },
+          order() { return query; },
+          limit() {
+            asked.push(`${table}:${JSON.stringify(filters)}`);
+            if (table === "applications") {
+              const user = filters.find((filter) => filter[0] === "eq" && filter[1] === "user_id" && filter[2] === "user-1");
+              return Promise.resolve({ data: user ? [{ id: ownApp }] : [], error: null });
+            }
+            if (table === "payments") {
+              const driver = filters.find((filter) => filter[0] === "in" && filter[1] === "driver_id");
+              if (!driver) return Promise.resolve({ data: fixture, error: null });
+              const ids = driver[2] as string[];
+              return Promise.resolve({ data: fixture.filter((payment) => ids.includes((payment as { driver_id?: string }).driver_id ?? "")), error: null });
+            }
+            return Promise.resolve({ data: [{ id: "rental-mine", driver_id: otherApp }], error: null });
+          },
+        };
+        return query;
+      },
+    };
+
+    const history = await readOwnPaymentHistory(client, "user-1");
+    assert.deepEqual(history.charges.map((charge) => charge.id), ["mine"]);
+    assert.equal(history.balanceDueCents, 8000);
+    assert.equal(asked.some((call) => call.startsWith("rentals")), false);
+    assert.equal(asked.some((call) => call.includes("rental_id")), false);
+    assert.match(asked.join("\n"), /applications:\[\[\"eq\",\"user_id\",\"user-1\"\]\]/);
+    assert.match(asked.join("\n"), /payments:\[\[\"in\",\"driver_id\",\[\"app-own\"\]\]\]/);
   });
 });

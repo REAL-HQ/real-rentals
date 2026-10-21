@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history-flag";
-import { receiptText, type HistoryPayment, type PortalPaymentHistory } from "@/lib/portal-payment-history";
-
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+import { formatHistoryCents, receiptText, type HistoryPayment, type PortalPaymentHistory } from "@/lib/portal-payment-history";
 
 export function PortalPaymentHistory() {
   if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) return null;
@@ -41,7 +39,13 @@ function PortalPaymentHistoryLive() {
       </p>
       <p className="mt-3 text-sm">
         <span className="text-muted-foreground">Balance Due </span>
-        <span className="font-semibold">{history.balanceDue == null ? "Not Checked" : money.format(history.balanceDue)}</span>
+        <span className="font-semibold">
+          {history.balanceState === "not_checked"
+            ? "Not Checked"
+            : history.balanceState === "unknown"
+              ? "Unknown"
+              : formatHistoryCents(history.balanceDueCents)}
+        </span>
       </p>
       {history.truncated ? (
         <p className="mt-2 text-sm text-muted-foreground">Some Charges Were Not Loaded.</p>
@@ -51,7 +55,7 @@ function PortalPaymentHistoryLive() {
         date: charge.dueDate ?? charge.paidDate,
         type: charge.typeLabel,
         detail: charge.statusLabel,
-        amount: charge.amount,
+        amount: formatHistoryCents(charge.amountCents),
       }))} />
       <HistoryTable
         title="Payments"
@@ -61,7 +65,7 @@ function PortalPaymentHistoryLive() {
           date: payment.paidDate,
           type: payment.typeLabel,
           detail: payment.sourceLabel,
-          amount: payment.collected,
+          amount: formatHistoryCents(payment.collectedCents),
           receipt: payment,
         }))}
       />
@@ -76,7 +80,7 @@ function HistoryTable({
 }: {
   title: string;
   empty: string;
-  rows: Array<{ id: string; date: string | null; type: string; detail: string; amount: number; receipt?: HistoryPayment }>;
+  rows: Array<{ id: string; date: string | null; type: string; detail: string; amount: string; receipt?: HistoryPayment }>;
 }) {
   return (
     <div className="mt-5">
@@ -100,7 +104,7 @@ function HistoryTable({
                 <td className="py-2">{row.date ? row.date.slice(0, 10) : "Not Recorded"}</td>
                 <td>{row.type}</td>
                 <td>{row.detail}</td>
-                <td className="text-right">{money.format(row.amount)}</td>
+                <td className="text-right">{row.amount}</td>
                 <td className="text-right">
                   {row.receipt ? (
                     <button type="button" className="underline" onClick={() => downloadReceipt(row.receipt!)}>

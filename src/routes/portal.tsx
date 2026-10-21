@@ -2260,7 +2260,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           </table>
         )}
       </div>
-      {PORTAL_PAYMENT_HISTORY_ENABLED === true ? <PortalPaymentHistory /> : null}
+      {PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null ? <PortalPaymentHistory /> : null}
     </div>
   );
 }
