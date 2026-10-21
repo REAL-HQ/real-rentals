@@ -17,6 +17,9 @@ import type { IssueIncidentSeed } from "@/lib/driver-issues";
 import { fmtDateTime } from "@/lib/date-format";
 import { INCIDENT_AGING_ENABLED } from "@/lib/incident-aging-flag";
 import { listIncidentAging } from "@/lib/incident-aging.functions";
+import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
+import { listIncidentChargePrep } from "@/lib/incident-charge-prep.functions";
+import type { IncidentChargePrepRow } from "@/lib/incident-charge-prep";
 
 type VehicleLite = {
   id: string;
@@ -45,8 +48,13 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [remainingOnly, setRemainingOnly] = useState(false);
+  const [prepRows, setPrepRows] = useState<IncidentChargePrepRow[]>([]);
+  const [prepTruncated, setPrepTruncated] = useState(false);
+  const [prepError, setPrepError] = useState(false);
   const [editing, setEditing] = useState<Incident | "new" | null>(null);
   const [seed, setSeed] = useState<IssueIncidentSeed | null>(null);
+  const prepById = new Map(prepRows.map((row) => [row.incidentId, row.proposedAmount]));
 
   async function load() {
     setLoading(true);
@@ -89,6 +97,10 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   }, [seedIssueId]);
 
   const openCount = rows.filter((r) => r.status !== "closed" && r.status !== "written_off").length;
+  const shown =
+    INCIDENT_CHARGE_PREP_ENABLED && remainingOnly
+      ? rows.filter((r) => (prepById.get(r.id) ?? 0) > 0)
+      : rows;
 
   return (
     <IncidentAgingGate incidentIds={rows.map((row) => row.id)}>
@@ -109,6 +121,14 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         </button>
       </div>
 
+      <RemainingToChargeLoader onRows={setPrepRows} onTruncated={setPrepTruncated} onError={setPrepError} />
+      {INCIDENT_CHARGE_PREP_ENABLED && prepError ? (
+        <p className="text-[12px] text-[#D03020]">Could Not Load Remaining To Charge</p>
+      ) : null}
+      {INCIDENT_CHARGE_PREP_ENABLED && prepTruncated ? (
+        <p className="text-[12px] text-[#55555E]">Remaining To Charge Is Capped</p>
+      ) : null}
+
       <div className="flex flex-wrap gap-1.5">
         {["all", ...STATUSES].map((s) => (
           <button
@@ -123,13 +143,26 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
             {s.replace(/_/g, " ")}
           </button>
         ))}
+        {INCIDENT_CHARGE_PREP_ENABLED ? (
+          <button
+            type="button"
+            onClick={() => setRemainingOnly((on) => !on)}
+            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              remainingOnly
+                ? "border-[#D03020] bg-[#D03020] text-white"
+                : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
+            }`}
+          >
+            Remaining to Charge
+          </button>
+        ) : null}
       </div>
 
       <IncidentAgingNotice />
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
+      ) : shown.length === 0 ? (
         <EmptyState
           icon={<ShieldAlert className="w-6 h-6" strokeWidth={1.75} />}
           title="No Incidents"
@@ -137,7 +170,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         />
       ) : (
         <div className="space-y-3">
-          {rows.map((r) => {
+          {shown.map((r) => {
             const net = r.actual_cost - r.insurance_payout - r.driver_responsible_amount;
             return (
               <div
@@ -215,6 +248,12 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                     {r.actual_cost > 0 ? (
                       <Fig label="Net to Company" text={money(net)} strong />
                     ) : null}
+                  </div>
+                ) : null}
+                {INCIDENT_CHARGE_PREP_ENABLED ? (
+                  <div className="mt-3 pt-3 border-t border-[#EDEDF0] text-xs" title="This Does Not Create a Charge.">
+                    <div className="text-[10px] tracking-wide text-[#9A9AA3]">Remaining to Charge</div>
+                    <div>{prepById.get(r.id) == null ? "" : money(prepById.get(r.id) as number)}</div>
                   </div>
                 ) : null}
               </div>
@@ -299,6 +338,53 @@ function IncidentAgingLine({ incidentId }: { incidentId: string }) {
       {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown" ? " · Unknown" : null}
     </p>
   );
+}
+
+function RemainingToChargeLoader({
+  onRows,
+  onTruncated,
+  onError,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
+}) {
+  if (!INCIDENT_CHARGE_PREP_ENABLED) return null;
+  return <RemainingToChargeFetch onRows={onRows} onTruncated={onTruncated} onError={onError} />;
+}
+
+function RemainingToChargeFetch({
+  onRows,
+  onTruncated,
+  onError,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
+}) {
+  const load = useServerFn(listIncidentChargePrep);
+  useEffect(() => {
+    let cancelled = false;
+    void load({ data: {} })
+      .then((next) => {
+        if (!cancelled) {
+          onError(false);
+          onRows(next.rows);
+          onTruncated(next.truncated);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          onError(true);
+          onRows([]);
+          onTruncated(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, onRows, onTruncated, onError]);
+  return null;
 }
 
 function Fig({ label, text, strong }: { label: string; text: string; strong?: boolean }) {
