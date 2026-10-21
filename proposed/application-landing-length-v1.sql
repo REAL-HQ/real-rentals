@@ -31,6 +31,25 @@ SELECT count(*) AS referrer_over_500
 FROM public.applications
 WHERE referrer IS NOT NULL AND length(referrer) > 500;
 
+-- Abort here when either count is not zero. The transaction rolls back
+-- before either check is added, so a NOT VALID constraint is never left
+-- behind for someone to discover on the next update.
+DO $$
+DECLARE
+  landing_over integer;
+  referrer_over integer;
+BEGIN
+  SELECT count(*) INTO landing_over
+  FROM public.applications
+  WHERE landing_page IS NOT NULL AND length(landing_page) > 500;
+  SELECT count(*) INTO referrer_over
+  FROM public.applications
+  WHERE referrer IS NOT NULL AND length(referrer) > 500;
+  IF landing_over <> 0 OR referrer_over <> 0 THEN
+    RAISE EXCEPTION 'applications still has % landing_page and % referrer values over 500 characters. Shorten those rows, then run APPLY again.', landing_over, referrer_over;
+  END IF;
+END $$;
+
 ALTER TABLE public.applications
   ADD CONSTRAINT applications_landing_page_length
   CHECK (landing_page IS NULL OR length(landing_page) <= 500) NOT VALID;

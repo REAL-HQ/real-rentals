@@ -249,14 +249,42 @@ check(selectHash.rows.length === 0, "claim_token_hash has no authenticated selec
 await grants.close();
 
 function sqlStatements(section) {
-  return section
-    .split(";")
-    .map((part) => part
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("--"))
-      .join("\n")
-      .trim())
-    .filter((statement) => statement.length > 0);
+  const stripped = section
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  const statements = [];
+  let current = "";
+  let dollar = null;
+  for (let i = 0; i < stripped.length; i += 1) {
+    if (dollar) {
+      if (stripped.startsWith(dollar, i)) {
+        current += dollar;
+        i += dollar.length - 1;
+        dollar = null;
+      } else current += stripped[i];
+      continue;
+    }
+    if (stripped[i] === "$") {
+      const tag = stripped.slice(i).match(/^\$[A-Za-z0-9_]*\$/);
+      if (tag) {
+        dollar = tag[0];
+        current += dollar;
+        i += dollar.length - 1;
+        continue;
+      }
+    }
+    if (stripped[i] === ";") {
+      const statement = current.trim();
+      if (statement) statements.push(statement);
+      current = "";
+      continue;
+    }
+    current += stripped[i];
+  }
+  const tail = current.trim();
+  if (tail) statements.push(tail);
+  return statements;
 }
 
 async function waitlistCatalog(db) {
@@ -348,13 +376,18 @@ const landingApplySql = sqlStatements(landingApply);
 const landingRollbackSql = sqlStatements(landingRollback);
 const landingAlters = landingApplySql.filter((statement) => statement.startsWith("ALTER"));
 const landingCounts = landingApplySql.filter((statement) => statement.startsWith("SELECT"));
+const landingAbort = landingApplySql.filter((statement) => statement.startsWith("DO"));
 check(
   landingApplySql[0] === "BEGIN"
     && landingApplySql.at(-1) === "COMMIT"
     && landingCounts.length === 2
+    && landingAbort.length === 1
+    && landingApplySql.indexOf(landingAbort[0]) < landingApplySql.indexOf(landingAlters[0])
+    && /landing_over <> 0 OR referrer_over <> 0/.test(landingAbort[0])
+    && /RAISE EXCEPTION/.test(landingAbort[0])
     && landingAlters.length === 4
     && landingRollbackSql.length === 2,
-  "the landing length file wraps apply in a transaction and counts over-long rows",
+  "the landing length file counts over-long rows and aborts the transaction when either count is not zero",
 );
 check(
   landingSql.includes("CHECK (landing_page IS NULL OR length(landing_page) <= 500) NOT VALID")
@@ -470,7 +503,7 @@ try {
 } catch (error) {
   applyFailed = String(error?.message ?? error);
 }
-check(/applications_landing_page_length/.test(applyFailed), "VALIDATE inside the apply transaction refuses the long row");
+check(/over 500 characters/.test(applyFailed), "APPLY aborts before adding a check when a row is over 500 characters");
 try {
   await rolled.exec("ROLLBACK");
 } catch {
@@ -481,7 +514,27 @@ const leftBehind = await rolled.query(`
   FROM pg_constraint
   WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
 `);
-check(Number(leftBehind.rows[0]?.n) === 0, "a failed VALIDATE does not leave a NOT VALID check behind");
+check(Number(leftBehind.rows[0]?.n) === 0, "an aborted APPLY does not leave a NOT VALID check behind");
 await rolled.close();
+
+const clean = new PGlite();
+await clean.exec(`
+  CREATE SCHEMA IF NOT EXISTS public;
+  CREATE TABLE public.applications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    landing_page text,
+    referrer text
+  );
+  INSERT INTO public.applications (landing_page, referrer) VALUES ('${"L".repeat(500)}', NULL);
+`);
+await clean.exec(landingApply);
+const appliedClean = await clean.query(`
+  SELECT count(*)::int AS n
+  FROM pg_constraint
+  WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
+    AND convalidated
+`);
+check(Number(appliedClean.rows[0]?.n) === 2, "APPLY commits both checks when no row is over 500 characters");
+await clean.close();
 
 console.log(`${passed} proposed waitlist SQL checks passed`);
