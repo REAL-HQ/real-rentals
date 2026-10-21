@@ -400,16 +400,34 @@ export const createDriverIssue = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
-    const { error } = await supabase.from("issues").insert({
-      driver_id: userId,
-      title: data.title,
-      body: data.body,
-      kind: data.kind,
-      severity: data.severity,
-      rental_id: rental?.id ?? null,
-      vehicle_id: rental?.vehicle_id ?? null,
-    });
+    const { data: created, error } = await supabase
+      .from("issues")
+      .insert({
+        driver_id: userId,
+        title: data.title,
+        body: data.body,
+        kind: data.kind,
+        severity: data.severity,
+        rental_id: rental?.id ?? null,
+        vehicle_id: rental?.vehicle_id ?? null,
+      })
+      .select("id")
+      .single();
     if (error) return { error: error.message };
+    // Staff email only. The driver still gets { ok: true } and the same portal list.
+    // Isolated from the dashboard deposit fields (PR #62 edits those, not this insert).
+    void import("@/lib/driver-issue-alert.server")
+      .then(({ notifyManagersOfDriverIssue }) =>
+        notifyManagersOfDriverIssue({
+          issueId: created?.id ?? null,
+          title: data.title,
+          kind: data.kind,
+          severity: data.severity,
+          rentalId: rental?.id ?? null,
+          vehicleId: rental?.vehicle_id ?? null,
+        }),
+      )
+      .catch((err) => console.error("[driver-issue] staff alert failed", err));
     return { ok: true };
   });
 
