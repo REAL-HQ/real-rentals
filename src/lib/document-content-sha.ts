@@ -2,18 +2,21 @@
  * SHA-256 of an uploaded file, recorded on the document and on the storage
  * object's user_metadata. Approval reads user_metadata.sha256.
  *
- * supabase-js stores the upload `metadata` option in user_metadata (storage
- * migration 0025). The metadata column is system data: size, mimetype,
- * cacheControl, eTag. This path does not upload the object again. A second
- * upload rewrites the bytes, drops the Blob content type, and resets
- * cache-control.
+ * Hosted PostgREST exposes public and graphql_public. It does not expose
+ * storage, so this path does not select or update storage.objects. Storage
+ * API info() and download() read the object. The conditional merge is
+ * public.record_uploaded_content_sha, a SECURITY DEFINER function proposed
+ * as a packet step. It sets documents.content_sha256 when that row already
+ * exists and merges user_metadata.sha256 with jsonb ||, and only when the
+ * object's id and version (or updated_at) still match the row that was hashed.
  *
  * false: confirmDocumentUpload and registerDocument keep today's insert and
  * do not read the object. No environment variable can open this.
- * true: those functions hash the stored bytes, set user_metadata.sha256, and
- * write documents.content_sha256. A missing object or a failed metadata write
- * throws, so registerDocument throws instead of returning null. Activation is
- * changing this constant and rebuilding.
+ * true: those functions hash the stored bytes and call the packet function.
+ * A missing object, a changed object, or a failed merge throws, so
+ * registerDocument throws instead of returning null. The function is not
+ * installed on hosted. Activation is changing this constant and rebuilding,
+ * after that packet step is installed.
  */
 export const DOCUMENT_CONTENT_SHA256_ENABLED = false;
 
@@ -29,14 +32,10 @@ export function storageShaMetadata(sha256: string): { sha256: string } {
 
 /**
  * Flag off: returns null and does not touch storage.
- * Flag on: hashes the object that was just uploaded and sets user_metadata.sha256
- * on that same row. The file bytes, MIME type, and cache-control stay as uploaded.
+ * Flag on: hashes the downloaded bytes and asks the packet function to merge
+ * that sha into user_metadata. The file bytes are not uploaded again.
  * The caller stores the returned hex on documents.content_sha256.
- * Throws when the flag is on and the object or the metadata write is missing.
- *
- * `admin` is the service-role client. Its schema() generic only accepts the
- * public schema in the generated Database type, while this write targets
- * storage.objects, so the parameter stays untyped.
+ * Throws when the flag is on and the object or the conditional merge is missing.
  */
 export async function recordUploadedContentSha(
   admin: any,
@@ -47,17 +46,25 @@ export async function recordUploadedContentSha(
   return writeUploadedContentSha(admin, bucket, path);
 }
 
-/** Flag-on body. Hashes the stored bytes and writes user_metadata.sha256 only. */
+/** Flag-on body. Download, hash, then one conditional merge. */
 export async function writeUploadedContentSha(admin: any, bucket: string, path: string): Promise<string> {
-  const file = await admin.storage.from(bucket).download(path);
+  const bucketApi = admin.storage.from(bucket);
+  const info = await bucketApi.info(path);
+  if (info.error || !info.data?.id) throw new Error(info.error?.message || "Uploaded object missing");
+  const file = await bucketApi.download(path);
   if (file.error || !file.data) throw new Error(file.error?.message || "Uploaded bytes missing");
   const bytes = new Uint8Array(await file.data.arrayBuffer());
   const sha256 = await contentSha256Hex(bytes);
-  const objects = admin.schema("storage").from("objects");
-  const current = await objects.select("user_metadata").eq("bucket_id", bucket).eq("name", path).maybeSingle();
-  if (current.error || !current.data) throw new Error(current.error?.message || "Uploaded object missing");
-  const userMetadata = { ...(current.data.user_metadata ?? {}), ...storageShaMetadata(sha256) };
-  const saved = await objects.update({ user_metadata: userMetadata }).eq("bucket_id", bucket).eq("name", path);
-  if (saved.error) throw new Error(saved.error.message);
+  const version = typeof info.data.version === "string" && info.data.version.trim() ? info.data.version : null;
+  const updatedAt = info.data.lastModified ?? info.data.last_modified ?? info.data.updated_at ?? null;
+  const saved = await admin.rpc("record_uploaded_content_sha", {
+    p_bucket: bucket,
+    p_path: path,
+    p_sha256: sha256,
+    p_object_id: info.data.id,
+    p_version: version,
+    p_updated_at: updatedAt,
+  });
+  if (saved.error || saved.data !== sha256) throw new Error(saved.error?.message || "Uploaded object changed");
   return sha256;
 }
