@@ -7,9 +7,6 @@
 //
 // DOCUMENT_EXPIRY_NOTICES_ENABLED is not here. It does not exist on 7e3e6eb
 // (dark on RC branches only) and is a hard-false constant, not an env read.
-//
-// ROADSIDE_SMS_ALERTS_ENABLED is not here either. It does not exist on
-// 7e3e6eb. It exists only on RC12, in driver-issue-alert.server.ts.
 
 // Literal `true` under src/ on 7e3e6eb. The only `*_ENABLED = true`.
 export const LIVE_TRUE_FLAGS = ["STRIPE_COLLECTIONS_ENABLED"];
@@ -19,6 +16,10 @@ export const LIVE_ENV_GATED_FLAGS = [
   {
     name: "DRIVER_ISSUE_ALERTS_ENABLED",
     reason: "staff email when a driver files an issue; env-gated on 7e3e6eb and may already send",
+  },
+  {
+    name: "ROADSIDE_SMS_ALERTS_ENABLED",
+    reason: "roadside SMS to staff; env-gated on 7e3e6eb and may already send",
   },
   {
     name: "STRIPE_RECONCILIATION_ENABLED",
