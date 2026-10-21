@@ -24,7 +24,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
 
     const page = await context.supabase
       .from("agreements")
-      .select("id,application_id,title,status,sent_at,signed_at,signer_name,token_expires_at")
+      .select("id,application_id,title,status,sent_at,signed_at,signer_name,token_expires_at,token_revoked_at")
       .in("status", ["sent", "viewed", "signing"])
       .is("signed_at", null)
       .not("sent_at", "is", null)
@@ -43,7 +43,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
       const group = applicationIds.slice(index, index + PENDING_SIGNATURE_NAME_CHUNK);
       const names = await context.supabase
         .from("applications")
-        .select("id,full_name")
+        .select("id,full_name,deleted_at")
         .in("id", group)
         .limit(PENDING_SIGNATURE_NAME_CHUNK + 1);
       if (names.error || (names.data?.length ?? 0) > PENDING_SIGNATURE_NAME_CHUNK) {
@@ -52,7 +52,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
         continue;
       }
       for (const driver of names.data ?? []) {
-        drivers.push({ id: driver.id, full_name: driver.full_name });
+        drivers.push({ id: driver.id, full_name: driver.full_name, deleted_at: driver.deleted_at });
       }
     }
 
