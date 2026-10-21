@@ -14,6 +14,50 @@ import {
 } from "./renewals-due";
 
 const RENTAL_COLUMNS = "id,status,driver_id,application_id,vehicle_id,weekly_rate,end_date,next_payment_due";
+const ID_BATCH = 80;
+
+function idBatches(ids: string[]): string[][] {
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += ID_BATCH) batches.push(ids.slice(i, i + ID_BATCH));
+  return batches;
+}
+
+type IdPage<T> = { data: T[] | null; error: { message: string } | null; count: number | null };
+
+async function rowsInBatches<T>(
+  ids: string[],
+  load: (batch: string[]) => PromiseLike<IdPage<T>>,
+): Promise<{ rows: T[]; truncated: boolean }> {
+  if (ids.length === 0) return { rows: [], truncated: false };
+  const pages = await Promise.all(idBatches(ids).map((batch) => load(batch)));
+  const rows: T[] = [];
+  let count = 0;
+  for (const page of pages) {
+    if (page.error) throw new Error(page.error.message);
+    const data = page.data ?? [];
+    rows.push(...data);
+    count += page.count ?? data.length;
+  }
+  return { rows: rows.slice(0, RENEWALS_FETCH_LIMIT), truncated: count > RENEWALS_FETCH_LIMIT };
+}
+
+async function paymentRowsInBatches(
+  ids: string[],
+  load: (batch: string[]) => PromiseLike<IdPage<RenewalPayment>>,
+): Promise<{ rows: RenewalPayment[]; truncated: boolean }> {
+  if (ids.length === 0) return { rows: [], truncated: false };
+  const pages = await Promise.all(idBatches(ids).map((batch) => load(batch)));
+  const rows: RenewalPayment[] = [];
+  let count = 0;
+  for (const page of pages) {
+    if (page.error) throw new Error(page.error.message);
+    const data = page.data ?? [];
+    rows.push(...data);
+    count += page.count ?? data.length;
+  }
+  rows.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  return { rows: rows.slice(0, RENEWALS_FETCH_LIMIT), truncated: count > RENEWALS_FETCH_LIMIT };
+}
 
 export const getRenewalsDue = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -85,37 +129,28 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
     const vehicleIds = [...new Set(listed.map((row) => row.vehicle_id).filter((id): id is string => !!id))];
     const rentalIds = rentals.map((row) => row.id);
 
-    const [applicationsQ, vehiclesQ, paymentsQ] = await Promise.all([
-      applicationIds.length === 0
-        ? Promise.resolve({ data: [] as RenewalApplication[], error: null, count: 0 })
-        : supabaseAdmin
-            .from("applications")
-            .select("id,full_name", { count: "exact" })
-            .in("id", applicationIds)
-            .limit(RENEWALS_FETCH_LIMIT),
-      vehicleIds.length === 0
-        ? Promise.resolve({ data: [] as RenewalVehicle[], error: null, count: 0 })
-        : supabaseAdmin
-            .from("vehicles")
-            .select("id,year,make,model,unit_number,license_plate", { count: "exact" })
-            .in("id", vehicleIds)
-            .limit(RENEWALS_FETCH_LIMIT),
-      rentalIds.length === 0
-        ? Promise.resolve({ data: [] as RenewalPayment[], error: null, count: 0 })
-        : supabaseAdmin
-            .from("payments")
-            .select("id,rental_id,status,created_at", { count: "exact" })
-            .in("rental_id", rentalIds)
-            .order("created_at", { ascending: false })
-            .limit(RENEWALS_FETCH_LIMIT),
-    ]);
-    if (applicationsQ.error) throw new Error(applicationsQ.error.message);
-    if (vehiclesQ.error) throw new Error(vehiclesQ.error.message);
-    if (paymentsQ.error) throw new Error(paymentsQ.error.message);
+    const applicationsQ = await rowsInBatches(applicationIds, (batch) =>
+      supabaseAdmin.from("applications").select("id,full_name", { count: "exact" }).in("id", batch).limit(RENEWALS_FETCH_LIMIT),
+    );
+    const vehiclesQ = await rowsInBatches(vehicleIds, (batch) =>
+      supabaseAdmin
+        .from("vehicles")
+        .select("id,year,make,model,unit_number,license_plate", { count: "exact" })
+        .in("id", batch)
+        .limit(RENEWALS_FETCH_LIMIT),
+    );
+    const paymentsQ = await paymentRowsInBatches(rentalIds, (batch) =>
+      supabaseAdmin
+        .from("payments")
+        .select("id,rental_id,status,created_at", { count: "exact" })
+        .in("rental_id", batch)
+        .order("created_at", { ascending: false })
+        .limit(RENEWALS_FETCH_LIMIT),
+    );
 
-    const applications: RenewalApplication[] = applicationsQ.data ?? [];
-    const vehicles: RenewalVehicle[] = vehiclesQ.data ?? [];
-    const payments: RenewalPayment[] = paymentsQ.data ?? [];
+    const applications: RenewalApplication[] = applicationsQ.rows;
+    const vehicles: RenewalVehicle[] = vehiclesQ.rows;
+    const payments: RenewalPayment[] = paymentsQ.rows;
 
     return buildRenewalsDue({
       today,
@@ -127,8 +162,8 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
       billingTruncated: over(billingQ.count, billingQ.data?.length ?? 0),
       endTruncated,
       overdueTruncated,
-      applicationsTruncated: over(applicationsQ.count, applications.length),
-      vehiclesTruncated: over(vehiclesQ.count, vehicles.length),
-      paymentsTruncated: over(paymentsQ.count, payments.length),
+      applicationsTruncated: applicationsQ.truncated,
+      vehiclesTruncated: vehiclesQ.truncated,
+      paymentsTruncated: paymentsQ.truncated,
     });
   });
