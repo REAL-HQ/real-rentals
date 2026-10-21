@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { CalendarClock, Plus, X, Check, Wrench, Trash2 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { companyShareInsert } from "@/lib/maintenance-company-share";
 
 type Schedule = {
   id: string;
@@ -507,6 +508,7 @@ function CompleteForm({
 
     // Record the work first, then roll the schedule. A database trigger derives
     // the next due date and mileage from these values.
+    const totalCost = Number(cost.replace(/[^\d.]/g, "")) || 0;
     const { error: recErr } = await supabase.from("maintenance_records").insert({
       vehicle_id: schedule.vehicle_id,
       schedule_id: schedule.id,
@@ -516,7 +518,8 @@ function CompleteForm({
       performed_on: performedOn,
       completed_at: new Date(performedOn).toISOString(),
       odometer: odo || null,
-      total_cost: Number(cost.replace(/[^\d.]/g, "")) || 0,
+      total_cost: totalCost,
+      ...companyShareInsert({ linkedExpense: false, totalCost }),
       vendor_id: vendorId || null,
       invoice_number: invoice.trim() || null,
       notes: notes.trim() || null,

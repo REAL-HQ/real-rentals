@@ -6,6 +6,7 @@ import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-reac
 import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { companyShareInsert } from "@/lib/maintenance-company-share";
 
 type Row = {
   id: string;
@@ -414,13 +415,15 @@ function NewMaintenanceForm({
     e.preventDefault();
     if (!vehicleId || !item) return toast.error("Vehicle and item are required");
     setSaving(true);
+    const totalCost = cost ? Number(cost) : 0;
     const { error } = await supabase.from("maintenance_records").insert({
       vehicle_id: vehicleId,
       item,
       category,
       status: "scheduled",
       due_date: dueDate || null,
-      total_cost: cost ? Number(cost) : 0,
+      total_cost: totalCost,
+      ...companyShareInsert({ linkedExpense: false, totalCost }),
       notes: notes || null,
     } as any);
     setSaving(false);

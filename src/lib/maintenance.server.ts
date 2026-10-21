@@ -4,6 +4,7 @@
 // (one dollar counted once) and at most one mileage reading per evidence.
 import type { Actor } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { companyShareInsert } from "@/lib/maintenance-company-share";
 import { netServiceCost, normalizeCategory, sumKnown, vendorKey } from "@/lib/maintenance-rules";
 
 export type ServiceItemInput = {
@@ -74,6 +75,12 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
   const title = items.length ? items.map((i) => i.description.trim()).slice(0, 3).join(" + ") + (items.length > 3 ? ` + ${items.length - 3} More` : "") : (input.description ?? "Service");
   const total = input.totalCost ?? sumKnown(input.laborCost, input.partsCost, input.taxAmount, input.otherCost) ?? sumKnown(...items.map((i) => i.amount ?? null));
   const completed = (input.status ?? "completed") === "completed";
+  const net = netServiceCost(total, input.warrantyCovered ?? null);
+  const companyShare = companyShareInsert({
+    linkedExpense: completed && net != null && net > 0,
+    totalCost: total,
+    warrantyCovered: input.warrantyCovered ?? null,
+  });
 
   const { data: rec, error } = await sb.from("maintenance_records").insert({
     vehicle_id: input.vehicleId, item: title.slice(0, 200), category: primaryCat,
@@ -82,6 +89,7 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
     vendor_id: vendorId, vendor_name_raw: input.vendorNameRaw ?? null, invoice_number: input.invoiceNumber ?? null,
     description: input.description ?? null, labor_cost: input.laborCost ?? null, parts_cost: input.partsCost ?? null,
     tax_amount: input.taxAmount ?? null, other_cost: input.otherCost ?? null, total_cost: total,
+    ...companyShare,
     warranty_covered: input.warrantyCovered ?? null, payment_status: input.paymentStatus ?? null,
     payment_method: input.paymentMethod ?? null, priority: input.priority ?? null, notes: input.notes ?? null,
     source: input.source, document_id: input.documentId ?? null, document_page: input.documentPage ?? null,
@@ -111,7 +119,6 @@ export async function recordServiceEvent(sb: any, actor: Actor, input: ServiceEv
   }
   // Single financial truth: one expense row that points at this event.
   // The expense is what the business actually paid: invoice total minus warranty coverage.
-  const net = netServiceCost(total, input.warrantyCovered ?? null);
   if (completed && net != null && net > 0) {
     await sb.from("vehicle_expenses").insert({
       vehicle_id: input.vehicleId, vendor_id: vendorId, category: "maintenance", description: title.slice(0, 200),
