@@ -25,17 +25,34 @@ export async function runOwnerFinanceSnapshot(input: {
   weekStart: string | null;
   rentCollected: (week: RentWeek) => Promise<number>;
   reconciliation: (week: RentWeek) => Promise<RentReconciliationResponse>;
+  outstanding?: () => Promise<number | null>;
+  deposits?: () => Promise<{ heldCents: number | null; dueBackCents: number | null }>;
+  forecast?: () => Promise<number | null>;
 }): Promise<OwnerFinanceSnapshotResponse> {
   if (!input.enabled) throw new Error(OWNER_FINANCE_SNAPSHOT_OFF);
   if (!input.userId || !tierAllows(input.tier, "owner")) throw new Error("Forbidden");
   const week = input.weekStart ? weekBounds(input.weekStart) : lastFullWeek(input.now);
   if (!week) return { status: "ready", report: buildOwnerFinanceSnapshot({ week: null, rentCollectedCents: null, exceptionCount: null }) };
-  const [rentCollectedCents, reconciliation] = await Promise.all([
+  const [rentCollectedCents, reconciliation, outstandingCents, deposits, forecastCents] = await Promise.all([
     capture(() => input.rentCollected(week)),
     capture(() => input.reconciliation(week)),
+    capture(() => input.outstanding?.() ?? Promise.resolve(null)),
+    capture(() => input.deposits?.() ?? Promise.resolve(null)),
+    capture(() => input.forecast?.() ?? Promise.resolve(null)),
   ]);
   const exceptionCount = reconciliation?.status === "ready" ? reconciliationExceptionCount(reconciliation.report) : null;
-  return { status: "ready", report: buildOwnerFinanceSnapshot({ week, rentCollectedCents, exceptionCount }) };
+  return {
+    status: "ready",
+    report: buildOwnerFinanceSnapshot({
+      week,
+      rentCollectedCents,
+      exceptionCount,
+      outstandingCents,
+      depositsHeldCents: deposits?.heldCents ?? null,
+      refundsDueCents: deposits?.dueBackCents ?? null,
+      forecastCents,
+    }),
+  };
 }
 
 /** Collections revenue for paid_date inside the week. Deposits stay in collectionSummary's deposit total. */

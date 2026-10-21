@@ -41,6 +41,9 @@ function tile(report: OwnerFinanceSnapshotReport, id: OwnerFinanceSnapshotReport
 it("throws before any read when the flag is off", async () => {
   const rent = vi.fn(async () => 100);
   const reconciliation = vi.fn(async () => readyReport({}));
+  const outstanding = vi.fn(async () => 1);
+  const deposits = vi.fn(async () => ({ heldCents: 1, dueBackCents: 1 }));
+  const forecast = vi.fn(async () => 1);
   await expect(runOwnerFinanceSnapshot({
     enabled: false,
     userId: "owner",
@@ -49,9 +52,15 @@ it("throws before any read when the flag is off", async () => {
     weekStart: null,
     rentCollected: rent,
     reconciliation,
+    outstanding,
+    deposits,
+    forecast,
   })).rejects.toThrow(OWNER_FINANCE_SNAPSHOT_OFF);
   expect(rent).not.toHaveBeenCalled();
   expect(reconciliation).not.toHaveBeenCalled();
+  expect(outstanding).not.toHaveBeenCalled();
+  expect(deposits).not.toHaveBeenCalled();
+  expect(forecast).not.toHaveBeenCalled();
 });
 
 it("refuses a manager, a coordinator, and a missing user before any read", async () => {
@@ -133,10 +142,59 @@ it("sums collections revenue for the week and leaves absent sections unavailable
   expect(tile(result.report, "rent_collected").tab).toBe("payments");
   expect(tile(result.report, "reconciliation_exceptions").value).toBe("4");
   expect(tile(result.report, "reconciliation_exceptions").tab).toBe("rent_reconciliation");
-  for (const id of ["outstanding_balance", "deposits_held", "refunds_due", "revenue_forecast", "vehicle_utilization"] as const) {
+  expect(tile(result.report, "vehicle_utilization").value).toBe(NOT_AVAILABLE);
+  expect(tile(result.report, "vehicle_utilization").tab).toBeNull();
+  expect(tile(result.report, "outstanding_balance").tab).toBe("receivables_aging");
+  expect(tile(result.report, "deposits_held").tab).toBe("deposit_ledger");
+  expect(tile(result.report, "refunds_due").tab).toBe("deposit_ledger");
+  expect(tile(result.report, "revenue_forecast").tab).toBe("revenue_forecast");
+  for (const id of ["outstanding_balance", "deposits_held", "refunds_due", "revenue_forecast"] as const) {
     expect(tile(result.report, id).value).toBe(NOT_AVAILABLE);
-    expect(tile(result.report, id).tab).toBeNull();
   }
+});
+
+it("fills the RC9 tiles from the readers and withholds a failed or capped read", async () => {
+  const result = await runOwnerFinanceSnapshot({
+    enabled: true,
+    userId: "owner",
+    tier: "owner",
+    now: NOW,
+    weekStart: WEEK.from,
+    rentCollected: async () => 11500,
+    reconciliation: async () => readyReport({}),
+    outstanding: async () => 4200,
+    deposits: async () => ({ heldCents: 50000, dueBackCents: 1500 }),
+    forecast: async () => 88000,
+  });
+  expect(result.status).toBe("ready");
+  if (result.status !== "ready") return;
+  expect(tile(result.report, "outstanding_balance").value).toBe("$42.00");
+  expect(tile(result.report, "deposits_held").value).toBe("$500.00");
+  expect(tile(result.report, "refunds_due").value).toBe("$15.00");
+  expect(tile(result.report, "revenue_forecast").value).toBe("$880.00");
+  expect(tile(result.report, "vehicle_utilization").value).toBe(NOT_AVAILABLE);
+
+  const failed = await runOwnerFinanceSnapshot({
+    enabled: true,
+    userId: "owner",
+    tier: "owner",
+    now: NOW,
+    weekStart: WEEK.from,
+    rentCollected: async () => 2500,
+    reconciliation: async () => readyReport({}),
+    outstanding: async () => {
+      throw new Error("aging unread");
+    },
+    deposits: async () => ({ heldCents: null, dueBackCents: 1500 }),
+    forecast: async () => null,
+  });
+  expect(failed.status).toBe("ready");
+  if (failed.status !== "ready") return;
+  expect(tile(failed.report, "rent_collected").value).toBe("$25.00");
+  expect(tile(failed.report, "outstanding_balance").value).toBe(NOT_AVAILABLE);
+  expect(tile(failed.report, "deposits_held").value).toBe(NOT_AVAILABLE);
+  expect(tile(failed.report, "refunds_due").value).toBe("$15.00");
+  expect(tile(failed.report, "revenue_forecast").value).toBe(NOT_AVAILABLE);
 });
 
 it("keeps the other tiles when one read fails", async () => {
@@ -262,12 +320,25 @@ it("keeps the snapshot out of the dark nav and behind the throw", () => {
   expect(fn.indexOf("readPaymentReport(")).toBeGreaterThan(owner);
   expect(fn.indexOf("runRentReconciliation(")).toBeGreaterThan(owner);
   expect(fn.indexOf("readLiveRentStripe(")).toBeGreaterThan(owner);
+  expect(fn.indexOf("runReceivablesAging(")).toBeGreaterThan(owner);
+  expect(fn.indexOf("runDepositLedger(")).toBeGreaterThan(owner);
+  expect(fn.indexOf("readLiveDepositStripe(")).toBeGreaterThan(owner);
+  expect(fn.indexOf("runRevenueForecast(")).toBeGreaterThan(owner);
   expect(fn.indexOf('import("./revenue-report")')).toBeGreaterThan(owner);
   expect(fn.indexOf('import("./rent-reconciliation-stripe.server")')).toBeGreaterThan(owner);
+  expect(fn.indexOf('import("./receivables-aging.server")')).toBeGreaterThan(owner);
+  expect(fn.indexOf('import("./deposit-ledger-stripe.server")')).toBeGreaterThan(owner);
+  expect(fn.indexOf('import("./revenue-forecast.server")')).toBeGreaterThan(owner);
   expect(fn.indexOf('import("@/integrations/supabase/client.server")')).toBeGreaterThan(owner);
   expect(fn).not.toContain("requireManager");
   expect(fn).toContain("enabled: true");
   expect(fn).not.toContain("RENT_RECONCILIATION_ENABLED");
+  expect(fn).not.toContain("RECEIVABLES_AGING_ENABLED");
+  expect(fn).not.toContain("DEPOSIT_LEDGER_ENABLED");
+  expect(fn).not.toContain("REVENUE_FORECAST_ENABLED");
+  expect(readFileSync("src/lib/receivables-aging-flag.ts", "utf8")).toContain("export const RECEIVABLES_AGING_ENABLED = false");
+  expect(readFileSync("src/lib/deposit-ledger-flag.ts", "utf8")).toContain("export const DEPOSIT_LEDGER_ENABLED = false");
+  expect(readFileSync("src/lib/revenue-forecast-flag.ts", "utf8")).toContain("export const REVENUE_FORECAST_ENABLED = false");
   expect(rentFlag).toContain("export const RENT_RECONCILIATION_ENABLED = false");
   expect(tabs).not.toMatch(/id: "owner_finance_snapshot"/);
   expect(TABS.some((tab) => tab.id === "owner_finance_snapshot")).toBe(false);

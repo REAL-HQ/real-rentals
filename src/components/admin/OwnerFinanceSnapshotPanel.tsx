@@ -45,7 +45,7 @@ export function OwnerFinanceSnapshotPanel() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Owner Weekly Finance Snapshot</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            One Monday through Sunday week in Eastern Time. Rent collected follows the collections total for charges paid in that week. Deposits are excluded from that total. A section that is not in this release, or that cannot be read, says {NOT_AVAILABLE}. This screen does not change a payment.
+            One Monday through Sunday week in Eastern Time. Rent collected follows the collections total for charges paid in that week. Deposits are excluded from that total. Outstanding Balance, Deposits Held, Refunds Due, and 4-Week Forecast use the existing read-only reports. A section that cannot be read says {NOT_AVAILABLE}. Vehicle Utilization stays {NOT_AVAILABLE}. This screen does not change a payment.
           </p>
         </div>
         {load.kind === "ready" && (

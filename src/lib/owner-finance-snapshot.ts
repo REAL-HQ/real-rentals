@@ -1,21 +1,24 @@
+import { AGE_BUCKETS } from "./receivables-aging";
 import { RENT_CATEGORIES, type RentReconciliationReport } from "./rent-reconciliation";
 
 /**
  * Read-only tiles for one Eastern Time week.
- * A section whose source is not on this branch, or whose read failed, is "Not available".
- * Receivables Aging, Deposit Ledger, and the 4-week forecast are not in this stack.
- * summarizeFleet exists, but nothing on this branch exports a fleet-status read, so utilization stays unavailable.
+ * A section whose read failed, or whose totals were withheld, is "Not available".
+ * Outstanding Balance is the sum of the Receivables Aging buckets.
+ * Deposits Held and Refunds Due are the Deposit Ledger totals.
+ * 4-Week Forecast is the Revenue Forecast total, which is projected income, not collected money.
+ * summarizeFleet exists, but no exported reader supplies fleet rows, so utilization stays unavailable.
  */
 
 export const NOT_AVAILABLE = "Not available";
 
 export const SNAPSHOT_TILES = [
   { id: "rent_collected", label: "Rent Collected", screen: "Payments", tab: "payments" },
-  { id: "outstanding_balance", label: "Outstanding Balance", screen: null, tab: null },
-  { id: "deposits_held", label: "Deposits Held", screen: null, tab: null },
-  { id: "refunds_due", label: "Refunds Due", screen: null, tab: null },
+  { id: "outstanding_balance", label: "Outstanding Balance", screen: "Receivables Aging", tab: "receivables_aging" },
+  { id: "deposits_held", label: "Deposits Held", screen: "Deposit Ledger", tab: "deposit_ledger" },
+  { id: "refunds_due", label: "Refunds Due", screen: "Deposit Ledger", tab: "deposit_ledger" },
   { id: "reconciliation_exceptions", label: "Reconciliation Exceptions", screen: "Rent Reconciliation", tab: "rent_reconciliation" },
-  { id: "revenue_forecast", label: "4-Week Forecast", screen: null, tab: null },
+  { id: "revenue_forecast", label: "4-Week Forecast", screen: "Revenue Forecast", tab: "revenue_forecast" },
   { id: "vehicle_utilization", label: "Vehicle Utilization", screen: null, tab: null },
 ] as const;
 
@@ -52,18 +55,52 @@ export function reconciliationExceptionCount(report: RentReconciliationReport): 
   return count;
 }
 
+/** Sum of the aging buckets. A warning or a withheld total stays unavailable. */
+export function outstandingBalanceCents(report: { warnings: readonly string[]; bucketCents: Partial<Record<string, number>> | null } | null): number | null {
+  if (!report || report.warnings.length > 0 || !report.bucketCents) return null;
+  let total = 0;
+  for (const bucket of AGE_BUCKETS) {
+    const cents = report.bucketCents[bucket];
+    if (typeof cents !== "number" || !Number.isSafeInteger(cents) || cents < 0) return null;
+    total += cents;
+  }
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+/** Deposit Ledger held total. A warning or a withheld total stays unavailable. Stripe evidence does not change it. */
+export function depositsHeldCents(report: { warnings: readonly string[]; heldCents: number | null } | null): number | null {
+  if (!report || report.warnings.length > 0) return null;
+  return wholeCents(report.heldCents);
+}
+
+/** Deposit Ledger refunds due in the next 7 days. A warning or a withheld total stays unavailable. */
+export function refundsDueCents(report: { warnings: readonly string[]; dueBackCents: number | null } | null): number | null {
+  if (!report || report.warnings.length > 0) return null;
+  return wholeCents(report.dueBackCents);
+}
+
+/** Four-week projected total. A warning withholds it, including the forecast page cap. */
+export function forecastTotalCents(report: { warnings: readonly string[]; totalCents: number } | null): number | null {
+  if (!report || report.warnings.length > 0) return null;
+  return wholeCents(report.totalCents);
+}
+
 export function buildOwnerFinanceSnapshot(input: {
   week: { from: string; through: string } | null;
   rentCollectedCents: number | null;
   exceptionCount: number | null;
+  outstandingCents?: number | null;
+  depositsHeldCents?: number | null;
+  refundsDueCents?: number | null;
+  forecastCents?: number | null;
 }): OwnerFinanceSnapshotReport {
   const values: Record<SnapshotTileId, string> = {
     rent_collected: moneyOrUnavailable(input.rentCollectedCents),
-    outstanding_balance: NOT_AVAILABLE,
-    deposits_held: NOT_AVAILABLE,
-    refunds_due: NOT_AVAILABLE,
+    outstanding_balance: moneyOrUnavailable(input.outstandingCents ?? null),
+    deposits_held: moneyOrUnavailable(input.depositsHeldCents ?? null),
+    refunds_due: moneyOrUnavailable(input.refundsDueCents ?? null),
     reconciliation_exceptions: countOrUnavailable(input.exceptionCount),
-    revenue_forecast: NOT_AVAILABLE,
+    revenue_forecast: moneyOrUnavailable(input.forecastCents ?? null),
     vehicle_utilization: NOT_AVAILABLE,
   };
   return {
@@ -86,9 +123,15 @@ export function ownerFinanceSnapshotToCsv(report: OwnerFinanceSnapshotReport): s
   return `${lines.map((line) => line.map(escapeCsvCell).join(",")).join("\r\n")}\r\n`;
 }
 
+function wholeCents(cents: number | null): number | null {
+  if (cents == null || !Number.isSafeInteger(cents) || cents < 0) return null;
+  return cents;
+}
+
 function moneyOrUnavailable(cents: number | null): string {
-  if (cents == null || !Number.isSafeInteger(cents) || cents < 0) return NOT_AVAILABLE;
-  return formatSnapshotMoney(cents);
+  const whole = wholeCents(cents);
+  if (whole == null) return NOT_AVAILABLE;
+  return formatSnapshotMoney(whole);
 }
 
 function countOrUnavailable(count: number | null): string {
