@@ -30,6 +30,9 @@ import {
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
+import { DocumentUpdateCard } from "@/components/portal/DocumentUpdateCard";
+import { PORTAL_DOCUMENT_UPDATE_ENABLED } from "@/lib/portal-document-update";
+import { getPortalDocumentUpdates } from "@/lib/portal-document-update.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
   listConditionMedia,
@@ -383,6 +386,27 @@ function Stub({ label }: { label: string }) {
 
 function fmt(amount: number) {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function PortalDocumentUpdate() {
+  const previewId = usePreviewDriver();
+  const fetchUpdates = usePortalRead(getPortalDocumentUpdates);
+  const { data, isError, isLoading, refetch } = useQuery({
+    queryKey: ["portal-document-update", previewId ?? "self"],
+    queryFn: () => fetchUpdates(),
+    enabled: PORTAL_DOCUMENT_UPDATE_ENABLED === true,
+  });
+  if (PORTAL_DOCUMENT_UPDATE_ENABLED !== true) return null;
+  if (isLoading || isError || !data?.length) return null;
+  return (
+    <DocumentUpdateCard
+      items={data}
+      readOnly={previewId != null}
+      onUploaded={() => {
+        void refetch();
+      }}
+    />
+  );
 }
 
 function DocumentsView() {
@@ -1573,6 +1597,7 @@ function DashboardView({
           </button>
         </div>
       </div>
+      <PortalDocumentUpdate />
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
