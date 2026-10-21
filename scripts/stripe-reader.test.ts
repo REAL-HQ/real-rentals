@@ -8,11 +8,18 @@ const stripeMock = vi.hoisted(() => {
   const list = vi.fn();
   const create = vi.fn();
   const refundCreate = vi.fn();
+  const rawRequest = vi.fn(async () => ({ id: "should-not-run" }));
+  const request = vi.fn(async () => ({ id: "should-not-run" }));
+  const senderRaw = vi.fn(async () => ({ id: "should-not-run" }));
+  const resourceRaw = vi.fn(async () => ({ id: "should-not-run" }));
   const createStripeClient = vi.fn((_env: string, _options?: { timeout?: number }) => ({
-    charges: { list, create },
+    charges: { list, create, _stripe: { rawRequest: resourceRaw } },
     refunds: { create: refundCreate },
+    rawRequest,
+    request,
+    _requestSender: { _rawRequest: senderRaw },
   }));
-  return { list, create, refundCreate, createStripeClient };
+  return { list, create, refundCreate, rawRequest, request, senderRaw, resourceRaw, createStripeClient };
 });
 vi.mock("../src/lib/stripe.server", () => ({ createStripeClient: stripeMock.createStripeClient }));
 import { clearStripeReaderCache, createReadOnlyStripe } from "../src/lib/stripe-reader.server";
@@ -117,7 +124,7 @@ describe("shared Stripe reader", () => {
     expect(stripeMock.list).toHaveBeenCalledTimes(2);
     await stripe.charges.list({ limit: 50 }, { timeout: 1_000 });
     expect(stripeMock.list).toHaveBeenCalledTimes(3);
-    expect(() => (stripe.charges as unknown as { create: (body: unknown) => Promise<unknown> }).create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
+    expect((stripe.charges as unknown as { create?: unknown }).create).toBeUndefined();
     expect(stripeMock.create).not.toHaveBeenCalled();
     stripeMock.list.mockRejectedValueOnce({ statusCode: 429, message: "rate limit" });
     await expect(stripe.charges.list({ limit: 1 })).rejects.toThrow(STRIPE_TEMPORARILY_UNAVAILABLE);
@@ -168,10 +175,46 @@ describe("shared Stripe reader", () => {
     expect(await readLivePartnerCharges({ gte: 10, lt: 20 })).toEqual(proxied);
     expect(stripeMock.list).toHaveBeenCalledTimes(2);
     const stripe = createReadOnlyStripe("live", { cache: true });
-    expect(() => (stripe.charges as unknown as { create: (body: unknown) => void }).create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
-    expect(() => (stripe.refunds as unknown as { create: (body: unknown) => void }).create({})).toThrow("Stripe reader refuses refunds.create");
+    expect((stripe.charges as unknown as { create?: unknown }).create).toBeUndefined();
+    expect(stripe.refunds).toBeUndefined();
+    expect((stripe as unknown as { rawRequest?: unknown }).rawRequest).toBeUndefined();
+    expect((stripe as unknown as { request?: unknown }).request).toBeUndefined();
     expect(stripeMock.create).not.toHaveBeenCalled();
     expect(stripeMock.refundCreate).not.toHaveBeenCalled();
+    expect(stripeMock.rawRequest).not.toHaveBeenCalled();
+    expect(stripeMock.request).not.toHaveBeenCalled();
+  });
+
+  it("does not expose Stripe writes through descriptors, prototypes, or private fields", () => {
+    const stripe = createReadOnlyStripe("live", { cache: true });
+    const charges = stripe.charges as unknown as { list?: unknown; create?: unknown; _stripe?: { rawRequest?: () => unknown } };
+    const descriptor = Object.getOwnPropertyDescriptor(stripe, "charges");
+    const reflected = Reflect.getOwnPropertyDescriptor(stripe, "charges");
+    expect(descriptor?.value).toBe(charges);
+    expect(reflected?.value).toBe(charges);
+    expect(descriptor?.value.create).toBeUndefined();
+    expect(reflected?.value.create).toBeUndefined();
+    expect(() => descriptor?.value.create({ amount: 1 })).toThrow(TypeError);
+    expect(stripeMock.create).not.toHaveBeenCalled();
+
+    const sender = (stripe as unknown as { _requestSender?: { _rawRequest?: () => unknown } })._requestSender;
+    expect(sender).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(stripe, "_requestSender")).toBeUndefined();
+    expect(stripeMock.senderRaw).not.toHaveBeenCalled();
+
+    expect(charges._stripe).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(charges, "_stripe")).toBeUndefined();
+    expect(stripeMock.resourceRaw).not.toHaveBeenCalled();
+
+    const described = Object.getOwnPropertyDescriptors(stripe);
+    expect(Object.keys(described)).toEqual(["charges"]);
+    expect(Object.keys(Object.getOwnPropertyDescriptors(charges)).sort()).toEqual(["list"]);
+    expect(Object.getPrototypeOf(stripe)).toBeNull();
+    expect(Object.getPrototypeOf(charges)).toBeNull();
+    expect(Object.isFrozen(stripe)).toBe(true);
+    expect(Object.isFrozen(charges)).toBe(true);
+    expect(stripeMock.rawRequest).not.toHaveBeenCalled();
+    expect(stripeMock.request).not.toHaveBeenCalled();
   });
 
   it("sends every named reader through the read-only client", () => {
