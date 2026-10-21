@@ -63,16 +63,24 @@ export function newRawToken(): string {
     .replace(/=+$/, "");
 }
 
-/** How many unexpired links one application may have out at once, per purpose. */
+/** How many live links one application may have out at once, per kind. */
 const MAX_LIVE_TOKENS = 5;
 
 /**
  * Card-on-file links are 72 hours. That stays above the 1-hour recovery
  * window, so a card link is never mistaken for a single-use recovery link.
+ * The lifetime is also how a card row is recognised: the table has no purpose
+ * column, and this code does not add one.
  */
 export const CARD_LINK_MS = 72 * 60 * 60 * 1000;
 
-type TokenPurpose = "card" | "resume";
+/**
+ * '.' is outside base64url, so a resume token can never start with this.
+ * The hash covers the whole string, prefix included.
+ */
+export const CARD_TOKEN_PREFIX = "card.";
+
+type TokenKind = "card" | "resume";
 
 type TokenRow = {
   id: string;
@@ -80,7 +88,6 @@ type TokenRow = {
   created_at: string;
   expires_at: string;
   revoked_at: string | null;
-  purpose?: string | null;
 };
 
 /**
@@ -92,71 +99,51 @@ type TokenRow = {
 const cardPlaintext = new Map<string, { raw: string; expiresAt: number }>();
 const cardInflight = new Map<string, Promise<string>>();
 
-function missingPurposeColumn(error: { code?: string; message?: string } | null | undefined): boolean {
-  if (!error) return false;
-  const message = String(error.message ?? "").toLowerCase();
-  return (
-    error.code === "42703" ||
-    error.code === "PGRST204" ||
-    (message.includes("purpose") && (message.includes("does not exist") || message.includes("schema cache")))
-  );
-}
-
 function assertAboveRecoveryWindow(ttlMs: number) {
   if (!(ttlMs > RECOVERY_MAX_MS)) {
     throw new Error("Card link lifetime must be longer than one hour.");
   }
 }
 
+function instantMs(value: string | Date): number {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+/** True only for a row whose lifetime is exactly 72 hours. Resume is 14 days. Recovery is 30 minutes. */
+export function isCardRow(row: { created_at: string | Date; expires_at: string | Date }): boolean {
+  const created = instantMs(row.created_at as string);
+  const expires = instantMs(row.expires_at as string);
+  return Number.isFinite(created) && Number.isFinite(expires) && expires - created === CARD_LINK_MS;
+}
+
 async function loadToken(admin: AdminClient, raw: string): Promise<TokenRow | null> {
   const hash = await hashResumeToken(raw);
-  const scoped = await admin
+  const loaded = await admin
     .from("application_resume_tokens")
-    .select("id,application_id,created_at,expires_at,revoked_at,purpose" as "*")
+    .select("id,application_id,created_at,expires_at,revoked_at")
     .eq("token_hash", hash)
     .maybeSingle();
-  if (scoped.error && missingPurposeColumn(scoped.error)) {
-    const fallback = await admin
-      .from("application_resume_tokens")
-      .select("id,application_id,created_at,expires_at,revoked_at")
-      .eq("token_hash", hash)
-      .maybeSingle();
-    if (fallback.error || !fallback.data) return null;
-    return fallback.data as TokenRow;
-  }
-  if (scoped.error || !scoped.data) return null;
-  // purpose is proposed and is not in the generated row type yet.
-  return scoped.data as unknown as TokenRow;
+  if (loaded.error || !loaded.data) return null;
+  return loaded.data as TokenRow;
 }
 
 async function trimLiveTokens(
   admin: AdminClient,
   applicationId: string,
   keepId: string | undefined,
-  purpose: TokenPurpose,
+  kind: TokenKind,
 ) {
-  const scoped = await admin
+  const loaded = await admin
     .from("application_resume_tokens")
-    .select("id,purpose" as "*")
+    .select("id,created_at,expires_at")
     .eq("application_id", applicationId)
     .is("revoked_at", null)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false });
-  let rows = (scoped.data ?? []) as unknown as { id: string; purpose?: string | null }[];
-  if (scoped.error && missingPurposeColumn(scoped.error) && purpose === "resume") {
-    const fallback = await admin
-      .from("application_resume_tokens")
-      .select("id")
-      .eq("application_id", applicationId)
-      .is("revoked_at", null)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false });
-    rows = (fallback.data ?? []) as { id: string }[];
-  } else if (scoped.error) {
-    return;
-  }
+  if (loaded.error) return;
+  const rows = (loaded.data ?? []) as { id: string; created_at: string; expires_at: string }[];
   const excess = rows
-    .filter((row) => (purpose === "card" ? row.purpose === "card" : row.purpose !== "card"))
+    .filter((row) => isCardRow(row) === (kind === "card"))
     .map((row) => row.id)
     .filter((id) => id !== keepId)
     .slice(MAX_LIVE_TOKENS - 1);
@@ -169,16 +156,16 @@ async function trimLiveTokens(
 
 async function reuseCardLink(admin: AdminClient, applicationId: string): Promise<string | null> {
   const cached = cardPlaintext.get(applicationId);
-  if (!cached || cached.expiresAt <= Date.now()) {
+  if (!cached || cached.expiresAt <= Date.now() || !cached.raw.startsWith(CARD_TOKEN_PREFIX)) {
     cardPlaintext.delete(applicationId);
     return null;
   }
   const row = await loadToken(admin, cached.raw);
-  if (!row || row.revoked_at || row.purpose !== "card" || row.application_id !== applicationId) {
+  if (!row || row.revoked_at || !isCardRow(row) || row.application_id !== applicationId) {
     cardPlaintext.delete(applicationId);
     return null;
   }
-  if (new Date(row.expires_at).getTime() <= Date.now()) {
+  if (instantMs(row.expires_at) <= Date.now()) {
     cardPlaintext.delete(applicationId);
     return null;
   }
@@ -189,36 +176,36 @@ async function mintToken(
   admin: AdminClient,
   applicationId: string,
   ttlMs: number,
-  purpose: TokenPurpose,
+  kind: TokenKind,
 ): Promise<string> {
-  const raw = newRawToken();
-  const expiresAt = Date.now() + ttlMs;
-  const row: {
-    application_id: string;
-    token_hash: string;
-    expires_at: string;
-    purpose?: "card";
-  } = {
-    application_id: applicationId,
-    token_hash: await hashResumeToken(raw),
-    expires_at: new Date(expiresAt).toISOString(),
-  };
-  // Resume inserts omit purpose so they keep working before the column exists.
-  if (purpose === "card") row.purpose = "card";
-  const { data: inserted, error } = await admin
-    .from("application_resume_tokens")
-    // purpose is not in the generated types until proposed/card-link-purpose-v1.sql is installed.
-    .insert(row as never)
-    .select("id")
-    .single();
-  if (error) {
-    if (purpose === "card" && missingPurposeColumn(error)) {
-      throw new Error("Card links are not available until the card-purpose column is installed.");
-    }
-    throw new Error(error.message);
-  }
-  if (purpose === "card") cardPlaintext.set(applicationId, { raw, expiresAt });
-  await trimLiveTokens(admin, applicationId, inserted?.id as string | undefined, purpose);
+  const now = Date.now();
+  const raw = kind === "card" ? CARD_TOKEN_PREFIX + newRawToken() : newRawToken();
+  const token_hash = await hashResumeToken(raw);
+  const inserted =
+    kind === "card"
+      ? await admin
+          .from("application_resume_tokens")
+          .insert({
+            application_id: applicationId,
+            token_hash,
+            created_at: new Date(now).toISOString(),
+            expires_at: new Date(now + CARD_LINK_MS).toISOString(),
+          })
+          .select("id")
+          .single()
+      : await admin
+          .from("application_resume_tokens")
+          .insert({
+            application_id: applicationId,
+            token_hash,
+            expires_at: new Date(now + ttlMs).toISOString(),
+          })
+          .select("id")
+          .single();
+  const { data, error } = inserted;
+  if (error) throw new Error(error.message);
+  if (kind === "card") cardPlaintext.set(applicationId, { raw, expiresAt: now + CARD_LINK_MS });
+  await trimLiveTokens(admin, applicationId, data?.id, kind);
   return raw;
 }
 
@@ -231,14 +218,14 @@ async function mintToken(
  * email sent by the nightly cron would kill the link in the tab the applicant
  * already had open, and their next autosave would fail mid-sentence.
  *
- * Exposure is bounded instead: the oldest live tokens of the same purpose are
- * revoked once an application has more than MAX_LIVE_TOKENS of that purpose
+ * Exposure is bounded instead: the oldest live tokens of the same kind are
+ * revoked once an application has more than MAX_LIVE_TOKENS of that kind
  * out, and every one of them expires on its own. A card link never revokes a
  * resume link. Deliberate rotation is revokeResumeTokens() followed by this.
  *
- * `ttlMs` must stay above the one-hour recovery window. Card links pass
- * purpose "card" and 72 hours. Until the purpose column exists, a card issue
- * fails and does not fall back to an unscoped token.
+ * `ttlMs` must stay above the one-hour recovery window. purpose "card" is
+ * the caller's request only — it is not a column. The row lasts exactly
+ * CARD_LINK_MS and the raw token starts with CARD_TOKEN_PREFIX. No migration.
  *
  * Returns the raw token. This is the only moment it exists in plaintext,
  * except a card link re-read from this process's memory while it is still valid.
@@ -311,23 +298,23 @@ export async function resolveResumeToken(admin: AdminClient, raw: string): Promi
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
   if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
 
+  if (raw.startsWith(CARD_TOKEN_PREFIX)) throw new Error(generic);
   const row = await loadToken(admin, raw);
-  // purpose "card" opens the card page only. A missing purpose is a resume
-  // token, including every row written before the column exists.
-  if (!row || row.purpose === "card") throw new Error(generic);
+  // A card row opens /card only, even if the raw token was rewritten.
+  if (!row || isCardRow(row)) throw new Error(generic);
   return acceptResumeRow(admin, row, generic);
 }
 
 /**
- * The application id behind a card-on-file link. Resume tokens and recovery
- * tokens are refused. Without the purpose column this fails closed: a link
- * that can open /thank-you must not also be treated as a card link.
+ * The application id behind a card-on-file link. The raw token must start
+ * with CARD_TOKEN_PREFIX and the row must last exactly CARD_LINK_MS. Resume
+ * and recovery rows fail both checks.
  */
 export async function resolveCardToken(admin: AdminClient, raw: string): Promise<string> {
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
-  if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
+  if (!raw || raw.length < 20 || raw.length > 200 || !raw.startsWith(CARD_TOKEN_PREFIX)) throw new Error(generic);
   const row = await loadToken(admin, raw);
-  if (!row || row.revoked_at || row.purpose !== "card") throw new Error(generic);
+  if (!row || row.revoked_at || !isCardRow(row)) throw new Error(generic);
   const expires = new Date(row.expires_at).getTime();
   const created = new Date(row.created_at).getTime();
   if (!Number.isFinite(expires) || !Number.isFinite(created) || expires <= Date.now()) throw new Error(generic);
@@ -368,9 +355,10 @@ async function acceptResumeRow(admin: AdminClient, row: TokenRow, generic: strin
 export async function exchangeResumeToken(admin: AdminClient, raw: string): Promise<string> {
   const generic = "This link is no longer valid. Ask us for a new one and we'll send it over.";
   if (!raw || raw.length < 20 || raw.length > 200) throw new Error(generic);
+  if (raw.startsWith(CARD_TOKEN_PREFIX)) throw new Error(generic);
   const row = await loadToken(admin, raw);
-  // A card link is not an application session. /thank-you refuses it.
-  if (!row || row.revoked_at || row.purpose === "card") throw new Error(generic);
+  // A card link is not an application session. /thank-you and the wizard refuse it.
+  if (!row || row.revoked_at || isCardRow(row)) throw new Error(generic);
   const exp = new Date(row.expires_at).getTime();
   const created = new Date(row.created_at).getTime();
   if (!Number.isFinite(exp) || !Number.isFinite(created) || exp <= Date.now())

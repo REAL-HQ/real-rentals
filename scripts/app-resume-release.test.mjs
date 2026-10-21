@@ -393,11 +393,13 @@ try {
       applications.getApplicationForWizard({ data: { token: card } }),
       /no longer valid/,
     );
-    const cardRows = db.application_resume_tokens.filter((row) => row.purpose === "card");
+    assert.equal(card.startsWith(tokens.CARD_TOKEN_PREFIX), true);
+    const cardRows = db.application_resume_tokens.filter((row) => tokens.isCardRow(row));
     assert.equal(cardRows.length, 1);
     assert.equal(cardRows[0].revoked_at, null);
+    assert.equal(Object.hasOwn(cardRows[0], "purpose"), false);
     assert.equal(
-      db.application_resume_tokens.filter((row) => row.purpose !== "card" && row.revoked_at).length,
+      db.application_resume_tokens.filter((row) => !tokens.isCardRow(row) && row.revoked_at).length,
       0,
     );
   });
