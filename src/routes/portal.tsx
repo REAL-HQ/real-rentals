@@ -60,6 +60,9 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { PortalNotices } from "@/components/portal/PortalNotices";
+import { PORTAL_NOTICES_ENABLED } from "@/lib/portal-notices";
+import { getPortalNotices } from "@/lib/portal-notices.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -278,6 +281,11 @@ function Portal() {
   );
 }
 
+function PortalNoticesGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getPortalNotices);
+  return <PortalNotices onNavigate={onNavigate} read={() => read()} />;
+}
+
 function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => void }) {
   const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data, isLoading, error } = useQuery({
@@ -285,26 +293,47 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
     queryFn: () => fetchDashboard(),
   });
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading…</div>;
-  if (error)
+  const notices = PORTAL_NOTICES_ENABLED ? <PortalNoticesGate onNavigate={onNavigate} /> : null;
+
+  if (isLoading) {
     return (
-      <div className="text-sm text-real-red">
-        Could not load your portal. {(error as Error).message}
+      <div className="space-y-6">
+        {notices}
+        <div className="text-sm text-muted-foreground">Loading…</div>
       </div>
     );
-  if (!data) return null;
+  }
+  if (error) {
+    return (
+      <div className="space-y-6">
+        {notices}
+        <div className="text-sm text-real-red">
+          Could not load your portal. {(error as Error).message}
+        </div>
+      </div>
+    );
+  }
+  if (!data) return notices;
 
-  if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
-  if (tab === "documents") return <DocumentsView />;
-  if (tab === "pictures") return <PicturesView />;
-  if (tab === "settings") return <SettingsView />;
-  if (tab === "issue") return <IssuesView />;
-  if (tab === "referrals") return <ReferralsView />;
-  if (tab === "vehicle") return <VehicleView data={data} />;
-  if (tab === "payments") return <PaymentsView data={data} />;
-  if (tab === "deposit") return <DepositView data={data} />;
-  if (tab === "maintenance") return <MaintenanceView data={data} />;
-  return <Stub label={TABS.find((t) => t.id === tab)!.label} />;
+  let body;
+  if (tab === "dashboard") body = <DashboardView data={data} onNavigate={onNavigate} />;
+  else if (tab === "documents") body = <DocumentsView />;
+  else if (tab === "pictures") body = <PicturesView />;
+  else if (tab === "settings") body = <SettingsView />;
+  else if (tab === "issue") body = <IssuesView />;
+  else if (tab === "referrals") body = <ReferralsView />;
+  else if (tab === "vehicle") body = <VehicleView data={data} />;
+  else if (tab === "payments") body = <PaymentsView data={data} />;
+  else if (tab === "deposit") body = <DepositView data={data} />;
+  else if (tab === "maintenance") body = <MaintenanceView data={data} />;
+  else body = <Stub label={TABS.find((t) => t.id === tab)!.label} />;
+
+  return (
+    <div className="space-y-6">
+      {notices}
+      {body}
+    </div>
+  );
 }
 
 function Stub({ label }: { label: string }) {
