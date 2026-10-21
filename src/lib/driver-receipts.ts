@@ -4,10 +4,14 @@
  * this is true.
  *
  * A receipt uses stored columns only. A blank is listed under missing rather
- * than filled in.
+ * than filled in. The business name is the site brand, always.
  */
 
+import { COMPANY_DEFAULTS } from "@/lib/agreement-merge";
 import { fmtDate } from "@/lib/date-format";
+
+/** Same words as the portal title and the header mark. */
+export const RECEIPT_BUSINESS_NAME = COMPANY_DEFAULTS.company_name;
 
 export const DRIVER_RECEIPTS_ENABLED: boolean = false;
 
@@ -86,7 +90,6 @@ export type DriverReceipt = {
 };
 
 export type ReceiptContext = {
-  businessName: string | null;
   driverName: string | null;
   /** False when the vehicles read failed. A payment with no vehicle id is not a failed read. */
   vehiclesReadable: boolean;
@@ -158,7 +161,6 @@ export function buildDriverReceipts(payments: ReceiptPayment[], context: Receipt
     const vehicleId = payment.vehicle_id ?? rental?.vehicle_id ?? null;
     const vehicle = vehicleId ? vehicles.get(vehicleId) : undefined;
     const missing: string[] = [];
-    if (!context.businessName) missing.push("Business Name");
     if (!context.driverName) missing.push("Driver");
     const date = formatReceiptDate(payment.paid_date);
     if (!date) missing.push("Date");
@@ -186,7 +188,7 @@ export function buildDriverReceipts(payments: ReceiptPayment[], context: Receipt
       amount,
       purpose,
       status,
-      businessName: context.businessName,
+      businessName: RECEIPT_BUSINESS_NAME,
       driverName: context.driverName,
       vehicle: vehicleText,
       period,

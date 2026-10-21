@@ -71,11 +71,7 @@ export const getDriverReceipts = createServerFn({ method: "POST" })
       ? await supabase.from("vehicles").select("id,year,make,model,license_plate").in("id", vehicleIds)
       : { data: [] as ReceiptVehicle[], error: null };
 
-    const settings = await supabase.from("app_settings").select("value").eq("key", "system_preferences").maybeSingle();
-    const storedName = settings.error ? "" : String((settings.data?.value as { company_name?: unknown } | null)?.company_name ?? "").trim();
-
     return buildDriverReceipts(rows, {
-      businessName: storedName || null,
       driverName: driverName ? String(driverName).trim() || null : null,
       vehiclesReadable: !vehicles.error,
       vehicles: vehicles.error ? [] : ((vehicles.data ?? []) as ReceiptVehicle[]),

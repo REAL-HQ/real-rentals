@@ -12,7 +12,6 @@ import {
 } from "../src/lib/driver-receipts";
 
 const context = (partial: Partial<ReceiptContext> = {}): ReceiptContext => ({
-  businessName: "REAL RENTALS LLC",
   driverName: "Ada Lovelace",
   vehiclesReadable: true,
   vehicles: [{ id: "veh-1", year: 2022, make: "Toyota", model: "Camry", license_plate: "ABC123" }],
@@ -48,7 +47,10 @@ describe("driver receipts flag", () => {
     const read = handler.indexOf('.from("');
     assert.ok(guard !== -1 && scoped !== -1 && guard < scoped && scoped < read);
     assert.match(source, /portalScope/);
-    assert.doesNotMatch(source, /supabaseAdmin|stripe|\.insert\(|\.update\(|\.delete\(/);
+    assert.doesNotMatch(source, /supabaseAdmin|stripe|\.insert\(|\.update\(|\.delete\(|app_settings/);
+    const lib = readFileSync("src/lib/driver-receipts.ts", "utf8");
+    assert.match(lib, /COMPANY_DEFAULTS\.company_name/);
+    assert.doesNotMatch(lib, /missing\.push\("Business Name"\)/);
     const portal = readFileSync("src/routes/portal.tsx", "utf8");
     assert.match(portal, /DRIVER_RECEIPTS_ENABLED \? <DriverReceiptsGate/);
     assert.match(portal, /usePortalRead\(getDriverReceipts\)/);
@@ -77,7 +79,7 @@ describe("driver receipts", () => {
     assert.equal(receipts[0]?.amount, "$250.00");
     assert.equal(receipts[0]?.purpose, "Rent");
     assert.equal(receipts[0]?.status, "Paid");
-    assert.equal(receipts[0]?.businessName, "REAL RENTALS LLC");
+    assert.equal(receipts[0]?.businessName, "REAL RENTALS");
     assert.equal(receipts[0]?.driverName, "Ada Lovelace");
     assert.equal(receipts[0]?.vehicle, "2022 Toyota Camry · ABC123");
     assert.equal(receipts[0]?.period, "Oct 1, 2026 – Oct 8, 2026");
@@ -87,13 +89,13 @@ describe("driver receipts", () => {
   it("omits a field it could not read and names it", () => {
     const receipts = buildDriverReceipts(
       [payment({ paid_date: null, vehicle_id: null, rental_id: null, type: null })],
-      context({ businessName: null, driverName: null, vehiclesReadable: false, rentalsReadable: false }),
+      context({ driverName: null, vehiclesReadable: false, rentalsReadable: false }),
     );
+    assert.equal(receipts[0]?.businessName, "REAL RENTALS");
     assert.equal(receipts[0]?.date, null);
     assert.equal(receipts[0]?.vehicle, null);
     assert.equal(receipts[0]?.period, null);
     assert.deepEqual(receipts[0]?.missing, [
-      "Business Name",
       "Driver",
       "Date",
       "What It Was For",
