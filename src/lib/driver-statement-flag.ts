@@ -1,4 +1,6 @@
-/** Exact env string only. Unset, "TRUE", "1", and surrounding spaces stay off. */
-export function driverStatementEnabled(env: { DRIVER_STATEMENT_ENABLED?: string } = process.env): boolean {
-  return env.DRIVER_STATEMENT_ENABLED === "true";
-}
+/**
+ * Driver Statement is off until this constant is turned on in source.
+ * false returns disabled before the role check and before any driver or Stripe read.
+ * There is no environment variable for this flag.
+ */
+export const DRIVER_STATEMENT_ENABLED = false;

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { visibleTabs, visibleWorkspaceTabs } from "../src/components/admin/nav-config";
-import { stripeMatchReportEnabled } from "../src/lib/stripe-match-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "../src/lib/stripe-match-flag";
 import { etDate, matchStripeCustomers, type MatchApplication, type MatchRental, type MatchVehicle, type StripeMatchCustomer } from "../src/lib/stripe-match";
 import { readStripeMatchWindow, type ReadOnlyStripeGateway } from "../src/lib/stripe-match-read.server";
 import { runStripeMatch } from "../src/lib/stripe-match.server";
@@ -19,17 +19,17 @@ const price = (cents: number, interval = "week") => ({
 });
 
 describe("flag", () => {
-  it("is on only for the exact string true", () => {
-    expect(stripeMatchReportEnabled({ STRIPE_MATCH_REPORT_ENABLED: "true" })).toBe(true);
-    for (const value of [undefined, "", "TRUE", "True", "1", "yes", " true", "true "]) {
-      expect(stripeMatchReportEnabled({ STRIPE_MATCH_REPORT_ENABLED: value })).toBe(false);
-    }
+  it("is a hard-false constant with no environment read", () => {
+    expect(STRIPE_MATCH_REPORT_ENABLED).toBe(false);
+    const flag = readFileSync("src/lib/stripe-match-flag.ts", "utf8");
+    expect(flag).toContain("export const STRIPE_MATCH_REPORT_ENABLED = false");
+    expect(flag).not.toMatch(/process\.env|import\.meta\.env/);
   });
 
   it("does not read the directory or Stripe when the flag is off", async () => {
     let called = false;
     const touch = async () => { called = true; throw new Error("read"); };
-    const result = await runStripeMatch({ userId: "owner-1", roles: ["admin"], env: {}, loadDirectory: touch, readStripe: touch });
+    const result = await runStripeMatch({ userId: "owner-1", roles: ["admin"], enabled: false, loadDirectory: touch, readStripe: touch });
     expect(result).toEqual({ status: "disabled", report: null });
     expect(called).toBe(false);
   });
@@ -38,7 +38,7 @@ describe("flag", () => {
     let called = false;
     const touch = async () => { called = true; throw new Error("read"); };
     await expect(runStripeMatch({
-      userId: "coord-1", roles: ["coordinator"], env: { STRIPE_MATCH_REPORT_ENABLED: "true" }, loadDirectory: touch, readStripe: touch,
+      userId: "coord-1", roles: ["coordinator"], enabled: true, loadDirectory: touch, readStripe: touch,
     })).rejects.toThrow("Forbidden");
     expect(called).toBe(false);
   });
@@ -46,7 +46,7 @@ describe("flag", () => {
   it("does not call Stripe when the directory is incomplete", async () => {
     let stripe = false;
     const result = await runStripeMatch({
-      userId: "mgr-1", roles: ["team"], env: { STRIPE_MATCH_REPORT_ENABLED: "true" },
+      userId: "mgr-1", roles: ["team"], enabled: true,
       loadDirectory: async () => null,
       readStripe: async () => { stripe = true; return { ok: false, reason: "no" }; },
     });
@@ -186,10 +186,19 @@ describe("reader", () => {
     }
     const runner = readFileSync("src/lib/stripe-match.server.ts", "utf8");
     const body = runner.slice(runner.indexOf("export async function runStripeMatch"));
-    expect(body.indexOf("stripeMatchReportEnabled")).toBeGreaterThan(-1);
-    expect(body.indexOf("stripeMatchReportEnabled")).toBeLessThan(body.indexOf("loadDirectory("));
+    const enabledAt = body.indexOf("if (!input.enabled)");
+    expect(enabledAt).toBeGreaterThan(-1);
+    expect(enabledAt).toBeLessThan(body.indexOf("input.userId"));
+    expect(enabledAt).toBeLessThan(body.indexOf("loadDirectory("));
     expect(body.indexOf("loadDirectory(")).toBeLessThan(body.indexOf("readStripe("));
-    expect(readFileSync("src/lib/stripe-match.functions.ts", "utf8")).toContain("readLiveStripeMatch");
-    expect(readFileSync("src/lib/stripe-match.functions.ts", "utf8")).not.toContain("createStripeClient");
+    const handler = readFileSync("src/lib/stripe-match.functions.ts", "utf8");
+    const handlerBody = handler.slice(handler.indexOf(".handler"));
+    const flagAt = handlerBody.indexOf("if (!STRIPE_MATCH_REPORT_ENABLED)");
+    expect(flagAt).toBeGreaterThan(-1);
+    expect(flagAt).toBeLessThan(handlerBody.indexOf('from("user_roles")'));
+    expect(flagAt).toBeLessThan(handlerBody.indexOf("readLiveStripeMatch("));
+    expect(handler).toContain("readLiveStripeMatch");
+    expect(handler).not.toContain("process.env");
+    expect(handler).not.toContain("createStripeClient");
   });
 });
