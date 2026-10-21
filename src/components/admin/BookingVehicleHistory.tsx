@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Car, Repeat } from "lucide-react";
 import { RecordNumber } from "./RecordNumber";
+import { ReplacementAgreement } from "./ReplacementAgreement";
 import { SWAP_ENABLED, SWAP_REASONS } from "@/lib/record-numbers";
 import { fmtDate } from "@/lib/date-format";
 import {
@@ -109,6 +110,9 @@ export function BookingVehicleHistory({
           onClose={() => setSwapOpen(false)}
           onSaved={() => setSwapOpen(false)}
         />
+      )}
+      {SWAP_ENABLED && rentalId && entries.some((e) => e.swapNumber != null) && (
+        <ReplacementAgreement rentalId={rentalId} />
       )}
     </div>
   );
