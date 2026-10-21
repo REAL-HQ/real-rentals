@@ -25,7 +25,7 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
 
     const today = easternCalendarDate();
     const horizon = renewalHorizon(today);
-    const [billingQ, endQ] = await Promise.all([
+    const [billingQ, endQ, overdueQ] = await Promise.all([
       supabaseAdmin
         .from("rentals")
         .select(RENTAL_COLUMNS, { count: "exact" })
@@ -35,35 +35,54 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
         .limit(RENEWALS_FETCH_LIMIT),
       supabaseAdmin
         .from("rentals")
-        .select(RENTAL_COLUMNS, { count: "exact" })
+        .select(RENTAL_COLUMNS)
         .eq("status", "active")
         .gte("end_date", today)
         .lte("end_date", horizon)
-        .limit(RENEWALS_FETCH_LIMIT),
+        .order("end_date", { ascending: true })
+        .limit(RENEWALS_FETCH_LIMIT + 1),
+      supabaseAdmin
+        .from("rentals")
+        .select(RENTAL_COLUMNS)
+        .eq("status", "active")
+        .lt("end_date", today)
+        .order("end_date", { ascending: true })
+        .limit(RENEWALS_FETCH_LIMIT + 1),
     ]);
     if (billingQ.error) throw new Error(billingQ.error.message);
     if (endQ.error) throw new Error(endQ.error.message);
+    if (overdueQ.error) throw new Error(overdueQ.error.message);
+
+    const endPage = endQ.data ?? [];
+    const endTruncated = endPage.length > RENEWALS_FETCH_LIMIT;
+    const endRows = endPage.slice(0, RENEWALS_FETCH_LIMIT);
+    const overduePage = overdueQ.data ?? [];
+    const overdueTruncated = overduePage.length > RENEWALS_FETCH_LIMIT;
+    const overdueRentals = overduePage.slice(0, RENEWALS_FETCH_LIMIT);
 
     const byId = new Map<string, RenewalRental>();
-    for (const row of [...(billingQ.data ?? []), ...(endQ.data ?? [])]) {
+    for (const row of [...(billingQ.data ?? []), ...endRows]) {
       if (!byId.has(row.id)) byId.set(row.id, row);
     }
     const rentals = [...byId.values()];
     const over = (count: number | null, rows: number) => (count ?? rows) > RENEWALS_FETCH_LIMIT;
-    if (rentals.length === 0) {
+    const listed = [...rentals, ...overdueRentals];
+    if (listed.length === 0) {
       return buildRenewalsDue({
         today,
         rentals,
+        overdueRentals,
         applications: [],
         vehicles: [],
         payments: [],
         billingTruncated: over(billingQ.count, billingQ.data?.length ?? 0),
-        endTruncated: over(endQ.count, endQ.data?.length ?? 0),
+        endTruncated,
+        overdueTruncated,
       });
     }
 
-    const applicationIds = [...new Set(rentals.map((row) => row.application_id).filter((id): id is string => !!id))];
-    const vehicleIds = [...new Set(rentals.map((row) => row.vehicle_id).filter((id): id is string => !!id))];
+    const applicationIds = [...new Set(listed.map((row) => row.application_id).filter((id): id is string => !!id))];
+    const vehicleIds = [...new Set(listed.map((row) => row.vehicle_id).filter((id): id is string => !!id))];
     const rentalIds = rentals.map((row) => row.id);
 
     const [applicationsQ, vehiclesQ, paymentsQ] = await Promise.all([
@@ -81,12 +100,14 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
             .select("id,year,make,model,unit_number,license_plate", { count: "exact" })
             .in("id", vehicleIds)
             .limit(RENEWALS_FETCH_LIMIT),
-      supabaseAdmin
-        .from("payments")
-        .select("id,rental_id,status,created_at", { count: "exact" })
-        .in("rental_id", rentalIds)
-        .order("created_at", { ascending: false })
-        .limit(RENEWALS_FETCH_LIMIT),
+      rentalIds.length === 0
+        ? Promise.resolve({ data: [] as RenewalPayment[], error: null, count: 0 })
+        : supabaseAdmin
+            .from("payments")
+            .select("id,rental_id,status,created_at", { count: "exact" })
+            .in("rental_id", rentalIds)
+            .order("created_at", { ascending: false })
+            .limit(RENEWALS_FETCH_LIMIT),
     ]);
     if (applicationsQ.error) throw new Error(applicationsQ.error.message);
     if (vehiclesQ.error) throw new Error(vehiclesQ.error.message);
@@ -99,11 +120,13 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
     return buildRenewalsDue({
       today,
       rentals,
+      overdueRentals,
       applications,
       vehicles,
       payments,
       billingTruncated: over(billingQ.count, billingQ.data?.length ?? 0),
-      endTruncated: over(endQ.count, endQ.data?.length ?? 0),
+      endTruncated,
+      overdueTruncated,
       applicationsTruncated: over(applicationsQ.count, applications.length),
       vehiclesTruncated: over(vehiclesQ.count, vehicles.length),
       paymentsTruncated: over(paymentsQ.count, payments.length),
