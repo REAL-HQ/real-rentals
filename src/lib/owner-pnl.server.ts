@@ -17,7 +17,9 @@ import {
  * file does not import Stripe.
  */
 
-const PAGE = 1000;
+/** Same bounds the accountant export uses. A full page on the last pass is a cap, not a complete read. */
+export const OWNER_DIRECTORY_PAGE = 1000;
+export const OWNER_DIRECTORY_MAX_PAGES = 100;
 type Result<T> = { data: T[] | null; error: { message: string } | null };
 
 export type OwnerPnlResponse =
@@ -63,31 +65,31 @@ export async function loadOwnerPnlDirectory(
   signal?: AbortSignal,
 ): Promise<OwnerPnlDirectory | null> {
   const expenses = await readStable(async (cursor) => {
-    let query = supabase.from("vehicle_expenses").select("id,vehicle_id,category,amount,incurred_on,maintenance_record_id").order("id", { ascending: true }).limit(PAGE);
+    let query = supabase.from("vehicle_expenses").select("id,vehicle_id,category,amount,incurred_on,maintenance_record_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
   }, signal);
   const maintenance = await readStable(async (cursor) => {
-    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(PAGE);
+    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
   }, signal);
   const rentals = await readStable(async (cursor) => {
-    let query = supabase.from("rentals").select("id,vehicle_id,stripe_customer_id,stripe_subscription_id").order("id", { ascending: true }).limit(PAGE);
+    let query = supabase.from("rentals").select("id,vehicle_id,stripe_customer_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
   }, signal);
   const payments = await readStable(async (cursor) => {
-    let query = supabase.from("payments").select("id,vehicle_id,type,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(PAGE);
+    let query = supabase.from("payments").select("id,vehicle_id,type,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
   }, signal);
   const refunds = await readStable(async (cursor) => {
-    let query = supabase.from("payment_refunds").select("id,amount,status,created_at,payment_ids").order("id", { ascending: true }).limit(PAGE);
+    let query = supabase.from("payment_refunds").select("id,amount,status,created_at,payment_ids").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
@@ -122,16 +124,16 @@ async function readStable<T extends { id: string }>(
   async function scan(): Promise<T[] | null> {
     const rows: T[] = [];
     let cursor: string | null = null;
-    for (let page = 0; page < 100; page++) {
+    for (let page = 0; page < OWNER_DIRECTORY_MAX_PAGES; page++) {
       signal?.throwIfAborted();
       const response = await load(cursor);
-      if (response.error || !Array.isArray(response.data) || response.data.length > PAGE) return null;
+      if (response.error || !Array.isArray(response.data) || response.data.length > OWNER_DIRECTORY_PAGE) return null;
       for (const row of response.data) {
         if (typeof row.id !== "string" || !row.id || (cursor !== null && row.id <= cursor)) return null;
         cursor = row.id;
         rows.push(row);
       }
-      if (response.data.length < PAGE) return rows;
+      if (response.data.length < OWNER_DIRECTORY_PAGE) return rows;
     }
     return null;
   }
