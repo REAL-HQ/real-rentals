@@ -437,7 +437,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      <LeadPriorities />
+      <LeadPriorities isManager={canSeeCollections} />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.

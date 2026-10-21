@@ -68,43 +68,58 @@ check(
   "the read stays behind the flag",
 );
 check(loaderSrc.includes(".limit(LEAD_RESPONSE_READ_LIMIT + 1)"), "the read asks for one row past the cap");
-check(loaderSrc.includes("rows.slice(0, LEAD_RESPONSE_READ_LIMIT)"), "a full cap is truncated before it is totaled");
+check(loaderSrc.includes("sampleRows.slice(0, LEAD_RESPONSE_READ_LIMIT)"), "a full cap is truncated before it is totaled");
 check(loaderSrc.includes('is("deleted_at", null)'), "deleted applications stay out of the report");
-check(loaderSrc.includes('!== "unqualified"'), "unqualified leads stay out of the report");
+check(declaration.includes('!== "unqualified"') && loaderSrc.includes("activeContactStatuses()"), "unqualified leads stay out of the report");
 check(!/insert\(|\.update\(|\.delete\(|\.rpc\(/.test(declaration), "the report module does not write");
 
 const google = (overrides) => ({
   source: "google",
   created_at: "2026-10-20T12:00:00.000Z",
   contacted_at: "2026-10-20T14:00:00.000Z",
+  contact_status: "new",
+  contact_status_at: null,
   contact_follow_up_on: "2026-10-22",
   ...overrides,
 });
-const report = lib.buildLeadResponseReport(
-  [
-    google({}),
-    google({ created_at: "2026-10-20T08:00:00.000Z", contacted_at: "2026-10-20T12:00:00.000Z" }),
-    google({ created_at: "2026-10-20T14:00:00.000Z", contacted_at: "2026-10-20T12:00:00.000Z", contact_follow_up_on: "2026-10-21" }),
-    google({ created_at: "2026-10-20T15:00:00.000Z", contacted_at: null, contact_follow_up_on: "2026-10-20" }),
-    google({ created_at: "2026-10-20T17:00:00.000Z", contacted_at: null, contact_follow_up_on: "2026-10-22" }),
-    google({ created_at: "2026-10-20T16:00:00.000Z", contacted_at: null, contact_follow_up_on: "2026-02-31" }),
-    { source: "  ", created_at: "2026-10-19T16:00:00.000Z", contacted_at: null, contact_follow_up_on: "2026-10-21T00:00:00Z" },
-    { source: "referral", created_at: "2026-10-21T14:00:00.000Z", contacted_at: "2026-10-21T15:30:00.000Z", contact_follow_up_on: null },
-  ],
-  now,
-  false,
-);
+const rows = [
+  google({}),
+  google({ created_at: "2026-10-20T08:00:00.000Z", contacted_at: "2026-10-20T12:00:00.000Z" }),
+  google({ created_at: "2026-10-20T14:00:00.000Z", contacted_at: "2026-10-20T12:00:00.000Z", contact_follow_up_on: "2026-10-21" }),
+  google({ created_at: "2026-10-20T15:00:00.000Z", contacted_at: null, contact_status: "new", contact_follow_up_on: "2026-10-20" }),
+  google({ created_at: "2026-10-19T16:00:00.000Z", contacted_at: null, contact_status: "contacted", contact_status_at: "2026-10-20T16:00:00.000Z" }),
+  google({ created_at: "2026-10-21T14:00:00.000Z", contacted_at: "2026-10-21T16:00:00.000Z", contact_status: "contacted", contact_status_at: "2026-10-21T15:00:00.000Z" }),
+  google({ created_at: "2026-10-21T12:00:00.000Z", contacted_at: "2026-10-21T11:00:00.000Z", contact_status: "new" }),
+  google({ created_at: "2026-10-20T17:00:00.000Z", contacted_at: null, contact_status: "new", contact_follow_up_on: "2026-10-22" }),
+  google({ created_at: "2026-10-20T16:00:00.000Z", contacted_at: null, contact_status: "new", contact_follow_up_on: "2026-02-31" }),
+  { source: "  ", created_at: "2026-10-19T16:00:00.000Z", contacted_at: null, contact_status: "new", contact_follow_up_on: "2026-10-21T00:00:00Z" },
+  { source: "referral", created_at: "2026-10-21T14:00:00.000Z", contacted_at: "2026-10-21T15:30:00.000Z", contact_status: "new", contact_follow_up_on: null },
+  { source: "minute", created_at: "2026-10-21T15:00:00.000Z", contacted_at: "2026-10-21T15:01:00.000Z", contact_status: "new", contact_follow_up_on: null },
+];
+const report = lib.buildLeadResponseReport(rows, now, false);
 const bySource = Object.fromEntries(report.sources.map((row) => [row.source, row]));
-check(bySource.google.medianHours === 3, "median time to first contact ignores an inverted pair");
-check(bySource.google.uncontactedOver24h === 1, "only an uncontacted lead older than 24 hours counts");
-check(bySource.google.followUpsDue === 2, "follow-ups due today or earlier count, and an impossible date does not");
-check(bySource.Unknown.uncontactedOver24h === 1 && bySource.Unknown.followUpsDue === 0, "a blank source is Unknown and a timestamp is not a due date");
+check(bySource.google.medianHours === 3, "median time uses the two clean two-hour and four-hour contacts");
+check(bySource.google.uncontactedOver24h === 1, "a status other than new is not uncontacted, and a 23-hour new lead is not either");
+check(bySource.google.contactBeforeCreated === 2, "a contact time before created is surfaced and kept out of the median");
+check(bySource.google.followUpsDue === 0, "the response sample does not pretend to count every follow-up");
+check(bySource.Unknown.uncontactedOver24h === 1, "a blank source is Unknown");
 check(bySource.referral.medianHours === 1.5 && bySource.referral.uncontactedOver24h === 0, "a contacted referral keeps its own source");
+check(bySource.minute.medianHours === 1 / 60, "a one-minute median is not rounded to a tenth of an hour");
+check(lib.formatResponseHours(bySource.minute.medianHours) === "1 Minute", "minute formatting rounds only when the label is built");
+const due = new Map();
+lib.addDueFollowUps(due, rows, now);
+check(due.get("google") === 2 && due.get("Unknown") == null, "follow-ups due today or earlier count, and a timestamp or impossible date does not");
+const merged = lib.applyFollowUpCounts(report, due, false);
+const mergedGoogle = merged.sources.find((row) => row.source === "google");
+check(mergedGoogle.followUpsDue === 2 && merged.followUpsTruncated === false, "follow-up counts are applied beside the response sample");
+const onlyDue = lib.applyFollowUpCounts(lib.buildLeadResponseReport([], now, false), new Map([["office", 4]]), false);
+check(onlyDue.sources.some((row) => row.source === "office" && row.followUpsDue === 4), "a follow-up outside the newest page still has a row");
 check(report.truncated === false && report.readLimit === 200, "an under-cap read is not marked truncated");
 const partial = lib.buildLeadResponseReport([google({})], now, true);
 check(partial.truncated === true && partial.sources.length === 1, "a capped read stays marked truncated");
 check(lib.formatResponseHours(null) === "—" && lib.formatResponseHours(0) === "Under 1 Minute", "a missing contact and an immediate contact stay readable");
 check(lib.formatResponseHours(0.5) === "30 Minutes" && lib.formatResponseHours(1) === "1 Hour" && lib.formatResponseHours(2.5) === "2.5 Hours", "response time is labeled in minutes or hours");
+check(loaderSrc.includes('.lte("contact_follow_up_on"') && loaderSrc.includes("LEAD_RESPONSE_FOLLOW_UP_PAGE") && loaderSrc.includes("addDueFollowUps"), "follow-ups are counted on their own query, not from the newest 200");
 
 const fn = readFileSync("src/lib/lead-response-report.functions.ts", "utf8");
 const handler = fn.slice(fn.indexOf(".handler"));
@@ -121,21 +136,21 @@ check(!fn.includes("email.server") && !fn.includes("sendEmail") && !fn.includes(
 
 const ui = readFileSync("src/components/admin/LeadResponseReport.tsx", "utf8");
 const gate = ui.slice(ui.indexOf("export function LeadResponseReport"), ui.indexOf("function LeadResponseReportBody"));
-check(gate.includes("LEAD_RESPONSE_REPORT_ENABLED !== true") && gate.includes("return null") && !gate.includes("useServerFn"), "the report stays unmounted while the flag is off");
+check(gate.includes("LEAD_RESPONSE_REPORT_ENABLED !== true") && gate.includes("if (!isManager) return null") && gate.includes("return null") && !gate.includes("useServerFn"), "the report stays unmounted while the flag is off or the viewer is not a manager");
 const body = ui.slice(ui.indexOf("function LeadResponseReportBody"));
 check(body.indexOf("LEAD_RESPONSE_REPORT_ENABLED !== true") < body.indexOf("load("), "the loader returns before a request while the flag is off");
 check(
   ui.includes("Response And Follow-Ups") && ui.includes("Median Time To First Contact") && ui.includes("Uncontacted Over 24 Hours") && ui.includes("Follow-Ups Due"),
   "the report names the three figures by source",
 );
-check(ui.includes("Showing The Newest") && ui.includes("Older Leads Are Not In These Figures"), "a capped read is labeled as a partial read");
+check(ui.includes("Showing The Newest") && ui.includes("Older Leads Are Not In These Figures") && ui.includes("Contact Before Created"), "a capped read is labeled as a partial read and early contacts are shown");
 check(!ui.includes("uppercase") && !ui.includes("text-transform"), "the report does not add a text transform");
 
 const list = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
-check(list.includes("<LeadResponseReport />"), "Lead Priorities hosts the report");
+check(list.includes("<LeadResponseReport isManager={isManager} />"), "Lead Priorities hosts the report for a manager");
 check(list.includes("open-messages") && list.includes("Lead Priorities"), "the existing lead list stays in place");
 const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
-check(overview.includes("<LeadPriorities />") && !overview.includes("LeadResponseReport"), "Overview does not gain a second lead screen");
+check(overview.includes("<LeadPriorities isManager={canSeeCollections} />") && !overview.includes("LeadResponseReport"), "Overview passes the manager bit and does not gain a second lead screen");
 const admin = readFileSync("src/routes/admin.tsx", "utf8");
 check(!admin.includes("LeadResponseReport"), "the report does not add a navigation entry");
 const leads = readFileSync("src/components/admin/LeadsPanel.tsx", "utf8");

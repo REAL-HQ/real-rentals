@@ -7,8 +7,9 @@ import {
   type LeadResponseReport,
 } from "@/lib/lead-response-report";
 
-export function LeadResponseReport() {
+export function LeadResponseReport({ isManager }: { isManager: boolean }) {
   if (LEAD_RESPONSE_REPORT_ENABLED !== true) return null;
+  if (!isManager) return null;
   return <LeadResponseReportBody />;
 }
 
@@ -72,7 +73,8 @@ function LeadResponseReportBody() {
                     <th className="py-1 pr-3 font-medium">Source</th>
                     <th className="py-1 pr-3 font-medium">Median Time To First Contact</th>
                     <th className="py-1 pr-3 font-medium">Uncontacted Over 24 Hours</th>
-                    <th className="py-1 font-medium">Follow-Ups Due</th>
+                    <th className="py-1 pr-3 font-medium">Follow-Ups Due</th>
+                    <th className="py-1 font-medium">Contact Before Created</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -81,12 +83,18 @@ function LeadResponseReportBody() {
                       <td className="py-2 pr-3 font-medium">{source.source}</td>
                       <td className="py-2 pr-3 tabular-nums">{formatResponseHours(source.medianHours)}</td>
                       <td className="py-2 pr-3 tabular-nums">{source.uncontactedOver24h}</td>
-                      <td className="py-2 tabular-nums">{source.followUpsDue}</td>
+                      <td className="py-2 pr-3 tabular-nums">{source.followUpsDue}</td>
+                      <td className="py-2 tabular-nums">{source.contactBeforeCreated}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {report.followUpsTruncated && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Follow-Up Counts Stopped Early. They Are Not The Full Book.
+              </p>
+            )}
           </>
         )
       )}
