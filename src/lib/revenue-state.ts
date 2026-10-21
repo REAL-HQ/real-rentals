@@ -1,13 +1,21 @@
 /** Pure reader validation and session lifecycle; no provider or mutation capabilities. */
-export function paymentRevenue(result: { data: Array<{ net_collected: unknown; stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null }> | null; error: unknown; count: number | null }) {
+function settledOutsideStripe(row: { stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null; failure_reason?: string | null }) {
+ // Mark as Paid writes only status and paid_date. A failed autopay invoice
+ // keeps stripe_invoice_id and failure_reason. invoice.paid clears
+ // failure_reason, and only while the row is not already paid, so a paid
+ // invoice row that still has a failure reason was not settled by Stripe.
+ const reason = row.failure_reason;
+ return !row.stripe_payment_intent_id && !!row.stripe_invoice_id && typeof reason === "string" && reason.trim() !== "";
+}
+export function paymentRevenue(result: { data: Array<{ net_collected: unknown; stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null; failure_reason?: string | null }> | null; error: unknown; count: number | null }) {
  if (result.error || !Array.isArray(result.data) || result.count !== result.data.length) return null;
  let total=0, nonStripe=0;
  for (const row of result.data) {
   if (row.net_collected === null || row.net_collected === undefined || row.net_collected === "") return null;
   const amount=Number(row.net_collected); if(!Number.isFinite(amount)) return null;
-  // A payment intent or an invoice is already inside Stripe collections.
-  // Deposit rows are not filtered here.
-  total+=amount; if(!row.stripe_payment_intent_id && !row.stripe_invoice_id) nonStripe+=amount;
+  // A payment intent or an invoice Stripe settled is already inside Stripe
+  // collections. Deposit rows are not filtered here.
+  total+=amount; if((!row.stripe_payment_intent_id && !row.stripe_invoice_id) || settledOutsideStripe(row)) nonStripe+=amount;
  }
  return {total,nonStripe};
 }

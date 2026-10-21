@@ -23,6 +23,36 @@ describe('Revenue error recovery',()=>{
   expect(rows).toEqual({total:230,nonStripe:50});
   expect(consolidatedRevenue({internalNonStripe:rows!.nonStripe,report}).amount).toBe(150);
  });
+ it('a failed invoice later marked paid stays non-Stripe while a Stripe-settled invoice does not',()=>{
+  // Mark as Paid writes status and paid_date only, so failure_reason survives.
+  // invoice.paid clears failure_reason and will not update a row already paid.
+  const rows=paymentRevenue({data:[
+   {net_collected:40,stripe_payment_intent_id:null,stripe_invoice_id:null,failure_reason:null},
+   {net_collected:75,stripe_payment_intent_id:null,stripe_invoice_id:'in_cash',failure_reason:'Weekly rent charge failed'},
+   {net_collected:90,stripe_payment_intent_id:null,stripe_invoice_id:'in_stripe',failure_reason:null},
+   {net_collected:15,stripe_payment_intent_id:'pi_1',stripe_invoice_id:'in_both',failure_reason:'Weekly rent charge failed'},
+   {net_collected:5,stripe_payment_intent_id:null,stripe_invoice_id:'in_blank',failure_reason:'   '},
+  ],count:5,error:null});
+  expect(rows).toEqual({total:225,nonStripe:115});
+ });
+ it('a sandbox invoice row (?env=sandbox writes the same stripe_invoice_id) is excluded',()=>{
+  const webhook=readFileSync(new URL('../src/routes/api/public/payments/webhook.ts',import.meta.url),'utf8');
+  expect(webhook).toContain("if (rawEnv !== 'sandbox' && rawEnv !== 'live')");
+  expect(webhook).toContain("const env: StripeEnv = rawEnv;");
+  const invoiceFn=webhook.slice(webhook.indexOf('async function upsertPaymentFromInvoice'), webhook.indexOf('async function handleChargeRefunded'));
+  expect(invoiceFn).toContain('stripe_invoice_id: invoice.id');
+  expect(invoiceFn).toContain('failure_reason: null');
+  expect(invoiceFn).toContain(".neq('status', 'paid').neq('status', 'refunded')");
+  expect(invoiceFn).not.toContain('sandbox');
+  const panel=readFileSync(new URL('../src/components/admin/PaymentsPanel.tsx',import.meta.url),'utf8');
+  expect(panel).toContain('Mark as Paid');
+  expect(panel).not.toContain('failure_reason');
+  expect(panel).not.toContain('stripe_invoice_id');
+  const rows=paymentRevenue({data:[
+   {net_collected:60,stripe_payment_intent_id:null,stripe_invoice_id:'in_sandbox',failure_reason:null},
+  ],count:1,error:null});
+  expect(rows).toEqual({total:60,nonStripe:0});
+ });
  it('internal failure suppresses combined total without modifying Stripe report',()=>{const before=JSON.stringify(report);expect(consolidatedRevenue({report,internalNonStripe:null})).toEqual({amount:null,coverage:'Unavailable'});expect(JSON.stringify(report)).toBe(before);});
 });
 function boundary(){const states:RevenueSession[]=[];const resolvers:Array<(v:{allowed:boolean;collections:boolean})=>void>=[];const authorize=vi.fn(()=>new Promise<{allowed:boolean;collections:boolean}>(r=>resolvers.push(r)));const invalidate=vi.fn();const gate=createRevenueBoundary(authorize,invalidate,v=>states.push(v));return {states,resolvers,authorize,invalidate,gate};}
