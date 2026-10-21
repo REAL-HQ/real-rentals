@@ -78,7 +78,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
     const { data: existing } = await supabaseAdmin
       .from("waitlist")
       .select("id")
-      .ilike("email", data.email)
+      .ilike("email", ilikeExact(data.email))
       .eq("status", "waiting")
       .limit(1);
     if (existing?.length) return { ok: true as const, already: true };
@@ -519,6 +519,14 @@ export const getDeleteBlockers = createServerFn({ method: "POST" })
     return { waitlistLinked: (w ?? 0) + (h ?? 0) > 0 };
   });
 
+/**
+ * ILIKE pattern for one whole email. `%` and `_` in the address are literal,
+ * so `a_b@x.com` does not match `axb@x.com`.
+ */
+export function ilikeExact(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 function siteOrigin(): string {
   return process.env.SITE_URL || "https://drivereal.com";
 }
@@ -579,7 +587,7 @@ export const getWaitlistConflict = createServerFn({ method: "POST" })
     const { data: apps, error: aErr } = await supabaseAdmin
       .from("applications")
       .select("id,full_name,email,phone,status,created_at,source")
-      .ilike("email", w.email.trim())
+      .ilike("email", ilikeExact(w.email.trim()))
       .neq("status", "duplicate")
       .is("deleted_at", null);
     if (aErr) return { ok: false, error: "Could not load the matching driver." };

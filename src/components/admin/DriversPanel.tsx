@@ -1,3 +1,31 @@
+import { OnboardingChecklist, OnboardingLoadError, OnboardingReadinessRows } from "./OnboardingChecklist";
+import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
+import {
+  ONBOARDING_CHECKLIST_ENABLED,
+  onboardingCohort,
+  type OnboardingChecklistResult,
+} from "@/lib/onboarding-checklist";
+import {
+  DriverDocExpiryCell,
+  DriverDocExpiryFilter,
+  DriverDocExpiryHeader,
+  DriverDocExpiryNotice,
+} from "./DriverDocExpiry";
+import { getDriverDocExpiry } from "@/lib/driver-doc-expiry-column.functions";
+import {
+  DRIVER_DOC_EXPIRY_ENABLED,
+  DRIVER_DOC_EXPIRY_ROW_CAP,
+  documentListStatus,
+  documentRowIndex,
+  type DriverDocExpiryResult,
+} from "@/lib/driver-doc-expiry-column";
+import { ApplicationDocGaps } from "./ApplicationDocGaps";
+import { getApplicationDocGaps } from "@/lib/application-doc-gaps.functions";
+import {
+  APPLICATION_DOC_GAPS_ENABLED,
+  APPLICATION_DOC_GAPS_ROW_CAP,
+  type ApplicationDocGapsResult,
+} from "@/lib/application-doc-gaps";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -6,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
-import { STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
+import { easternDay, STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
 import { listStalledApplications, type StalledApplicationRow } from "@/lib/stalled-applications.functions";
 import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
@@ -121,6 +149,13 @@ import {
 } from "@/lib/readiness";
 
 import { requiredDocCounts } from "@/lib/required-docs";
+import {
+  DOCUMENT_REVIEW_AGING_ENABLED,
+  DOCUMENT_REVIEW_AGING_ROW_CAP,
+  type DocumentReviewAgingResult,
+} from "@/lib/document-review-aging";
+import { getDocumentReviewAging } from "@/lib/document-review-aging.functions";
+import { DocumentReviewAging } from "./DocumentReviewAging";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
@@ -309,12 +344,15 @@ export function DriversPanel({
   isOwner = false,
   isManager = false,
   canManageWaitlist = false,
+  canViewOnboarding = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
   /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
   isManager?: boolean;
+  /** Owner + Manager (team). The checklist stays unmounted while its flag is false. */
+  canViewOnboarding?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /**
@@ -378,6 +416,10 @@ export function DriversPanel({
    * param is claimed.
    */
   const [contactFilter, setContactFilter] = useState<string>("all");
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingChecklistResult | null>(null);
+  const [onboardingFailed, setOnboardingFailed] = useState(false);
+  const [docExpiry, setDocExpiry] = useState<DriverDocExpiryResult | null>(null);
+  const [docFilter, setDocFilter] = useState("all");
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -385,6 +427,8 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
+  const [docGaps, setDocGaps] = useState<ApplicationDocGapsResult | null>(null);
+  const [reviewAging, setReviewAging] = useState<DocumentReviewAgingResult | null>(null);
   // Waitlist and the manager lists live in the URL so a chip, a bookmark,
   // and the back button agree. Manager lists are ignored for a coordinator.
   const urlListFilter =
@@ -456,15 +500,29 @@ export function DriversPanel({
   // stage underneath is never changed, so Remove restores it automatically.
   const loadStalled = useServerFn(listStalledApplications);
   const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  const [stalledTruncated, setStalledTruncated] = useState(false);
+  const [stalledRelatedTruncated, setStalledRelatedTruncated] = useState(false);
+  const [stalledFailed, setStalledFailed] = useState(false);
   useEffect(() => {
     if (!stalledOn) return;
     let cancelled = false;
+    setStalledFailed(false);
     loadStalled()
       .then((result) => {
-        if (!cancelled) setStalledRows(result.rows);
+        if (!cancelled) {
+          setStalledRows(result.rows);
+          setStalledTruncated(result.truncated);
+          setStalledRelatedTruncated(result.relatedTruncated);
+          setStalledFailed(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setStalledRows([]);
+        if (!cancelled) {
+          setStalledFailed(true);
+          setStalledRows([]);
+          setStalledTruncated(false);
+          setStalledRelatedTruncated(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -638,6 +696,63 @@ export function DriversPanel({
    * blanked or hidden.
    */
   const loadDriverRows = useServerFn(listDriverRows);
+  const loadOnboarding = useServerFn(getOnboardingChecklist);
+  const refreshOnboarding = useCallback(() => {
+    if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
+    void loadOnboarding()
+      .then((result) => {
+        setOnboardingResult(result);
+        setOnboardingFailed(result.failed === true);
+      })
+      .catch(() => setOnboardingFailed(true));
+  }, [loadOnboarding, canViewOnboarding]);
+  useEffect(() => {
+    refreshOnboarding();
+  }, [refreshOnboarding]);
+  const loadDocExpiry = useServerFn(getDriverDocExpiry);
+  useEffect(() => {
+    if (DRIVER_DOC_EXPIRY_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocExpiry()
+      .then((result) => {
+        if (!cancel) setDocExpiry(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocExpiry({
+            failed: true,
+            truncated: false,
+            cap: DRIVER_DOC_EXPIRY_ROW_CAP,
+            drivers: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocExpiry, driversLoaded, canSeeSensitive]);
+  const loadDocGaps = useServerFn(getApplicationDocGaps);
+  useEffect(() => {
+    if (APPLICATION_DOC_GAPS_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocGaps()
+      .then((result) => {
+        if (!cancel) setDocGaps(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocGaps({
+            failed: true,
+            truncated: false,
+            cap: APPLICATION_DOC_GAPS_ROW_CAP,
+            applications: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocGaps, driversLoaded, canSeeSensitive]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -699,6 +814,29 @@ setDocCounts(requiredDocCounts(rows));
     // refreshing after somebody changes how it loads.
   }, [refreshDrivers]);
 
+  const loadReviewAging = useServerFn(getDocumentReviewAging);
+  useEffect(() => {
+    if (DOCUMENT_REVIEW_AGING_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadReviewAging()
+      .then((result) => {
+        if (!cancel) setReviewAging(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setReviewAging({
+            failed: true,
+            truncated: false,
+            cap: DOCUMENT_REVIEW_AGING_ROW_CAP,
+            categories: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadReviewAging, driversLoaded, canSeeSensitive]);
+
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
   // Readiness for the whole list, from the three result sets already loaded
@@ -708,6 +846,8 @@ setDocCounts(requiredDocCounts(rows));
     () => buildReadinessIndex(drivers, Object.values(screenings), docRows),
     [drivers, screenings, docRows],
   );
+
+  const docRowsById = useMemo(() => documentRowIndex(docExpiry), [docExpiry]);
 
   // Group by primary_application_id (falls back to id). Primary row = the one
   // whose id === groupKey; others render as collapsed history.
@@ -725,6 +865,7 @@ setDocCounts(requiredDocCounts(rows));
       // readContactStatus already answers New for a row that has no value, so
       // filtering by New finds the leads nobody has worked yet.
       .filter((a) => contactFilter === "all" || readContactStatus(a).state.status === contactFilter)
+      .filter((a) => DRIVER_DOC_EXPIRY_ENABLED !== true || docFilter === "all" || documentListStatus(docExpiry, a.id, docRowsById) === docFilter)
       .filter((a) => {
       if (!q) return true;
       const hay =
@@ -748,7 +889,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -810,6 +951,28 @@ setDocCounts(requiredDocCounts(rows));
         : prev,
     );
     applyContactStatus(id, st);
+  }
+
+  function saveStalledContact(applicationId: string, state: ContactStatusState) {
+    setStalledRows(
+      (rows) =>
+        rows?.map((row) =>
+          row.id === applicationId
+            ? {
+                ...row,
+                lastContactOn: state.changedAt ? easternDay(new Date(state.changedAt)) : row.lastContactOn,
+                contact: {
+                  contact_status: state.status,
+                  contact_status_note: state.note,
+                  contact_follow_up_on: state.followUpOn,
+                  contact_status_at: state.changedAt,
+                  contact_status_by: state.changedBy,
+                },
+              }
+            : row,
+        ) ?? rows,
+    );
+    applyContactStatus(applicationId, state);
   }
 
   function applyContactStatus(id: string, st: ContactStatusState) {
@@ -926,9 +1089,13 @@ setDocCounts(requiredDocCounts(rows));
         }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
+        onSharedReadinessRefresh={refreshOnboarding}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         isManager={isManager}
+        canViewOnboarding={canViewOnboarding}
+        onboardingResult={onboardingResult}
+        onboardingFailed={onboardingFailed}
       />
       {deleteDialog}
       </>
@@ -950,6 +1117,12 @@ setDocCounts(requiredDocCounts(rows));
         : s === "active"
           ? drivers.filter((a) => activeRenters.has(a.id)).length
           : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+  const expiryCounts = { expired: 0, expiring: 0, ok: 0, unknown: 0 };
+  for (const row of docExpiry?.drivers ?? []) {
+    if (row.status === "expired" || row.status === "expiring" || row.status === "ok" || row.status === "unknown") {
+      expiryCounts[row.status] += 1;
+    }
+  }
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -972,34 +1145,20 @@ setDocCounts(requiredDocCounts(rows));
       </button>,
     );
   }
-  function saveStalledContact(applicationId: string, state: ContactStatusState) {
-    setStalledRows(
-      (rows) =>
-        rows?.map((row) =>
-          row.id === applicationId
-            ? {
-                ...row,
-                contact: {
-                  contact_status: state.status,
-                  contact_status_note: state.note,
-                  contact_follow_up_on: state.followUpOn,
-                  contact_status_at: state.changedAt,
-                  contact_status_by: state.changedBy,
-                },
-              }
-            : row,
-        ) ?? rows,
-    );
-  }
-
   return (
     <div>
       {deleteDialog}
+      {APPLICATION_DOC_GAPS_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <ApplicationDocGaps canView={canSeeSensitive} result={docGaps} />
+      ) : null}
       {showDeleted && (
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
           onRestored={() => refreshDrivers()}
         />
+      )}
+      {ONBOARDING_CHECKLIST_ENABLED === true && (
+        <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
@@ -1043,6 +1202,15 @@ setDocCounts(requiredDocCounts(rows));
             </option>
           ))}
         </select>
+        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+          <DriverDocExpiryFilter
+            canView={canSeeSensitive}
+            value={docFilter}
+            onChange={setDocFilter}
+            counts={expiryCounts}
+            tncTracked={docExpiry?.tncTracked === true}
+          />
+        ) : null}
         {isOwner && (
           <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
             Recently Deleted
@@ -1080,8 +1248,22 @@ setDocCounts(requiredDocCounts(rows));
           onContactSaved={applyFunnelContact}
         />
       ) : filter === "stalled" && stalledOn ? (
-        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} onContactSaved={saveStalledContact} />
+        <StalledApplications
+          rows={stalledRows ?? []}
+          loading={stalledRows == null && !stalledFailed}
+          failed={stalledFailed}
+          truncated={stalledTruncated}
+          relatedTruncated={stalledRelatedTruncated}
+          onContactSaved={saveStalledContact}
+        />
       ) : (
+      <>
+      {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <DriverDocExpiryNotice canView={canSeeSensitive} meta={docExpiry} />
+      ) : null}
+      {DOCUMENT_REVIEW_AGING_ENABLED === true ? (
+        <DocumentReviewAging canView={canSeeSensitive} result={reviewAging} />
+      ) : null}
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1096,6 +1278,9 @@ setDocCounts(requiredDocCounts(rows));
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Readiness
                 </th>
+                {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                  <DriverDocExpiryHeader />
+                ) : null}
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Payment
                 </th>
@@ -1256,6 +1441,14 @@ setDocCounts(requiredDocCounts(rows));
                         </span>
                       )}
                     </td>
+                    {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <DriverDocExpiryCell
+                          status={documentListStatus(docExpiry, a.id, docRowsById)}
+                          separateLabel={docRowsById.get(a.id)?.separateLabel ?? null}
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {payCells(payIndex[a.id]).pay}
                     </td>
@@ -1333,6 +1526,14 @@ setDocCounts(requiredDocCounts(rows));
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
+                        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                          <td className="px-4 py-2">
+                            <DriverDocExpiryCell
+                              status={documentListStatus(docExpiry, h.id, docRowsById)}
+                              separateLabel={docRowsById.get(h.id)?.separateLabel ?? null}
+                            />
+                          </td>
+                        ) : null}
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         {/* A superseded submission has no conversation of its
                             own: the contact status belongs to the person, and
@@ -1356,7 +1557,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-4">
+                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 11 : 10} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."
@@ -1367,6 +1568,7 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      </>
       )}
       {filter === "waitlist" && (
         <div className="mt-6">
@@ -1392,11 +1594,15 @@ function DriverDetail({
   onSaved,
   onDelete,
   onScreeningChange,
+  onSharedReadinessRefresh,
   onVaultChange,
   isOwner,
   isManager = false,
   hasActiveRental,
   onRentalStarted,
+  canViewOnboarding = false,
+  onboardingResult = null,
+  onboardingFailed = false,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1405,6 +1611,8 @@ function DriverDetail({
   onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
+  /** Re-reads the shared checklist after a vault or screening edit. No-ops while the flag is off. */
+  onSharedReadinessRefresh?: () => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
   /** Manager and above. The quick review panel is not mounted otherwise. */
@@ -1412,6 +1620,9 @@ function DriverDetail({
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
+  canViewOnboarding?: boolean;
+  onboardingResult?: OnboardingChecklistResult | null;
+  onboardingFailed?: boolean;
 }) {
   const rentalActiveFlag = hasActiveRental;
   const rentalActive = hasActiveRental;
@@ -1444,6 +1655,7 @@ function DriverDetail({
       const row = data as DriverScreeningRow;
       setScreening(row);
       onScreeningChange?.(row);
+      onSharedReadinessRefresh?.();
       toast.success(`Status: ${next.replace(/_/g, " ")}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to advance status");
@@ -1770,6 +1982,15 @@ function DriverDetail({
     return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
   }, [driver, screening, vaultDocs]);
 
+  const sharedDriver =
+    ONBOARDING_CHECKLIST_ENABLED === true &&
+    canViewOnboarding &&
+    onboardingCohort(driver.status) &&
+    onboardingResult &&
+    onboardingResult.failed !== true
+      ? (onboardingResult.drivers.find((row) => row.id === driver.id) ?? null)
+      : null;
+
   const requirements: { ok: boolean; label: string }[] = [
     { ok: screeningDone, label: "Interview Complete" },
     { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
@@ -1848,17 +2069,47 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* The one operational checklist. Replaces the separate Readiness
-          Signals card and Requirements Checklist, which showed the same state twice. */}
+      {/* Flag off: the boolean rows this card already had. Flag on, a manager
+          looking at an approved driver sees the same shared facts as the
+          cohort list, from the read that already finished. Opening this
+          drawer does not start another list read. */}
       <SectionCard
         title="Rental Readiness"
-        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
+        right={
+          <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+            {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver
+              ? `${sharedDriver.steps.filter((step) => step.state === "done").length}/${sharedDriver.steps.length}`
+              : `${reqDone}/${requirements.length}`}
+          </span>
+        }
       >
-        <dl className="space-y-2 text-[12px]">
-          {requirements.map((r) => (
-            <SignalRow key={r.label} label={r.label} ok={r.ok} />
-          ))}
-        </dl>
+        {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver ? (
+          <OnboardingReadinessRows driver={sharedDriver} />
+        ) : (
+          <>
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingFailed ? (
+              <OnboardingLoadError />
+            ) : null}
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingResult?.failed !== true &&
+            onboardingResult?.truncated === true &&
+            !sharedDriver ? (
+              <p className="mb-2 text-[12px] text-[#55555E]">
+                This Driver Is Past The First 1000. Showing The Original Readiness Rows.
+              </p>
+            ) : null}
+            <dl className="space-y-2 text-[12px]">
+              {requirements.map((r) => (
+                <SignalRow key={r.label} label={r.label} ok={r.ok} />
+              ))}
+            </dl>
+          </>
+        )}
       </SectionCard>
     </div>
   );
@@ -2179,7 +2430,10 @@ function DriverDetail({
                       applicationId={driver.id}
                       docs={vaultDocs}
                       loading={vaultLoading}
-                      onRefresh={refreshVault}
+                      onRefresh={async () => {
+                        await refreshVault();
+                        onSharedReadinessRefresh?.();
+                      }}
                     />
                   </div>
                 </SectionCard>
@@ -2200,6 +2454,7 @@ function DriverDetail({
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
+                    onSharedReadinessRefresh?.();
                   }}
                   onRecordingChange={setHasRecording}
                 />
@@ -2445,6 +2700,7 @@ function DriverDetail({
         onSaved={(next) => {
           setScreening(next);
           onScreeningChange?.(next);
+          onSharedReadinessRefresh?.();
         }}
       />
 
