@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
 import { BookingActions } from "@/components/admin/BookingActions";
+import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
+import { CLOSEOUT_PREVIEW_ENABLED } from "@/lib/closeout-preview-flag";
+import { showsCloseoutPreview } from "@/lib/closeout-preview";
 import { listConditionMedia } from "@/lib/inspections.functions";
 import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
@@ -310,6 +313,11 @@ function Overview({
             </div>
           )}
         </SectionCard>
+
+        {/* Unmounted while CLOSEOUT_PREVIEW_ENABLED is false. */}
+        {CLOSEOUT_PREVIEW_ENABLED && d.canManage && showsCloseoutPreview(b.status) ? (
+          <CloseoutPreview rentalId={b.id} />
+        ) : null}
 
         <SectionCard
           title="Driver"
