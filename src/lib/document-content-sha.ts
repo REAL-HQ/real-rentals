@@ -18,6 +18,7 @@
  * installed on hosted. Activation is changing this constant and rebuilding,
  * after that packet step is installed. Until that install, a flag-on upload
  * is confirmed with a null content hash and approval stays closed.
+ * A missing packet function is logged once per process.
  */
 export const DOCUMENT_CONTENT_SHA256_ENABLED = false;
 
@@ -72,10 +73,7 @@ export async function recordUploadedContentSha(
  * Any other failure still throws.
  */
 export async function applyUploadedContentSha(admin: any, bucket: string, path: string): Promise<string | null> {
-  if (uploadedContentShaMissing) {
-    console.error(MISSING_CONTENT_SHA_LOG);
-    return null;
-  }
+  if (uploadedContentShaMissing) return null;
   try {
     return await writeUploadedContentSha(admin, bucket, path);
   } catch (error) {

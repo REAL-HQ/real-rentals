@@ -14,7 +14,7 @@ import {
   storageShaMetadata,
   writeUploadedContentSha,
 } from "../src/lib/document-content-sha";
-import { registerDocument } from "../src/lib/documents.functions";
+import { persistConfirmedDocument, registerDocument } from "../src/lib/documents.functions";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -139,9 +139,109 @@ ok(registerFn.indexOf("recordUploadedContentSha") < registerFn.indexOf(".insert(
 ok(!registerFn.includes("try {"), "registerDocument does not catch the hasher, so a flag-on failure throws");
 ok(documents.includes('console.error("[documents] registration refused"'), "syncApplicationUploads catches a thrown registration and continues");
 const confirmFn = documents.slice(documents.indexOf("export const confirmDocumentUpload"), documents.indexOf("export const updateDocumentMeta"));
-ok(confirmFn.indexOf(".insert(") < confirmFn.indexOf("recordUploadedContentSha"), "confirm inserts the documents row before the packet function");
-ok(confirmFn.includes("await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);"), "confirmDocumentUpload awaits the hasher");
-ok(!confirmFn.includes("catch"), "confirmDocumentUpload lets a flag-on hasher failure refuse the confirm");
+const persistFn = documents.slice(documents.indexOf("export async function persistConfirmedDocument"), documents.indexOf("/** True for Coordinator"));
+ok(confirmFn.includes("persistConfirmedDocument"), "confirmDocumentUpload stores the row through persistConfirmedDocument");
+ok(!confirmFn.includes("catch"), "confirmDocumentUpload does not swallow the hasher error");
+ok(persistFn.indexOf(".insert(") < persistFn.indexOf("await hash("), "confirm inserts the documents row before the packet function");
+ok(persistFn.includes("recordUploadedContentSha"), "confirmDocumentUpload awaits the hasher");
+ok(persistFn.includes("catch (hashError)"), "a thrown hasher is caught so the new row can be demoted");
+ok(persistFn.indexOf("is_current: false") < persistFn.indexOf("throw hashError"), "a thrown hasher marks the new row not current before rethrowing");
+ok(persistFn.indexOf("throw hashError") < persistFn.indexOf("superseded_by"), "supersede runs only after the hasher returns");
+ok(!persistFn.includes(".delete(") && !persistFn.includes(".remove("), "a thrown hasher does not delete the row");
+
+type DocRow = Record<string, unknown> & { id: string };
+function confirmTable(seed: DocRow[]) {
+  const rows: DocRow[] = seed.map((row) => ({ ...row }));
+  function from(table: string) {
+    const filters: { op: "eq" | "neq"; col: string; val: unknown }[] = [];
+    let payload: Record<string, unknown> | null = null;
+    let mode: "insert" | "update" | "select" = "select";
+    const b: any = {
+      select() { return b; },
+      eq(col: string, val: unknown) { filters.push({ op: "eq", col, val }); return b; },
+      neq(col: string, val: unknown) { filters.push({ op: "neq", col, val }); return b; },
+      insert(next: Record<string, unknown>) { mode = "insert"; payload = { ...next }; return b; },
+      update(next: Record<string, unknown>) { mode = "update"; payload = { ...next }; return b; },
+      delete() { throw new Error("confirm deleted a document row"); },
+      single() { return exec(); },
+      then(resolve: (v: unknown) => void, reject: (e: unknown) => void) { return exec().then(resolve, reject); },
+    };
+    function matches(row: DocRow) {
+      return filters.every((f) => (f.op === "eq" ? row[f.col] === f.val : row[f.col] !== f.val));
+    }
+    function exec() {
+      if (table !== "documents") return Promise.resolve({ data: null, error: { message: "unexpected table" } });
+      if (mode === "insert") {
+        const id = `new-${rows.length}`;
+        rows.push({ ...(payload as DocRow), id });
+        return Promise.resolve({ data: { id }, error: null });
+      }
+      if (mode === "update") {
+        for (const row of rows) if (matches(row)) Object.assign(row, payload);
+        return Promise.resolve({ data: null, error: null });
+      }
+      return Promise.resolve({ data: rows.filter(matches), error: null });
+    }
+    return b;
+  }
+  return { rows, admin: { from } };
+}
+const confirmFields = {
+  driver_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  kind: "license_front",
+  category: "license_front",
+  label: "Driver's license (front)",
+  storage_bucket: "driver-docs",
+  storage_path: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/license_front.jpg",
+  visibility: ["driver", "admin"],
+  file_name: "license_front.jpg",
+  mime_type: "image/jpeg",
+  size_bytes: 12,
+  expires_at: null,
+  uploaded_by: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  uploaded_by_role: "driver",
+};
+const prior = {
+  id: "old-current",
+  driver_id: confirmFields.driver_id,
+  category: "license_front",
+  is_current: true,
+  storage_path: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/older.jpg",
+};
+const thrown = confirmTable([prior]);
+let hashThrew = false;
+try {
+  await persistConfirmedDocument(thrown.admin, confirmFields, async () => {
+    throw new Error("object changed");
+  });
+} catch (e) {
+  hashThrew = e instanceof Error && e.message === "object changed";
+}
+ok(hashThrew, "hash throws after insert");
+ok(thrown.rows.filter((row) => row.is_current === true).length === 1, "a thrown hasher leaves exactly one current row");
+ok(thrown.rows.find((row) => row.id === "old-current")?.is_current === true, "a thrown hasher leaves the previous current row current");
+ok(thrown.rows.some((row) => row.id !== "old-current" && row.is_current === false), "the unhashed insert is kept and marked not current");
+try {
+  await persistConfirmedDocument(
+    thrown.admin,
+    { ...confirmFields, storage_path: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/license_front-retry.jpg" },
+    async () => {
+      throw new Error("object changed");
+    },
+  );
+} catch (e) {
+  ok(e instanceof Error && e.message === "object changed", "a retry throws the hasher error again");
+}
+ok(thrown.rows.filter((row) => row.is_current === true).length === 1, "a retry still leaves exactly one current row");
+ok(thrown.rows.length === 3, "a retry keeps the earlier unhashed row");
+const recovered = confirmTable(thrown.rows);
+const saved = await persistConfirmedDocument(recovered.admin, {
+  ...confirmFields,
+  storage_path: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/license_front-ok.jpg",
+}, async () => null);
+ok(saved.id.startsWith("new-"), "a hasher that returns still confirms the upload");
+ok(recovered.rows.filter((row) => row.is_current === true).length === 1, "a later success leaves exactly one current row");
+ok(recovered.rows.find((row) => row.id === saved.id)?.is_current === true, "the successful row is the current one");
 
 const sample = new TextEncoder().encode("m2-license-front-v1");
 const stored = {
@@ -327,7 +427,7 @@ console.error = originalError;
 resetUploadedContentShaProbe();
 ok(missingSha === null && skipped === null, "a missing packet function confirms the upload with a null hash");
 ok(missingDownloads === 1, "the missing function is probed once");
-ok(missingLogs.length === 2 && missingLogs.every((line) => line.includes("not installed") && line.includes("Approval stays closed")), "a missing packet function is logged loudly");
+ok(missingLogs.length === 1 && missingLogs.every((line) => line.includes("not installed") && line.includes("Approval stays closed")), "a missing packet function is logged once");
 ok(isMissingContentShaFunction({ code: "PGRST202", message: "Could not find the function public.record_uploaded_content_sha" }), "the PostgREST schema-cache miss is the same probe");
 
 const url = process.env.DOCUMENT_SHA_DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable";
