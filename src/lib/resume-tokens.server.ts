@@ -1,3 +1,5 @@
+import { cardLinkFresh } from "@/lib/card-link-cache";
+
 // Applicant resume credentials.
 //
 // The application UUID used to be the credential: getApplicationForWizard and
@@ -154,9 +156,17 @@ async function trimLiveTokens(
     .in("id", excess);
 }
 
+/** The expiry this process remembers for a card link, or null once it is too old or revoked. */
+export function rememberedCardExpiry(applicationId: string): number | null {
+  const cached = cardPlaintext.get(applicationId);
+  if (!cached || !cardLinkFresh(cached.expiresAt)) return null;
+  return cached.expiresAt;
+}
+
 async function reuseCardLink(admin: AdminClient, applicationId: string): Promise<string | null> {
   const cached = cardPlaintext.get(applicationId);
-  if (!cached || cached.expiresAt <= Date.now() || !cached.raw.startsWith(CARD_TOKEN_PREFIX)) {
+  // A revoked or nearly-spent link is forgotten. About 71 hours is the handoff limit.
+  if (!cached || !cardLinkFresh(cached.expiresAt) || !cached.raw.startsWith(CARD_TOKEN_PREFIX)) {
     cardPlaintext.delete(applicationId);
     return null;
   }
@@ -165,7 +175,7 @@ async function reuseCardLink(admin: AdminClient, applicationId: string): Promise
     cardPlaintext.delete(applicationId);
     return null;
   }
-  if (instantMs(row.expires_at) <= Date.now()) {
+  if (!cardLinkFresh(instantMs(row.expires_at))) {
     cardPlaintext.delete(applicationId);
     return null;
   }

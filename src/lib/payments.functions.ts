@@ -15,6 +15,20 @@ const APPLICATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 const LINK_ERROR = "This link is no longer valid. Ask us for a new one and we'll send it over.";
 const SETUP_ERROR = "Could not start the card setup. Ask us for a new link and we'll send it over.";
 
+/**
+ * Stripe's own message, for a Stripe error only.
+ * A key fragment, an env-var name, or a database error stays the generic sentence.
+ */
+function cardSetupError(error: unknown): string {
+  const message = getStripeErrorMessage(error);
+  const type = error && typeof error === "object" && "type" in error ? String((error as { type?: unknown }).type ?? "") : "";
+  if (!type.startsWith("Stripe")) return SETUP_ERROR;
+  if (/sk_(live|test)_|rk_(live|test)_|whsec_|api[_ -]?key|LOVABLE_API_KEY|STRIPE_[A-Z0-9_]+|Bearer /i.test(message)) {
+    return SETUP_ERROR;
+  }
+  return message;
+}
+
 const attempts = new Map<string, number[]>();
 
 /**
@@ -215,8 +229,8 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
       });
       if (!session.client_secret) return { error: SETUP_ERROR };
       return { clientSecret: session.client_secret };
-    } catch {
-      return { error: SETUP_ERROR };
+    } catch (error) {
+      return { error: cardSetupError(error) };
     }
   });
 
@@ -229,13 +243,15 @@ export const issueCardOnFileLink = createServerFn({ method: 'POST' })
     }
     return data;
   })
-  .handler(async ({ data, context }): Promise<{ path: string }> => {
+  .handler(async ({ data, context }): Promise<{ path: string; expiresAt: number }> => {
     const { requireManager } = await import('@/lib/roles.server');
     await requireManager(context.userId);
     const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-    const { issueResumeToken } = await import('@/lib/resume-tokens.server');
+    const { issueResumeToken, rememberedCardExpiry } = await import('@/lib/resume-tokens.server');
     const token = await issueResumeToken(supabaseAdmin, data.applicationId, { purpose: 'card' });
-    return { path: `/card/${data.applicationId}?t=${encodeURIComponent(token)}` };
+    const expiresAt = rememberedCardExpiry(data.applicationId);
+    if (expiresAt == null) throw new Error('Could not prepare the card link.');
+    return { path: `/card/${data.applicationId}?t=${encodeURIComponent(token)}`, expiresAt };
   });
 
 export const removeCardOnFile = createServerFn({ method: 'POST' })

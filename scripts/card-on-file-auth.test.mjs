@@ -45,6 +45,7 @@ const stub = {
           return {
             customers: { create: async (body, opts) => { globalThis.__stripe.customers.push({ body, opts }); return { id: "cus_new" }; } },
             checkout: { sessions: { create: async (body) => {
+              if (globalThis.__stripeThrow) throw globalThis.__stripeThrow;
               globalThis.__stripe.sessions.push(body);
               return { client_secret: "cs_test_secret", id: "cs_sess", customer: body.customer, url: "https://checkout.stripe.test/secret" };
             } } },
@@ -81,6 +82,9 @@ const stub = {
           if (opts?.purpose !== "card") throw new Error("card link required");
           if (opts.ttlMs != null) throw new Error("ttl");
           return "minted-card-token-value";
+        }
+        export function rememberedCardExpiry() {
+          return globalThis.__cardExpiry === undefined ? 1800000000000 : globalThis.__cardExpiry;
         }
       `,
       "@/lib/roles.server": `
@@ -129,6 +133,8 @@ function reset() {
   globalThis.__actors = {};
   globalThis.__cardTokens = {};
   globalThis.__customerUpdateError = null;
+  globalThis.__stripeThrow = null;
+  delete globalThis.__cardExpiry;
   process.env.NODE_ENV = "development";
   delete process.env.SITE_URL;
   globalThis.__app = {
@@ -288,7 +294,50 @@ const issued = await issueCardOnFileLink.handle({
 });
 assert.deepEqual(globalThis.__cardIssue, { purpose: "card" });
 assert.equal(issued.path, `/card/${APP}?t=${encodeURIComponent("minted-card-token-value")}`);
+assert.equal(issued.expiresAt, 1800000000000);
 ok("a staff card link does not pass a lifetime");
+
+const SETUP_ERROR = "Could not start the card setup. Ask us for a new link and we'll send it over.";
+const ERR_APP = "33333333-3333-4333-8333-333333333333";
+const errorSession = () => createCardOnFileSession.handle({
+  data: {
+    applicationId: ERR_APP,
+    returnUrl: `http://127.0.0.1:5199/card/${ERR_APP}?status=success`,
+    environment: "sandbox",
+    token: TOKEN,
+  },
+});
+
+reset();
+globalThis.__cardTokens[TOKEN] = ERR_APP;
+globalThis.__stripeThrow = { type: "StripeCardError", message: "Your card was declined." };
+const declined = await errorSession();
+assert.equal(declined.error, "Your card was declined.");
+ok("a Stripe card-setup error keeps Stripe's own message");
+
+reset();
+globalThis.__cardTokens[TOKEN] = ERR_APP;
+globalThis.__stripeThrow = { type: "StripeAuthenticationError", message: "Invalid API Key provided: sk_live_abc123" };
+const secret = await errorSession();
+assert.equal(secret.error, SETUP_ERROR);
+assert.equal(String(secret.error).includes("sk_live_"), false);
+ok("a Stripe message that names a key stays generic");
+
+reset();
+globalThis.__cardTokens[TOKEN] = ERR_APP;
+globalThis.__stripeThrow = new Error("STRIPE_LIVE_API_KEY is not configured");
+const configError = await errorSession();
+assert.equal(configError.error, SETUP_ERROR);
+assert.equal(String(configError.error).includes("STRIPE_LIVE_API_KEY"), false);
+ok("a non-Stripe setup failure stays generic");
+
+reset();
+globalThis.__cardExpiry = null;
+await assert.rejects(
+  () => issueCardOnFileLink.handle({ data: { applicationId: APP }, context: { userId: "manager-1" } }),
+  /Could not prepare the card link/,
+);
+ok("a card link without an expiry is not returned");
 
 rmSync(out, { recursive: true, force: true });
 console.log(`${passed} card-on-file checks passed`);
