@@ -8,8 +8,6 @@ export const NOTIFIED_WINDOW_DAYS = 7;
 
 export type WaitlistAgingGroup = {
   city: string | null;
-  /** Waitlist rows do not store a vehicle type. This stays null. */
-  vehicleType: null;
   waiting: number;
   /** Exact median. The screen rounds it; this value does not. */
   medianDays: number | null;
@@ -35,4 +33,8 @@ export const AGING_REFUSED: boolean = !WAITLIST_AGING_ENABLED;
 
 export function idleWaitlistAging(): WaitlistAgingResult {
   return { failed: false, truncated: false, cap: WAITLIST_AGING_CAP, groups: [] };
+}
+
+export function failedWaitlistAging(): WaitlistAgingResult {
+  return { failed: true, truncated: false, cap: WAITLIST_AGING_CAP, groups: [] };
 }

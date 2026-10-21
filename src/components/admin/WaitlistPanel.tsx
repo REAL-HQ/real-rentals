@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
-import { WAITLIST_AGING_ENABLED, type WaitlistAgingResult } from "@/lib/waitlist-aging";
+import { WAITLIST_AGING_ENABLED, failedWaitlistAging, type WaitlistAgingResult } from "@/lib/waitlist-aging";
 import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
 import { WaitlistAging } from "./WaitlistAging";
 
@@ -84,7 +84,7 @@ export function WaitlistPanel({
         if (!cancelled) setAging(result);
       })
       .catch(() => {
-        if (!cancelled) setAging({ failed: true, truncated: false, cap: 1000, groups: [] });
+        if (!cancelled) setAging(failedWaitlistAging());
       });
     return () => {
       cancelled = true;

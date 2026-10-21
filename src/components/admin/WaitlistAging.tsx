@@ -13,7 +13,7 @@ function cityLabel(city: string | null): string {
 
 export function WaitlistAging({ result }: { result: WaitlistAgingResult | null }) {
   return (
-    <SectionCard title="Waitlist Aging" subtitle="Days Waiting By City And Vehicle Type">
+    <SectionCard title="Waitlist Aging" subtitle="Days Waiting By City">
       {result == null ? (
         <p className="text-[13px] text-[#9A9AA3]">Loading…</p>
       ) : result.failed ? (
@@ -22,7 +22,7 @@ export function WaitlistAging({ result }: { result: WaitlistAgingResult | null }
         <div>
           {result.truncated ? (
             <p className="mb-3 text-[12px] text-[#8A5A12]">
-              Showing The First 1000 Waitlist Entries. Later Entries Were Not Read.
+              Showing The First {result.cap} Waitlist Entries. Later Entries Were Not Read.
             </p>
           ) : null}
           {result.groups.length === 0 ? (
@@ -33,7 +33,6 @@ export function WaitlistAging({ result }: { result: WaitlistAgingResult | null }
                 <thead>
                   <tr className="text-[11px] font-semibold text-[#9A9AA3]">
                     <th className="py-2 pr-3 font-semibold">City</th>
-                    <th className="py-2 pr-3 font-semibold">Vehicle Type</th>
                     <th className="py-2 pr-3 font-semibold">Waiting</th>
                     <th className="py-2 pr-3 font-semibold">Median Days</th>
                     <th className="py-2 pr-3 font-semibold">Oldest Days</th>
@@ -44,7 +43,6 @@ export function WaitlistAging({ result }: { result: WaitlistAgingResult | null }
                   {result.groups.map((group) => (
                     <tr key={group.city ?? "unknown"} className="border-t border-[#EDEDF0]">
                       <td className="py-2 pr-3">{cityLabel(group.city)}</td>
-                      <td className="py-2 pr-3">{group.vehicleType ?? "Unknown"}</td>
                       <td className="py-2 pr-3">{group.waiting}</td>
                       <td className="py-2 pr-3">{displayDays(group.medianDays)}</td>
                       <td className="py-2 pr-3">{displayDays(group.oldestDays)}</td>

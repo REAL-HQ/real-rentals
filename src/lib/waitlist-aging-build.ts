@@ -13,11 +13,6 @@ export type AgingEntry = {
   created_at: string | null;
   notified_at: string | null;
   promoted_application_id: string | null;
-  /**
-   * Accepted only so a caller cannot smuggle a preference in. The waitlist
-   * table has no vehicle_type column, and this view does not invent one.
-   */
-  vehicle_type?: string | null;
 };
 
 export type AgingApplication = {
@@ -51,22 +46,42 @@ export function exactMedian(values: number[]): number | null {
   return (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-export function waitlistVehicleType(_entry: { vehicle_type?: string | null }): null {
-  return null;
+/** Grouping key. The label keeps the first casing staff already typed. */
+export function cityGroup(city: string | null): { key: string; label: string | null } {
+  if (typeof city !== "string") return { key: "\0", label: null };
+  const label = city.trim().replace(/\s+/g, " ");
+  if (label.length === 0) return { key: "\0", label: null };
+  return { key: label.toLocaleLowerCase("en-US"), label };
 }
 
-function cityKey(city: string | null): string | null {
-  if (typeof city !== "string") return null;
-  const trimmed = city.trim();
-  return trimmed.length === 0 ? null : trimmed;
+/** Last instant of the Eastern day that is already NOTIFIED_WINDOW_DAYS old. */
+export function notifiedThroughIso(today: Date): string {
+  const index = easternDayIndex(today.toISOString());
+  if (index == null) return today.toISOString();
+  const next = new Date((index - NOTIFIED_WINDOW_DAYS + 1) * 86_400_000);
+  const day = next.toISOString().slice(0, 10);
+  const [year, month, date] = day.split("-").map(Number);
+  for (const hour of [4, 5, 6]) {
+    const instant = new Date(Date.UTC(year!, month! - 1, date!, hour, 0, 0, 0));
+    const before = new Date(instant.getTime() - 1);
+    if (leadToday(instant) === day && leadToday(before) !== day) {
+      return before.toISOString();
+    }
+  }
+  return today.toISOString();
+}
+
+function waitedAtLeast(later: number, earlier: number): boolean {
+  return later - earlier >= NOTIFIED_WINDOW_DAYS;
 }
 
 /**
- * Waiting age counts status "waiting" only.
- * Notified-but-not-applied counts a row with notified_at when the linked
- * application's Eastern day is more than 7 days after notification, or when
- * no application is readable and today is at least 7 Eastern days later.
- * promoted_at is staff link time and is not the apply time.
+ * Waiting age counts status "waiting" only. A future signup still counts as
+ * waiting and stays out of the day list, the same way an unreadable date does.
+ * Notified, Not Applied counts status "notified" only. The same 7-day boundary
+ * applies when an application is readable and when it is not: day 7 counts,
+ * day 6 does not. A future application date is not an apply time. promoted_at
+ * is staff link time and is not the apply time.
  */
 export function buildWaitlistAging(input: {
   entries: AgingEntry[];
@@ -81,7 +96,6 @@ export function buildWaitlistAging(input: {
     string,
     {
       city: string | null;
-      vehicleType: null;
       days: number[];
       waiting: number;
       notifiedNotApplied: number;
@@ -89,41 +103,37 @@ export function buildWaitlistAging(input: {
   >();
 
   for (const entry of input.entries) {
-    const city = cityKey(entry.city);
-    const key = city ?? "\0";
-    let group = groups.get(key);
+    const city = cityGroup(entry.city);
+    let group = groups.get(city.key);
     if (!group) {
       group = {
-        city,
-        vehicleType: waitlistVehicleType(entry),
+        city: city.label,
         days: [],
         waiting: 0,
         notifiedNotApplied: 0,
       };
-      groups.set(key, group);
+      groups.set(city.key, group);
     }
 
     if (entry.status === "waiting") {
       if (todayIndex != null) group.waiting += 1;
       const created = easternDayIndex(entry.created_at);
-      if (created != null && todayIndex != null) {
-        const days = todayIndex - created;
-        if (days >= 0) group.days.push(days);
+      if (created != null && todayIndex != null && created <= todayIndex) {
+        group.days.push(todayIndex - created);
       }
       continue;
     }
 
+    if (entry.status !== "notified" || todayIndex == null) continue;
     const notified = easternDayIndex(entry.notified_at);
-    if (notified == null || todayIndex == null) continue;
+    if (notified == null || notified > todayIndex) continue;
     const applicationId = entry.promoted_application_id;
     const applicationCreated =
       typeof applicationId === "string" ? appliedAt.get(applicationId) : undefined;
-    if (applicationCreated) {
-      const applied = easternDayIndex(applicationCreated);
-      if (applied != null && applied - notified > NOTIFIED_WINDOW_DAYS) {
-        group.notifiedNotApplied += 1;
-      }
-    } else if (todayIndex - notified >= NOTIFIED_WINDOW_DAYS) {
+    const applied = applicationCreated ? easternDayIndex(applicationCreated) : null;
+    if (applied != null && applied <= todayIndex) {
+      if (waitedAtLeast(applied, notified)) group.notifiedNotApplied += 1;
+    } else if (waitedAtLeast(todayIndex, notified)) {
       group.notifiedNotApplied += 1;
     }
   }
@@ -133,7 +143,6 @@ export function buildWaitlistAging(input: {
     if (group.waiting === 0 && group.notifiedNotApplied === 0) continue;
     built.push({
       city: group.city,
-      vehicleType: group.vehicleType,
       waiting: group.waiting,
       medianDays: exactMedian(group.days),
       oldestDays: group.days.length === 0 ? null : Math.max(...group.days),

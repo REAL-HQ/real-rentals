@@ -11,7 +11,7 @@ import {
   buildWaitlistAging,
   easternCalendarDay,
   exactMedian,
-  waitlistVehicleType,
+  notifiedThroughIso,
   type AgingEntry,
 } from "../src/lib/waitlist-aging-build.ts";
 import { loadWaitlistAging } from "../src/lib/waitlist-aging-load.ts";
@@ -67,6 +67,11 @@ test("the flag is one hard false and the read stays behind it", () => {
   assert.match(load, /PAGE = 200/);
   assert.match(load, /ID_BATCH = 50/);
   assert.match(load, /i \+= ID_BATCH/);
+  assert.match(load, /\.eq\("status", "waiting"\)/);
+  assert.match(load, /\.eq\("status", "notified"\)/);
+  assert.match(load, /\.lte\("notified_at", notifiedThroughIso\(today\)\)/);
+  assert.match(load, /\.is\("deleted_at", null\)/);
+  assert.match(load, /failedWaitlistAging\(\)/);
   assert.doesNotMatch(load, /\.limit\(|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
   assert.doesNotMatch(load, /email|phone|full_name|vehicle_type/);
 
@@ -75,9 +80,14 @@ test("the flag is one hard false and the read stays behind it", () => {
   assert.ok(
     ui.indexOf("Could Not Load Waitlist Aging") < ui.indexOf("Later Entries Were Not Read"),
   );
+  assert.match(ui, /result\.cap/);
+  assert.doesNotMatch(ui, /First 1000|Vehicle Type|And Vehicle Type/);
+  assert.match(ui, /Days Waiting By City/);
   assert.match(ui, /result\.failed/);
   assert.ok(ui.indexOf("result.failed") < ui.indexOf("result.truncated"));
   assert.doesNotMatch(ui, /uppercase|lowercase|capitalize|text-transform|useServerFn/);
+  assert.match(panel, /failedWaitlistAging\(\)/);
+  assert.doesNotMatch(panel, /cap:\s*1000/);
 
   const gate = panel.indexOf("WAITLIST_AGING_ENABLED !== true");
   const call = panel.indexOf("loadAging()");
@@ -87,12 +97,11 @@ test("the flag is one hard false and the read stays behind it", () => {
   assert.doesNotMatch(admin, /waitlist-aging|WaitlistAging|Waitlist Aging/);
 });
 
-test("median stays exact and vehicle type stays unknown", () => {
+test("median stays exact", () => {
   assert.equal(exactMedian([]), null);
   assert.equal(exactMedian([4]), 4);
   assert.equal(exactMedian([1, 2]), 1.5);
   assert.equal(exactMedian([3, 1, 2]), 2);
-  assert.equal(waitlistVehicleType({ vehicle_type: "suv" }), null);
   assert.equal(displayDays(1.5), "2");
   assert.equal(displayDays(2), "2");
   assert.equal(displayDays(null), "Unknown");
@@ -102,7 +111,7 @@ test("median stays exact and vehicle type stays unknown", () => {
     today,
     applications: [],
     entries: [
-      entry({ id: "a", created_at: "2026-06-13T15:00:00.000Z", vehicle_type: "suv" }),
+      entry({ id: "a", created_at: "2026-06-13T15:00:00.000Z" }),
       entry({ id: "b", created_at: "2026-06-14T15:00:00.000Z" }),
       entry({
         id: "still-waiting",
@@ -110,13 +119,13 @@ test("median stays exact and vehicle type stays unknown", () => {
         created_at: "2026-05-01T15:00:00.000Z",
         notified_at: "2026-05-01T15:00:00.000Z",
       }),
+      entry({ id: "future", created_at: "2026-07-01T15:00:00.000Z" }),
     ],
   });
   assert.equal(aged.groups.length, 1);
   const group = aged.groups[0]!;
   assert.equal(group.city, "Atlanta");
-  assert.equal(group.vehicleType, null);
-  assert.equal(group.waiting, 3);
+  assert.equal(group.waiting, 4);
   assert.equal(group.medianDays, 2);
   assert.equal(group.oldestDays, 45);
   assert.equal(group.notifiedNotApplied, 0);
@@ -151,9 +160,13 @@ test("notified window, cities, and Eastern days", () => {
 
   assert.equal(open("2026-03-01T15:00:00.000Z", null), 1);
   assert.equal(open("2026-03-02T15:00:00.000Z", null), 0);
-  assert.equal(open("2026-03-01T15:00:00.000Z", "2026-03-08T15:00:00.000Z"), 0);
+  assert.equal(open("2026-03-01T15:00:00.000Z", "2026-03-07T15:00:00.000Z"), 0);
+  assert.equal(open("2026-03-01T15:00:00.000Z", "2026-03-08T15:00:00.000Z"), 1);
   assert.equal(open("2026-03-01T15:00:00.000Z", "2026-03-09T15:00:00.000Z"), 1);
+  assert.equal(open("2026-03-01T15:00:00.000Z", "2026-04-01T15:00:00.000Z"), 1);
   assert.equal(open("2026-03-08T15:00:00.000Z", "2026-03-01T15:00:00.000Z"), 0);
+  assert.equal(notifiedThroughIso(march8) < "2026-03-02T15:00:00.000Z", true);
+  assert.equal(notifiedThroughIso(march8) >= "2026-03-01T15:00:00.000Z", true);
 
   const unlabeled = buildWaitlistAging({
     today: march8,
@@ -181,7 +194,6 @@ test("notified window, cities, and Eastern days", () => {
       medianDays: group.medianDays,
       oldestDays: group.oldestDays,
       notifiedNotApplied: group.notifiedNotApplied,
-      vehicleType: group.vehicleType,
     })),
     [
       {
@@ -190,7 +202,6 @@ test("notified window, cities, and Eastern days", () => {
         medianDays: 1.5,
         oldestDays: 2,
         notifiedNotApplied: 0,
-        vehicleType: null,
       },
       {
         city: "Boston",
@@ -198,7 +209,6 @@ test("notified window, cities, and Eastern days", () => {
         medianDays: 0,
         oldestDays: 0,
         notifiedNotApplied: 0,
-        vehicleType: null,
       },
       {
         city: "Chicago",
@@ -206,7 +216,6 @@ test("notified window, cities, and Eastern days", () => {
         medianDays: null,
         oldestDays: null,
         notifiedNotApplied: 0,
-        vehicleType: null,
       },
       {
         city: null,
@@ -214,10 +223,41 @@ test("notified window, cities, and Eastern days", () => {
         medianDays: 0,
         oldestDays: 0,
         notifiedNotApplied: 0,
-        vehicleType: null,
       },
     ],
   );
+
+  const mixedCase = buildWaitlistAging({
+    today: march8,
+    applications: [{ id: "later", created_at: "2026-04-01T15:00:00.000Z" }],
+    entries: [
+      entry({ id: "lower", city: "atlanta", created_at: "2026-03-08T15:00:00.000Z" }),
+      entry({ id: "upper", city: "ATLANTA", created_at: "2026-03-06T15:00:00.000Z" }),
+      entry({
+        id: "promoted-old",
+        status: "promoted",
+        notified_at: "2026-01-01T15:00:00.000Z",
+        created_at: "2026-01-01T15:00:00.000Z",
+      }),
+      entry({
+        id: "duplicate-old",
+        status: "duplicate",
+        notified_at: "2026-01-01T15:00:00.000Z",
+        created_at: "2026-01-01T15:00:00.000Z",
+      }),
+      entry({
+        id: "future-note",
+        status: "notified",
+        notified_at: "2026-04-01T15:00:00.000Z",
+        created_at: "2026-04-01T15:00:00.000Z",
+        promoted_application_id: "later",
+      }),
+    ],
+  });
+  assert.equal(mixedCase.groups.length, 1);
+  assert.equal(mixedCase.groups[0]?.city, "atlanta");
+  assert.equal(mixedCase.groups[0]?.waiting, 2);
+  assert.equal(mixedCase.groups[0]?.notifiedNotApplied, 0);
 
   // 04:30Z on the spring-forward morning is still the previous Eastern day.
   const dst = buildWaitlistAging({
@@ -363,6 +403,53 @@ test("count-checked pages, failed reads, and the second application batch", asyn
   assert.equal(batched.failed, false);
   assert.equal(batched.truncated, false);
   assert.equal(notifiedSum(batched.groups), 0);
+
+  reset();
+  const history: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < 1000; i++) {
+    history.push({
+      id: `old${String(i).padStart(4, "0")}`,
+      city: "History",
+      status: "promoted",
+      created_at: new Date(Date.UTC(2020, 0, 1, 0, 0, i)).toISOString(),
+      notified_at: new Date(Date.UTC(2020, 0, 1, 0, 0, i)).toISOString(),
+      promoted_application_id: null,
+    });
+  }
+  history.push({
+    id: "newest-waiting",
+    city: "Atlanta",
+    status: "waiting",
+    created_at: "2026-06-01T15:00:00.000Z",
+    notified_at: null,
+    promoted_application_id: null,
+  });
+  fake().tables.waitlist = history;
+  const kept = await loadWaitlistAging(supabaseAdmin, new Date("2026-06-02T15:00:00.000Z"));
+  assert.equal(kept.failed, false);
+  assert.equal(kept.truncated, false);
+  assert.deepEqual(
+    kept.groups.map((group) => ({ city: group.city, waiting: group.waiting, notifiedNotApplied: group.notifiedNotApplied })),
+    [{ city: "Atlanta", waiting: 1, notifiedNotApplied: 0 }],
+  );
+
+  reset();
+  fake().tables.waitlist = [
+    {
+      id: "n-deleted",
+      city: "Atlanta",
+      status: "notified",
+      created_at: "2026-03-01T15:00:00.000Z",
+      notified_at: "2026-03-01T15:00:00.000Z",
+      promoted_application_id: "gone",
+    },
+  ];
+  fake().tables.applications = [
+    { id: "gone", created_at: "2026-03-01T15:00:00.000Z", deleted_at: "2026-03-02T15:00:00.000Z" },
+  ];
+  const deletedApp = await loadWaitlistAging(supabaseAdmin, new Date("2026-03-08T15:00:00.000Z"));
+  assert.equal(deletedApp.failed, false);
+  assert.equal(notifiedSum(deletedApp.groups), 1);
 
   const dir = path.join(root, ".waitlist-aging-build");
   rmSync(dir, { recursive: true, force: true });
