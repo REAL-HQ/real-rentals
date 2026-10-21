@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getRenewalsDue } from "@/lib/renewals-due.functions";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { RENEWAL_CANDIDATES_ENABLED } from "@/lib/renewal-candidates-flag";
 import { formatRenewalDate, type RenewalsDueBoard } from "@/lib/renewals-due";
 
 export function RenewalsDue() {
@@ -12,25 +13,30 @@ export function RenewalsDue() {
 
 function RenewalsDueLive() {
   const load = useServerFn(getRenewalsDue);
+  const history = RENEWAL_CANDIDATES_ENABLED === true;
+  const [windowDays, setWindowDays] = useState<7 | 14>(7);
+  const [goodHistoryOnly, setGoodHistoryOnly] = useState(false);
   const [board, setBoard] = useState<RenewalsDueBoard | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let live = true;
-    setError(null);
-    load()
+    setError(false);
+    setBoard(null);
+    const request = history ? load({ data: { windowDays, goodHistoryOnly } }) : load({ data: {} });
+    request
       .then((next) => {
         if (live) setBoard(next);
       })
-      .catch((reason) => {
-        if (live) setError(reason instanceof Error ? reason.message : "Could Not Load Renewal Due");
+      .catch(() => {
+        if (live) setError(true);
       });
     return () => {
       live = false;
     };
-  }, [load]);
+  }, [load, history, windowDays, goodHistoryOnly]);
 
-  if (error) return <p className="text-[13px] text-[#D03020]">{error}</p>;
+  if (error) return <p className="text-[13px] text-[#D03020]">Could Not Load Renewal Due</p>;
   if (!board) return <p className="text-[13px] text-[#55555E]">Loading Renewal Due</p>;
 
   return (
@@ -41,6 +47,34 @@ function RenewalsDueLive() {
           {board.heading} Through {formatRenewalDate(board.through)} · Eastern Time
         </p>
       </div>
+      {history ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={windowDays === 7}
+            onClick={() => setWindowDays(7)}
+            className="rounded-lg border border-[#EDEDF0] px-3 py-1.5 text-[13px] text-[#111114]"
+          >
+            7 Days
+          </button>
+          <button
+            type="button"
+            aria-pressed={windowDays === 14}
+            onClick={() => setWindowDays(14)}
+            className="rounded-lg border border-[#EDEDF0] px-3 py-1.5 text-[13px] text-[#111114]"
+          >
+            14 Days
+          </button>
+          <label className="flex items-center gap-2 text-[13px] text-[#111114]">
+            <input
+              type="checkbox"
+              checked={goodHistoryOnly}
+              onChange={(event) => setGoodHistoryOnly(event.target.checked)}
+            />
+            Good Payment History
+          </label>
+        </div>
+      ) : null}
       <Truncation board={board} />
       <OverdueReturn rows={board.overdue} />
       {board.rows.length === 0 ? (
@@ -56,6 +90,7 @@ function RenewalsDueLive() {
                 <th className="px-3 py-2 font-medium">Next Billing</th>
                 <th className="px-3 py-2 font-medium">End Date</th>
                 <th className="px-3 py-2 font-medium">Last Payment</th>
+                {history ? <th className="px-3 py-2 font-medium">Paid Charges</th> : null}
                 <th className="px-3 py-2 font-medium">Payments</th>
               </tr>
             </thead>
@@ -76,6 +111,9 @@ function RenewalsDueLive() {
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
                   <td className="px-3 py-2 text-[#111114]">{row.lastPaymentStatus}</td>
+                  {history ? (
+                    <td className="px-3 py-2 text-[#111114]">{row.paidCharges == null ? "Not Checked" : row.paidCharges}</td>
+                  ) : null}
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.paymentsSearch} className="text-[#111114] underline">
                       Payments

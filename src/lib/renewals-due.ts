@@ -56,8 +56,8 @@ export function addCalendarDays(isoDate: string, days: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
-export function renewalHorizon(today: string): string {
-  return addCalendarDays(today, RENEWAL_WINDOW_DAYS);
+export function renewalHorizon(today: string, days = RENEWAL_WINDOW_DAYS): string {
+  return addCalendarDays(today, days);
 }
 
 export function formatRenewalDate(isoDate: string): string {
@@ -91,10 +91,78 @@ export function dateOnly(value: string | null | undefined): string | null {
   return match ? match[1] : null;
 }
 
-export function inRenewalWindow(value: string | null | undefined, today: string): boolean {
+export function inRenewalWindow(value: string | null | undefined, today: string, days = RENEWAL_WINDOW_DAYS): boolean {
   const date = dateOnly(value);
   if (!date) return false;
-  return date >= today && date <= renewalHorizon(today);
+  return date >= today && date <= renewalHorizon(today, days);
+}
+
+/** A rent charge in one of these statuses keeps the history from being good. */
+const BAD_RENT_STATUSES = ["failed", "late", "overdue", "past_due", "unpaid", "collections", "current"] as const;
+
+/** These rent statuses are defined and neither a clean payment nor a problem. */
+const NEUTRAL_RENT_STATUSES = ["pending", "upcoming", "refunded", "waived", "void"] as const;
+
+export type RenewalHistoryCharge = {
+  status?: string | null;
+  type?: string | null;
+  late_fees?: number | null;
+  paid_date?: string | null;
+  due_date?: string | null;
+  attempt_count?: number | null;
+  failure_reason?: string | null;
+};
+
+function rentStatus(status: string | null | undefined): string {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
+}
+
+function isRentCharge(charge: RenewalHistoryCharge): boolean {
+  const type = typeof charge.type === "string" ? charge.type.trim().toLowerCase() : "rent";
+  return type === "rent";
+}
+
+/** Paid after the due date, with a late fee, a retry, or a recorded failure. */
+export function isPaidLate(charge: RenewalHistoryCharge): boolean {
+  if (Number(charge.late_fees ?? 0) > 0) return true;
+  if (Number(charge.attempt_count ?? 0) > 1) return true;
+  if (typeof charge.failure_reason === "string" && charge.failure_reason.trim() !== "") return true;
+  const paid = dateOnly(charge.paid_date);
+  const due = dateOnly(charge.due_date);
+  return paid != null && due != null && paid > due;
+}
+
+/**
+ * Good means at least one clean paid rent charge.
+ * Deposits are ignored. pending, upcoming, refunded, waived, and void are allowed
+ * and are not paid charges. current and the late or failed statuses are not good.
+ * Any other status is unknown and is not good. A paid-late rent charge is not clean.
+ */
+export function hasGoodPaymentHistory(charges: readonly RenewalHistoryCharge[]): boolean {
+  let paid = 0;
+  for (const charge of charges) {
+    if (!isRentCharge(charge)) continue;
+    const status = rentStatus(charge.status);
+    if ((BAD_RENT_STATUSES as readonly string[]).includes(status)) return false;
+    if ((NEUTRAL_RENT_STATUSES as readonly string[]).includes(status)) continue;
+    if (status === "paid") {
+      if (isPaidLate(charge)) return false;
+      paid += 1;
+      continue;
+    }
+    return false;
+  }
+  return paid > 0;
+}
+
+/** Paid rent charges, including ones that were paid late. Deposits are not counted. */
+export function paidRentCharges(charges: readonly RenewalHistoryCharge[]): number {
+  let paid = 0;
+  for (const charge of charges) {
+    if (!isRentCharge(charge)) continue;
+    if (rentStatus(charge.status) === "paid") paid += 1;
+  }
+  return paid;
 }
 
 /** Whole Eastern calendar days from end date to today. Uses the same UTC date arithmetic as addCalendarDays. */
@@ -158,6 +226,12 @@ export type RenewalPayment = {
   rental_id: string | null;
   status: string | null;
   created_at: string;
+  type?: string | null;
+  late_fees?: number | null;
+  paid_date?: string | null;
+  due_date?: string | null;
+  attempt_count?: number | null;
+  failure_reason?: string | null;
 };
 
 export type RenewalDueRow = {
@@ -172,6 +246,9 @@ export type RenewalDueRow = {
   reasons: string[];
   lastPaymentStatus: string;
   paymentsSearch: { tab: "payments" };
+  /** Null while the payment-history flag is off, or when the payment read was capped. */
+  paidCharges: number | null;
+  goodPaymentHistory: boolean | null;
 };
 
 export type OverdueReturnRow = {
@@ -197,6 +274,10 @@ export type RenewalsDueInput = {
   applicationsTruncated?: boolean;
   vehiclesTruncated?: boolean;
   paymentsTruncated?: boolean;
+  /** The payment-history controls. Off unless the caller has already checked the flag. */
+  historyEnabled?: boolean;
+  windowDays?: 7 | 14;
+  goodHistoryOnly?: boolean;
 };
 
 export type RenewalsDueBoard = {
@@ -225,13 +306,19 @@ function laterPayment(current: RenewalPayment, next: RenewalPayment): RenewalPay
 
 export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
   const today = input.today;
+  const historyEnabled = input.historyEnabled === true;
+  const windowDays = historyEnabled && input.windowDays === 14 ? 14 : RENEWAL_WINDOW_DAYS;
   const applications = new Map(input.applications.map((row) => [row.id, row]));
   const vehicles = new Map(input.vehicles.map((row) => [row.id, row]));
   const latestPayment = new Map<string, RenewalPayment>();
+  const chargesByRental = new Map<string, RenewalPayment[]>();
   for (const payment of input.payments) {
     if (!payment.rental_id) continue;
     const current = latestPayment.get(payment.rental_id);
     latestPayment.set(payment.rental_id, current ? laterPayment(current, payment) : payment);
+    const list = chargesByRental.get(payment.rental_id) ?? [];
+    list.push(payment);
+    chargesByRental.set(payment.rental_id, list);
   }
 
   const seen = new Set<string>();
@@ -242,8 +329,8 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
     if (rental.status !== "active") continue;
     const nextPaymentDue = dateOnly(rental.next_payment_due);
     const endDate = dateOnly(rental.end_date);
-    const nextInWindow = nextPaymentDue != null && inRenewalWindow(nextPaymentDue, today);
-    const endInWindow = endDate != null && inRenewalWindow(endDate, today);
+    const nextInWindow = nextPaymentDue != null && inRenewalWindow(nextPaymentDue, today, windowDays);
+    const endInWindow = endDate != null && inRenewalWindow(endDate, today, windowDays);
     if (!nextInWindow && !endInWindow) continue;
 
     const reasons: string[] = [];
@@ -255,6 +342,10 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
     const application = rental.application_id ? applications.get(rental.application_id) : undefined;
     const name = application?.full_name?.trim() ?? "";
     const payment = latestPayment.get(rental.id);
+    const charges = chargesByRental.get(rental.id) ?? [];
+    const historyKnown = historyEnabled && input.paymentsTruncated !== true;
+    const goodPaymentHistory = historyKnown ? hasGoodPaymentHistory(charges) : null;
+    if (historyEnabled && input.goodHistoryOnly === true && goodPaymentHistory !== true) continue;
 
     rows.push({
       rentalId: rental.id,
@@ -268,6 +359,8 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
       reasons,
       lastPaymentStatus: lastPaymentStatusLabel(payment?.status),
       paymentsSearch: { tab: "payments" },
+      paidCharges: historyKnown ? paidRentCharges(charges) : null,
+      goodPaymentHistory,
     });
   }
 
@@ -299,7 +392,7 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
 
   return {
     today,
-    through: renewalHorizon(today),
+    through: renewalHorizon(today, windowDays),
     heading: formatRenewalHeading(today),
     rows,
     overdue,
