@@ -149,6 +149,13 @@ import {
 } from "@/lib/readiness";
 
 import { requiredDocCounts } from "@/lib/required-docs";
+import {
+  DOCUMENT_REVIEW_AGING_ENABLED,
+  DOCUMENT_REVIEW_AGING_ROW_CAP,
+  type DocumentReviewAgingResult,
+} from "@/lib/document-review-aging";
+import { getDocumentReviewAging } from "@/lib/document-review-aging.functions";
+import { DocumentReviewAging } from "./DocumentReviewAging";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
@@ -421,6 +428,7 @@ export function DriversPanel({
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
   const [docGaps, setDocGaps] = useState<ApplicationDocGapsResult | null>(null);
+  const [reviewAging, setReviewAging] = useState<DocumentReviewAgingResult | null>(null);
   // Waitlist and the manager lists live in the URL so a chip, a bookmark,
   // and the back button agree. Manager lists are ignored for a coordinator.
   const urlListFilter =
@@ -805,6 +813,29 @@ setDocCounts(requiredDocCounts(rows));
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
   }, [refreshDrivers]);
+
+  const loadReviewAging = useServerFn(getDocumentReviewAging);
+  useEffect(() => {
+    if (DOCUMENT_REVIEW_AGING_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadReviewAging()
+      .then((result) => {
+        if (!cancel) setReviewAging(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setReviewAging({
+            failed: true,
+            truncated: false,
+            cap: DOCUMENT_REVIEW_AGING_ROW_CAP,
+            categories: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadReviewAging, driversLoaded, canSeeSensitive]);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
@@ -1229,6 +1260,9 @@ setDocCounts(requiredDocCounts(rows));
       <>
       {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
         <DriverDocExpiryNotice canView={canSeeSensitive} meta={docExpiry} />
+      ) : null}
+      {DOCUMENT_REVIEW_AGING_ENABLED === true ? (
+        <DocumentReviewAging canView={canSeeSensitive} result={reviewAging} />
       ) : null}
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
