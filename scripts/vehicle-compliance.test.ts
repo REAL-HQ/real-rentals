@@ -191,7 +191,7 @@ describe("vehicle compliance reads", () => {
     let linkCalls = 0;
     const linked = await loadVehicleCompliance(reader({
       vehicles: { data: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", registration_expires_on: "2027-01-01", insurance_expires_on: "2027-01-01", plate_expires_on: "2027-01-01" }], error: null },
-      documents: { data: [{ id: "doc-1", kind: "registration", expires_at: "2027-02-01", file_name: "reg.pdf", created_at: "2026-01-01" }], error: null },
+      documents: { data: [{ id: "doc-1", vehicle_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "registration", expires_at: "2027-02-01", file_name: "reg.pdf", created_at: "2026-01-01" }], error: null },
       document_vehicle_links: () => {
         linkCalls += 1;
         return { data: [], error: null };
@@ -210,6 +210,54 @@ describe("vehicle compliance reads", () => {
       maintenance_log_v1: { data: null, error: { code: "42P01", message: 'relation "public.maintenance_log_v1" does not exist' } },
     }));
     expect(brokenDocs.documentsIncomplete).toBe(true);
+    const calls: string[] = [];
+    const batched = await loadVehicleCompliance({
+      from(table: string) {
+        calls.push(table);
+        const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+        const vehicles = [
+          { id: "v1", registration_expires_on: "2027-01-01", insurance_expires_on: "2027-01-01", plate_expires_on: "2027-01-01" },
+          { id: "v2", registration_expires_on: "2027-01-01", insurance_expires_on: "2027-01-01", plate_expires_on: "2027-01-01" },
+          { id: "v3", registration_expires_on: "2027-01-01", insurance_expires_on: "2027-01-01", plate_expires_on: "2027-01-01" },
+        ];
+        const docs = [
+          { id: "reg", vehicle_id: "v1", kind: "registration", expires_at: "2027-02-01", file_name: "reg.pdf", created_at: "2026-01-01" },
+          { id: "buy", vehicle_id: "v1", kind: "purchase", expires_at: "2027-02-01", file_name: "buy.pdf", created_at: "2026-01-01" },
+          { id: "shared", vehicle_id: "other", kind: "insurance_card", expires_at: "2027-03-01", file_name: "ins.pdf", created_at: "2026-01-02" },
+        ];
+        const linkRows = [
+          { document_id: "shared", vehicle_id: "v2" },
+          { document_id: "shared", vehicle_id: "v3" },
+        ];
+        const query = {
+          select: () => query,
+          order: () => query,
+          is: () => query,
+          not: () => query,
+          eq: () => query,
+          in: (column: string, values: readonly string[]) => {
+            const allowed = new Set(values);
+            filters.push((row) => allowed.has(String(row[column] ?? "")));
+            return query;
+          },
+          range: () => Promise.resolve({
+            data: table === "vehicles" ? vehicles : [],
+            error: table.startsWith("maintenance_") ? { code: "PGRST205", message: "missing" } : null,
+          }),
+          limit: () => {
+            const source = table === "documents" ? docs : table === "document_vehicle_links" ? linkRows : [];
+            return Promise.resolve({ data: source.filter((row) => filters.every((filter) => filter(row))), error: null });
+          },
+        };
+        return query;
+      },
+    });
+    expect(batched.documentsIncomplete).toBe(false);
+    expect(calls.filter((table) => table === "documents")).toHaveLength(2);
+    expect(calls.filter((table) => table === "document_vehicle_links")).toHaveLength(2);
+    expect(batched.documents.filter((doc) => doc.vehicle_id === "v1").map((doc) => doc.kind)).toEqual(["registration"]);
+    expect(batched.documents.filter((doc) => doc.vehicle_id === "v2").map((doc) => doc.kind)).toEqual(["insurance_card"]);
+    expect(batched.documents.filter((doc) => doc.vehicle_id === "v3").map((doc) => doc.kind)).toEqual(["insurance_card"]);
     const failed = await loadVehicleCompliance(reader({
       vehicles: { data: null, error: { code: "XX000", message: "connection refused" } },
     }));
@@ -265,8 +313,12 @@ describe("vehicle compliance reads", () => {
     expect(readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8")).not.toContain("VEHICLE_COMPLIANCE_ENABLED");
     expect(readFileSync(new URL("../src/lib/vehicles-list.functions.ts", import.meta.url), "utf8")).not.toMatch(/registration_expires_on|getVehicleCompliance/);
     const readerSource = readFileSync(new URL("../src/lib/vehicle-compliance.server.ts", import.meta.url), "utf8");
-    expect(readerSource).toContain("loadVehicleDocPresence");
-    expect(readerSource).toContain("loadVehicleDocPresence(docs, vehicle.id, false)");
+    expect(readerSource).toContain("loadComplianceDocuments");
+    expect(readerSource).toContain("DOC_ID_CHUNK = 100");
+    expect(readerSource).toContain("DOC_SUBREQUEST_CAP = 32");
+    expect(readerSource).toContain("isFinanceKind");
+    expect(readerSource).not.toContain("loadVehicleDocPresence");
+    expect(readerSource).not.toContain("for (const vehicle of vehicleRows)");
     expect(readerSource).not.toContain("readLinks");
     expect(readerSource).not.toContain('.in("kind", COMPLIANCE_DOCUMENT_KINDS)');
     const inspectionOrder = readerSource.indexOf('.order("vehicle_id", { ascending: true })');

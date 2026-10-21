@@ -4,7 +4,7 @@
  * buildVehicleCompliance. This module does not write.
  */
 import { tierAllows, type StaffTier } from "./roles";
-import { loadVehicleDocPresence } from "./vehicle-doc-presence.server";
+import { isFinanceKind, type PresenceDoc } from "./vehicle-doc-presence";
 import {
   COMPLIANCE_DISABLED,
   COMPLIANCE_UNAVAILABLE,
@@ -38,6 +38,14 @@ export type ComplianceReader = {
 };
 
 const VEHICLE_COLUMNS = "id,registration_expires_on,insurance_expires_on,plate_expires_on";
+/** Ids per `.in` filter. Same width as the other compliance id batches. */
+export const DOC_ID_CHUNK = 100;
+/**
+ * Document reads share a Workers invocation with the vehicle pages
+ * (COMPLIANCE_MAX_PAGES is 10) and two inspection reads. The free plan
+ * allows 50 subrequests. 10 + 2 + 32 = 44, under that limit.
+ */
+export const DOC_SUBREQUEST_CAP = 32;
 
 export async function runVehicleCompliance(input: {
   enabled: boolean;
@@ -84,21 +92,9 @@ export async function loadVehicleCompliance(reader: ComplianceReader): Promise<C
     if (vehicles.failed || vehicles.missing) return empty;
 
     const vehicleRows = vehicles.rows.map(asVehicle).filter((row): row is ComplianceVehicle => row != null);
-    const documents: ComplianceDocument[] = [];
-    let documentsIncomplete = false;
-    const docs = docClient(reader);
-    for (const vehicle of vehicleRows) {
-      try {
-        // includeFinance is false: coordinators must not receive finance kinds.
-        // The loader merges direct documents and document_vehicle_links.
-        const presence = await loadVehicleDocPresence(docs, vehicle.id, false);
-        for (const doc of [...presence.direct, ...presence.linked]) {
-          documents.push({ vehicle_id: vehicle.id, kind: String(doc.kind ?? ""), expires_at: doc.expires_at ?? null });
-        }
-      } catch {
-        documentsIncomplete = true;
-      }
-    }
+    const documentLoad = await loadComplianceDocuments(reader, vehicleRows.map((vehicle) => vehicle.id));
+    const documents = documentLoad.documents;
+    const documentsIncomplete = documentLoad.incomplete;
     const due = await readInspectionTable(reader, "maintenance_due_v1");
     const log = await readInspectionTable(reader, "maintenance_log_v1");
 
@@ -143,52 +139,142 @@ async function readInspectionTable(
   };
 }
 
-/**
- * The presence loader awaits the query builder. Replay its filters onto the
- * reader and surface a PostgREST error as a throw so the caller can mark the
- * document read incomplete instead of treating a failure as no documents.
- */
-function docClient(reader: ComplianceReader) {
+function idChunks(ids: readonly string[], size: number): string[][] {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const out: string[][] = [];
+  for (let i = 0; i < unique.length; i += size) out.push(unique.slice(i, i + size));
+  return out;
+}
+
+async function readDocQuery(
+  reader: ComplianceReader,
+  table: string,
+  columns: string,
+  refine: (query: ComplianceQuery) => ComplianceQuery,
+): Promise<Record<string, unknown>[]> {
+  const query = refine(reader.from(table).select(columns));
+  const pending = typeof (query as { then?: unknown }).then === "function"
+    ? Promise.resolve(query as unknown as Promise<PageResult>)
+    : Promise.resolve(query.limit(10000));
+  const result = await pending;
+  if (result?.error) throw new Error(result.error.message ?? "document read failed");
+  return Array.isArray(result?.data) ? (result.data as Record<string, unknown>[]) : [];
+}
+
+function asPresenceDoc(row: Record<string, unknown>): PresenceDoc | null {
+  if (typeof row.id !== "string" || typeof row.kind !== "string") return null;
   return {
-    from(table: string) {
-      let columns = "*";
-      const steps: Array<(query: ComplianceQuery) => ComplianceQuery> = [];
-      const api = {
-        select(next: string) {
-          columns = next;
-          return api;
-        },
-        eq(column: string, value: unknown) {
-          steps.push((query) => query.eq(column, value));
-          return api;
-        },
-        is(column: string, value: null) {
-          steps.push((query) => query.is(column, value));
-          return api;
-        },
-        in(column: string, values: readonly string[]) {
-          steps.push((query) => query.in(column, values));
-          return api;
-        },
-        order(column: string, options?: { ascending?: boolean }) {
-          steps.push((query) => query.order(column, options));
-          return api;
-        },
-        then(resolve: (value: PageResult) => unknown, reject: (reason: unknown) => unknown) {
-          let query = reader.from(table).select(columns);
-          for (const step of steps) query = step(query);
-          const pending = typeof (query as { then?: unknown }).then === "function"
-            ? Promise.resolve(query as unknown as Promise<PageResult>)
-            : Promise.resolve(query.limit(10000));
-          return pending.then((result) => {
-            if (result?.error) throw new Error(result.error.message ?? "document read failed");
-            return result;
-          }).then(resolve, reject);
-        },
-      };
-      return api;
-    },
+    id: row.id,
+    kind: row.kind,
+    file_name: row.file_name == null ? null : String(row.file_name),
+    expires_at: row.expires_at == null ? null : String(row.expires_at),
+    created_at: row.created_at == null ? undefined : String(row.created_at),
   };
+}
+
+/**
+ * One pair of `.in` reads per vehicle-id chunk, then one pair per linked
+ * document-id chunk. includeFinance is false: coordinators must not receive
+ * finance kinds. A PostgREST error or a subrequest cap marks the read
+ * incomplete instead of treating the failure as no documents.
+ */
+async function loadComplianceDocuments(
+  reader: ComplianceReader,
+  vehicleIds: string[],
+): Promise<{ documents: ComplianceDocument[]; incomplete: boolean }> {
+  const documents: ComplianceDocument[] = [];
+  let incomplete = false;
+  let used = 0;
+  const vehicleChunks = idChunks(vehicleIds, DOC_ID_CHUNK);
+  for (const ids of vehicleChunks) {
+    if (used + 2 > DOC_SUBREQUEST_CAP) {
+      incomplete = true;
+      break;
+    }
+    const allowed = new Set(ids);
+    let own: Record<string, unknown>[] = [];
+    let links: Record<string, unknown>[] = [];
+    try {
+      [own, links] = await Promise.all([
+        readDocQuery(reader, "documents", "id,vehicle_id,kind,file_name,expires_at,created_at", (query) =>
+          query.in("vehicle_id", ids).eq("is_current", true).is("driver_id", null),
+        ),
+        readDocQuery(reader, "document_vehicle_links", "document_id,vehicle_id", (query) => query.in("vehicle_id", ids)),
+      ]);
+      used += 2;
+    } catch {
+      used += 2;
+      incomplete = true;
+      continue;
+    }
+    const direct = new Map<string, PresenceDoc[]>();
+    const linkIds = new Map<string, string[]>();
+    for (const id of ids) {
+      direct.set(id, []);
+      linkIds.set(id, []);
+    }
+    for (const row of own) {
+      const vehicleId = typeof row.vehicle_id === "string" ? row.vehicle_id : "";
+      const doc = asPresenceDoc(row);
+      if (!allowed.has(vehicleId) || !doc) continue;
+      direct.get(vehicleId)?.push(doc);
+    }
+    const linkedDocIds: string[] = [];
+    for (const row of links) {
+      const vehicleId = typeof row.vehicle_id === "string" ? row.vehicle_id : "";
+      const documentId = typeof row.document_id === "string" ? row.document_id : "";
+      if (!allowed.has(vehicleId) || !documentId) continue;
+      linkIds.get(vehicleId)?.push(documentId);
+      linkedDocIds.push(documentId);
+    }
+    const docChunks = idChunks(linkedDocIds, DOC_ID_CHUNK);
+    if (used + docChunks.length * 2 > DOC_SUBREQUEST_CAP) {
+      incomplete = true;
+      break;
+    }
+    const linkedDocs = new Map<string, PresenceDoc>();
+    const shareCount: Record<string, number> = {};
+    let linkReadFailed = false;
+    for (const docIds of docChunks) {
+      try {
+        const [docs, shares] = await Promise.all([
+          readDocQuery(reader, "documents", "id,kind,file_name,expires_at,created_at", (query) =>
+            query.in("id", docIds).eq("is_current", true).is("driver_id", null),
+          ),
+          readDocQuery(reader, "document_vehicle_links", "document_id", (query) => query.in("document_id", docIds)),
+        ]);
+        used += 2;
+        const wanted = new Set(docIds);
+        for (const row of docs) {
+          const doc = asPresenceDoc(row);
+          if (doc && wanted.has(doc.id)) linkedDocs.set(doc.id, doc);
+        }
+        for (const row of shares) {
+          const documentId = typeof row.document_id === "string" ? row.document_id : "";
+          if (!wanted.has(documentId)) continue;
+          shareCount[documentId] = (shareCount[documentId] ?? 0) + 1;
+        }
+      } catch {
+        used += 2;
+        linkReadFailed = true;
+        incomplete = true;
+      }
+    }
+    if (linkReadFailed) continue;
+    // Every current direct and linked document, with finance kinds removed.
+    // includeFinance is false. Slot winners are not substituted for that list.
+    const keep = (doc: PresenceDoc) => !isFinanceKind(doc.kind);
+    for (const vehicleId of ids) {
+      const linked = (linkIds.get(vehicleId) ?? [])
+        .map((documentId) => linkedDocs.get(documentId))
+        .filter((doc): doc is PresenceDoc => doc != null)
+        .map((doc) => ({ ...doc, relatedVehicles: shareCount[doc.id] ?? 1 }));
+      for (const doc of [...(direct.get(vehicleId) ?? []).filter(keep), ...linked.filter(keep)]) {
+        documents.push({ vehicle_id: vehicleId, kind: String(doc.kind ?? ""), expires_at: doc.expires_at ?? null });
+      }
+    }
+  }
+  return { documents, incomplete };
 }
 
 function asVehicle(row: unknown): ComplianceVehicle | null {
