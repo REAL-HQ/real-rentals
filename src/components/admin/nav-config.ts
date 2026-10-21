@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 
 export type TabDef = {
   id: string;
@@ -112,10 +113,24 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while the Incident Board flag is on. Kept out of TABS so a dark build cannot list it. */
+const INCIDENT_BOARD_TAB: TabDef = {
+  id: "incident_board",
+  label: "Incident Board",
+  icon: ShieldAlert,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Open Accidents, Damage And Breakdowns",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
+  const next = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = next.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
+    next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
+  }
+  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return next;
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, FINANCE_TAB);
   return next;
@@ -151,6 +166,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = entries.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
+    entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
+  }
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
