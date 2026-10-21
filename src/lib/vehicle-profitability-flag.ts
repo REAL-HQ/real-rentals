@@ -1,9 +1,8 @@
 /**
- * Compile-time gate for Vehicle Profitability.
- *
- * false: the admin tab is omitted, the panel is not mounted, and the server
- * handler returns before any vehicle, expense, rental, payment, or Stripe read.
- * true: managers and owners see Vehicle Profit. Activation is changing this
- * constant and rebuilding. No environment variable can open it.
+ * Vehicle Profitability is off until this constant is turned on in source.
+ * false throws before the manager check and before any payment, rental,
+ * expense, or maintenance read, omits the tab, and sends a direct link to Overview.
+ * There is no environment variable for this flag.
  */
 export const VEHICLE_PROFITABILITY_ENABLED = false;
+export const VEHICLE_PROFITABILITY_OFF = "Vehicle Profitability Is Off";
