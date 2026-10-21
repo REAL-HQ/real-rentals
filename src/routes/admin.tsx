@@ -69,6 +69,8 @@ import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
 import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedgerPanel";
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
+import { RefundReturnsDuePanel } from "@/components/admin/RefundReturnsDuePanel";
+import { REFUND_RETURNS_DUE_ENABLED } from "@/lib/refund-returns-due-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
 import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
@@ -404,6 +406,10 @@ function Admin() {
     if (urlTab === "finance_deposit_ledger") {
       if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance_deposit_ledger";
+    }
+    if (urlTab === "refund_returns_due") {
+      if (!REFUND_RETURNS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "refund_returns_due";
     }
     // Stripe Disputes & Failed-Payment Monitor is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "stripe_risk_monitor") {
@@ -994,6 +1000,7 @@ function Admin() {
             {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && <FinanceDataQualityPanel />}
             {FINANCE_AR_AGING_ENABLED && tab === "rent_aging" && <RentAgingPanel />}
             {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && <FinanceDepositLedgerPanel />}
+            {REFUND_RETURNS_DUE_ENABLED && tab === "refund_returns_due" && <RefundReturnsDuePanel />}
             {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
             {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && <StripePayoutReconPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}

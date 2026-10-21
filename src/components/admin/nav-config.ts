@@ -53,6 +53,7 @@ import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
+import { REFUND_RETURNS_DUE_ENABLED } from "@/lib/refund-returns-due-flag";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
@@ -310,6 +311,25 @@ function withFinanceDepositLedger<T extends TabDef>(tabs: T[], tier: StaffTier |
   return next;
 }
 
+/** Shown only while Refunds & Deposit Returns Due is compiled on. Kept out of TABS so a dark build cannot list it. */
+const REFUND_RETURNS_DUE_TAB: TabDef = {
+  id: "refund_returns_due",
+  label: "Refunds & Deposit Returns Due",
+  icon: RotateCcw,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Closed Rentals Whose Deposit Has Not Been Returned",
+};
+
+function withRefundReturnsDue<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!REFUND_RETURNS_DUE_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...REFUND_RETURNS_DUE_TAB, href } : REFUND_RETURNS_DUE_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 /** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
 const REVENUE_FORECAST_TAB: TabDef = {
   id: "revenue_forecast",
@@ -545,10 +565,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length) return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  if (!extra.length) return withRefundReturnsDue(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  return withRefundReturnsDue(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -619,11 +639,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+    return withRefundReturnsDue(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "refund_returns_due");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+  return withRefundReturnsDue(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "refund_returns_due");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -750,6 +770,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "finance_deposit_ledger") {
     if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_deposit_ledger";
+  }
+  if (args.urlTab === "refund_returns_due") {
+    if (!REFUND_RETURNS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "refund_returns_due";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
