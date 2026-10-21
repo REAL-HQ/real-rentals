@@ -48,6 +48,7 @@ import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
+import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { IncidentBoard } from "@/components/admin/IncidentBoard";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
@@ -821,6 +822,7 @@ function Admin() {
             {tab === "stripe_match" && <StripeMatchPanel />}
             {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "deposits_ledger" && <DepositsLedgerPanel />}
+            {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
             {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
