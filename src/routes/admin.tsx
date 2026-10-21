@@ -62,6 +62,8 @@ import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag"
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
+import { PartnerStatementPanel } from "@/components/admin/PartnerStatementPanel";
+import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -320,6 +322,10 @@ function Admin() {
     if (urlTab === "fleet_availability") {
       if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
       return "fleet_availability";
+    }
+    if (urlTab === "partner_statement") {
+      if (!PARTNER_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "partner_statement";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -838,6 +844,7 @@ function Admin() {
             {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
               <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
             )}
+            {PARTNER_STATEMENT_ENABLED && tab === "partner_statement" && <PartnerStatementPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

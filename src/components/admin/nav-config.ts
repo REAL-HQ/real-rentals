@@ -26,6 +26,7 @@ import {
   Landmark,
   PieChart,
   LayoutGrid,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -33,6 +34,7 @@ import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
+import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 
 export type TabDef = {
   id: string;
@@ -171,6 +173,25 @@ const INCIDENT_BOARD_TAB: TabDef = {
   description: "Open Accidents, Damage And Breakdowns",
 };
 
+/** Shown only while Partner Statement is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PARTNER_STATEMENT_TAB: TabDef = {
+  id: "partner_statement",
+  label: "Partner Statement",
+  icon: ScrollText,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Per-Partner Revenue, Expenses And Share For A Period",
+};
+
+function withPartnerStatement<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...PARTNER_STATEMENT_TAB, href } : PARTNER_STATEMENT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   let next = TABS.filter((t) => tierAllows(tier, t.minTier));
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
@@ -185,10 +206,10 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
-  if (!extra.length) return next;
+  if (!extra.length) return withPartnerStatement(next, tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return next;
+  return withPartnerStatement(next, tier);
 }
 
 /**
@@ -233,10 +254,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
-  if (!extra.length) return entries;
+  if (!extra.length) return withPartnerStatement(entries, tier, "partner_statement");
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return entries;
+  return withPartnerStatement(entries, tier, "partner_statement");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
