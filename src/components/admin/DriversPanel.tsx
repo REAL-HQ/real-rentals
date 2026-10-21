@@ -132,6 +132,8 @@ import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import { IdentityReviewCard } from "@/components/admin/IdentityReviewCard";
+import { ApplicationQuickReview } from "@/components/admin/ApplicationQuickReview";
+import { APPLICATION_QUICK_REVIEW_ENABLED, isPendingReviewStatus } from "@/lib/application-quick-review";
 import {
   Dialog,
   DialogContent,
@@ -311,6 +313,8 @@ export function DriversPanel({
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
+  /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
+  isManager?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /**
@@ -320,8 +324,6 @@ export function DriversPanel({
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
-  /** Owner and Manager. The statement server checks the same tier. */
-  isManager?: boolean;
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   // Whether the applications fetch has come back, as distinct from having
@@ -1392,7 +1394,7 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
-  isManager,
+  isManager = false,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1405,7 +1407,8 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
-  isManager: boolean;
+  /** Manager and above. The quick review panel is not mounted otherwise. */
+  isManager?: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -2123,6 +2126,14 @@ function DriverDetail({
 
         <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
               <TabsContent value="overview" className="mt-0 space-y-5">
+                {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
+                  <ApplicationQuickReview
+                    applicationId={driver.id}
+                    documents={vaultDocs}
+                    onRefreshDocuments={refreshVault}
+                    onOpenDocuments={() => setTab("documents")}
+                  />
+                ) : null}
                 <LifecycleRail
                   stages={lifecycle}
                   percent={percentComplete}
