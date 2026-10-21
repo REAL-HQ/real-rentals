@@ -6,8 +6,8 @@ export const LEAD_RESPONSE_REPORT_ENABLED: boolean = false;
 
 export const LEAD_RESPONSE_READ_LIMIT = 200;
 
-/** Page size for the follow-up count. It is not the newest-200 response sample. */
-export const LEAD_RESPONSE_FOLLOW_UP_PAGE = 1000;
+/** Distinct sources counted with an exact head count. Past this, the count is marked short. */
+const LEAD_RESPONSE_SOURCE_CAP = 200;
 
 export const LEAD_RESPONSE_COLUMNS =
   "source,created_at,contacted_at,contact_status,contact_status_at,contact_follow_up_on";
@@ -37,7 +37,9 @@ export type LeadResponseReport = {
 };
 
 type ResponseAdmin = {
-  from: (table: string) => { select: (columns: string) => any };
+  from: (table: string) => {
+    select: (columns: string, options?: { count?: "exact"; head?: boolean }) => any;
+  };
 };
 
 type RawLead = {
@@ -84,10 +86,13 @@ function median(values: number[]): number | null {
 }
 
 /**
- * First contact matches Lead Priorities. The Contact Status cell writes
- * contact_status and contact_status_at, not contacted_at. A lead is contacted
- * when that status has left "new", or when the lifecycle stamp contacted_at
- * is set. The time is the earlier of those stamps.
+ * A lead is contacted when contact_status is not "new", or when contacted_at
+ * is set. Unqualified leads are left out. The time is the earlier of
+ * contacted_at and, once the status has left "new", contact_status_at.
+ *
+ * contact_status_at is the time the Contact Status cell was saved, not the
+ * time of the first conversation. When contacted_at was never set, that later
+ * stamp can overstate the time to first contact.
  */
 export function firstContact(row: RawLead): {
   contacted: boolean;
@@ -113,6 +118,8 @@ export function formatResponseHours(hours: number | null): string {
   if (hours < 1 / 60) return "Under 1 Minute";
   if (hours < 1) {
     const minutes = Math.round(hours * 60);
+    // 59.5 minutes and above is an hour, not "60 Minutes".
+    if (minutes >= 60 || hours >= 59.5 / 60) return "1 Hour";
     return minutes === 1 ? "1 Minute" : `${minutes} Minutes`;
   }
   const rounded = Math.round(hours * 10) / 10;
@@ -204,9 +211,29 @@ function activeContactStatuses(): string[] {
   return CONTACT_STATUS_KEYS.filter((status) => status !== "unqualified");
 }
 
+function dueFollowUps(admin: ResponseAdmin, statuses: string[], today: string, columns: string, exact: boolean) {
+  const selected = exact
+    ? admin.from("applications").select(columns, { count: "exact", head: true })
+    : admin.from("applications").select(columns);
+  return selected
+    .is("deleted_at", null)
+    .in("status", [...ACTIVE_LEAD_STATUSES])
+    .in("contact_status", statuses)
+    .not("contact_follow_up_on", "is", null)
+    .lte("contact_follow_up_on", today);
+}
+
+function readExactCount(result: { error?: unknown; count?: unknown }): number {
+  if (result?.error || !Number.isSafeInteger(result?.count) || (result.count as number) < 0) {
+    throw new Error("Lead response report could not be loaded");
+  }
+  return result.count as number;
+}
+
 /**
  * Read-only. The flag is checked before any query. Response times come from
- * a newest-page read. Follow-ups due are counted on their own, not from that page.
+ * a newest-page read. Follow-ups due are an exact head count per source,
+ * not a paged row read and not the newest page.
  */
 export async function loadLeadResponseReport(
   admin: ResponseAdmin,
@@ -237,25 +264,32 @@ export async function loadLeadResponseReport(
 
   const counts = new Map<string, number>();
   let followUpsTruncated = false;
-  let start = 0;
-  for (let page = 0; page < 20; page += 1) {
-    const due = await admin
-      .from("applications")
-      .select("source,contact_follow_up_on")
-      .is("deleted_at", null)
-      .in("status", [...ACTIVE_LEAD_STATUSES])
-      .in("contact_status", statuses)
-      .not("contact_follow_up_on", "is", null)
-      .lte("contact_follow_up_on", today)
-      .order("id", { ascending: true })
-      .range(start, start + LEAD_RESPONSE_FOLLOW_UP_PAGE);
-    if (due.error) throw new Error("Lead response report could not be loaded");
-    const dueRows = Array.isArray(due.data) ? (due.data as RawLead[]) : [];
-    const more = dueRows.length > LEAD_RESPONSE_FOLLOW_UP_PAGE;
-    addDueFollowUps(counts, more ? dueRows.slice(0, LEAD_RESPONSE_FOLLOW_UP_PAGE) : dueRows, now);
-    if (!more) break;
-    start += LEAD_RESPONSE_FOLLOW_UP_PAGE;
-    if (page === 19) followUpsTruncated = true;
+  const totalDue = readExactCount(await dueFollowUps(admin, statuses, today, "id", true));
+  if (totalDue > 0) {
+    const add = (label: string, count: number) => counts.set(label, (counts.get(label) ?? 0) + count);
+    const nullCount = readExactCount(await dueFollowUps(admin, statuses, today, "id", true).is("source", null));
+    if (nullCount > 0) add("Unknown", nullCount);
+    let summed = nullCount;
+    let cursor: string | null = null;
+    let walked = 0;
+    while (summed < totalDue && walked < LEAD_RESPONSE_SOURCE_CAP) {
+      let next = dueFollowUps(admin, statuses, today, "source", false)
+        .not("source", "is", null)
+        .order("source", { ascending: true })
+        .limit(1);
+      if (cursor != null) next = next.gt("source", cursor);
+      const found = await next;
+      if (found.error) throw new Error("Lead response report could not be loaded");
+      const raw = Array.isArray(found.data) ? found.data[0]?.source : undefined;
+      if (typeof raw !== "string") throw new Error("Lead response report could not be loaded");
+      const count = readExactCount(await dueFollowUps(admin, statuses, today, "id", true).eq("source", raw));
+      add(sourceLabel(raw), count);
+      summed += count;
+      cursor = raw;
+      walked += 1;
+    }
+    if (summed > totalDue) throw new Error("Lead response report could not be loaded");
+    followUpsTruncated = summed < totalDue;
   }
   report = applyFollowUpCounts(report, counts, followUpsTruncated);
   return { ok: true, report };

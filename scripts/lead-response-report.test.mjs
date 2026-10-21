@@ -119,7 +119,17 @@ const partial = lib.buildLeadResponseReport([google({})], now, true);
 check(partial.truncated === true && partial.sources.length === 1, "a capped read stays marked truncated");
 check(lib.formatResponseHours(null) === "—" && lib.formatResponseHours(0) === "Under 1 Minute", "a missing contact and an immediate contact stay readable");
 check(lib.formatResponseHours(0.5) === "30 Minutes" && lib.formatResponseHours(1) === "1 Hour" && lib.formatResponseHours(2.5) === "2.5 Hours", "response time is labeled in minutes or hours");
-check(loaderSrc.includes('.lte("contact_follow_up_on"') && loaderSrc.includes("LEAD_RESPONSE_FOLLOW_UP_PAGE") && loaderSrc.includes("addDueFollowUps"), "follow-ups are counted on their own query, not from the newest 200");
+check(lib.formatResponseHours(59.4 / 60) === "59 Minutes", "59.4 minutes stays in minutes");
+check(lib.formatResponseHours(59.5 / 60) === "1 Hour" && lib.formatResponseHours(59.99 / 60) === "1 Hour", "59.5 to 59.99 minutes reads as 1 hour");
+check(!declaration.includes("matches Lead Priorities"), "first contact is not described as the Lead Priorities rule");
+check(declaration.includes("can overstate the time to first contact"), "the status stamp notes that it can overstate the first response");
+check(
+  declaration.includes('{ count: "exact", head: true }') &&
+    declaration.includes('.lte("contact_follow_up_on", today)') &&
+    loaderSrc.includes("dueFollowUps") &&
+    !declaration.includes(".range("),
+  "follow-ups are an exact head count, not a paged row read",
+);
 
 const fn = readFileSync("src/lib/lead-response-report.functions.ts", "utf8");
 const handler = fn.slice(fn.indexOf(".handler"));
