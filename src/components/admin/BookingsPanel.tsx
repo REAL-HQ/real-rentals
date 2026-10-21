@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState, createContext, type ReactNode } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
 import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { listBookings } from "@/lib/bookings.functions";
+import { ACTIVE_MILEAGE_OVERAGE_ENABLED } from "@/lib/active-mileage-overage-flag";
+import { listActiveMileageOverage } from "@/lib/active-mileage-overage.functions";
 import {
   BOOKING_LIST_PAGE_SIZE,
   BOOKING_PHASE_LABEL,
@@ -157,8 +159,10 @@ export function BookingsPanel({
   const firstShown = total === 0 ? 0 : (page - 1) * BOOKING_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * BOOKING_LIST_PAGE_SIZE);
   const hasActiveFilters = q !== "" || phase !== "all" || !!vehicleFilter;
+  const overageIds = phase === "active" ? rows.map((b) => b.id) : [];
 
   return (
+    <MileageOverageGate active={phase === "active"} rentalIds={overageIds}>
     <div>
       <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
         <div className="flex-1 flex flex-wrap items-center gap-2">
@@ -225,6 +229,8 @@ export function BookingsPanel({
         </div>
       </div>
 
+      <MileageOverageNotice />
+
       {rows.length > 0 && (
         <AdminTableScroll className="hidden md:block rounded-xl border border-border bg-white">
           <table className="w-full text-sm">
@@ -234,6 +240,7 @@ export function BookingsPanel({
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Dates</th>
                 <th className="px-3 py-2 font-medium">Status</th>
+                <MileageOverageHeader />
                 {money && <th className="px-3 py-2 font-medium">Weekly</th>}
                 {money && <th className="px-3 py-2 font-medium">Outstanding</th>}
                 <th className="px-3 py-2 font-medium sr-only">Open</th>
@@ -263,6 +270,7 @@ export function BookingsPanel({
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
                   </td>
+                  <MileageOverageCell rentalId={b.id} />
                   {money && (
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">
                       {usd(b.weeklyRate)}
@@ -314,6 +322,7 @@ export function BookingsPanel({
               <div className="mt-1 text-[13px] text-muted-foreground">
                 {bookingDates(b.startDate, b.endDate, b.phase)}
               </div>
+              <MileageOverageLine rentalId={b.id} />
               {money && (
                 <div className="mt-2 text-[13px]">
                   <span className="text-muted-foreground">{usd(b.weeklyRate)}/wk</span>
@@ -412,5 +421,75 @@ export function BookingsPanel({
         />
       )}
     </div>
+    </MileageOverageGate>
   );
+}
+
+type OverageView = {
+  status: "off" | "loading" | "error" | "ready";
+  byId: Map<string, string>;
+  truncated: boolean;
+};
+
+const MILEAGE_OVERAGE_OFF: OverageView = { status: "off", byId: new Map(), truncated: false };
+const MileageOverageContext = createContext<OverageView>(MILEAGE_OVERAGE_OFF);
+
+function MileageOverageGate({
+  active,
+  rentalIds,
+  children,
+}: {
+  active: boolean;
+  rentalIds: string[];
+  children: ReactNode;
+}) {
+  if (!ACTIVE_MILEAGE_OVERAGE_ENABLED || !active) return (
+    <MileageOverageContext.Provider value={MILEAGE_OVERAGE_OFF}>{children}</MileageOverageContext.Provider>
+  );
+  return <MileageOverageLive rentalIds={rentalIds}>{children}</MileageOverageLive>;
+}
+
+function MileageOverageLive({ rentalIds, children }: { rentalIds: string[]; children: ReactNode }) {
+  const load = useServerFn(listActiveMileageOverage);
+  const result = useQuery({
+    queryKey: ["active-mileage-overage", rentalIds],
+    queryFn: () => load({ data: { rentalIds } }),
+  });
+  const value: OverageView = result.isError
+    ? { status: "error", byId: new Map(), truncated: false }
+    : result.isLoading || !result.data
+      ? { status: "loading", byId: new Map(), truncated: false }
+      : {
+          status: "ready",
+          byId: new Map(result.data.rows.map((row) => [row.rentalId, row.label])),
+          truncated: result.data.truncated,
+        };
+  return <MileageOverageContext.Provider value={value}>{children}</MileageOverageContext.Provider>;
+}
+
+function MileageOverageNotice() {
+  const overage = useContext(MileageOverageContext);
+  if (overage.status === "error") return <p className="mb-2 text-[12px] text-[#D03020]">Could Not Load Mileage Overage</p>;
+  if (overage.truncated) return <p className="mb-2 text-[12px] text-muted-foreground">Mileage Overage Is Capped</p>;
+  return null;
+}
+
+function MileageOverageHeader() {
+  const overage = useContext(MileageOverageContext);
+  if (overage.status === "off") return null;
+  return <th className="px-3 py-2 font-medium">Mileage Overage</th>;
+}
+
+function MileageOverageCell({ rentalId }: { rentalId: string }) {
+  const overage = useContext(MileageOverageContext);
+  if (overage.status === "off") return null;
+  const text = overage.status === "ready" ? overage.byId.get(rentalId) ?? "Unknown" : "Unknown";
+  return <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{text}</td>;
+}
+
+function MileageOverageLine({ rentalId }: { rentalId: string }) {
+  const overage = useContext(MileageOverageContext);
+  if (overage.status === "off") return null;
+  const text = overage.status === "ready" ? overage.byId.get(rentalId) ?? "Unknown" : "Unknown";
+  return <div className="mt-1 text-[13px] text-muted-foreground">Mileage Overage · {text}</div>;
 }
