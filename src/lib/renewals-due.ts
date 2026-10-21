@@ -118,8 +118,7 @@ function rentStatus(status: string | null | undefined): string {
 }
 
 function isRentCharge(charge: RenewalHistoryCharge): boolean {
-  const type = typeof charge.type === "string" ? charge.type.trim().toLowerCase() : "rent";
-  return type === "rent";
+  return chargeType(charge) === "rent";
 }
 
 /** Paid after the due date, with a late fee, a retry, or a recorded failure. */
@@ -132,17 +131,36 @@ export function isPaidLate(charge: RenewalHistoryCharge): boolean {
   return paid != null && due != null && paid > due;
 }
 
+/** Not rent and not a deposit. A failed or paid-late one of these is not a clean history. */
+const ANCILLARY_CHARGE_TYPES = ["late_fee", "toll", "fee", "damage", "other"] as const;
+
+function chargeType(charge: RenewalHistoryCharge): string {
+  return typeof charge.type === "string" ? charge.type.trim().toLowerCase() : "rent";
+}
+
+function isDepositCharge(charge: RenewalHistoryCharge): boolean {
+  return chargeType(charge) === "deposit";
+}
+
 /**
  * Good means at least one clean paid rent charge.
  * Deposits are ignored. pending, upcoming, refunded, waived, and void are allowed
  * and are not paid charges. current and the late or failed statuses are not good.
- * Any other status is unknown and is not good. A paid-late rent charge is not clean.
+ * Any other rent status is unknown and is not good. A paid-late rent charge is not clean.
+ * A failed or paid-late late fee, toll, fee, damage, or other charge is not clean.
+ * Those types are not counted as Paid Charges.
  */
 export function hasGoodPaymentHistory(charges: readonly RenewalHistoryCharge[]): boolean {
   let paid = 0;
   for (const charge of charges) {
-    if (!isRentCharge(charge)) continue;
+    if (isDepositCharge(charge)) continue;
     const status = rentStatus(charge.status);
+    if (!isRentCharge(charge)) {
+      if (!(ANCILLARY_CHARGE_TYPES as readonly string[]).includes(chargeType(charge))) continue;
+      if ((BAD_RENT_STATUSES as readonly string[]).includes(status)) return false;
+      if (status === "paid" && isPaidLate(charge)) return false;
+      continue;
+    }
     if ((BAD_RENT_STATUSES as readonly string[]).includes(status)) return false;
     if ((NEUTRAL_RENT_STATUSES as readonly string[]).includes(status)) continue;
     if (status === "paid") {
@@ -292,6 +310,8 @@ export type RenewalsDueBoard = {
   applicationsTruncated: boolean;
   vehiclesTruncated: boolean;
   paymentsTruncated: boolean;
+  /** True when Good Payment History is on and the payment read was capped, so the due list is not filtered down to empty. */
+  historyUnavailable: boolean;
   omitted: readonly string[];
 };
 
@@ -307,7 +327,10 @@ function laterPayment(current: RenewalPayment, next: RenewalPayment): RenewalPay
 export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
   const today = input.today;
   const historyEnabled = input.historyEnabled === true;
+  // The 7/14 window and the Good Payment History filter change Renewal Due rows only.
+  // Overdue Return stays active rentals whose end date is before today.
   const windowDays = historyEnabled && input.windowDays === 14 ? 14 : RENEWAL_WINDOW_DAYS;
+  const historyUnavailable = historyEnabled && input.goodHistoryOnly === true && input.paymentsTruncated === true;
   const applications = new Map(input.applications.map((row) => [row.id, row]));
   const vehicles = new Map(input.vehicles.map((row) => [row.id, row]));
   const latestPayment = new Map<string, RenewalPayment>();
@@ -345,7 +368,7 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
     const charges = chargesByRental.get(rental.id) ?? [];
     const historyKnown = historyEnabled && input.paymentsTruncated !== true;
     const goodPaymentHistory = historyKnown ? hasGoodPaymentHistory(charges) : null;
-    if (historyEnabled && input.goodHistoryOnly === true && goodPaymentHistory !== true) continue;
+    if (!historyUnavailable && historyEnabled && input.goodHistoryOnly === true && goodPaymentHistory !== true) continue;
 
     rows.push({
       rentalId: rental.id,
@@ -402,6 +425,7 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
     applicationsTruncated: input.applicationsTruncated === true,
     vehiclesTruncated: input.vehiclesTruncated === true,
     paymentsTruncated: input.paymentsTruncated === true,
+    historyUnavailable,
     omitted: RENEWALS_DUE_OMITTED,
   };
 }

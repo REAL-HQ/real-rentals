@@ -46,16 +46,32 @@ describe("renewal history on Renewal Due", () => {
     assert.equal(resolveAdminTab({ urlTab: "renewal_candidates", tier: "manager", navTabs: [] }), "overview");
     assert.doesNotMatch(admin, /renewal_candidates|RenewalCandidates/);
     assert.doesNotMatch(nav, /renewal_candidates|Renewal Candidates/);
-    assert.doesNotMatch(panel, /reason\.message|reason instanceof Error/);
-    assert.match(panel, /Could Not Load Renewal Due/);
+    const live = panel.slice(panel.indexOf("function RenewalsDueLive"), panel.indexOf("function RenewalsDueHistory"));
+    const history = panel.slice(panel.indexOf("function RenewalsDueHistory"));
+    assert.match(live, /load\(\)/);
+    assert.match(live, /reason instanceof Error \? reason\.message : "Could Not Load Renewal Due"/);
+    assert.doesNotMatch(live, /setBoard\(null\)/);
+    assert.match(history, /setBoard\(null\)/);
+    assert.doesNotMatch(history, /reason\.message/);
+    assert.match(history, /Could Not Load Renewal Due/);
+    const unavailable = history.indexOf("board.historyUnavailable");
+    const emptyDue = history.indexOf("No Rentals Due For Renewal");
+    assert.ok(unavailable !== -1 && emptyDue !== -1 && unavailable < emptyDue);
+    assert.match(history, /Apply To Renewal Due Only/);
     const controls = panel.indexOf("Good Payment History");
     const days = panel.indexOf("14 Days");
     const column = panel.indexOf("Paid Charges");
     const gate = panel.indexOf("RENEWAL_CANDIDATES_ENABLED === true");
     assert.ok(gate !== -1 && controls > gate && days > gate && column > gate);
     assert.match(fn, /RENEWAL_CANDIDATES_ENABLED === true/);
+    assert.match(fn, /PAYMENT_COLUMNS = "id,rental_id,status,created_at"/);
     assert.match(fn, /PAYMENT_HISTORY_COLUMNS/);
+    const wideSelect = fn.indexOf(".select(PAYMENT_HISTORY_COLUMNS, { count: \"exact\" })");
+    const narrowSelect = fn.indexOf(".select(PAYMENT_COLUMNS, { count: \"exact\" })");
+    const historyGate = fn.indexOf("historyEnabled");
+    assert.ok(historyGate !== -1 && wideSelect > historyGate && narrowSelect > wideSelect);
     assert.match(fn, /paymentsTruncated/);
+    assert.match(board, /The 7\/14 window and the Good Payment History filter change Renewal Due rows only/);
     assert.doesNotMatch(fn, /Renewal candidates could not be listed/);
     assert.doesNotMatch(fn, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
   });
@@ -73,6 +89,10 @@ describe("renewal history on Renewal Due", () => {
     assert.equal(hasGoodPaymentHistory([]), false);
     assert.equal(hasGoodPaymentHistory([{ status: "failed", type: "deposit" }, { status: "paid", type: "rent" }]), true);
     assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "deposit" }]), false);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "failed", type: "late_fee" }]), false);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "failed", type: "toll" }]), false);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "toll", late_fees: 15 }]), false);
+    assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status: "paid", type: "late_fee" }]), true);
     for (const status of ["failed", "late", "overdue", "past_due", "unpaid", "collections", "current"]) {
       assert.equal(hasGoodPaymentHistory([{ status: "paid", type: "rent" }, { status, type: "rent" }]), false);
     }
@@ -124,11 +144,24 @@ describe("renewal history on Renewal Due", () => {
     const capped = buildRenewalsDue({
       ...shared,
       rentals: [rental({ id: "soon", end_date: "2026-10-23" })],
+      overdueRentals: [rental({ id: "old", end_date: "2026-10-18" })],
       historyEnabled: true,
       paymentsTruncated: true,
       goodHistoryOnly: true,
     });
-    assert.deepEqual(capped.rows.map((row) => row.rentalId), []);
-    assert.equal(capped.paymentsTruncated, true);
+    assert.equal(capped.historyUnavailable, true);
+    assert.deepEqual(capped.rows.map((row) => row.rentalId), ["soon"]);
+    assert.deepEqual(capped.overdue.map((row) => row.rentalId), ["old"]);
+    const ignored = buildRenewalsDue({
+      ...shared,
+      rentals: [rental({ id: "soon", end_date: "2026-10-23" })],
+      historyEnabled: false,
+      windowDays: 14,
+      paymentsTruncated: true,
+      goodHistoryOnly: true,
+    });
+    assert.equal(ignored.historyUnavailable, false);
+    assert.deepEqual(ignored.rows.map((row) => row.rentalId), ["soon"]);
+    assert.equal(ignored.through, "2026-10-28");
   });
 });
