@@ -175,12 +175,14 @@ async function reuseCardLink(admin: AdminClient, applicationId: string): Promise
 async function mintToken(
   admin: AdminClient,
   applicationId: string,
-  ttlMs: number,
   kind: TokenKind,
+  ttlMs?: number,
 ): Promise<string> {
   const now = Date.now();
   const raw = kind === "card" ? CARD_TOKEN_PREFIX + newRawToken() : newRawToken();
   const token_hash = await hashResumeToken(raw);
+  const lifetime = kind === "card" ? CARD_LINK_MS : ttlMs;
+  if (lifetime == null) throw new Error("A resume link needs a lifetime.");
   const inserted =
     kind === "card"
       ? await admin
@@ -189,7 +191,7 @@ async function mintToken(
             application_id: applicationId,
             token_hash,
             created_at: new Date(now).toISOString(),
-            expires_at: new Date(now + CARD_LINK_MS).toISOString(),
+            expires_at: new Date(now + lifetime).toISOString(),
           })
           .select("id")
           .single()
@@ -198,7 +200,7 @@ async function mintToken(
           .insert({
             application_id: applicationId,
             token_hash,
-            expires_at: new Date(now + ttlMs).toISOString(),
+            expires_at: new Date(now + lifetime).toISOString(),
           })
           .select("id")
           .single();
@@ -223,9 +225,10 @@ async function mintToken(
  * out, and every one of them expires on its own. A card link never revokes a
  * resume link. Deliberate rotation is revokeResumeTokens() followed by this.
  *
- * `ttlMs` must stay above the one-hour recovery window. purpose "card" is
- * the caller's request only — it is not a column. The row lasts exactly
- * CARD_LINK_MS and the raw token starts with CARD_TOKEN_PREFIX. No migration.
+ * purpose "card" is the caller's request only — it is not a column. A card
+ * row lasts exactly CARD_LINK_MS. A caller-supplied ttlMs is not read.
+ * A resume link refuses ttlMs of CARD_LINK_MS, so it cannot be stored with
+ * the lifetime that marks a card row. No migration.
  *
  * Returns the raw token. This is the only moment it exists in plaintext,
  * except a card link re-read from this process's memory while it is still valid.
@@ -236,14 +239,12 @@ export async function issueResumeToken(
   opts: { recovery?: boolean; ttlMs?: number; purpose?: "card" } = {},
 ): Promise<string> {
   if (opts.purpose === "card") {
-    const ttl = opts.ttlMs ?? CARD_LINK_MS;
-    assertAboveRecoveryWindow(ttl);
     const pending = cardInflight.get(applicationId);
     if (pending) return pending;
     const job = (async () => {
       const reused = await reuseCardLink(admin, applicationId);
       if (reused) return reused;
-      return mintToken(admin, applicationId, ttl, "card");
+      return mintToken(admin, applicationId, "card");
     })();
     cardInflight.set(applicationId, job);
     try {
@@ -252,11 +253,14 @@ export async function issueResumeToken(
       cardInflight.delete(applicationId);
     }
   }
+  if (opts.ttlMs === CARD_LINK_MS) {
+    throw new Error("A resume link cannot last 72 hours.");
+  }
   if (opts.ttlMs != null) assertAboveRecoveryWindow(opts.ttlMs);
   const ttl = opts.recovery
     ? RECOVERY_TOKEN_MINUTES * 60_000
     : opts.ttlMs ?? RESUME_TOKEN_DAYS * 86400_000;
-  return mintToken(admin, applicationId, ttl, "resume");
+  return mintToken(admin, applicationId, "resume", ttl);
 }
 
 /** Kill every live link for an application. Returns how many were revoked. */

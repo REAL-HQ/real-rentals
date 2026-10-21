@@ -103,12 +103,21 @@ function ok(name) {
 
 {
   const admin = createAdmin();
+  const card = await tokens.issueResumeToken(admin, APP, { purpose: "card", ttlMs: 30 * 60_000 });
+  assert.equal(card.startsWith(tokens.CARD_TOKEN_PREFIX), true);
+  const row = admin.rows.find((item) => tokens.isCardRow(item));
+  assert.equal(new Date(row.expires_at).getTime() - new Date(row.created_at).getTime(), tokens.CARD_LINK_MS);
+  ok("a caller-supplied card lifetime is ignored and the row lasts exactly 72 hours");
+}
+
+{
+  const admin = createAdmin();
   await assert.rejects(
-    tokens.issueResumeToken(admin, APP, { purpose: "card", ttlMs: 30 * 60_000 }),
-    /longer than one hour/,
+    tokens.issueResumeToken(admin, APP, { ttlMs: tokens.CARD_LINK_MS }),
+    /cannot last 72 hours/,
   );
   assert.equal(admin.rows.length, 0);
-  ok("a card link at or under the recovery window is refused");
+  ok("a resume link cannot last exactly 72 hours");
 }
 
 {

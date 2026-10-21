@@ -77,8 +77,9 @@ const stub = {
           return id;
         }
         export async function issueResumeToken(_admin, _id, opts) {
+          globalThis.__cardIssue = opts ?? null;
           if (opts?.purpose !== "card") throw new Error("card link required");
-          if (!(opts.ttlMs > 60 * 60 * 1000)) throw new Error("ttl");
+          if (opts.ttlMs != null) throw new Error("ttl");
           return "minted-card-token-value";
         }
       `,
@@ -109,7 +110,7 @@ await build({
   plugins: [stub],
 });
 
-const { createCardOnFileSession } = await import(pathToFileURL(join(out, "payments.mjs")).href);
+const { createCardOnFileSession, issueCardOnFileLink } = await import(pathToFileURL(join(out, "payments.mjs")).href);
 process.env.SUPABASE_URL = "https://example.supabase.co";
 process.env.SUPABASE_PUBLISHABLE_KEY = "publishable-test-key";
 
@@ -278,6 +279,16 @@ const resumeShaped = await session({ token: "this-is-a-resume-token-not-a-card-l
 assert.equal(resumeShaped.error?.includes("no longer valid"), true);
 assert.equal(globalThis.__stripe.clients, 0);
 ok("a resume token is not a card link");
+
+reset();
+globalThis.__cardIssue = null;
+const issued = await issueCardOnFileLink.handle({
+  data: { applicationId: APP },
+  context: { userId: "manager-1" },
+});
+assert.deepEqual(globalThis.__cardIssue, { purpose: "card" });
+assert.equal(issued.path, `/card/${APP}?t=${encodeURIComponent("minted-card-token-value")}`);
+ok("a staff card link does not pass a lifetime");
 
 rmSync(out, { recursive: true, force: true });
 console.log(`${passed} card-on-file checks passed`);

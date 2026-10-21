@@ -309,12 +309,15 @@ export function DriversPanel({
   isOwner = false,
   isManager = false,
   canManageWaitlist = false,
+  canIssueCardLink = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
   /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
   isManager?: boolean;
+  /** Owner + Manager. The card-link server function requires a manager. */
+  canIssueCardLink?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /**
@@ -929,6 +932,7 @@ setDocCounts(requiredDocCounts(rows));
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         isManager={isManager}
+        canIssueCardLink={canIssueCardLink}
       />
       {deleteDialog}
       </>
@@ -1395,6 +1399,7 @@ function DriverDetail({
   onVaultChange,
   isOwner,
   isManager = false,
+  canIssueCardLink,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1409,6 +1414,7 @@ function DriverDetail({
   isOwner: boolean;
   /** Manager and above. The quick review panel is not mounted otherwise. */
   isManager?: boolean;
+  canIssueCardLink: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -2084,7 +2090,7 @@ function DriverDetail({
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />
-                  <CardOnFileActions driver={driver} onUpdate={onSaved} />
+                  <CardOnFileActions driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
 {isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
@@ -2417,7 +2423,7 @@ function DriverDetail({
                     Must match the address on their licence. Never fill this in from a guess.
                   </p>
                 </Card>
-                <CardOnFileCard driver={driver} onUpdate={onSaved} />
+                <CardOnFileCard driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
               </TabsContent>
 
               <TabsContent value="notes" className="mt-0">
@@ -3119,7 +3125,7 @@ function previewCardLink(ensureLink: () => Promise<string>) {
     });
 }
 
-function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
+function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
   const { ensure: ensureLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
@@ -3128,16 +3134,24 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
     copyCardLink(ensureLink, "Card-on-file link copied");
   }
 
-  async function openLink(kind: "sms" | "email") {
-    try {
-      const link = await ensureLink();
-      const text = `Save your card on file for Real Rentals: ${link}`;
-      window.location.href = kind === "sms"
-        ? `sms:${driver.phone}?&body=${encodeURIComponent(text)}`
-        : `mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(text)}`;
-    } catch {
+  function openLink(kind: "sms" | "email") {
+    const opened = window.open("", "_blank");
+    if (!opened) {
       toast.error("Failed to prepare the link");
+      return;
     }
+    opened.opener = null;
+    void ensureLink()
+      .then((link) => {
+        const text = `Save your card on file for Real Rentals: ${link}`;
+        opened.location.href = kind === "sms"
+          ? `sms:${driver.phone}?&body=${encodeURIComponent(text)}`
+          : `mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(text)}`;
+      })
+      .catch(() => {
+        opened.close();
+        toast.error("Failed to prepare the link");
+      });
   }
 
   async function remove() {
@@ -3174,18 +3188,24 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <CreditCard className="w-4 h-4 mr-2" /> Charge Card…
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={copyLink}>
-            <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
-          </DropdownMenuItem>
-          {driver.phone && (
-            <DropdownMenuItem onClick={() => void openLink("sms")}>
-              <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
-            </DropdownMenuItem>
-          )}
-          {driver.email && (
-            <DropdownMenuItem onClick={() => void openLink("email")}>
-              <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
-            </DropdownMenuItem>
+          {canIssue ? (
+            <>
+              <DropdownMenuItem onClick={copyLink}>
+                <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
+              </DropdownMenuItem>
+              {driver.phone && (
+                <DropdownMenuItem onClick={() => openLink("sms")}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+                </DropdownMenuItem>
+              )}
+              {driver.email && (
+                <DropdownMenuItem onClick={() => openLink("email")}>
+                  <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
+                </DropdownMenuItem>
+              )}
+            </>
+          ) : (
+            <DropdownMenuItem disabled>Manager Required</DropdownMenuItem>
           )}
           {hasCard && (
             <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={remove}>
@@ -3372,9 +3392,11 @@ function AutopayActions({ driver }: { driver: any }) {
 function CardOnFileCard({
   driver,
   onUpdate: _onUpdate,
+  canIssue,
 }: {
   driver: any;
   onUpdate: (p: any) => void;
+  canIssue: boolean;
 }) {
   const { ensure: ensureLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
@@ -3422,21 +3444,25 @@ function CardOnFileCard({
           <p className="text-xs text-muted-foreground">
             Send this driver a secure link to save a card. No charge is made.
           </p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => copyCardLink(ensureLink, "Link copied")}
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
-            >
-              Copy Link
-            </button>
-            <button
-              type="button"
-              onClick={() => previewCardLink(ensureLink)}
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
-            >
-              Preview
-            </button>
-          </div>
+          {canIssue ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => copyCardLink(ensureLink, "Link copied")}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
+              >
+                Copy Link
+              </button>
+              <button
+                type="button"
+                onClick={() => previewCardLink(ensureLink)}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
+              >
+                Preview
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Manager Required</p>
+          )}
         </div>
       )}
     </div>
