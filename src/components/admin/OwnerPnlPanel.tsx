@@ -88,7 +88,7 @@ export function OwnerPnlPanel() {
         <div>
           <h2 className="text-lg font-semibold">Monthly Owner P&L</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Attributed revenue, refunds, and expenses for one Eastern Time month, next to the month before. Deposits stay off the net.
+            Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net.
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -141,6 +141,9 @@ export function OwnerPnlPanel() {
           {(report.current.conflictingCharges > 0 || report.previous.conflictingCharges > 0) && (
             <p className="text-sm text-[#D03020]">Some charges named more than one vehicle and stayed unattributed.</p>
           )}
+          {(report.current.coverage === "partial" || report.previous.coverage === "partial") && (
+            <p className="text-sm text-[#D03020]">Partial Coverage. A recorded Stripe payment has no Payment Intent, charge, invoice, or payment reference, so it is excluded.</p>
+          )}
           <AdminTableScroll className="rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead className="bg-[#FAFAFB] text-left">
@@ -166,6 +169,85 @@ export function OwnerPnlPanel() {
           <p className="text-sm text-muted-foreground">
             Unattributed Revenue {money(report.current.unattributedRevenueCents)} · Deposits Excluded {money(report.current.depositsExcludedCents)} · Deposit Refunds Excluded {money(report.current.depositRefundsExcludedCents)}
           </p>
+          <div>
+            <h3 className="text-base font-semibold">Income By Source</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Stripe is the verified charge. Cash App, Zelle, Venmo, wire, and cash are recorded payments. A shared reference is counted once.</p>
+          </div>
+          {report.current.sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Source totals are blank until income is complete.</p>
+          ) : (
+          <AdminTableScroll className="rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-[#FAFAFB] text-left">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Source</th>
+                  <th className="px-4 py-2.5 font-medium text-right">This Month</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Previous Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.current.sources.map((row) => (
+                  <tr key={row.source} className="border-t border-border">
+                    <td className="px-4 py-3 font-medium">{row.label}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(row.cents)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(report.previous.sources.find((source) => source.source === row.source)?.cents ?? null)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+          )}
+          <div>
+            <h3 className="text-base font-semibold">By Vehicle</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Income, refunds, and expenses for this month. A vehicle net is income minus refunds minus expenses.</p>
+          </div>
+          {report.current.vehicles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No vehicle totals in this month.</p>
+          ) : (
+            <AdminTableScroll className="rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-[#FAFAFB] text-left">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Vehicle</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Income</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Refunds</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Expenses</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.current.vehicles.map((row) => (
+                    <tr key={row.id} className="border-t border-border">
+                      <td className="px-4 py-3 font-medium">{row.label}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.incomeCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.refundsCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.expenseCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.netCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </AdminTableScroll>
+          )}
+          {(report.current.notes.length > 0 || report.previous.notes.length > 0) && (
+            <div>
+              <h3 className="text-base font-semibold">Notes</h3>
+              <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
+                {[...report.current.notes, ...report.previous.notes].map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </div>
+          )}
+          {(report.current.unmatched.length > 0 || report.previous.unmatched.length > 0) && (
+            <div>
+              <h3 className="text-base font-semibold">Unmatched Stripe Payments</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">These rows are excluded. They are not matched on amount.</p>
+              <ul className="mt-1 space-y-1 text-sm">
+                {[...report.current.unmatched, ...report.previous.unmatched].map((row) => (
+                  <li key={row.id}>{row.method || "Stripe"} · {row.reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div>
             <h3 className="text-base font-semibold">Expenses By Category</h3>
             <p className="text-sm text-muted-foreground mt-0.5">Grouped by the category on each vehicle expense. A linked service and its expense count once.</p>
