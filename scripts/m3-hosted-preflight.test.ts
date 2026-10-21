@@ -5,11 +5,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
-import { assertReadQuery, assertSelectOnly } from "./select-only.mjs";
+import { assertReadQuery } from "./select-only.mjs";
 import {
   ABSENT_STEP,
   assertNoStandardStringsOverride,
   assertPreflightTarget,
+  assertSelectOnly,
   checklistStops,
   connectionHost,
   defaultConnect,
@@ -62,6 +63,25 @@ const attacks = [
   "SELECT U&\"pg\\005fterminate\\005fbackend\"(1)",
   "SELECT U&\"pg\\005fnotify\"('c', 'm')",
   "SELECT U&'text'",
+  "SELECT pg_sleep/**/(1)",
+  "SELECT pg_catalog.pg_sleep/**/(1)",
+  "SELECT pg_advisory_lock/**/(99)",
+  "SELECT set_config/**/('x','y',false)",
+  "SELECT dblink_exec/**/('x','y')",
+  "SELECT pg_sleep--\n(1)",
+  "SELECT pg_sleep\n/**/(1)",
+  "SELECT pg_sleep\n--x\n(1)",
+  "SELECT pg_sleep/* outer /* inner */ still */(1)",
+  "SELECT \"pg_sleep\"/**/(1)",
+  "SELECT \"pg_catalog\".\"pg_sleep\"/**/(1)",
+  "SELECT (pg_sleep)(1)",
+  "SELECT (pg_sleep/**/)(1)",
+  "SELECT pg_catalog/**/.pg_sleep/**/(1)",
+  "SELECT current_setting/**/('data_directory')",
+  "SELECT current_setting('server_version'/**/'x')",
+  "SELECT current_setting(E'server_version')",
+  "SELECT current_setting($$server_version$$)",
+  "SELECT to_jsonb(d) FROM public.documents AS d",
 ];
 
 for (const sql of attacks) {
@@ -83,6 +103,10 @@ for (const sql of attacks) {
 assertSelectOnly("SELECT 'set_config'");
 assertSelectOnly("SELECT 'public CREATE holders'");
 assertSelectOnly("SELECT count(*)");
+assertSelectOnly("SELECT count/**/(*)");
+assertSelectOnly("SELECT current_setting/**/('server_version')");
+assertSelectOnly("SELECT current_setting(\n-- name\n 'standard_conforming_strings' )");
+assertSelectOnly("SELECT pg_catalog.has_column_privilege/**/('anon', 'public.waitlist', 'email', 'INSERT')");
 assertSelectOnly(loadPreflight());
 assertReadQuery(read("proposed/m3-verify/01-tnc-approval-expiry.sql"));
 assertReadQuery(read("proposed/m3-verify/02-waitlist-coming-soon-rate.sql"));
@@ -218,6 +242,22 @@ try {
       failed = true;
     }
     if (!failed) throw new Error(`multi-command was executed: ${sql}`);
+  }
+  if (!attacks[31].includes("pg_sleep/**/") || !attacks[44].includes("pg_catalog/**/.pg_sleep")) {
+    throw new Error("comment-call fixtures moved");
+  }
+  for (const sql of attacks.slice(31, 45)) {
+    let refused = false;
+    try {
+      await defaultConnect(readerUrl, [sql]);
+    } catch (error) {
+      refused = error instanceof Error && error.message.startsWith("Refusing to run:");
+    }
+    if (!refused) throw new Error(`comment call reached the reader: ${sql}`);
+  }
+  const allowedRead = await defaultConnect(readerUrl, ["SELECT current_setting('server_version') AS version"]);
+  if (!allowedRead.some((row) => String(row.version || "").length > 0)) {
+    throw new Error("allowed current_setting did not run");
   }
   const check = postgres(scratchUrl, { max: 1 });
   try {

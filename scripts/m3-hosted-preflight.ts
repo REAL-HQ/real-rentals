@@ -12,13 +12,17 @@
  * read-only role. This file does not create that role.
  *
  * Function calls are an allowlist of the functions proposed/m3/preflight.sql
- * uses, including pg_catalog.has_column_privilege. Any other function call
- * is refused before connect. A U& identifier
- * or string is refused. The URL is refused when it sets
- * standard_conforming_strings, including through options. After connect
- * the script stops when that setting is not on, and when dblink or
- * postgres_fdw is installed, because those extensions can write from a
- * read-only transaction.
+ * uses: exists, to_regprocedure, to_regclass, coalesce, string_agg, count,
+ * current_setting, pg_catalog.pg_get_userbyid, and
+ * pg_catalog.has_column_privilege. Comments and newlines between a name
+ * and '(' still count as a call, including a quoted or parenthesized name.
+ * current_setting may read only server_version, transaction_read_only,
+ * default_transaction_read_only, and standard_conforming_strings. Any
+ * other call is refused before connect. A U& identifier or string is
+ * refused. The URL is refused when it sets standard_conforming_strings,
+ * including through options. After connect the script stops when that
+ * setting is not on, and when dblink or postgres_fdw is installed,
+ * because those extensions can write from a read-only transaction.
  *
  * PGUSER, PGPASSWORD, PGHOST, PGPORT, and PGDATABASE fill in parts the URL
  * leaves out. The script prints the host and port only. It does not read
@@ -29,7 +33,11 @@
  */
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
-import { assertSelectOnly } from "./select-only.mjs";
+import { assertSelectOnly as guardSelect, PREFLIGHT_POLICY } from "./select-only.mjs";
+
+export function assertSelectOnly(sql: string): void {
+  guardSelect(sql, PREFLIGHT_POLICY);
+}
 
 const ROOT = new URL("..", import.meta.url);
 
@@ -219,6 +227,7 @@ export async function executeReadOnly(
 export async function defaultConnect(url: string, statements: string[]): Promise<Record<string, unknown>[]> {
   assertNoStandardStringsOverride(url);
   assertSelectOnly(SESSION_PROBE);
+  for (const statement of statements) assertSelectOnly(statement);
   const target = connectionTarget(url);
   const sql = postgres(url, {
     max: 1,
