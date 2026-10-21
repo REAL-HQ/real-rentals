@@ -1,8 +1,9 @@
 /**
  * My Agreement card for the signed-in driver.
  *
- * The flag the portal checks is duplicated in src/routes/portal.tsx so this
- * module stays unloaded while both copies are false.
+ * DRIVER_AGREEMENT_VIEW_ENABLED is the only declaration. The portal imports
+ * it from here. The card module is still loaded only when the flag is
+ * exactly true.
  *
  * Version gap: public.agreements has no version column. The number lives on
  * agreement_templates.version, and the only policy on that table is

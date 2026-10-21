@@ -20,11 +20,13 @@ function flagValue(source: string): string | null {
 }
 
 describe("apply progress flag", () => {
-  it("is a hard false in the lib and on the module /apply already loads", () => {
+  it("is a hard false, declared only in the lib", () => {
     assert.equal(APPLY_PROGRESS_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(wizard), "false");
-    assert.equal(flagValue(lib), flagValue(wizard));
+    assert.equal(flagValue(wizard), null);
+    assert.equal(flagValue(apply), null);
+    assert.match(wizard, /import \{ APPLY_PROGRESS_ENABLED \} from "@\/lib\/apply-progress"/);
+    assert.match(apply, /import \{ APPLY_PROGRESS_ENABLED \} from "@\/lib\/apply-progress"/);
   });
 
   it("does not load the panel while the flag is off", () => {
@@ -32,8 +34,8 @@ describe("apply progress flag", () => {
     const gate = slot.indexOf("APPLY_PROGRESS_ENABLED !== true");
     const load = slot.indexOf('import("@/components/site/ApplyProgress")');
     assert.ok(gate !== -1 && load !== -1 && gate < load);
-    assert.doesNotMatch(apply, /from "@\/lib\/apply-progress"|from "@\/components\/site\/ApplyProgress"/);
-    assert.doesNotMatch(wizard, /from "@\/lib\/apply-progress"|from "@\/components\/site\/ApplyProgress"/);
+    assert.doesNotMatch(apply, /from "@\/components\/site\/ApplyProgress"/);
+    assert.doesNotMatch(wizard, /from "@\/components\/site\/ApplyProgress"/);
     assert.match(apply, /<ApplyProgressSlot stepKey="your_info" showNeeded \/>/);
     assert.match(wizard, /<ApplyProgressSlot/);
   });

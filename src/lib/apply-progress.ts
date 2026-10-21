@@ -1,9 +1,9 @@
 /**
  * Progress copy for the apply flow. Nothing here reads or writes data.
  *
- * The flag applicants actually hit lives in ApplicationWizard.tsx, which
- * /apply already loads. This module is imported only by the progress panel,
- * and that panel is loaded only when the flag is on.
+ * APPLY_PROGRESS_ENABLED is the only declaration. ApplicationWizard and
+ * /apply import it from here. The progress panel is still loaded only when
+ * the flag is exactly true.
  *
  * The recovery emails already say the unfinished application takes about
  * 2 minutes. That is the contact step plus Rental and Driving. Documents

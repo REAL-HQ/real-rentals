@@ -55,7 +55,8 @@ describe("driver agreement view flag", () => {
   it("is off, and both handlers throw before auth or a table read", () => {
     assert.equal(DRIVER_AGREEMENT_VIEW_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(portal), "false");
+    assert.equal(flagValue(portal), null);
+    assert.match(portal, /import \{ DRIVER_AGREEMENT_VIEW_ENABLED \} from "@\/lib\/driver-agreement-view"/);
     assert.throws(() => assertDriverAgreementViewEnabled(), /Driver agreement view is not enabled/);
 
     for (const source of [listFn, pdfFn]) {
@@ -86,7 +87,7 @@ describe("driver agreement view flag", () => {
     const check = gate.indexOf("DRIVER_AGREEMENT_VIEW_ENABLED !== true");
     const load = gate.indexOf('import("@/components/portal/DriverAgreementCard")');
     assert.ok(check !== -1 && load !== -1 && check < load);
-    assert.doesNotMatch(portal, /from "@\/components\/portal\/DriverAgreementCard"|from "@\/lib\/driver-agreement-view/);
+    assert.doesNotMatch(portal, /from "@\/components\/portal\/DriverAgreementCard"/);
     assert.match(portal, /DRIVER_AGREEMENT_VIEW_ENABLED \? <DriverAgreementGate \/> : null/);
   });
 });

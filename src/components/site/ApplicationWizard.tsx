@@ -27,6 +27,8 @@ import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
+import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 
 /*
  * ONE application, TWO parts.
@@ -282,14 +284,7 @@ export function ProgressBar({
   );
 }
 
-/**
- * Hard off. The type stays `boolean` so the on-branch is not deleted, and
- * this copy lives in the module /apply already loads. src/lib/apply-progress.ts
- * keeps the same constant for the panel. While both are false, the panel is
- * not imported and nothing here renders.
- */
-export const APPLY_PROGRESS_ENABLED: boolean = false;
-
+/** Panel loads only when APPLY_PROGRESS_ENABLED is exactly true. */
 export function ApplyProgressSlot({
   stepKey,
   showNeeded,
@@ -1648,13 +1643,6 @@ function InsuranceSection({
  * stored array — so the applicant can delete a wrong screenshot without us
  * handing back the paths of the right ones.
  */
-/**
- * Hard off. The same constant lives in src/lib/upload-precheck.ts and in
- * DocumentCapture. While it is false the trip uploader does not import the
- * pre-check, and its upload call stays the one this screen already makes.
- */
-const UPLOAD_PRECHECK_ENABLED: boolean = false;
-
 type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
 
 function MultiFileUpload({

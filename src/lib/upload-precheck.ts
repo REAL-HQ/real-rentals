@@ -1,9 +1,10 @@
 /**
  * Browser-only quality check before an applicant upload starts.
  *
- * The flag is duplicated in DocumentCapture and ApplicationWizard so this
- * module is not imported while every copy is false. It does not upload, and
- * it does not choose a storage path.
+ * UPLOAD_PRECHECK_ENABLED is the only declaration. DocumentCapture and
+ * ApplicationWizard import it from here. The notice and reviewUpload are
+ * still loaded only when the flag is exactly true. This module does not
+ * upload, and it does not choose a storage path.
  *
  * Type and size use the allowlist requestUploadUrl already signs
  * (jpg, jpeg, png, webp, heic, heif, pdf) and the ceilings in

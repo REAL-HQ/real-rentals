@@ -6,8 +6,9 @@
  * A driver can read their own application (user_id = auth.uid()). This module
  * does not read or write anything itself.
  *
- * The flag the portal checks is duplicated in src/routes/portal.tsx so the
- * card module stays unloaded while both copies are false.
+ * DRIVER_DOC_EXPIRY_CARD_ENABLED is the only declaration. The portal imports
+ * it from here. The card module is still loaded only when the flag is
+ * exactly true.
  */
 
 import { fmtDate } from "@/lib/date-format";

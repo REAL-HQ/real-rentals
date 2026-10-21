@@ -12,11 +12,20 @@ export function checkPaths(changed){
  for(const path of Object.keys(app))assert(changed.includes(path),'Required application path: '+path);
 }
 export function checkDigest(bytes,expected){assert.equal(hash(bytes),expected,'Hash mismatch');}
+export function pinnedSha256(expected,label){
+ const sha=typeof expected==='string'?expected:expected&&expected.sha256;
+ assert.equal(typeof sha,'string','Source hash entry: '+label);
+ if(expected&&typeof expected==='object'){
+  assert.equal(typeof expected.justification,'string','Source hash justification: '+label);
+  assert.ok(expected.justification.trim().length>0,'Source hash justification: '+label);
+ }
+ return sha;
+}
 export function checkScope(changed, read){
  checkPaths(changed);
  const app={...manifest.application,...manifest.evidence};
  for(const [path,expected] of Object.entries({...app,...manifest.lockedFiles})){
-  assert.equal(hash(read(path)),expected,'Source hash: '+path);
+  assert.equal(hash(read(path)),pinnedSha256(expected,path),'Source hash: '+path);
  }
  for(const path of Object.keys(app))assert(changed.includes(path),'Required application path: '+path);
  for(const suite of manifest.suites)assert.equal(hash(read(suite.file)),suite.sha256,'Test hash: '+suite.file);

@@ -42,11 +42,11 @@ function file(name: string, type: string, size: number) {
 }
 
 describe("upload pre-check flag", () => {
-  it("is off, imports nothing, and leaves the upload call unchanged", async () => {
+  it("is off, declared only in the lib, and leaves the upload call unchanged", async () => {
     assert.equal(UPLOAD_PRECHECK_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(capture), "false");
-    assert.equal(flagValue(wizard), "false");
+    assert.equal(flagValue(capture), null);
+    assert.equal(flagValue(wizard), null);
     assert.throws(() => assertUploadPrecheckEnabled(), /Upload pre-check is not enabled/);
     await assert.rejects(
       () => reviewUpload(new File([], "licence.jpg", { type: "image/jpeg" })),
@@ -59,7 +59,8 @@ describe("upload pre-check flag", () => {
     assert.ok(review.indexOf("assertUploadPrecheckEnabled()") < review.indexOf("measureImage("));
 
     for (const source of [capture, wizard]) {
-      assert.doesNotMatch(source, /from "@\/lib\/upload-precheck"|from "@\/components\/site\/UploadPrecheckNotice"/);
+      assert.match(source, /import \{ UPLOAD_PRECHECK_ENABLED \} from "@\/lib\/upload-precheck"/);
+      assert.doesNotMatch(source, /from "@\/components\/site\/UploadPrecheckNotice"/);
       const ask = source.slice(source.indexOf("async function askOverride"));
       assert.ok(ask.indexOf("UPLOAD_PRECHECK_ENABLED !== true") < ask.indexOf('import("@/components/site/UploadPrecheckNotice")'));
       const gate = source.slice(source.indexOf("UPLOAD_PRECHECK_ENABLED === true"));

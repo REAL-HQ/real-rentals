@@ -2,13 +2,7 @@ import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
-
-/**
- * Hard off. The same constant lives in src/lib/upload-precheck.ts and in the
- * trip-screenshot uploader. While it is false this file does not import the
- * pre-check, and the upload call below is the one this screen already makes.
- */
-const UPLOAD_PRECHECK_ENABLED: boolean = false;
+import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 
 type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
 

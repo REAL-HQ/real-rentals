@@ -38,6 +38,8 @@ import { PORTAL_MY_RENTAL_ENABLED } from "@/lib/portal-my-rental";
 import { getPortalMyRental } from "@/lib/portal-my-rental.functions";
 import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
+import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
+import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
 import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
@@ -119,13 +121,7 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-/**
- * Hard off. The same constant lives in src/lib/driver-doc-expiry.ts. While
- * both are false the card module is not imported and this page does not
- * mount it.
- */
-const DRIVER_DOC_EXPIRY_CARD_ENABLED: boolean = false;
-
+/** Card stays unloaded unless DRIVER_DOC_EXPIRY_CARD_ENABLED is exactly true. */
 function DocExpiryGate({ onOpenDocuments }: { onOpenDocuments: () => void }) {
   const [View, setView] = useState<
     null | ((props: { onOpenDocuments: () => void }) => React.ReactNode)
@@ -144,13 +140,7 @@ function DocExpiryGate({ onOpenDocuments }: { onOpenDocuments: () => void }) {
   return <View onOpenDocuments={onOpenDocuments} />;
 }
 
-/**
- * Hard off. The same constant lives in src/lib/driver-agreement-view.ts. While
- * both are false the card module is not imported and this page does not
- * mount it.
- */
-const DRIVER_AGREEMENT_VIEW_ENABLED: boolean = false;
-
+/** Card stays unloaded unless DRIVER_AGREEMENT_VIEW_ENABLED is exactly true. */
 function DriverAgreementGate() {
   const [View, setView] = useState<null | (() => React.ReactNode)>(null);
   useEffect(() => {

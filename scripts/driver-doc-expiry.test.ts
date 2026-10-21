@@ -28,7 +28,8 @@ describe("driver document expiry flag", () => {
   it("is off, and the handler throws before auth or a table read", () => {
     assert.equal(DRIVER_DOC_EXPIRY_CARD_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(portal), "false");
+    assert.equal(flagValue(portal), null);
+    assert.match(portal, /import \{ DRIVER_DOC_EXPIRY_CARD_ENABLED \} from "@\/lib\/driver-doc-expiry"/);
     assert.throws(() => assertDriverDocExpiryEnabled(), /Driver document expiry card is not enabled/);
 
     const handler = fn.slice(fn.indexOf(".handler("));
@@ -51,7 +52,7 @@ describe("driver document expiry flag", () => {
     const check = gate.indexOf("DRIVER_DOC_EXPIRY_CARD_ENABLED !== true");
     const load = gate.indexOf('import("@/components/portal/DriverDocExpiryCard")');
     assert.ok(check !== -1 && load !== -1 && check < load);
-    assert.doesNotMatch(portal, /from "@\/components\/portal\/DriverDocExpiryCard"|from "@\/lib\/driver-doc-expiry/);
+    assert.doesNotMatch(portal, /from "@\/components\/portal\/DriverDocExpiryCard"/);
     assert.match(portal, /DRIVER_DOC_EXPIRY_CARD_ENABLED \? \(/);
     assert.match(portal, /onNavigate\("documents"\)/);
   });

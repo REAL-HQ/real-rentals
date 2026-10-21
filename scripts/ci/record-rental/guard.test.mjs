@@ -26,6 +26,24 @@ test('additional error after progress rejected',()=>assert.throws(()=>checkOutpu
 assert.equal(m.suites.filter(x=>x.kind==='application assertions').reduce((a,x)=>a+x.checks,0),130);
 assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,2);
 assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
+const driversPanel=m.application['src/components/admin/DriversPanel.tsx'];
+test('DriversPanel pin records the RC3–RC7 justification',()=>{
+ assert.equal(driversPanel.sha256,'ac07e5d3bca423e1777512d9bbc0571512621730a795318a3125aed58347b5f7');
+ assert.match(driversPanel.justification,/9c6cc91670d353b955c4337e8db9eed5a76c355c2036aaad04c9b6c09b13e07f/);
+ assert.match(driversPanel.justification,/0ebddd0f/);
+ assert.match(driversPanel.justification,/67348401/);
+ assert.match(driversPanel.justification,/9e5cb3fd/);
+ assert.match(driversPanel.justification,/e25ec28b/);
+ assert.match(driversPanel.justification,/8ca05d51/);
+ assert.match(driversPanel.justification,/8ef7f8c5/);
+ assert.match(driversPanel.justification,/a53f837f/);
+ assert.match(driversPanel.justification,/b175d63c/);
+ assert.match(driversPanel.justification,/d3be19d9/);
+ assert.match(driversPanel.justification,/17807108/);
+ assert.match(driversPanel.justification,/cff56f56/);
+ assert.match(driversPanel.justification,/146028a7/);
+ assert.match(driversPanel.justification,/69ecfeec/);
+});
 test('full source including evidence hashes accepted',()=>checkScope(paths,readFileSync));
 for(const p of Object.keys(m.evidence)) {
  test('altered evidence hash rejected: '+p,()=>assert.throws(()=>checkScope(paths,f=>f===p?Buffer.from('altered'):readFileSync(f))));
