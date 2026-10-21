@@ -359,3 +359,144 @@ export function driverDisplayName(value: string | null): string {
   const name = (value ?? "").trim().replace(/\s+/g, " ");
   return name || "Unnamed Driver";
 }
+
+/**
+ * Calendar status of the dates this module already names on the application:
+ * license_expiration and insurance_expires_on. A TNC (Uber/Lyft) approval
+ * date is not a column. Callers pass null for it, and a driver is not OK
+ * while it is missing. Days are Eastern calendar days, so a DST transition
+ * does not move the 30-day window. The expiration day itself is still inside
+ * the window; the next Eastern day is expired.
+ */
+export const DOC_EXPIRY_WINDOW_DAYS = 30;
+
+export const DOC_EXPIRY_TIME_ZONE = "America/New_York";
+
+export const DOC_EXPIRY_STATUSES = ["expired", "expiring", "ok", "unknown"] as const;
+
+export type DocExpiryStatus = (typeof DOC_EXPIRY_STATUSES)[number];
+
+type CalendarDay = { year: number; month: number; day: number };
+
+/** A real YYYY-MM-DD, or the date prefix of a timestamp. Anything else is unusable. */
+export function parseCalendarDay(value: string | null | undefined): CalendarDay | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const stamped = new Date(Date.UTC(year, month - 1, day));
+  if (
+    stamped.getUTCFullYear() !== year ||
+    stamped.getUTCMonth() !== month - 1 ||
+    stamped.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
+
+/** The Eastern calendar day containing `now`, including across a DST transition. */
+export function easternCalendarDay(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DOC_EXPIRY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+}
+
+/** Add calendar days on the UTC date line, so DST cannot skip or repeat a day. */
+export function addCalendarDays(day: string, days: number): string | null {
+  const parsed = parseCalendarDay(day);
+  if (!parsed) return null;
+  const next = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day + days));
+  const month = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const date = String(next.getUTCDate()).padStart(2, "0");
+  return `${next.getUTCFullYear()}-${month}-${date}`;
+}
+
+/** How many calendar days from `today` until `date`. Negative means already past. */
+export function calendarDaysUntil(today: string, date: string): number | null {
+  const start = parseCalendarDay(today);
+  const end = parseCalendarDay(date);
+  if (!start || !end) return null;
+  const from = Date.UTC(start.year, start.month - 1, start.day);
+  const to = Date.UTC(end.year, end.month - 1, end.day);
+  return Math.round((to - from) / 86400000);
+}
+
+export function documentDateStatus(raw: string | null | undefined, today: string): DocExpiryStatus {
+  const parsed = parseCalendarDay(raw);
+  if (!parsed) return "unknown";
+  const iso = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
+  const days = calendarDaysUntil(today, iso);
+  if (days === null) return "unknown";
+  if (days < 0) return "expired";
+  if (days <= DOC_EXPIRY_WINDOW_DAYS) return "expiring";
+  return "ok";
+}
+
+/**
+ * Worst readable date wins. OK requires the licence date, the personal
+ * insurance date, and a TNC approval date, each beyond the window. A missing
+ * TNC date stays Unknown rather than OK. An expired or soon date still shows.
+ */
+export function documentExpiryStatus(
+  application: Pick<ReadinessApplication, "license_expiration" | "insurance_expires_on">,
+  today: string,
+  tncOn: string | null,
+): DocExpiryStatus {
+  const dates = [
+    documentDateStatus(application.license_expiration, today),
+    documentDateStatus(application.insurance_expires_on, today),
+    documentDateStatus(tncOn, today),
+  ];
+  if (dates.includes("expired")) return "expired";
+  if (dates.includes("expiring")) return "expiring";
+  if (dates.every((item) => item === "ok")) return "ok";
+  return "unknown";
+}
+
+const DOC_EXPIRY_STATUS_LABEL: Record<DocExpiryStatus, string> = {
+  expired: "Expired",
+  expiring: "Expires In 30 Days",
+  ok: "OK",
+  unknown: "Unknown",
+};
+
+/** Licence and personal insurance only. A missing TNC date does not pull this to Unknown. */
+export function licenceInsuranceStatus(
+  application: Pick<ReadinessApplication, "license_expiration" | "insurance_expires_on">,
+  today: string,
+): DocExpiryStatus {
+  const dates = [
+    documentDateStatus(application.license_expiration, today),
+    documentDateStatus(application.insurance_expires_on, today),
+  ];
+  if (dates.includes("expired")) return "expired";
+  if (dates.includes("expiring")) return "expiring";
+  if (dates.every((item) => item === "ok")) return "ok";
+  return "unknown";
+}
+
+/**
+ * Alternative cell text. Licence and insurance stand on their own, and TNC
+ * is named beside them until a real approval date is stored. The column
+ * shows this only when the owner opts into the separate display.
+ */
+export function separateDocumentLabel(
+  application: Pick<ReadinessApplication, "license_expiration" | "insurance_expires_on">,
+  today: string,
+  tncOn: string | null,
+): string {
+  const word = DOC_EXPIRY_STATUS_LABEL[licenceInsuranceStatus(application, today)];
+  const tnc = documentDateStatus(tncOn, today);
+  if (tncOn == null || tnc === "unknown") return `${word} · TNC Unknown`;
+  if (tnc === "expired") return `${word} · TNC Expired`;
+  if (tnc === "expiring") return `${word} · TNC Expires In 30 Days`;
+  return word;
+}
