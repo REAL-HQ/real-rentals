@@ -16,9 +16,29 @@
  * A missing object, a changed object, or a failed merge throws, so
  * registerDocument throws instead of returning null. The function is not
  * installed on hosted. Activation is changing this constant and rebuilding,
- * after that packet step is installed.
+ * after that packet step is installed. Until that install, a flag-on upload
+ * is confirmed with a null content hash and approval stays closed.
  */
 export const DOCUMENT_CONTENT_SHA256_ENABLED = false;
+
+const MISSING_CONTENT_SHA_LOG =
+  "[documents] record_uploaded_content_sha is not installed; confirming the upload without a content hash. Approval stays closed while content_sha256 is null.";
+
+let uploadedContentShaMissing = false;
+
+/** Test hook. The process remembers a missing packet function after one probe. */
+export function resetUploadedContentShaProbe(): void {
+  uploadedContentShaMissing = false;
+}
+
+export function isMissingContentShaFunction(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  if (code === "42883" || code === "PGRST202") return true;
+  const message = error.message ?? "";
+  return /function .*record_uploaded_content_sha.* does not exist/i.test(message)
+    || /could not find the function public\.record_uploaded_content_sha/i.test(message);
+}
 
 export async function contentSha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
@@ -43,7 +63,29 @@ export async function recordUploadedContentSha(
   path: string,
 ): Promise<string | null> {
   if (!DOCUMENT_CONTENT_SHA256_ENABLED) return null;
-  return writeUploadedContentSha(admin, bucket, path);
+  return applyUploadedContentSha(admin, bucket, path);
+}
+
+/**
+ * Flag-on body with one probe for a database that does not have the packet
+ * function yet. A missing function confirms the upload with a null hash.
+ * Any other failure still throws.
+ */
+export async function applyUploadedContentSha(admin: any, bucket: string, path: string): Promise<string | null> {
+  if (uploadedContentShaMissing) {
+    console.error(MISSING_CONTENT_SHA_LOG);
+    return null;
+  }
+  try {
+    return await writeUploadedContentSha(admin, bucket, path);
+  } catch (error) {
+    if (error instanceof Error && error.message === "content_sha256_function_missing") {
+      uploadedContentShaMissing = true;
+      console.error(MISSING_CONTENT_SHA_LOG);
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** Flag-on body. Download, hash, then one conditional merge. */
@@ -56,7 +98,7 @@ export async function writeUploadedContentSha(admin: any, bucket: string, path: 
   const bytes = new Uint8Array(await file.data.arrayBuffer());
   const sha256 = await contentSha256Hex(bytes);
   const version = typeof info.data.version === "string" && info.data.version.trim() ? info.data.version : null;
-  const updatedAt = info.data.lastModified ?? info.data.last_modified ?? info.data.updated_at ?? null;
+  const updatedAt = storageTimestamp(info.data.updatedAt ?? info.data.updated_at ?? info.data.lastModified ?? info.data.last_modified);
   const saved = await admin.rpc("record_uploaded_content_sha", {
     p_bucket: bucket,
     p_path: path,
@@ -65,6 +107,14 @@ export async function writeUploadedContentSha(admin: any, bucket: string, path: 
     p_version: version,
     p_updated_at: updatedAt,
   });
+  if (saved.error && isMissingContentShaFunction(saved.error)) throw new Error("content_sha256_function_missing");
   if (saved.error || saved.data !== sha256) throw new Error(saved.error?.message || "Uploaded object changed");
   return sha256;
+}
+
+function storageTimestamp(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value === "string") return value;
+  return null;
 }

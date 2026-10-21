@@ -1,10 +1,14 @@
--- Proposed packet step. Local rehearsal only. Not a hosted installer.
+-- Proposed packet step. The M2 rehearsal installs this file. A hosted run
+-- follows proposed/HOSTED-INSTALL.md on the rehearsal branch. Not an app migration.
 -- Hosted PostgREST exposes public and graphql_public, so the app cannot
 -- UPDATE storage.objects. This function is the supported write.
 --
--- It merges user_metadata.sha256 with jsonb ||, which keeps keys a concurrent
--- writer has already committed, and sets documents.content_sha256 when a row
--- for this bucket and path already exists. The object update matches id and
+-- Before it writes, the bucket and path must already be a documents row, or a
+-- known application upload (license-uploads license or insurance path,
+-- profile-screenshots profile or trip path). immutable-v1 paths are refused.
+-- It then merges user_metadata.sha256 with jsonb ||, which keeps keys a
+-- concurrent writer has already committed, and sets documents.content_sha256
+-- when that row's hash is still null. The object update matches id and
 -- version, or updated_at when version is absent. Zero rows means the object
 -- changed after it was hashed, and the transaction raises.
 --
@@ -27,12 +31,31 @@ DECLARE
   n integer;
   has_version boolean;
   mismatched integer;
+  claimed boolean;
 BEGIN
   IF p_sha256 IS NULL OR p_sha256 !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'content_sha256_invalid' USING ERRCODE = '22023';
   END IF;
   IF p_object_id IS NULL OR nullif(btrim(p_bucket), '') IS NULL OR nullif(btrim(p_path), '') IS NULL THEN
     RAISE EXCEPTION 'content_sha256_object_changed' USING ERRCODE = '40001';
+  END IF;
+  IF p_path LIKE 'immutable-v1/%' THEN
+    RAISE EXCEPTION 'content_sha256_immutable' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.documents
+    WHERE storage_bucket = p_bucket AND storage_path = p_path
+  ) OR EXISTS (
+    SELECT 1 FROM public.applications
+    WHERE (p_bucket = 'license-uploads' AND (license_photo_url = p_path OR insurance_doc_url = p_path))
+       OR (p_bucket = 'profile-screenshots' AND (
+            profile_screenshot_url = p_path
+            OR (trip_screenshots IS NOT NULL AND p_path = ANY (trip_screenshots))
+          ))
+  ) INTO claimed;
+  IF NOT claimed THEN
+    RAISE EXCEPTION 'content_sha256_unclaimed' USING ERRCODE = '42501';
   END IF;
 
   SELECT EXISTS (

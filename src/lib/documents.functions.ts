@@ -621,10 +621,11 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-    // Flag on, this throws and the confirm fails closed. The row is not
-    // inserted without a content hash.
-    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
-
+    // The packet function writes the hash only after this bucket and path
+    // belong to a documents row. Insert first, with a null hash. Flag off,
+    // the hasher returns null. Flag on, before the function exists, it logs
+    // and returns null so the upload is confirmed and approval stays closed.
+    // Any other hasher failure throws. The null hash still fails approval closed.
     const { data: row, error } = await supabaseAdmin
       .from("documents")
       .insert({
@@ -642,11 +643,11 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
         is_current: true,
         uploaded_by: context.userId,
         uploaded_by_role: admin ? "team" : "driver",
-        ...(contentSha ? { content_sha256: contentSha } : {}),
       })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+    await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
 
     // Supersede the previous current document in the same category.
     await supabaseAdmin

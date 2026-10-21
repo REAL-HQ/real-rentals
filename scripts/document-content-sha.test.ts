@@ -6,8 +6,11 @@
 import { readFileSync } from "node:fs";
 import {
   DOCUMENT_CONTENT_SHA256_ENABLED,
+  applyUploadedContentSha,
   contentSha256Hex,
+  isMissingContentShaFunction,
   recordUploadedContentSha,
+  resetUploadedContentShaProbe,
   storageShaMetadata,
   writeUploadedContentSha,
 } from "../src/lib/document-content-sha";
@@ -51,6 +54,9 @@ ok(packetSql.includes("COALESCE(user_metadata, '{}'::jsonb) || jsonb_build_objec
 ok(packetSql.includes("version IS NOT DISTINCT FROM"), "the write matches the hashed object's version");
 ok(packetSql.includes("updated_at IS NOT DISTINCT FROM"), "the write can match updated_at when version is absent");
 ok(packetSql.includes("SET content_sha256 = p_sha256"), "the function sets documents.content_sha256 when the row exists");
+ok(packetSql.includes("content_sha256_unclaimed"), "an unknown bucket and path raises before the write");
+ok(packetSql.includes("content_sha256_immutable"), "an immutable-v1 path is refused");
+ok(packetSql.indexOf("content_sha256_unclaimed") < packetSql.indexOf("UPDATE storage.objects\n"), "the claim check is before the storage write");
 ok(packetSql.includes("GRANT EXECUTE ON FUNCTION public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) TO service_role"), "service_role can call the function");
 ok(!packetSql.includes("schema(\"storage\")"), "the packet step is a public function");
 
@@ -124,14 +130,16 @@ ok(JSON.stringify(Object.keys(inserted[0] ?? {})) === JSON.stringify(liveColumns
 ok(!("content_sha256" in (inserted[0] ?? {})), "the real insert omits content_sha256 while the flag is off");
 ok(
   documents.includes("...(contentSha ? { content_sha256: contentSha } : {})"),
-  "confirmDocumentUpload uses the same conditional content_sha256 spread",
+  "registerDocument stores a returned hash on the insert",
 );
-ok((documents.match(/content_sha256/g) ?? []).length === 2, "content_sha256 appears only in the two real inserts");
+ok((documents.match(/content_sha256/g) ?? []).length === 1, "content_sha256 is only the registerDocument insert");
 
 const registerFn = documents.slice(documents.indexOf("export async function registerDocument"), documents.indexOf("export const APPLICATION_UPLOAD_FIELDS"));
+ok(registerFn.indexOf("recordUploadedContentSha") < registerFn.indexOf(".insert("), "registerDocument hashes a known application upload before inserting");
 ok(!registerFn.includes("try {"), "registerDocument does not catch the hasher, so a flag-on failure throws");
 ok(documents.includes('console.error("[documents] registration refused"'), "syncApplicationUploads catches a thrown registration and continues");
 const confirmFn = documents.slice(documents.indexOf("export const confirmDocumentUpload"), documents.indexOf("export const updateDocumentMeta"));
+ok(confirmFn.indexOf(".insert(") < confirmFn.indexOf("recordUploadedContentSha"), "confirm inserts the documents row before the packet function");
 ok(confirmFn.includes("await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);"), "confirmDocumentUpload awaits the hasher");
 ok(!confirmFn.includes("catch"), "confirmDocumentUpload lets a flag-on hasher failure refuse the confirm");
 
@@ -190,6 +198,7 @@ ok(downloads === 1, "flag on downloads the stored bytes once");
 ok(uploads === 0, "flag on does not upload or overwrite the object");
 ok(sha === (await contentSha256Hex(sample)), "flag on returns the hash of the downloaded bytes");
 ok(rpcArgs.length === 1 && rpcArgs[0]?.p_sha256 === sha && rpcArgs[0]?.p_version === "v1", "the conditional write sends the hash and the version that was read");
+ok(rpcArgs[0]?.p_updated_at === stored.lastModified, "the updated_at fallback reads the client timestamp when updatedAt is absent");
 ok(stored.user_metadata.sha256 === sha && stored.user_metadata.source === "client" && stored.user_metadata.reviewed === true, "the merge keeps concurrent user_metadata keys");
 ok(storageShaMetadata(sha).sha256 === sha, "storage user_metadata uses the sha256 key");
 
@@ -248,6 +257,79 @@ try {
 }
 ok(!("sha256" in replaced.user_metadata) && replaced.version === "v2", "a concurrent replace does not write the old hash");
 
+const dated = await writeUploadedContentSha(
+  {
+    storage: {
+      from() {
+        return {
+          async info() {
+            return { data: { id: stored.id, version: " ", updatedAt: "2026-10-21T01:02:03.000Z" }, error: null };
+          },
+          async download() {
+            return { data: new Blob([sample]), error: null };
+          },
+        };
+      },
+    },
+    async rpc(_fn: string, args: Record<string, unknown>) {
+      ok(args.p_version === null, "a blank version is sent as null");
+      ok(args.p_updated_at === "2026-10-21T01:02:03.000Z", "updatedAt from the storage client is the updated_at fallback");
+      return { data: args.p_sha256, error: null };
+    },
+  },
+  "driver-docs",
+  "app/license_front.jpg",
+);
+ok(dated === sha, "a version-less object still returns the hash of the bytes");
+
+resetUploadedContentShaProbe();
+let missingDownloads = 0;
+const missingLogs: string[] = [];
+const originalError = console.error;
+console.error = (...args: unknown[]) => {
+  missingLogs.push(args.map(String).join(" "));
+};
+const missingAdmin = {
+  storage: {
+    from() {
+      return {
+        async info() {
+          return { data: { id: stored.id, version: "v1", updatedAt: "2026-10-21T01:02:03.000Z" }, error: null };
+        },
+        async download() {
+          missingDownloads += 1;
+          return { data: new Blob([sample]), error: null };
+        },
+      };
+    },
+  },
+  async rpc() {
+    return { data: null, error: { code: "42883", message: "function public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) does not exist" } };
+  },
+};
+const missingSha = await applyUploadedContentSha(missingAdmin, "driver-docs", "app/license_front.jpg");
+const skipped = await applyUploadedContentSha(
+  {
+    storage: {
+      from() {
+        missingDownloads += 10;
+        throw new Error("the second call should not read storage");
+      },
+    },
+    async rpc() {
+      throw new Error("the second call should not probe again");
+    },
+  },
+  "driver-docs",
+  "app/license_front.jpg",
+);
+console.error = originalError;
+resetUploadedContentShaProbe();
+ok(missingSha === null && skipped === null, "a missing packet function confirms the upload with a null hash");
+ok(missingDownloads === 1, "the missing function is probed once");
+ok(missingLogs.length === 2 && missingLogs.every((line) => line.includes("not installed") && line.includes("Approval stays closed")), "a missing packet function is logged loudly");
+ok(isMissingContentShaFunction({ code: "PGRST202", message: "Could not find the function public.record_uploaded_content_sha" }), "the PostgREST schema-cache miss is the same probe");
+
 const url = process.env.DOCUMENT_SHA_DATABASE_URL ?? "postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable";
 ok(url.includes("127.0.0.1") || url.includes("localhost"), "the digest comparison stays on local Postgres");
 if (!(url.includes("127.0.0.1") || url.includes("localhost"))) {
@@ -265,6 +347,183 @@ try {
     `;
     ok(app === row.digest && /^[0-9a-f]{64}$/.test(app), `flag-on hash matches extensions.digest for ${JSON.stringify(text)}`);
   }
+  const frontSha = await contentSha256Hex(new TextEncoder().encode("m2-license-front-v1"));
+  const otherSha = await contentSha256Hex(new TextEncoder().encode("m2-license-other-v1"));
+  const functionBody = packetSql
+    .replace(/^BEGIN;\s*$/m, "")
+    .replace(/^COMMIT;\s*$/m, "")
+    .replace(
+      "CREATE FUNCTION public.record_uploaded_content_sha",
+      "CREATE OR REPLACE FUNCTION public.record_uploaded_content_sha",
+    );
+  let integrationError: unknown = null;
+  try {
+    await sql.begin(async (tx) => {
+      await tx.unsafe(functionBody);
+      await tx.unsafe(`
+DO $do$
+DECLARE
+  front_sha text := '${frontSha}';
+  other_sha text := '${otherSha}';
+  object_id uuid;
+  known_id uuid;
+  got text;
+  meta jsonb;
+BEGIN
+  INSERT INTO storage.buckets (id, name) VALUES ('driver-docs','driver-docs') ON CONFLICT (id) DO NOTHING;
+  INSERT INTO storage.buckets (id, name) VALUES ('license-uploads','license-uploads') ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.documents (id, kind, category, storage_bucket, storage_path)
+  VALUES (
+    '12121212-1212-4121-8121-121212121212',
+    'license_front','license_front','driver-docs',
+    '12121212-1212-4121-8121-121212121212/front.jpg'
+  );
+  INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version)
+  VALUES (
+    'driver-docs',
+    '12121212-1212-4121-8121-121212121212/front.jpg',
+    jsonb_build_object('source','upload'),
+    jsonb_build_object('mimetype','image/jpeg'),
+    'v1'
+  ) RETURNING id INTO object_id;
+
+  PERFORM set_config('role','service_role', true);
+  got := public.record_uploaded_content_sha(
+    'driver-docs',
+    '12121212-1212-4121-8121-121212121212/front.jpg',
+    front_sha, object_id, 'v1', NULL);
+  PERFORM set_config('role','postgres', true);
+  SELECT user_metadata INTO meta FROM storage.objects WHERE id = object_id;
+  IF got IS DISTINCT FROM front_sha OR meta->>'sha256' IS DISTINCT FROM front_sha OR meta->>'source' IS DISTINCT FROM 'upload' THEN
+    RAISE EXCEPTION 'service_role write failed got % meta %', got, meta;
+  END IF;
+  IF (SELECT content_sha256 FROM public.documents WHERE id='12121212-1212-4121-8121-121212121212') IS DISTINCT FROM front_sha THEN
+    RAISE EXCEPTION 'documents.content_sha256 was not set';
+  END IF;
+
+  BEGIN
+    PERFORM set_config('role','anon', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs','12121212-1212-4121-8121-121212121212/front.jpg', front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'anon was allowed';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM set_config('role','authenticated', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs','12121212-1212-4121-8121-121212121212/front.jpg', front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'authenticated was allowed';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs','12121212-1212-4121-8121-121212121212/front.jpg', front_sha, object_id, 'stale', NULL);
+    RAISE EXCEPTION 'stale version accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_object_changed%' THEN RAISE; END IF;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id = object_id) IS DISTINCT FROM front_sha THEN
+    RAISE EXCEPTION 'stale version wrote a hash';
+  END IF;
+  BEGIN
+    UPDATE public.documents SET content_sha256 = other_sha WHERE id='12121212-1212-4121-8121-121212121212';
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs','12121212-1212-4121-8121-121212121212/front.jpg', front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'mismatch accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_mismatch%' THEN RAISE; END IF;
+  END;
+  IF (SELECT content_sha256 FROM public.documents WHERE id='12121212-1212-4121-8121-121212121212') IS DISTINCT FROM front_sha THEN
+    RAISE EXCEPTION 'mismatch changed the stored hash';
+  END IF;
+
+  INSERT INTO public.documents (id, kind, category, storage_bucket, storage_path)
+  VALUES (
+    '14141414-1414-4141-8141-141414141414',
+    'rental_agreement','agreement','rental-agreements',
+    'immutable-v1/14141414-1414-4141-8141-141414141414/file.pdf'
+  );
+  INSERT INTO storage.buckets (id, name) VALUES ('rental-agreements','rental-agreements') ON CONFLICT (id) DO NOTHING;
+  INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version)
+  VALUES (
+    '15151515-1515-4151-8151-151515151515',
+    'rental-agreements',
+    'immutable-v1/14141414-1414-4141-8141-141414141414/file.pdf',
+    jsonb_build_object('source','archive'),
+    'v1'
+  );
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha(
+      'rental-agreements',
+      'immutable-v1/14141414-1414-4141-8141-141414141414/file.pdf',
+      front_sha, '15151515-1515-4151-8151-151515151515', 'v1', NULL);
+    RAISE EXCEPTION 'immutable-v1 accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_immutable%' THEN RAISE; END IF;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id='15151515-1515-4151-8151-151515151515') IS NOT NULL THEN
+    RAISE EXCEPTION 'immutable-v1 wrote a hash';
+  END IF;
+
+  INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version)
+  VALUES ('16161616-1616-4161-8161-161616161616','driver-docs','nobody/orphan.jpg','{}'::jsonb,'v1');
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs','nobody/orphan.jpg', front_sha, '16161616-1616-4161-8161-161616161616', 'v1', NULL);
+    RAISE EXCEPTION 'unclaimed path accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_unclaimed%' THEN RAISE; END IF;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id='16161616-1616-4161-8161-161616161616') IS NOT NULL THEN
+    RAISE EXCEPTION 'unclaimed path wrote a hash';
+  END IF;
+
+  INSERT INTO public.applications (id, full_name, email, phone, license_photo_url)
+  VALUES (
+    '13131313-1313-4131-8131-131313131313','Sha Driver','sha-probe@example.test','5550001212',
+    '13131313-1313-4131-8131-131313131313/license.jpg'
+  );
+  INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version)
+  VALUES (
+    '17171717-1717-4171-8171-171717171717',
+    'license-uploads',
+    '13131313-1313-4131-8131-131313131313/license.jpg',
+    jsonb_build_object('source','wizard'),
+    'v1'
+  ) RETURNING id INTO known_id;
+  PERFORM set_config('role','service_role', true);
+  got := public.record_uploaded_content_sha(
+    'license-uploads',
+    '13131313-1313-4131-8131-131313131313/license.jpg',
+    front_sha, known_id, 'v1', NULL);
+  PERFORM set_config('role','postgres', true);
+  IF got IS DISTINCT FROM front_sha THEN RAISE EXCEPTION 'known application upload was refused'; END IF;
+  IF (SELECT user_metadata->>'source' FROM storage.objects WHERE id = known_id) IS DISTINCT FROM 'wizard' THEN
+    RAISE EXCEPTION 'known application upload dropped user_metadata';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.documents
+    WHERE storage_bucket='license-uploads' AND storage_path='13131313-1313-4131-8131-131313131313/license.jpg'
+  ) THEN
+    RAISE EXCEPTION 'known application upload invented a documents row';
+  END IF;
+END
+$do$;
+      `);
+      throw new Error("__rollback_content_sha_probe__");
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("__rollback_content_sha_probe__")) integrationError = error;
+  }
+  ok(integrationError === null, integrationError instanceof Error ? integrationError.message : "the local function call passed");
 } finally {
   await sql.end();
 }
