@@ -27,6 +27,9 @@ import {
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
+import { MyRentalCard } from "@/components/portal/MyRentalCard";
+import { PORTAL_MY_RENTAL_ENABLED } from "@/lib/portal-my-rental";
+import { getPortalMyRental } from "@/lib/portal-my-rental.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
   listConditionMedia,
@@ -1353,6 +1356,19 @@ function PreRentalPanel({
   );
 }
 
+function PortalMyRental() {
+  const previewId = usePreviewDriver();
+  const fetchRental = usePortalRead(getPortalMyRental);
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ["portal-my-rental", previewId ?? "self"],
+    queryFn: () => fetchRental(),
+    enabled: PORTAL_MY_RENTAL_ENABLED === true,
+  });
+  if (PORTAL_MY_RENTAL_ENABLED !== true) return null;
+  if (isLoading || isError || !data?.active) return null;
+  return <MyRentalCard rental={data} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1367,6 +1383,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      <PortalMyRental />
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
