@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
+import { RENTAL_SUBSCRIPTION_COORDINATION_ENABLED } from '@/lib/record-rental-live-path';
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -182,11 +183,35 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
 
 // ─── Admin: start weekly rent autopay on a rental ─────────────────────────
 
+async function coordinatedAutopay(context: any, data: { rentalId: string; environment: StripeEnv }, action: 'start' | 'stop') {
+  if (!/^[0-9a-f-]{36}$/i.test(data.rentalId) || !['live', 'sandbox'].includes(data.environment)) throw new Error('Invalid rental scope');
+  const sessionId = context.claims?.session_id;
+  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Verified session required');
+  const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+  const { coordinateRentalSubscription } = await import('@/lib/rental-subscription-coordination.server');
+  return coordinateRentalSubscription({
+    authorize: async () => {
+      const { data: user, error } = await context.supabase.auth.getUser();
+      if (error || user?.user?.id !== context.userId) throw new Error('Session expired');
+      await assertAdmin(context);
+    },
+    rpc: async (name, args) => {
+      const { data, error } = await (supabaseAdmin as any).rpc(name, args);
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    stripe: createStripeClient(data.environment),
+  }, { ...data, actorId: context.userId, sessionId, action });
+}
+
 export const startRentalAutopay = createServerFn({ method: 'POST' })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { rentalId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true; subscriptionId: string } | { error: string }> => {
     try {
+      // rental_subscription_begin_v1 / finish_v1 do not exist until
+      // subscription-coordination-v1.sql. The flag-off path is today's Stripe call.
+      if (RENTAL_SUBSCRIPTION_COORDINATION_ENABLED) return await coordinatedAutopay(context, data, 'start');
       await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: rental } = await supabaseAdmin
@@ -254,6 +279,7 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
   .inputValidator((data: { rentalId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
     try {
+      if (RENTAL_SUBSCRIPTION_COORDINATION_ENABLED) return await coordinatedAutopay(context, data, 'stop');
       await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: rental } = await supabaseAdmin

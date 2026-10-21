@@ -4424,8 +4424,8 @@ export type Database = {
           card_last4: string | null
           card_on_file_at: string | null
           created_at: string
-          deposit_amount: number
-          deposit_held: boolean
+          deposit_amount: number | null
+          deposit_held: boolean | null
           deposit_notes: string | null
           deposit_refund_amount: number | null
           deposit_settled_at: string | null
@@ -4455,8 +4455,8 @@ export type Database = {
           card_last4?: string | null
           card_on_file_at?: string | null
           created_at?: string
-          deposit_amount?: number
-          deposit_held?: boolean
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
           deposit_notes?: string | null
           deposit_refund_amount?: number | null
           deposit_settled_at?: string | null
@@ -4486,8 +4486,8 @@ export type Database = {
           card_last4?: string | null
           card_on_file_at?: string | null
           created_at?: string
-          deposit_amount?: number
-          deposit_held?: boolean
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
           deposit_notes?: string | null
           deposit_refund_amount?: number | null
           deposit_settled_at?: string | null
