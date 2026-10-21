@@ -228,7 +228,8 @@ function collectionsReport(fromIso) {
   };
   return {
     collectionsComplete: true,
-    refreshedAt: new Date().toISOString(),
+    // 19:30 UTC is 3:30 PM in America/New_York. A UTC browser would show 7:30 PM.
+    refreshedAt: "2026-10-21T19:30:00.000Z",
     totals,
     successful: 1,
     failed: 0,
@@ -384,25 +385,100 @@ async function shotOf(locator, name) {
 
 const widthName = (viewport) => (viewport.width === 1280 ? "desktop-1280" : "phone-390");
 
-/** On a phone the toolbar is one sideways-scrolling row. Place it under the sticky header, and optionally scroll that row until Export CSV is in view. */
-async function framePayments(page, viewport, { showExport = false } = {}) {
+function normalizeClock(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+/** Fail before any PNG is written if the browser is not on Eastern time. */
+async function assertEastern(page) {
+  const seen = await page.evaluate(() => {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const clock = new Date("2026-10-21T19:30:00.000Z").toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return { zone, clock };
+  });
+  const clock = normalizeClock(seen.clock);
+  if (seen.zone !== "America/New_York" || clock !== "3:30 PM") {
+    throw new Error(`expected America/New_York and 3:30 PM, got ${seen.zone} and ${clock}`);
+  }
+  console.log("browser clock", seen.zone, clock);
+}
+
+async function assertPhoneToolbar(page, viewport) {
+  if (viewport.width >= 700) return;
+  const box = await page.locator(".admin-sticky-bar").boundingBox();
+  if (!box || box.y < 0 || box.y + 24 > viewport.height) {
+    throw new Error(`phone toolbar is outside the viewport (y=${box?.y ?? "missing"})`);
+  }
+  const text = await page.locator(".admin-sticky-bar").innerText();
+  for (const label of ["All", "Stripe", "Export CSV"]) {
+    if (!text.includes(label)) throw new Error(`phone toolbar is missing ${label}`);
+  }
+  const exportBox = await page.getByRole("button", { name: "Export CSV" }).boundingBox();
+  if (!exportBox || exportBox.y < 0 || exportBox.y + exportBox.height > viewport.height || exportBox.x < 0 || exportBox.x + 40 > viewport.width) {
+    throw new Error(`Export CSV is outside the phone viewport (${JSON.stringify(exportBox)})`);
+  }
+}
+
+async function scrollBelowChrome(page, locator) {
+  await locator.evaluate((el) => {
+    const headerRaw = getComputedStyle(document.documentElement).getPropertyValue("--admin-sticky-h");
+    const headerH = Number.parseFloat(headerRaw) || document.querySelector("header")?.offsetHeight || 0;
+    const bar = document.querySelector(".admin-sticky-bar");
+    const barH = bar ? bar.getBoundingClientRect().height : 0;
+    const top = window.scrollY + el.getBoundingClientRect().top - headerH - barH - 8;
+    window.scrollTo(0, Math.max(0, top));
+  });
+  await page.waitForTimeout(150);
+}
+
+/**
+ * Screenshot aid only. Below 768px the live stylesheet keeps this row
+ * non-sticky and sideways-scrolling, which hides Export CSV on a 390px phone.
+ * Inline styles here do not change the app.
+ */
+async function pinPhoneToolbar(page) {
+  await page.locator(".admin-sticky-bar").evaluate((el) => {
+    const set = (node, prop, value) => node.style.setProperty(prop, value, "important");
+    set(el, "position", "sticky");
+    set(el, "top", "var(--admin-sticky-h, 0px)");
+    set(el, "z-index", "15");
+    set(el, "background", "#fafafb");
+    set(el, "flex-wrap", "wrap");
+    set(el, "overflow", "visible");
+    set(el, "width", "100%");
+    set(el, "max-width", "100%");
+    set(el, "min-width", "0");
+    for (const child of el.children) {
+      set(child, "flex-shrink", "1");
+      set(child, "max-width", "100%");
+      set(child, "min-width", "0");
+      if (child.classList.contains("flex")) {
+        set(child, "flex-wrap", "wrap");
+        set(child, "overflow", "visible");
+        set(child, "width", "100%");
+      }
+    }
+    el.scrollLeft = 0;
+  });
+}
+
+/** On a phone, keep the whole filter row on screen. Do not slide it sideways to reveal Export CSV. */
+async function framePayments(page, viewport) {
   if (viewport.width < 700) {
-    await page.locator(".admin-sticky-bar").evaluate((el, revealExport) => {
+    await pinPhoneToolbar(page);
+    await page.locator(".admin-sticky-bar").evaluate((el) => {
       const headerRaw = getComputedStyle(document.documentElement).getPropertyValue("--admin-sticky-h");
       const headerH = Number.parseFloat(headerRaw) || document.querySelector("header")?.offsetHeight || 0;
+      // Measure the row in normal flow. A stuck sticky row reports the viewport
+      // position, which would leave the next section hidden underneath it.
+      el.style.setProperty("position", "static", "important");
       const top = window.scrollY + el.getBoundingClientRect().top - headerH;
       window.scrollTo(0, Math.max(0, top));
-      if (!revealExport) {
-        el.scrollLeft = 0;
-        return;
-      }
-      const button = [...el.querySelectorAll("button")].find((node) => (node.textContent || "").includes("Export CSV"));
-      if (!button) return;
-      const barBox = el.getBoundingClientRect();
-      const buttonBox = button.getBoundingClientRect();
-      el.scrollLeft += buttonBox.right - barBox.right + 8;
-    }, showExport);
+      el.style.setProperty("position", "sticky", "important");
+      el.scrollLeft = 0;
+    });
     await page.waitForTimeout(150);
+    await assertPhoneToolbar(page, viewport);
     return;
   }
   await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
@@ -412,6 +488,7 @@ async function prepare(viewport) {
   const opened = await open(viewport);
   const { page } = opened;
   await page.goto(`${BASE}/admin?tab=overview`, { waitUntil: "domcontentloaded" });
+  await assertEastern(page);
   await page.getByRole("heading", { name: "Lead Priorities" }).waitFor({ timeout: 30000 });
   await page.getByText("Dana Reyes").first().waitFor({ timeout: 15000 });
   const partial = page.getByText("Partial").first();
@@ -465,15 +542,26 @@ try {
     await page.getByText("Partial").first().waitFor();
     await framePayments(page, viewport);
     await shot(page, `${label}-payments-all`);
-    await page.getByRole("heading", { name: "Unmatched Payments" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
-    await page.waitForTimeout(200);
+    if (viewport.width < 700) await pinPhoneToolbar(page);
+    await scrollBelowChrome(page, page.getByRole("heading", { name: "Unmatched Payments" }));
+    await assertPhoneToolbar(page, viewport);
     await shot(page, `${label}-unmatched`);
-    await framePayments(page, viewport, { showExport: true });
+    await framePayments(page, viewport);
     await shotOf(page.locator(".admin-sticky-bar"), `${label}-export-csv`);
 
     await page.getByRole("button", { name: "Stripe", exact: true }).click();
     await page.getByRole("region", { name: "Stripe Collections" }).waitFor({ timeout: 15000 });
-    await framePayments(page, viewport);
+    await page.getByText("3:30 PM").first().waitFor({ timeout: 15000 });
+    if (viewport.width < 700) {
+      await pinPhoneToolbar(page);
+      await scrollBelowChrome(page, page.getByText("Last Successful:").first());
+    }
+    else await framePayments(page, viewport);
+    await assertPhoneToolbar(page, viewport);
+    const clockBox = await page.getByText("3:30 PM").first().boundingBox();
+    if (!clockBox || clockBox.y < 0 || clockBox.y + clockBox.height > viewport.height) {
+      throw new Error(`Eastern clock is outside the viewport (${JSON.stringify(clockBox)})`);
+    }
     await shot(page, `${label}-payments-stripe`);
 
     await page.getByRole("button", { name: "Venmo", exact: true }).click();
