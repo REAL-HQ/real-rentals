@@ -8,7 +8,27 @@
 -- and public.applications.approval_evidence_version. Identity-review rows
 -- remain, without the evidence payload. Run proposed/rollback/00-approval-data-export.sql
 -- first when those values should be kept. That export only reads.
+--
+-- UNUSED INSTALL, or an install whose approval_identity and verified rows
+-- were exported and then removed. The check restored below is the pre-step-0
+-- check. It rejects kind approval_identity and resolution verified. Rollback
+-- past 06b, including this file, is not a way to discard a used install while
+-- those rows are still in the table. Export them, migrate them, and remove
+-- them first. An empty install restores the original check and matches the
+-- pre-step-0 catalog.
 BEGIN;
+DO $guard$
+BEGIN
+  IF to_regclass('public.application_identity_reviews') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.application_identity_reviews
+    WHERE kind = 'approval_identity' OR resolution = 'verified'
+  ) THEN
+    RAISE EXCEPTION '00_rollback_unused_install_only'
+      USING ERRCODE = '55000',
+            HINT = 'Run proposed/rollback/00-approval-data-export.sql, migrate those rows, then remove them before this rollback.';
+  END IF;
+END
+$guard$;
 -- policies added by this step
 DROP POLICY IF EXISTS "approval_operations_executor_v1" ON "private"."approval_operations";
 -- policies removed or replaced by this step

@@ -3,10 +3,14 @@
 -- install creates.
 --
 -- expected/actual are present or absent. ok is true when they match.
--- Prerequisites, including private.approval_validate(uuid) and
--- private.approval_snapshot(uuid), are expected present. Objects the packet
--- and step 0 create are expected absent. storage.objects.name and the existing
--- condition-media bucket are expected present; step 17 does not create a bucket.
+-- Prerequisites already on a migrations baseline are expected present:
+-- the identity-review table, applications.deleted_at, waitlist holds,
+-- storage.objects, storage.objects.name, storage.objects.user_metadata jsonb,
+-- storage.objects.version text, the condition-media bucket, and a postgres
+-- role that is superuser or BYPASSRLS. The definer reads storage.objects.
+-- private.approval_validate(uuid) and private.approval_snapshot(uuid) are
+-- created by step 0. They are expected absent, with every object the packet
+-- creates. Step 17 does not create a bucket.
 
 SELECT 'public.application_identity_reviews' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
       SELECT 1 FROM pg_catalog.pg_class c
@@ -36,9 +40,9 @@ SELECT 'public.application_waitlist_holds' AS check_name, 'present' AS expected,
       WHERE n.nspname = 'public' AND c.relname = 'application_waitlist_holds' AND c.relkind IN ('r','p','v','m','S','f')
     )) = ('present' = 'present')) AS ok
 UNION ALL
-SELECT 'private.approval_validate(uuid)' AS check_name, 'present' AS expected, CASE WHEN (to_regprocedure('private.approval_validate(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_validate(uuid)') IS NOT NULL) = ('present' = 'present')) AS ok
+SELECT 'private.approval_validate(uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('private.approval_validate(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_validate(uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
-SELECT 'private.approval_snapshot(uuid)' AS check_name, 'present' AS expected, CASE WHEN (to_regprocedure('private.approval_snapshot(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_snapshot(uuid)') IS NOT NULL) = ('present' = 'present')) AS ok
+SELECT 'private.approval_snapshot(uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('private.approval_snapshot(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_snapshot(uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'storage.objects' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
       SELECT 1 FROM pg_catalog.pg_class c
@@ -58,6 +62,28 @@ SELECT 'storage.objects.name' AS check_name, 'present' AS expected, CASE WHEN (E
       WHERE table_schema = 'storage' AND table_name = 'objects' AND column_name = 'name'
     )) = ('present' = 'present')) AS ok
 UNION ALL
+SELECT 'storage.objects.user_metadata jsonb' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'storage' AND table_name = 'objects' AND column_name = 'user_metadata' AND udt_name = 'jsonb'
+    )) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'storage' AND table_name = 'objects' AND column_name = 'user_metadata' AND udt_name = 'jsonb'
+    )) = ('present' = 'present')) AS ok
+UNION ALL
+SELECT 'storage.objects.version text' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'storage' AND table_name = 'objects' AND column_name = 'version' AND udt_name = 'text'
+    )) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'storage' AND table_name = 'objects' AND column_name = 'version' AND udt_name = 'text'
+    )) = ('present' = 'present')) AS ok
+UNION ALL
+SELECT 'postgres bypassrls or superuser' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
+      SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'postgres' AND (rolsuper OR rolbypassrls)
+    )) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (
+      SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'postgres' AND (rolsuper OR rolbypassrls)
+    )) = ('present' = 'present')) AS ok
+UNION ALL
 SELECT 'storage.buckets condition-media' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'condition-media')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'condition-media')) = ('present' = 'present')) AS ok
 UNION ALL
 SELECT 'role rr_approval_executor' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_approval_executor')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_approval_executor')) = ('absent' = 'present')) AS ok
@@ -65,6 +91,8 @@ UNION ALL
 SELECT 'role rr_record_executor' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_record_executor')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_record_executor')) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'role rr_evidence_issuer' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_evidence_issuer')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_evidence_issuer')) = ('absent' = 'present')) AS ok
+UNION ALL
+SELECT 'public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'private.approval_object_version(uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('private.approval_object_version(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_object_version(uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL

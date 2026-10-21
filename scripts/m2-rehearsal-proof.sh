@@ -69,6 +69,18 @@ echo "catalog write guard: clean" | tee -a "$LOG"
 
 echo "STORAGE USER METADATA" | tee -a "$LOG"
 psqlq -c "ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS user_metadata jsonb;" >>"$LOG" 2>&1
+psqlq -c "ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS version text;" >>"$LOG" 2>&1
+
+echo "PREFLIGHT" | tee -a "$LOG"
+preflight_bad="$(psqlq -At -F '|' -f "$ROOT/proposed/m2-preflight.sql" | awk -F'|' '$4 != "t" { c++ } END { print c+0 }')"
+preflight_rows="$(psqlq -At -F '|' -f "$ROOT/proposed/m2-preflight.sql" | awk -F'|' 'NF { c++ } END { print c+0 }')"
+echo "preflight rows=$preflight_rows bad=$preflight_bad" | tee -a "$LOG"
+if [[ "$preflight_bad" != "0" ]]; then
+  psqlq -At -F '|' -f "$ROOT/proposed/m2-preflight.sql" | awk -F'|' '$4 != "t" { print }' | tee -a "$LOG"
+  echo "preflight failed" | tee -a "$LOG"
+  exit 1
+fi
+echo "preflight pass" | tee -a "$LOG"
 
 echo "BASELINE" | tee -a "$LOG"
 snap baseline
@@ -85,6 +97,7 @@ apply_own 19c-agreement-contract.sql; snap inst-19c
 apply_packet 20.sql; snap inst-20
 apply_packet extend.sql; snap inst-extend
 apply_packet return.sql; snap inst-return
+apply_own record-uploaded-content-sha.sql; snap inst-sha
 
 echo "PROOF" | tee -a "$LOG"
 if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
@@ -158,6 +171,7 @@ DELETE FROM auth.users WHERE id='12121212-1212-4121-8121-121212121212';
 COMMIT;
 SQL
 
+rollback_to record-uploaded-content-sha.sql inst-return
 rollback_to return-checklist.sql inst-extend
 rollback_to extend-rental.sql inst-20
 rollback_to 20-vehicle-swap.sql inst-19c
@@ -186,20 +200,121 @@ rollback_to 02-safe-release.sql inst-00
 
 echo "EXPORT" | tee -a "$LOG"
 psqlq <<'SQL' >>"$LOG" 2>&1
-INSERT INTO public.applications (id, full_name, email, phone, status)
-VALUES ('15151515-1515-4151-8151-151515151515','Export Driver','export@example.test','5550002222','reviewing');
+BEGIN;
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.applications (id, full_name, email, phone, status, approval_evidence_version)
+VALUES
+ ('15151515-1515-4151-8151-151515151515','Export Driver','export@example.test','5550002222','reviewing', 1),
+ ('19191919-1919-4191-8191-191919191919','Export Driver Two','export-two@example.test','5550003333','reviewing', 2);
 INSERT INTO private.approval_operations (operation_id, application_id, actor_id, evidence_version, requested_mode)
-VALUES ('16161616-1616-4161-8161-161616161616','15151515-1515-4151-8151-151515151515','15151515-1515-4151-8151-151515151515', 0, 'approve_only');
+VALUES
+ ('16161616-1616-4161-8161-161616161616','15151515-1515-4151-8151-151515151515','15151515-1515-4151-8151-151515151515', 1, 'approve_only'),
+ ('17171717-1717-4171-8171-171717171717','19191919-1919-4191-8191-191919191919','19191919-1919-4191-8191-191919191919', 2, 'approve_invite');
+INSERT INTO public.application_identity_reviews (
+ id, application_id, kind, status, resolution, resolved_by, resolved_at, approval_evidence
+)
+SELECT * FROM (
+  SELECT
+   '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a'::uuid AS id,
+   '15151515-1515-4151-8151-151515151515'::uuid AS application_id,
+   'approval_identity' AS kind, 'resolved' AS status, 'verified' AS resolution,
+   '15151515-1515-4151-8151-151515151515'::uuid AS resolved_by,
+   timestamptz '2026-10-20 12:00:00+00' AS resolved_at,
+   jsonb_build_object(
+    'application','15151515-1515-4151-8151-151515151515',
+    'version', 1,
+    'identity', jsonb_build_object('license_number','D1234567','license_expiration','2027-12-31'),
+    'front', jsonb_build_object(
+     'id','55555555-5555-4555-8555-555555555555','bucket','driver-docs','path','export-a-front.jpg',
+     'sha256', encode(extensions.digest(convert_to('m2-export-a-front','UTF8'),'sha256'),'hex'),
+     'reviewer','15151515-1515-4151-8151-151515151515','reviewed_at','2026-10-20T12:00:00Z',
+     'object_version', jsonb_build_object(
+      'bucket','driver-docs','path','export-a-front.jpg',
+      'sha256', encode(extensions.digest(convert_to('m2-export-a-front','UTF8'),'sha256'),'hex'),
+      'version','v1')),
+    'back', jsonb_build_object(
+     'id','66666666-6666-4666-8666-666666666666','bucket','driver-docs','path','export-a-back.jpg',
+     'sha256', encode(extensions.digest(convert_to('m2-export-a-back','UTF8'),'sha256'),'hex'),
+     'reviewer','15151515-1515-4151-8151-151515151515','reviewed_at','2026-10-20T12:00:00Z',
+     'object_version', jsonb_build_object(
+      'bucket','driver-docs','path','export-a-back.jpg',
+      'sha256', encode(extensions.digest(convert_to('m2-export-a-back','UTF8'),'sha256'),'hex'),
+      'version','v1'))
+   ) AS approval_evidence
+  UNION ALL
+  SELECT
+   '1b1b1b1b-1b1b-41b1-81b1-1b1b1b1b1b1b'::uuid,
+   '19191919-1919-4191-8191-191919191919'::uuid,
+   'approval_identity', 'resolved', 'verified',
+   '19191919-1919-4191-8191-191919191919'::uuid,
+   timestamptz '2026-10-20 12:05:00+00',
+   jsonb_build_object(
+    'application','19191919-1919-4191-8191-191919191919',
+    'version', 2,
+    'identity', jsonb_build_object('license_number','D7654321','license_expiration','2028-06-30'),
+    'front', jsonb_build_object(
+     'id','55555555-5555-4555-8555-555555555551','bucket','driver-docs','path','export-b-front.jpg',
+     'sha256', encode(extensions.digest(convert_to('m2-export-b-front','UTF8'),'sha256'),'hex'),
+     'reviewer','19191919-1919-4191-8191-191919191919','reviewed_at','2026-10-20T12:05:00Z',
+     'object_version', jsonb_build_object(
+      'bucket','driver-docs','path','export-b-front.jpg',
+      'sha256', encode(extensions.digest(convert_to('m2-export-b-front','UTF8'),'sha256'),'hex'),
+      'version','v1')),
+    'back', jsonb_build_object(
+     'id','66666666-6666-4666-8666-666666666661','bucket','driver-docs','path','export-b-back.jpg',
+     'sha256', encode(extensions.digest(convert_to('m2-export-b-back','UTF8'),'sha256'),'hex'),
+     'reviewer','19191919-1919-4191-8191-191919191919','reviewed_at','2026-10-20T12:05:00Z',
+     'object_version', jsonb_build_object(
+      'bucket','driver-docs','path','export-b-back.jpg',
+      'sha256', encode(extensions.digest(convert_to('m2-export-b-back','UTF8'),'sha256'),'hex'),
+      'version','v1'))
+   )
+) rows;
+COMMIT;
 SQL
 psqlq -f "$ROOT/proposed/rollback/00-approval-data-export.sql" | tee "$DUMPS/export.out" | tee -a "$LOG"
-if ! grep -q '16161616-1616-4161-8161-161616161616' "$DUMPS/export.out"; then
-  echo "export did not emit the approval operation" | tee -a "$LOG"
-  exit 1
-fi
+for token in \
+  16161616-1616-4161-8161-161616161616 \
+  17171717-1717-4171-8171-171717171717 \
+  1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a \
+  1b1b1b1b-1b1b-41b1-81b1-1b1b1b1b1b1b \
+  15151515-1515-4151-8151-151515151515 \
+  19191919-1919-4191-8191-191919191919
+do
+  if ! grep -q "$token" "$DUMPS/export.out"; then
+    echo "export did not emit $token" | tee -a "$LOG"
+    exit 1
+  fi
+done
 echo "export pass" | tee -a "$LOG"
 
+echo "00 REFUSAL" | tee -a "$LOG"
+set +e
+psqlq -f "$ROOT/proposed/rollback/00-approval-boundary.sql" >>"$LOG" 2>&1
+refuse00_status=$?
+set -e
+if [[ "$refuse00_status" -eq 0 ]]; then
+  echo "00 rollback committed while approval_identity rows existed" | tee -a "$LOG"
+  exit 1
+fi
+if ! grep -q '00_rollback_unused_install_only' "$LOG"; then
+  echo "00 rollback failed for a different reason" | tee -a "$LOG"
+  exit 1
+fi
+echo "00 refusal pass" | tee -a "$LOG"
+psqlq <<'SQL' >>"$LOG" 2>&1
+BEGIN;
+SET LOCAL session_replication_role = replica;
+DELETE FROM public.application_identity_reviews
+ WHERE id IN (
+  '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a',
+  '1b1b1b1b-1b1b-41b1-81b1-1b1b1b1b1b1b'
+ );
+COMMIT;
+SQL
+
 rollback_to 00-approval-boundary.sql inst-01
-psqlq -c "DELETE FROM public.applications WHERE id='15151515-1515-4151-8151-151515151515';" >>"$LOG" 2>&1
+psqlq -c "DELETE FROM public.applications WHERE id IN ('15151515-1515-4151-8151-151515151515','19191919-1919-4191-8191-191919191919');" >>"$LOG" 2>&1
 rollback_to 01-auth-binding.sql baseline
 
 echo "FINAL COUNTS" | tee -a "$LOG"

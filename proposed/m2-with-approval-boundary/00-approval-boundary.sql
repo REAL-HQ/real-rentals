@@ -22,14 +22,15 @@ BEGIN;
 -- No historical rows are marked verified.
 -- Storage attestation. The excluded script left this as a deny stub. The snapshot
 -- accepts only bucket, path, sha256, and a non-empty version taken from the object
--- that is actually stored for the document. This catalog's storage.objects has no
--- version column (Supabase's provider column is used when present). metadata.version,
--- then metadata.eTag, then the object id are the version token. supabase-js stores
--- the upload metadata option in user_metadata (storage migration 0025). The metadata
--- column is system data (size, mimetype, cacheControl, eTag) and is not a sha
--- fallback: a sha written only there is not the object the client stored. The
--- object must carry the same sha256 the document row claims. A missing, ambiguous,
--- or mismatched object still raises approval_storage_version_unverified.
+-- that is actually stored for the document. When storage.objects.version exists
+-- and is non-blank, that provider column is the token. The rehearsal adds that
+-- text column. Otherwise metadata.version, then metadata.eTag, then the object
+-- id are the token. supabase-js stores the upload metadata option in
+-- user_metadata (storage migration 0025). The metadata column is system data
+-- (size, mimetype, cacheControl, eTag) and is not a sha fallback: a sha written
+-- only there is not the object the client stored. The object must carry the
+-- same sha256 the document row claims. A missing, ambiguous, or mismatched
+-- object still raises approval_storage_version_unverified.
 CREATE FUNCTION private.approval_object_version(_document uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE doc public.documents%ROWTYPE; obj_id uuid; obj_bucket text; obj_name text; obj_meta jsonb; obj_user jsonb;

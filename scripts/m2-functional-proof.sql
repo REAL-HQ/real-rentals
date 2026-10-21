@@ -155,16 +155,19 @@ EXCEPTION WHEN OTHERS THEN
  RAISE NOTICE 'RESULT c authenticated pass %', SQLERRM;
 END $$;
 
--- Flag-on upload path: hash the stored bytes and record them the way the
--- client does. No hex literal. metadata stays free of sha256.
+-- Flag-on upload path: the app downloads the object, hashes the bytes, and
+-- public.record_uploaded_content_sha merges user_metadata.sha256. This
+-- rehearsal records that result in SQL. It does not re-upload the file.
+-- metadata stays free of sha256. version is the provider token.
 UPDATE public.documents d
 SET content_sha256 = encode(extensions.digest(b.bytes, 'sha256'), 'hex')
 FROM upload_bytes b
 WHERE d.id = b.doc AND b.slot IN ('front','back');
-INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata)
+INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version)
 SELECT 'driver-docs', b.path,
  jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex')),
- jsonb_build_object('mimetype', 'image/jpeg', 'size', octet_length(b.bytes))
+ jsonb_build_object('mimetype', 'image/jpeg', 'size', octet_length(b.bytes)),
+ 'v1'
 FROM upload_bytes b WHERE b.slot IN ('front','back');
 UPDATE public.documents
 SET review_status='verified', reviewed_by='11111111-1111-4111-8111-111111111111', reviewed_at='2026-10-20 12:00:00+00'
@@ -202,11 +205,12 @@ BEGIN
   'completed-v1/cccccccc-cccc-4ccc-8ccc-cccccccccccc/' || sha || '.pdf',
   sha, true
  );
- INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata) VALUES (
+ INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version) VALUES (
   'rental-agreements',
   'completed-v1/cccccccc-cccc-4ccc-8ccc-cccccccccccc/' || sha || '.pdf',
   jsonb_build_object('sha256', sha),
-  jsonb_build_object('mimetype', 'application/pdf')
+  jsonb_build_object('mimetype', 'application/pdf'),
+  'v1'
  );
  INSERT INTO public.agreements (
   id, application_id, vehicle_id, title, body, status, signed_at, document_id, completed_document_id,
@@ -258,11 +262,12 @@ SELECT
  encode(extensions.digest(b.bytes, 'sha256'), 'hex'),
  true
 FROM upload_bytes b WHERE b.slot='agreement';
-INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata)
+INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version)
 SELECT 'rental-agreements',
  'immutable-v1/99999999-9999-4999-8999-999999999999/' || encode(extensions.digest(b.bytes, 'sha256'), 'hex') || '.pdf',
  jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex')),
- jsonb_build_object('mimetype', 'application/pdf', 'size', octet_length(b.bytes))
+ jsonb_build_object('mimetype', 'application/pdf', 'size', octet_length(b.bytes)),
+ 'v1'
 FROM upload_bytes b WHERE b.slot='agreement';
 INSERT INTO public.agreements (
  id, application_id, vehicle_id, title, body, status, signed_at, document_id, completed_document_id,
@@ -315,20 +320,76 @@ SELECT set_config('record.application_id','44444444-4444-4444-8444-444444444444'
 SELECT set_config('record.vehicle_id','77777777-7777-4777-8777-777777777777', true);
 
 DO $$
-DECLARE snap jsonb; rid uuid; approved jsonb; recorded jsonb; ctx text;
+DECLARE snap jsonb; rid uuid;
 BEGIN
  snap := public.preview_approval_identity('44444444-4444-4444-8444-444444444444');
  rid := public.verify_approval_identity('44444444-4444-4444-8444-444444444444', snap, 'license matches the applicant');
+ IF rid IS NULL THEN RAISE EXCEPTION 'verify returned null'; END IF;
+ RAISE NOTICE 'RESULT d verified %', rid;
+END $$;
+
+-- A hosted upsert replaces the object and advances storage.objects.version.
+-- This UPDATE is that version change. The stored review still says v1.
+RESET SESSION AUTHORIZATION;
+UPDATE storage.objects SET version = 'v2'
+ WHERE bucket_id = 'driver-docs'
+   AND name = '44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
+
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+SELECT set_config('record.application_id','44444444-4444-4444-8444-444444444444', true);
+
+DO $$
+DECLARE ctx text; ver bigint;
+BEGIN
+ SELECT approval_evidence_version INTO ver FROM public.applications WHERE id='44444444-4444-4444-8444-444444444444';
+ PERFORM public.approve_application_checked(
+  '44444444-4444-4444-8444-444444444444', ver,
+  'bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc', 'approve_only');
+ RAISE EXCEPTION 'version change was accepted';
+EXCEPTION WHEN OTHERS THEN
+ IF SQLERRM NOT LIKE '%positive_identity_required%' THEN
+  GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
+  RAISE NOTICE 'RESULT version context %', ctx;
+  RAISE;
+ END IF;
+ RAISE NOTICE 'RESULT version upsert refused %', SQLERRM;
+END $$;
+
+RESET SESSION AUTHORIZATION;
+UPDATE storage.objects SET version = 'v1'
+ WHERE bucket_id = 'driver-docs'
+   AND name = '44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
+
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+SELECT set_config('record.application_id','44444444-4444-4444-8444-444444444444', true);
+SELECT set_config('record.vehicle_id','77777777-7777-4777-8777-777777777777', true);
+
+DO $$
+DECLARE approved jsonb; recorded jsonb; ctx text; ver bigint;
+BEGIN
+ SELECT approval_evidence_version INTO ver FROM public.applications WHERE id='44444444-4444-4444-8444-444444444444';
  approved := public.approve_application_checked(
   '44444444-4444-4444-8444-444444444444',
-  (SELECT approval_evidence_version FROM public.applications WHERE id='44444444-4444-4444-8444-444444444444'),
+  ver,
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','approve_only');
  recorded := public.record_existing_rental_tx(
   '88888888-8888-4888-8888-888888888888',
   '44444444-4444-4444-8444-444444444444',
   '77777777-7777-4777-8777-777777777777',
   '2026-10-01 15:00:00+00', 250.00, NULL, NULL, NULL, 'seeded existing rental');
- RAISE NOTICE 'RESULT d pass review=% approved=% recorded=%', rid, approved, recorded;
+ RAISE NOTICE 'RESULT d pass approved=% recorded=%', approved, recorded;
 EXCEPTION WHEN OTHERS THEN
  GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
  RAISE NOTICE 'RESULT d fail %', SQLERRM;

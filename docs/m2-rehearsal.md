@@ -121,7 +121,7 @@ Each script ran in its own transaction and committed. After step 1 rolled back:
 - `pg_dump --schema-only` matched the pre-packet baseline dump. The comparison ignores the per-dump `\restrict` / `\unrestrict` token and the `Dumped from` / `Dumped by` comment lines, which change on every dump.
 - No `rr_%` roles remained. Roles are cluster-wide and are not part of `pg_dump --schema-only`.
 
-The rollback scripts restore replaced function bodies, the original `application_identity_reviews_resolution_check`, and `NOT NULL` on `rentals.deposit_amount` and `rentals.deposit_held`. They drop objects the step added. Privilege text is written back from the pre-step catalog, and `pg_shdepend` rows for a role the step created are removed so `DROP ROLE` can succeed after that rewrite.
+The rollback scripts restore replaced function bodies, the original `application_identity_reviews_resolution_check`, and `NOT NULL` on `rentals.deposit_amount` and `rentals.deposit_held`. They drop objects the step added. Privilege text is written back from the pre-step catalog. Rollback 01 does not delete from `pg_shdepend`. `DROP OWNED BY` plus `DROP ROLE` removes `rr_approval_executor`.
 
 ## Fixes
 
@@ -273,7 +273,7 @@ The seed transaction was rolled back. Schema rollback then ran return, extend, 2
 
 Triggers stayed on for the install and for `scripts/m2-functional-proof.sql`. The only `session_replication_role = replica` use is the unused-install fixture under Rollbacks. `approval-boundary.local.sql` is still the verbatim excluded script. Packet files were not edited.
 
-`private.approval_object_version` now reads the one `storage.objects` row for the document's bucket and path. It returns that object's bucket, path, and sha256, and a version token: the provider `version` column when this catalog has one, otherwise `metadata.version`, then `metadata.eTag`, then the object id. The object must carry the same sha256 the document row claims. A missing or mismatched object still raises `approval_storage_version_unverified`. This database's `storage.objects` has no `version` column, so the rehearsal token is the object id.
+`private.approval_object_version` now reads the one `storage.objects` row for the document's bucket and path. It returns that object's bucket, path, and sha256, and a version token: `storage.objects.version` when that column exists and is non-blank, otherwise `metadata.version`, then `metadata.eTag`, then the object id. The object must carry the same sha256 the document row claims, in `user_metadata`. A missing or mismatched object still raises `approval_storage_version_unverified`. The rehearsal adds `version text` before the baseline, the same provider column hosted Storage has. License objects are inserted at `v1`. After verify, setting the front object to `v2` is the hosted upsert's version change, and `approve_application_checked` raises `positive_identity_required` because the fresh snapshot no longer matches the stored review. Putting the version back to `v1` lets the success path approve.
 
 `private.approval_evidence_changed` stays owned by the table owner. Under step 10 the executor's application policy calls `approval_actor` and requires `record.application_id`, so a driver upload cannot bump the version as `rr_approval_executor`. The guard still rejects every direct write of `approval_evidence_version`. It allows only a nested update that adds exactly 1, which is the trigger's own statement. `private.integrity_serialize_v1` is security definer for the same reason: it only takes `approval_lock`, and step 1 revokes that function from `authenticated` and `service_role`.
 
@@ -281,17 +281,17 @@ Triggers stayed on for the install and for `scripts/m2-functional-proof.sql`. Th
 
 Step 6's check rejects `kind = 'approval_identity'` with `resolution = 'verified'`. That is the row `approval_validate` reads. `06b-approval-identity-check.sql` keeps the `positive_license_v1` arm and the other-kind arm, and adds the step 0 approval-identity shape with `positive_evidence_v1` null.
 
-Step 19b leaves the four-argument `record_agreement_evidence` as a deny-all. `19c-agreement-contract.sql` replaces that body. It locks the application's unlinked agreements, requires exactly one, and returns that agreement id only when the signed archived document, the storage object, the vehicle, and `merge_data.record_rental_terms_v1` match the call. The document bucket must be `rental-agreements`, the path must be `immutable-v1/<document id>/<sha>.pdf`, and exactly one `storage.objects` row in that bucket at that path must carry `metadata.sha256` or `metadata.content_sha256` equal to the agreement sha. Any other case still raises `agreement_contract_unverified`. The two-argument overload is unchanged.
+Step 19b leaves the four-argument `record_agreement_evidence` as a deny-all. `19c-agreement-contract.sql` replaces that body. It locks the application's unlinked agreements, requires exactly one, and returns that agreement id only when the signed archived document, the storage object, the vehicle, and `merge_data.record_rental_terms_v1` match the call. The document bucket must be `rental-agreements`, the path must be `immutable-v1/<document id>/<sha>.pdf`, and exactly one `storage.objects` row in that bucket at that path must carry `user_metadata.sha256` or `user_metadata.content_sha256` equal to the agreement sha. `metadata` is system data and is not a fallback. Any other case still raises `agreement_contract_unverified`. The two-argument overload is unchanged.
 
 `confirmDocumentUpload` and `registerDocument` do not set `content_sha256` while `DOCUMENT_CONTENT_SHA256_ENABLED` is false. Supabase storage metadata does not carry a sha256 on its own. The earlier proof at `2362f2b` hand-seeded both sides in `/tmp/m2-proof.sql` after the upload-shaped inserts: `UPDATE public.documents SET content_sha256` to the literals `1111…1111` and `2222…2222`, then `INSERT INTO storage.objects` with those same literals in `metadata.sha256`. The agreement row was inserted already at `immutable-v1/…` with a literal sha. No packet step hashes driver-upload bytes. Step 9 `bind_document_integrity_v1` writes `content_sha256` only when an issuer supplies a sha and rebinds the row onto `immutable-v1`. After step 19, `finalized_archive_document_v1` refuses that path change on a document whose path matches `^(immutable|completed)-v1/` or that an agreement with a sha already points at.
 
-The production path for license bytes is the flag in `src/lib/document-content-sha.ts`. It stays false. When an owner changes it and rebuilds, `recordUploadedContentSha` downloads the uploaded object, SHA-256s the bytes, re-uploads with `metadata.sha256`, and `confirmDocumentUpload` / `registerDocument` store that hex on `documents.content_sha256`. No environment variable opens it. That flag is not on the release line yet. It needs its own dark pull request before anyone turns it on. No SQL.
+The production path for license bytes is the flag in `src/lib/document-content-sha.ts`. It stays false. When an owner changes it and rebuilds, `recordUploadedContentSha` calls Storage API `info` and `download`, SHA-256s those bytes, and calls `public.record_uploaded_content_sha`. That function merges `user_metadata.sha256` with `jsonb ||` only when the object's id and version, or `updated_at` when version is blank, still match the hashed row. It does not re-upload the file and it does not `UPDATE storage.objects` through PostgREST. `confirmDocumentUpload` / `registerDocument` store the returned hex on `documents.content_sha256`. No environment variable opens the flag. The function is `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql`, an own-transaction step. It is not installed on hosted.
 
-Today's eSign does not reach `immutable-v1`. With `SIGNED_ARCHIVE_V1_ENABLED` false it writes `{applicationId}/agreement-{id}.pdf` and does not set `documents.content_sha256`. With that flag true, `archiveCompletedV1` writes `completed-v1/<document id>/<file sha>.pdf`. Step 9 cannot move either path after step 19. The missing app change, not done in this rehearsal and not a second signing path, is an initial eSign insert of the document and the storage object already at `immutable-v1/<document id>/<pdf sha>.pdf` in bucket `rental-agreements`, with `content_sha256` and `metadata.sha256` equal to the PDF hash, before the agreement row is archived with that sha.
+With `SIGNED_ARCHIVE_V1_ENABLED` false and `ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED` false, eSign still writes `{applicationId}/agreement-{id}.pdf` and does not set `documents.content_sha256`. The immutable-v1 writer exists now, behind `ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED`, which stays false. `SIGNED_ARCHIVE_V1_ENABLED` must stay false when immutable-v1 is on: `archiveDocument` checks that flag first and runs completed-v1, so this writer does not. With immutable-v1 on, the first insert is already `immutable-v1/<document id>/<pdf sha>.pdf` in `rental-agreements`, `content_sha256` and `user_metadata.sha256` are the PDF hash, and a failed attempt does not delete the document or the object. With only `SIGNED_ARCHIVE_V1_ENABLED` true, `archiveCompletedV1` writes `completed-v1/<document id>/<file sha>.pdf`. Step 9 cannot move either path after step 19.
 
 ### Install order
 
-Packet files are applied with `psql -v ON_ERROR_STOP=1 -1 -f`. They have no transaction wrapper. `00-approval-boundary.sql`, `06b-approval-identity-check.sql`, `10b-approval-executor-writes.sql`, and `19c-agreement-contract.sql` each contain their own `BEGIN`/`COMMIT`. Run those with `ON_ERROR_STOP` and without `psql -1`.
+Install mode is `proposed/INSTALL.md`. Packet files, including `17.sql`, are applied with `psql -v ON_ERROR_STOP=1 -1 -f`. They have no transaction wrapper. `17.sql` is applied that way by the local proof. Do not run it on hosted Storage. `00-approval-boundary.sql`, `06b-approval-identity-check.sql`, `10b-approval-executor-writes.sql`, `19c-agreement-contract.sql`, and `record-uploaded-content-sha.sql` each contain their own `BEGIN`/`COMMIT`. Run those with `ON_ERROR_STOP` and without `psql -1`. Rollbacks are the same, except the read-only export. Preflight is one `SELECT`, without `-1`.
 
 1. `proposed/m2-packet/01.sql`
 2. `proposed/m2-with-approval-boundary/00-approval-boundary.sql`
@@ -303,13 +303,15 @@ Packet files are applied with `psql -v ON_ERROR_STOP=1 -1 -f`. They have no tran
 8. Packet step 19b
 9. `19c-agreement-contract.sql`
 10. Packet step 20, extend rental, return checklist
+11. `record-uploaded-content-sha.sql` after the return checklist. The proof rolls it back before the return checklist so the privilege dumps stay comparable.
 
 | File | SHA-256 |
 | --- | --- |
-| `00-approval-boundary.sql` | `8b3abf8aea2a95a0f91cd5439e54326945a675bcfef508be0b04acc28b2b6355` |
+| `00-approval-boundary.sql` | `0176cc57bfa24ee049e85d7ea48d01f018d02257556d0d2c7fa40b12486c33f9` |
 | `06b-approval-identity-check.sql` | `48a97ec52eff7ccab70684ca40f3147dca83bc53d32970ee35061914c3e113c6` |
 | `10b-approval-executor-writes.sql` | `53003c593a65bc6bfa9cdf6166d2fd30929ca7ff37081ddce2c4d09d2d5b1251` |
 | `19c-agreement-contract.sql` | `938c5de9eda4c70897221ead5ddcc5cd235745664ea47825f5ce41c201579e42` |
+| `record-uploaded-content-sha.sql` | `9b2f9da3441d5f34c1aab7f165ef2814b777483df2c5431f8128df726251a683` |
 
 `approval-boundary.local.sql` is unchanged: `90e1ca62274aa59df8c48de8953827e61523cf11a2c82e7be2f6e6ce780d5deb`.
 
@@ -365,13 +367,13 @@ Each rollback was applied on its own and compared with `pg_dump --schema-only --
 
 Rollback 06b is unused-install-only. With one `approval_identity` / `verified` row present, the script raised `06b_rollback_unused_install_only` and left the 06b check in place. The safe post-use procedure is to leave 06b installed and not delete the review. That fixture used `session_replication_role = replica` only so the insert could pass the executor trigger. The check constraint still applied. The row was removed before the clean rollback chain.
 
-Rollback 00 drops `private.approval_operations` and the columns `application_identity_reviews.approval_evidence` and `applications.approval_evidence_version`. Identity-review rows remain, without the evidence payload. `proposed/rollback/00-approval-data-export.sql` is optional and read-only. Run it first when those values should be kept. On this rehearsal it emitted the seeded operation `16161616-1616-4161-8161-161616161616` before rollback 00 dropped the table.
+Rollback 00 drops `private.approval_operations` and the columns `application_identity_reviews.approval_evidence` and `applications.approval_evidence_version`. Identity-review rows remain, without the evidence payload. The check it restores rejects `kind = 'approval_identity'` and `resolution = 'verified'`. Rollback past 06b, including this file, is for an unused install, or for an install whose `approval_identity` and `verified` rows were exported and then removed. With two such reviews present the script raises `00_rollback_unused_install_only` and leaves step 0 in place. `proposed/rollback/00-approval-data-export.sql` is read-only. On this rehearsal, before that refusal, it emitted two operations (`16161616-1616-4161-8161-161616161616`, `17171717-1717-4171-8171-171717171717`), two reviews (`1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a`, `1b1b1b1b-1b1b-41b1-81b1-1b1b1b1b1b1b`), and two applications whose `approval_evidence_version` is not 0. Those reviews were removed only after the export, and only so the empty-install rollback could match the baseline.
 
 Rollback 01 no longer deletes from `pg_shdepend`. `DROP OWNED BY` plus `DROP ROLE` removes `rr_approval_executor`. Rollback 10 revokes the schema, function, and column privileges step 10 added, and it leaves the step 6 execute grants and the step 0 `USAGE` on `private`.
 
 Rollbacks 03, 05, 07, 09, 11, and 14 use `REVOKE` and `GRANT` only. They do not assign `nspacl`, `attacl`, `proacl`, or `relacl`, and they do not `UPDATE`, `DELETE`, or `INSERT` `pg_catalog` tables. Rollback 03 revokes `rr_record_executor` and drops the role. `REVOKE ALL` removes step 3's `CREATE` on `private` and `public` and leaves step 0's `USAGE` for `rr_approval_executor`. Rollback 11 revokes only the `USAGE`, function, and column privileges step 11 granted to `rr_record_executor`. It leaves step 3's `CREATE`, step 7's execute grants on `license_snapshot_v1` and `validate_license_v1`, and the column grants from steps 6, 9, 10, and 10b, including `rr_approval_executor` `UPDATE` on `applications.status`. Rollback 07 revokes execute on `license_snapshot_v1` and `validate_license_v1` from `rr_evidence_issuer` and `rr_record_executor`. `record_identity_reader_v2` is dropped with the function. Rollback 09 revokes the privileges step 9 granted to `rr_evidence_issuer`. It leaves step 5's `USAGE` on `private` and step 6's execute grant on `bind_document_integrity_v1`. Rollback 14 revokes the column selects step 14 granted to `rr_evidence_issuer` and leaves the earlier grants for `rr_approval_executor`, `rr_record_executor`, `anon`, and `authenticated`. Rollback 05 still grants each leftover privilege and revokes it in the same transaction, so a shared-dependency row cannot block `DROP ROLE`. The committed privileges match the pre-step dump.
 
-`scripts/m2-rehearsal-proof.sh` starts with a catalog-write guard over `proposed/`. A fresh local run matched every per-step privilege dump, including 07 against the post-step-06b dump, 09 against the post-step-8 dump, and 14 against the post-step-13 dump. Final counts were 0 `rr_%` roles, 0 applications, and 0 approval functions. The local `storage.objects` table had no `user_metadata` column; the proof adds the column storage migration 0025 adds, before the baseline dump, so every comparison includes it.
+`scripts/m2-rehearsal-proof.sh` starts with a catalog-write guard over `proposed/`. A fresh local run matched every per-step privilege dump, including 07 against the post-step-06b dump, 09 against the post-step-8 dump, and 14 against the post-step-13 dump. Final counts were 0 `rr_%` roles, 0 applications, and 0 approval functions. The local `storage.objects` table had no `user_metadata` or `version` column; the proof adds `user_metadata jsonb` and `version text` before the baseline dump, so every comparison includes them. `scripts/m2-baseline-builder.sh` reproduces that baseline from a database already loaded with `supabase/migrations`. It applies Drizzle `0014` through `0023` only when `application_identity_reviews` is missing, and it does not create `approval_validate` or `approval_snapshot`.
 
 ## Step 0 install and rollback
 
@@ -410,15 +412,13 @@ SHA-256 of the installable step 0 file at that rehearsal: `a6b749ce3b3a711750081
 
 ## Preflight
 
-`proposed/m2-preflight.sql` is a single read-only `SELECT`. `ok` is true when `actual` equals `expected`.
+`proposed/m2-preflight.sql` is a single read-only `SELECT`. `ok` is true when `actual` equals `expected`. The proof runs it after adding `user_metadata` and `version`, and before install. The run recorded here was 222 rows and every row was `ok`.
 
-Prerequisites are expected `present`: the three Drizzle objects, `private.approval_validate(uuid)`, `private.approval_snapshot(uuid)`, `storage.objects`, `storage.objects.name`, and the existing `condition-media` bucket. Step 17 does not create a bucket. It requires `storage.objects.name` and adds `private.storage_integrity_v1` plus two triggers, which the preflight expects to be `absent` before install.
+Prerequisites expected `present`: the three Drizzle objects, `storage.objects`, `storage.objects.name`, `storage.objects.user_metadata` as `jsonb`, `storage.objects.version` as `text`, the existing `condition-media` bucket, and a `postgres` role that is superuser or `BYPASSRLS`. `private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are created by step 0. Before that step they are expected `absent`. Step 17 does not create a bucket. It requires `storage.objects.name` and adds `private.storage_integrity_v1` plus two triggers, which the preflight expects to be `absent` before install. `public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is also expected `absent` until its own file is applied.
 
 Objects the packet and step 0 create are expected `absent`.
 
-### Baseline
-
-Production-matching baseline. 218 rows. 216 are `ok`. The two approval functions are the required prerequisites that are still absent.
+The table below is an earlier run. It expected the two approval functions to be present, and it counted 218 rows with 216 `ok`. That expectation is withdrawn.
 
 ```
                                                              check_name                                                             | expected | actual  | ok 
@@ -646,7 +646,7 @@ Production-matching baseline. 218 rows. 216 are `ok`. The two approval functions
 
 ### After step 0 and the packet
 
-Same 218 rows. The eight prerequisites are `present` and `ok`. The 210 collision rows are `present`, so `ok` is false.
+Same 218 rows from that earlier file. It treated eight prerequisites as expected present, including the two approval functions step 0 creates. The current preflight expects those two absent before step 0. After install, the collision rows are `present`, so `ok` is false.
 
 ```
                                                              check_name                                                             | expected | actual  | ok 

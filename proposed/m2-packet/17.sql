@@ -1,4 +1,4 @@
--- REQUIRED SEPARATE STORAGE-OWNER INSTALLATION. Not executed on hosted Storage.
+-- Local rehearsal applies this file with psql -1. Do not run it on hosted Storage.
 -- New namespace only; no legacy paths, policy grants or security 0031 modifications.
 CREATE FUNCTION private.storage_integrity_v1() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN

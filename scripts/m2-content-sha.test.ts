@@ -8,9 +8,18 @@ import { DOCUMENT_CONTENT_SHA256_ENABLED, contentSha256Hex } from "../src/lib/do
 
 const PROOF = new URL("./m2-functional-proof.sql", import.meta.url);
 const proof = readFileSync(PROOF, "utf8");
+const hasher = readFileSync(new URL("../src/lib/document-content-sha.ts", import.meta.url), "utf8");
 
 if (DOCUMENT_CONTENT_SHA256_ENABLED !== false) {
   throw new Error("DOCUMENT_CONTENT_SHA256_ENABLED must stay false");
+}
+if (hasher.includes(".upload(")) throw new Error("hasher re-uploads the object");
+if (hasher.includes('schema("storage")') || hasher.includes("schema('storage')")) {
+  throw new Error("hasher updates storage.objects through PostgREST");
+}
+if (hasher.includes('.from("objects")')) throw new Error("hasher selects storage.objects");
+if (!hasher.includes('rpc("record_uploaded_content_sha"')) {
+  throw new Error("hasher does not call record_uploaded_content_sha");
 }
 
 if (/[0-9a-f]{64}/i.test(proof)) {

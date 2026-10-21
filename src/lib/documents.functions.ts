@@ -224,7 +224,7 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
-  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path, args.mimeType);
+  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path);
   const { data: row, error } = await admin
     .from("documents")
     .insert({
@@ -609,7 +609,7 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path, data.mimeType);
+    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
 
     const { data: row, error } = await supabaseAdmin
       .from("documents")
