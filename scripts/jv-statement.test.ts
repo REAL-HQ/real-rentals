@@ -606,6 +606,102 @@ describe("partner statement worked example", () => {
     expect(september?.expenseCents).toBe(3000);
   });
 
+  it("withholds a service when a linked expense names another vehicle", () => {
+    const { directory } = worked();
+    directory.payments = [];
+    directory.refunds = [];
+    directory.expenses = [
+      expense({
+        id: "e-other",
+        vehicleId: OTHER,
+        amount: "30.00",
+        maintenanceRecordId: "m-cross",
+        incurredOn: "2026-10-10",
+      }),
+    ];
+    directory.maintenance = [
+      service({
+        id: "m-cross",
+        companyShare: "20.00",
+        partnerShare: "10.00",
+        totalCost: "30.00",
+        performedOn: "2026-10-10",
+      }),
+    ];
+    const october = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    const other = buildJvStatement({
+      ...directory,
+      vehicleId: OTHER,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(october?.expensesComplete).toBe(false);
+    expect(october?.coverage).toBe("unavailable");
+    expect(october?.expenseCents).toBeNull();
+    expect(october?.notes.join(" ")).toContain("different vehicles");
+    expect(other?.expensesComplete).toBe(false);
+    expect(other?.expenseCents).toBeNull();
+    expect(other?.notes.join(" ")).toContain("different vehicles");
+  });
+
+  it("withholds every period when two linked expenses fall in different periods", () => {
+    const { directory } = worked();
+    directory.payments = [];
+    directory.refunds = [];
+    directory.expenses = [
+      expense({
+        id: "e-oct",
+        amount: "30.00",
+        maintenanceRecordId: "m-split",
+        incurredOn: "2026-10-04",
+      }),
+      expense({
+        id: "e-sep",
+        amount: "30.00",
+        maintenanceRecordId: "m-split",
+        incurredOn: "2026-09-15",
+      }),
+    ];
+    directory.maintenance = [
+      service({
+        id: "m-split",
+        companyShare: "20.00",
+        partnerShare: "10.00",
+        totalCost: "30.00",
+        performedOn: "2026-10-10",
+      }),
+    ];
+    const october = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    const september = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "last_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(october?.expensesComplete).toBe(false);
+    expect(october?.companyExpenseCents).toBeNull();
+    expect(october?.partnerExpenseCents).toBeNull();
+    expect(october?.notes.join(" ")).toContain("More than one expense is linked");
+    expect(september?.expensesComplete).toBe(false);
+    expect(september?.companyExpenseCents).toBeNull();
+    expect(september?.partnerExpenseCents).toBeNull();
+    expect(september?.notes.join(" ")).toContain("More than one expense is linked");
+  });
+
   it("does not let another vehicle's undated refund or non-USD charge blank the statement", () => {
     const { directory } = worked();
     const window = periodWindow("this_month", NOW);
@@ -824,6 +920,13 @@ describe("partner statement access", () => {
       "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners",
     );
     expect(rail).not.toContain("Partner Statement");
+    const nav = readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8");
+    const jvTab = nav.slice(nav.indexOf("const JV_TAB"), nav.indexOf("function withJv"));
+    expect(jvTab).toContain('label: "JV Partner Statement"');
+    expect(jvTab).not.toContain('label: "Partner Statement"');
+    expect(nav).toContain('id: "partner_statement"');
+    const panel = readFileSync(new URL("../src/components/admin/JvStatementPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain(">JV Partner Statement<");
 
     const load = vi.fn();
     const readCharges = vi.fn();

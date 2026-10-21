@@ -50,7 +50,7 @@ export function JvStatementPanel() {
         if (result.status === "disabled") {
           setVehicles([]);
           setStatement(null);
-          setReason("Partner Statement Is Off");
+          setReason("JV Partner Statement Is Off");
           return;
         }
         setVehicles(result.vehicles);
@@ -65,7 +65,7 @@ export function JvStatementPanel() {
       .catch((error: unknown) => {
         if (!active) return;
         setStatement(null);
-        setReason(error instanceof Error ? error.message : "Partner Statement could not be loaded");
+        setReason(error instanceof Error ? error.message : "JV Partner Statement could not be loaded");
       })
       .finally(() => {
         if (active) setBusy(false);
@@ -78,7 +78,7 @@ export function JvStatementPanel() {
   return (
     <div>
       <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4">
-        <h1 className="text-lg font-semibold mr-2">Partner Statement</h1>
+        <h1 className="text-lg font-semibold mr-2">JV Partner Statement</h1>
         <div className="flex flex-wrap gap-2 text-xs">
           {JV_PERIODS.map((item) => (
             <button
@@ -108,9 +108,9 @@ export function JvStatementPanel() {
         </label>
       </div>
 
-      {busy && <p className="text-sm text-muted-foreground">Loading Partner Statement</p>}
+      {busy && <p className="text-sm text-muted-foreground">Loading JV Partner Statement</p>}
       {!busy && reason && (
-        <EmptyState icon={<Scale className="h-5 w-5" />} title="Partner Statement" hint={reason} />
+        <EmptyState icon={<Scale className="h-5 w-5" />} title="JV Partner Statement" hint={reason} />
       )}
       {!busy && !reason && !statement && (
         <EmptyState

@@ -663,7 +663,7 @@ export function buildJvStatement(
     const inside = serviceInWindow;
     const name = serviceName(record);
     if (
-      expensesInside.some((link) => link.expense.vehicleId !== record.vehicleId) ||
+      links.some((link) => link.expense.vehicleId !== record.vehicleId) ||
       (inside && record.vehicleId !== input.vehicleId)
     ) {
       expensesComplete = false;
@@ -673,7 +673,16 @@ export function buildJvStatement(
       continue;
     }
     if (expensesInside.length === 0) {
-      if (links.length > 0) continue;
+      if (links.length > 0) {
+        if (vehicleLinks.length !== 1) {
+          expensesComplete = false;
+          notes.push(
+            `More than one expense is linked to ${name}. Those amounts were not added on top of the service, and the split was withheld.`,
+          );
+          continue;
+        }
+        continue;
+      }
       const company = readCents(record.companyShare);
       const partnerShare = readCents(record.partnerShare);
       const total = readCents(record.totalCost);
@@ -740,7 +749,7 @@ export function buildJvStatement(
       addSplit(company.cents, partnerShare.cents);
       continue;
     }
-    if (expensesInside.length !== 1) {
+    if (vehicleLinks.length !== 1) {
       expensesComplete = false;
       notes.push(
         `More than one expense is linked to ${name}. Those amounts were not added on top of the service, and the split was withheld.`,

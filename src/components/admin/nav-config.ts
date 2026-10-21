@@ -267,7 +267,7 @@ const FINANCE_DATA_QUALITY_TAB: TabDef = {
 /** Shown only while the JV partner statement is compiled on. Kept out of TABS so a dark build cannot list it. */
 const JV_TAB: TabDef = {
   id: "jv",
-  label: "Partner Statement",
+  label: "JV Partner Statement",
   icon: Scale,
   minTier: "owner",
   group: "BUSINESS",
