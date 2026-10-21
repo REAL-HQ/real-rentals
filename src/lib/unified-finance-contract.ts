@@ -38,6 +38,8 @@ export type UnifiedFinanceReport = {
   reconciliation: { verified: ReconciliationResult; posted: ReconciliationResult };
   attributionComplete: AdapterResult["attributionComplete"];
   issues: string[]; complete: boolean;
+  /** Present when the live reader ran. Unmatched items have no dollars. */
+  unmatched?: { charges: number; refunds: number; payouts: number; payments: number; balanceTransactions: number };
 };
 /** Existing per-vehicle profitability, in cents. Separate from unified event totals. */
 export type VehicleProfitLine = {

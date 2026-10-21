@@ -2,7 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { readFinanceDatabaseEvidence, type DatabaseEvidence } from "./unified-finance-database-transport.server";
 import { assembleUnifiedFinanceReport, assertUnifiedFinanceAccess } from "./unified-finance-report.server";
-import { unifiedFinanceRequestSchema, type FinanceSnapshots, type SourceSnapshot, type UnifiedFinanceRequest, type UnifiedFinanceResponse, type VehicleProfitSection } from "./unified-finance-contract";
+import { createStripeClient } from "./stripe.server";
+import { readStripeFinanceWindow } from "./unified-finance-stripe-read.server";
+import { buildVerifiedCollections, verifiedCollectionReport, type VerifiedPayment, type VerifiedRefundRow } from "./unified-finance-verified";
+import { unifiedFinanceRequestSchema, type FinanceSnapshots, type SourceCoverage, type SourceSnapshot, type UnifiedFinanceReport, type UnifiedFinanceRequest, type UnifiedFinanceResponse, type VehicleProfitSection } from "./unified-finance-contract";
 import { vehicleProfitability, type ProfitExpense, type ProfitMaintenance, type ProfitPayment, type ProfitVehicle } from "./unified-finance-vehicles";
 
 const UNVERIFIED = "Rows exist but reviewed contracts cannot verify them without inventing fees, currency, or provider evidence";
@@ -10,10 +13,9 @@ const VEHICLE_READ = "Vehicle profitability evidence was incomplete or changed d
 const PAGE = 1000;
 
 /**
- * Flag-on report. Reads the caller's RLS client only.
- * Stripe has no reader and payments do not carry collection fees or provider
- * verification, so combined totals stay incomplete. Per-vehicle lines use the
- * existing profitability columns and are not written back as unified events.
+ * Flag-on report. Called only from the handler's true branch.
+ * Stripe list/retrieve uses the same live client as Collections. Fees stay on
+ * the balance transaction; nothing is written back. Per-vehicle lines stay separate.
  */
 export async function loadUnifiedFinanceReport(input: {
   request: UnifiedFinanceRequest;
@@ -39,9 +41,65 @@ export async function loadUnifiedFinanceReport(input: {
     settlements: unverifiedSnapshot(settlements),
     expenses: unverifiedSnapshot(expenses),
   };
-  const report = assembleUnifiedFinanceReport(request, tier, snapshots);
+  const assembled = assembleUnifiedFinanceReport(request, tier, snapshots);
+  const verified = await readVerifiedCollections(input.supabase, request, input.signal);
+  const report: UnifiedFinanceReport = verified
+    ? { ...assembled, verifiedCollections: verified.cards, unmatched: verified.unmatched, sources: { ...assembled.sources, stripe: verified.stripe, payments: verified.payments } }
+    : assembled;
   const vehicles = await readVehicleSection(input.supabase, request.period, input.signal);
   return { status: "ready", report, vehicles };
+}
+
+async function readVerifiedCollections(
+  supabase: SupabaseClient<Database>,
+  request: UnifiedFinanceRequest,
+  signal?: AbortSignal,
+): Promise<{ cards: UnifiedFinanceReport["verifiedCollections"]; unmatched: NonNullable<UnifiedFinanceReport["unmatched"]>; stripe: SourceCoverage; payments: SourceCoverage } | null> {
+  const blocked = (reason: string) => {
+    const coverage: SourceCoverage = { state: "incomplete", reasons: [reason], pages: 0 };
+    return {
+      cards: verifiedCollectionReport({ period: request.period, basis: request.basis, events: [], complete: false }),
+      unmatched: { charges: 0, refunds: 0, payouts: 0, payments: 0, balanceTransactions: 0 },
+      stripe: coverage,
+      payments: coverage,
+    };
+  };
+  try {
+    const refundRows = await readStable(async (cursor) => {
+      let query = supabase.from("payment_refunds").select("id,amount,status,stripe_charge_id,stripe_payment_intent_id,stripe_refund_id,payment_ids").order("id", { ascending: true }).limit(PAGE);
+      if (cursor) query = query.gt("id", cursor);
+      if (signal) query = query.abortSignal(signal);
+      return query;
+    }, signal);
+    const paymentRows = await readStable(async (cursor) => {
+      let query = supabase.from("payments").select("id,amount,refunded_amount,status,type,payment_method,paid_date,stripe_payment_intent_id").order("id", { ascending: true }).limit(PAGE);
+      if (cursor) query = query.gt("id", cursor);
+      if (signal) query = query.abortSignal(signal);
+      return query;
+    }, signal);
+    if (!refundRows || !paymentRows) return null;
+    const refunds: VerifiedRefundRow[] = refundRows.map((row) => ({
+      id: row.id, amount: row.amount, status: row.status, chargeId: row.stripe_charge_id, paymentIntentId: row.stripe_payment_intent_id,
+      refundId: row.stripe_refund_id, paymentIds: row.payment_ids ?? [],
+    }));
+    const payments: VerifiedPayment[] = paymentRows.map((row) => ({
+      id: row.id, type: row.type, status: row.status, amount: row.amount, refundedAmount: row.refunded_amount, method: row.payment_method,
+      paidDate: row.paid_date, paymentIntentId: row.stripe_payment_intent_id,
+    }));
+    let evidence: Awaited<ReturnType<typeof readStripeFinanceWindow>>;
+    try {
+      const stripe = createStripeClient("live");
+      evidence = await readStripeFinanceWindow(stripe, request.period, { signal, retrieveChargeIds: refunds.flatMap((row) => row.chargeId ? [row.chargeId] : []) });
+    } catch {
+      evidence = { ok: false, reason: "Stripe evidence was incomplete or timed out" };
+    }
+    if (!evidence.ok) return blocked(evidence.reason);
+    const match = buildVerifiedCollections({ period: request.period, basis: request.basis, charges: evidence.charges, balances: evidence.balances, payouts: evidence.payouts, payments, refunds });
+    const coverage = (reasons: string[]): SourceCoverage => ({ state: match.complete ? "complete" : "incomplete", reasons, pages: match.complete ? 1 : 0 });
+    return { cards: verifiedCollectionReport({ period: request.period, basis: request.basis, events: match.events, complete: match.complete }), unmatched: match.unmatched, stripe: coverage(match.reasons), payments: coverage(match.reasons) };
+  } catch {
+    return null;
+  }
 }
 
 function unavailable(reason: string): SourceSnapshot {
