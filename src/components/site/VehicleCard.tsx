@@ -18,13 +18,19 @@ import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
 
 /**
+ * Hard off, duplicated so this card does not import the vehicle detail module.
+ * While off, a real unit keeps linking to /fleet/$id.
+ */
+const VEHICLE_DETAIL_PAGE_ENABLED: boolean = false as boolean;
+
+/**
  * One merchandising card.
  *
  * It renders a `PublicVehicleCardModel` and nothing else. That model comes
  * either from the marketing catalog (a representative vehicle type) or from
  * live inventory (one real unit). The card does not know which, and the two
  * are never conflated upstream: a catalog entry has a slug, an inventory row
- * has a `vehicles.id`, and only the latter ever reaches a /fleet/$id route.
+ * has a `vehicles.id`, and only the latter ever reaches a vehicle page.
  */
 export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
   // Some assets are served by the host rather than bundled. A broken-image
@@ -182,6 +188,13 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
   // and must never fabricate one, so it links to /fleet pre-filtered to its
   // category — a destination that always exists.
   if (model.href.kind === "vehicle") {
+    if (VEHICLE_DETAIL_PAGE_ENABLED === true) {
+      return (
+        <Link to="/vehicles/$id" params={{ id: model.href.id }} className={className}>
+          {body}
+        </Link>
+      );
+    }
     return (
       <Link to="/fleet/$id" params={{ id: model.href.id }} className={className}>
         {body}

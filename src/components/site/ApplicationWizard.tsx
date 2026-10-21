@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -852,6 +852,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         sub="Three questions. No documents and no payment to apply."
       />
       <div className="space-y-5">
+        <ApplyVehiclePrefillSlot />
         {/* Carried forward from the form they already filled in. Shown, not
             re-asked — but editable, because a wrong city silently attached to
             an application is worse than one extra tap. */}
@@ -1926,4 +1927,23 @@ function fmtDate(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return formatDate(d);
+}
+
+/** Hard off. Duplicated so the wizard does not import the prefill module while the flag is off. */
+const APPLY_VEHICLE_PREFILL_ENABLED: boolean = false as boolean;
+
+function ApplyVehiclePrefillSlot() {
+  const [Panel, setPanel] = useState<ComponentType<{ source: "session" }> | null>(null);
+  useEffect(() => {
+    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
+    let cancelled = false;
+    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
+      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !Panel) return null;
+  return <Panel source="session" />;
 }

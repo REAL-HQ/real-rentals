@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +40,7 @@ import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
+import { DRIVER_PAYMENT_HISTORY_ENABLED } from "@/lib/driver-payment-history";
 import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
@@ -1674,6 +1675,23 @@ function PortalPickupChecklist() {
   return <PickupChecklistCard items={data.items} />;
 }
 
+/** Card stays unloaded unless DRIVER_PAYMENT_HISTORY_ENABLED is exactly true. */
+function PaymentHistoryGate() {
+  const [View, setView] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    if (DRIVER_PAYMENT_HISTORY_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/portal/DriverPaymentHistoryCard").then((mod) => {
+      if (live) setView(() => mod.DriverPaymentHistoryCard);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (DRIVER_PAYMENT_HISTORY_ENABLED !== true || View == null) return null;
+  return <View />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1689,6 +1707,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      <PaymentHistoryGate />
       {MY_CAR_CARD_ENABLED ? <MyCarGate onNavigate={onNavigate} /> : null}
       <div className="rounded-2xl border border-[#D03020] bg-[#D03020]/5 p-5" data-testid="roadside-dashboard">
         <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
