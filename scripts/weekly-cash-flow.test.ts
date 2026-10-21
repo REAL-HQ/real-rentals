@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { railEntries, visibleWorkspaceTabs } from "../src/components/admin/nav-config";
 import { buildWeeklyCashFlow, cashFlowWeeks, type CashCharge, type CashExpense, type CashRefund } from "../src/lib/weekly-cash-flow";
-import { weeklyCashFlowEnabled } from "../src/lib/weekly-cash-flow-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "../src/lib/weekly-cash-flow-flag";
 import { runWeeklyCashFlow } from "../src/lib/weekly-cash-flow.server";
 
 const read = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8");
@@ -76,9 +76,11 @@ describe("totals", () => {
 });
 
 describe("flag off", () => {
-  it("is on only for the exact string true", () => {
-    expect(weeklyCashFlowEnabled({ WEEKLY_CASH_FLOW_ENABLED: "true" })).toBe(true);
-    for (const value of [undefined, "TRUE", "1", "yes", " true", "true "]) expect(weeklyCashFlowEnabled({ WEEKLY_CASH_FLOW_ENABLED: value })).toBe(false);
+  it("is a hard-false constant with no environment read", () => {
+    expect(WEEKLY_CASH_FLOW_ENABLED).toBe(false);
+    const flag = read("lib/weekly-cash-flow-flag.ts");
+    expect(flag).toContain("export const WEEKLY_CASH_FLOW_ENABLED = false");
+    expect(flag).not.toMatch(/process\.env|import\.meta\.env/);
   });
 
   it("returns before expenses and Stripe, and refuses a coordinator", async () => {
@@ -100,7 +102,7 @@ describe("flag off", () => {
   it("lists charges and refunds only, and stays off the coordinator Payments workspace", () => {
     const source = read("lib/weekly-cash-flow.functions.ts");
     const handler = source.slice(source.indexOf(".handler"));
-    const flag = handler.indexOf("weeklyCashFlowEnabled()");
+    const flag = handler.indexOf("if (!WEEKLY_CASH_FLOW_ENABLED)");
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(handler.indexOf('from("user_roles")'));
     expect(flag).toBeLessThan(handler.indexOf("loadCashFlowExpenses"));

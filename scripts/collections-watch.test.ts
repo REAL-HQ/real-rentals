@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { railEntries, visibleWorkspaceTabs } from "../src/components/admin/nav-config";
 import { buildCollectionsWatch, daysOverdueEt, UPCOMING_INVOICE_NOTE, watchWindows, type WatchCustomer, type WatchSubscription } from "../src/lib/collections-watch";
-import { collectionsWatchEnabled } from "../src/lib/collections-watch-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "../src/lib/collections-watch-flag";
 import { readCollectionsWatch, type ReadOnlyStripeGateway } from "../src/lib/collections-watch-read.server";
 import { runCollectionsWatch } from "../src/lib/collections-watch.server";
 import { matchDriver, type DriverMatchApplication, type DriverMatchRental } from "../src/lib/stripe-driver-match";
@@ -34,8 +34,9 @@ describe("list and retrieve guard", () => {
 
   it("checks the flag before any role or driver read", () => {
     const source = read("lib/collections-watch.functions.ts");
-    const flag = source.indexOf("collectionsWatchEnabled()");
-    const roles = source.indexOf('from("user_roles")');
+    const handler = source.slice(source.indexOf(".handler"));
+    const flag = handler.indexOf("if (!COLLECTIONS_WATCH_ENABLED)");
+    const roles = handler.indexOf('from("user_roles")');
     expect(flag).toBeGreaterThan(-1);
     expect(roles).toBeGreaterThan(flag);
   });
@@ -126,11 +127,11 @@ describe("driver matching", () => {
 });
 
 describe("flag off", () => {
-  it("is on only for the exact string true", () => {
-    expect(collectionsWatchEnabled({ COLLECTIONS_WATCH_ENABLED: "true" })).toBe(true);
-    for (const value of [undefined, "TRUE", "1", "yes", " true", "true "]) {
-      expect(collectionsWatchEnabled({ COLLECTIONS_WATCH_ENABLED: value })).toBe(false);
-    }
+  it("is a hard-false constant with no environment read", () => {
+    expect(COLLECTIONS_WATCH_ENABLED).toBe(false);
+    const flag = read("lib/collections-watch-flag.ts");
+    expect(flag).toContain("export const COLLECTIONS_WATCH_ENABLED = false");
+    expect(flag).not.toMatch(/process\.env|import\.meta\.env/);
   });
 
   it("returns before drivers and Stripe, and refuses a coordinator", async () => {

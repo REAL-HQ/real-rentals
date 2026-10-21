@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildDriverStatement, escapeCsvCell, statementToCsv, type StatementCharge, type StatementInvoice, type StatementRefund } from "../src/lib/driver-statement";
-import { driverStatementEnabled } from "../src/lib/driver-statement-flag";
+import { DRIVER_STATEMENT_ENABLED } from "../src/lib/driver-statement-flag";
 import { readDriverStatement, type StatementStripeGateway } from "../src/lib/driver-statement-read.server";
 import { runDriverStatement } from "../src/lib/driver-statement.server";
 import type { DriverMatchApplication, DriverMatchRental } from "../src/lib/stripe-driver-match";
@@ -102,9 +102,11 @@ describe("CSV escaping", () => {
 });
 
 describe("flag off", () => {
-  it("is on only for the exact string true", () => {
-    expect(driverStatementEnabled({ DRIVER_STATEMENT_ENABLED: "true" })).toBe(true);
-    for (const value of [undefined, "TRUE", "1", "yes", " true", "true "]) expect(driverStatementEnabled({ DRIVER_STATEMENT_ENABLED: value })).toBe(false);
+  it("is a hard-false constant with no environment read", () => {
+    expect(DRIVER_STATEMENT_ENABLED).toBe(false);
+    const flag = read("lib/driver-statement-flag.ts");
+    expect(flag).toContain("export const DRIVER_STATEMENT_ENABLED = false");
+    expect(flag).not.toMatch(/process\.env|import\.meta\.env/);
   });
 
   it("returns before drivers and Stripe, and refuses a coordinator", async () => {
@@ -126,7 +128,7 @@ describe("flag off", () => {
   it("checks the flag before any role or Stripe read", () => {
     const source = read("lib/driver-statement.functions.ts");
     const handler = source.slice(source.indexOf(".handler"));
-    const flag = handler.indexOf("driverStatementEnabled()");
+    const flag = handler.indexOf("if (!DRIVER_STATEMENT_ENABLED)");
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(handler.indexOf('from("user_roles")'));
     expect(flag).toBeLessThan(handler.indexOf("readLiveDriverStatement"));

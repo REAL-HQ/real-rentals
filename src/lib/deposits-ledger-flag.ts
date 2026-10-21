@@ -1,4 +1,6 @@
-/** Exact env string only. Unset, "TRUE", "1", and surrounding spaces stay off. */
-export function depositsLedgerEnabled(env: { DEPOSITS_LEDGER_ENABLED?: string } = process.env): boolean {
-  return env.DEPOSITS_LEDGER_ENABLED === "true";
-}
+/**
+ * Deposits & Refunds Ledger is off until this constant is turned on in source.
+ * false returns disabled before the role check and before any deposit or Stripe read.
+ * There is no environment variable for this flag.
+ */
+export const DEPOSITS_LEDGER_ENABLED = false;

@@ -244,4 +244,4 @@ ok(ui.includes("APPROVED_NOT_RENTING_FILTER"), "the hint links to that filter");
 ok(!/text-transform\s*:/.test(ui) && !ui.includes("uppercase") && !ui.includes("capitalize"), "labels are Title Case in the strings");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall assertions passed");
-process.exit(fails ? 1 : 0);
+if (fails) process.exit(1);
