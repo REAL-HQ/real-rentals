@@ -71,6 +71,7 @@ DROP FUNCTION IF EXISTS "private"."approval_result"(_op private.approval_operati
 DROP FUNCTION IF EXISTS "private"."approval_review_guard"();
 DROP FUNCTION IF EXISTS "private"."approval_serialize"();
 DROP FUNCTION IF EXISTS "private"."approval_snapshot"(_id uuid);
+DROP FUNCTION IF EXISTS "private"."approval_source_statuses"();
 DROP FUNCTION IF EXISTS "private"."approval_validate"(_id uuid);
 DROP FUNCTION IF EXISTS "private"."approval_write_audit"(_id uuid, _old text);
 DROP FUNCTION IF EXISTS "public"."approval_readiness"(_application_id uuid);

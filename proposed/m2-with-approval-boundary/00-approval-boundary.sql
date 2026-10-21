@@ -11,8 +11,8 @@
 -- The excluded file cannot run unchanged before step 1: the GRANT names
 -- rr_approval_executor, which step 1 creates. It cannot run unchanged after
 -- step 1: CREATE FUNCTION private.approval_provider_actor already exists.
--- Apply packet step 1, then this file, then packet steps 2 through the
--- return checklist.
+-- Apply packet step 1, then record-uploaded-content-sha.sql, then this file,
+-- then packet steps 2 through the return checklist.
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
 BEGIN;
 
@@ -28,25 +28,40 @@ BEGIN;
 -- id are the token. supabase-js stores the upload metadata option in
 -- user_metadata (storage migration 0025). The metadata column is system data
 -- (size, mimetype, cacheControl, eTag) and is not a sha fallback: a sha written
--- only there is not the object the client stored. The object must carry the
--- same sha256 the document row claims. A missing, ambiguous, or mismatched
--- object still raises approval_storage_version_unverified.
+-- only there is not the object the client stored. user_metadata.sha256 is
+-- client-writable, so it is not evidence by itself. private.uploaded_content_sha
+-- is written only by record_uploaded_content_sha, from bytes the server hashed.
+-- The live object id, version, updated_at, and user_metadata must still equal
+-- that row, and the row's sha must equal documents.content_sha256. A missing
+-- binding, a client metadata overwrite, or a replaced object raises
+-- approval_storage_version_unverified.
 CREATE FUNCTION private.approval_object_version(_document uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE doc public.documents%ROWTYPE; obj_id uuid; obj_bucket text; obj_name text; obj_meta jsonb; obj_user jsonb;
- n integer; ver text; sha text; has_version boolean;
+ obj_updated timestamptz; n integer; ver text; sha text; has_version boolean;
+ bind_id uuid; bind_sha text; bind_meta jsonb; bind_ver text; bind_at timestamptz;
 BEGIN
  SELECT * INTO doc FROM public.documents WHERE id=_document;
  IF NOT FOUND OR nullif(btrim(doc.storage_bucket),'') IS NULL OR nullif(btrim(doc.storage_path),'') IS NULL
   OR doc.content_sha256 IS NULL OR doc.content_sha256 !~ '^[0-9a-f]{64}$' THEN
   RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
  END IF;
+ IF to_regclass('private.uploaded_content_sha') IS NULL THEN
+  RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
+ END IF;
  SELECT count(*) INTO n FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path;
  IF n<>1 THEN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END IF;
- SELECT o.id, o.bucket_id, o.name, o.metadata, o.user_metadata INTO obj_id, obj_bucket, obj_name, obj_meta, obj_user
+ SELECT o.id, o.bucket_id, o.name, o.metadata, o.user_metadata, o.updated_at
+  INTO obj_id, obj_bucket, obj_name, obj_meta, obj_user, obj_updated
   FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path FOR SHARE;
- sha:=nullif(lower(btrim(coalesce(obj_user->>'sha256', obj_user->>'content_sha256'))),'');
- IF sha IS NULL OR sha IS DISTINCT FROM doc.content_sha256
+ sha:=nullif(lower(btrim(obj_user->>'sha256')),'');
+ SELECT b.object_id, b.sha256, b.user_metadata, b.version, b.updated_at
+  INTO bind_id, bind_sha, bind_meta, bind_ver, bind_at
+  FROM private.uploaded_content_sha b
+  WHERE b.bucket_id=doc.storage_bucket AND b.name=doc.storage_path;
+ IF NOT FOUND OR bind_sha IS DISTINCT FROM doc.content_sha256 OR sha IS DISTINCT FROM bind_sha
+  OR bind_id IS DISTINCT FROM obj_id OR bind_meta IS DISTINCT FROM obj_user
+  OR (bind_at IS NOT NULL AND obj_updated IS DISTINCT FROM bind_at)
   OR obj_bucket IS DISTINCT FROM doc.storage_bucket OR obj_name IS DISTINCT FROM doc.storage_path THEN
   RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
  END IF;
@@ -61,6 +76,9 @@ BEGIN
  IF nullif(btrim(ver),'') IS NULL THEN ver:=nullif(btrim(obj_meta->>'eTag'),''); END IF;
  IF nullif(btrim(ver),'') IS NULL THEN ver:=obj_id::text; END IF;
  IF nullif(btrim(ver),'') IS NULL THEN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END IF;
+ IF bind_ver IS NOT NULL AND nullif(btrim(ver),'') IS DISTINCT FROM bind_ver THEN
+  RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
+ END IF;
  RETURN jsonb_build_object('sha256',sha,'bucket',obj_bucket,'path',obj_name,'version',ver);
 END $$;
 REVOKE ALL ON FUNCTION private.approval_provider_actor(),private.approval_object_version(uuid) FROM PUBLIC,anon,authenticated,service_role;
@@ -166,10 +184,18 @@ END $$;
 REVOKE ALL ON FUNCTION private.approval_actor_label(uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION private.approval_actor_label(uuid) TO rr_approval_executor;
 
+-- One list. Approving active or suspended would demote a running renter, so
+-- those two stay off this list. declined, closed, and duplicate stay until
+-- an owner changes this line. verify_approval_identity also allows approved.
+CREATE FUNCTION private.approval_source_statuses() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path='' AS $$
+ SELECT ARRAY['partial','new','complete','reviewing','declined','closed','duplicate']::text[];
+$$;
+
 CREATE FUNCTION public.preview_approval_identity(_application_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 BEGIN PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM private.approval_actor();RETURN private.approval_snapshot(_application_id);END $$;
 CREATE FUNCTION public.verify_approval_identity(_application_id uuid,_reviewed_evidence jsonb,_note text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE actor uuid; evidence jsonb; rid uuid; em text; rl text;
+DECLARE actor uuid; evidence jsonb; rid uuid; em text; rl text; st text;
 BEGIN
  -- Reject anon and non-staff before the global approval lock. Re-check after
  -- the lock because role membership can change while this call waits.
@@ -178,8 +204,14 @@ BEGIN
  IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  -- Scope the executor's own review insert. Callers cannot SET ROLE to this owner.
  PERFORM set_config('record.application_id',_application_id::text,true);
- PERFORM 1 FROM public.applications WHERE id=_application_id AND status IN ('partial','new','complete','reviewing','approved','active','suspended','declined','closed','duplicate') FOR UPDATE NOWAIT;
+ SELECT status INTO st FROM public.applications WHERE id=_application_id FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+ IF st IN ('active','suspended') THEN
+  RAISE EXCEPTION 'application_status_not_approvable: an active or suspended application is a running renter' USING ERRCODE='42501';
+ END IF;
+ IF NOT (st = ANY (private.approval_source_statuses() || ARRAY['approved']::text[])) THEN
+  RAISE EXCEPTION 'application_state_invalid';
+ END IF;
  evidence:=private.approval_snapshot(_application_id);
  IF _reviewed_evidence IS NULL OR evidence IS DISTINCT FROM _reviewed_evidence THEN RAISE EXCEPTION 'review_evidence_stale';END IF;
  IF _note IS NULL OR length(btrim(_note))<3 OR length(_note)>500 THEN RAISE EXCEPTION 'review_note_required';END IF;
@@ -236,7 +268,10 @@ BEGIN
  END IF;
  IF NEW.status='approved' AND OLD.status IS DISTINCT FROM NEW.status THEN
   IF current_user<>'rr_approval_executor' THEN RAISE EXCEPTION 'approval_rpc_required' USING ERRCODE='42501';END IF;
-  IF (OLD.status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+  IF OLD.status IN ('active','suspended') THEN
+   RAISE EXCEPTION 'application_status_not_approvable: an active or suspended application is a running renter' USING ERRCODE='42501';
+  END IF;
+  IF (OLD.status = ANY (private.approval_source_statuses())) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
   IF NEW.approval_evidence_version<>OLD.approval_evidence_version THEN RAISE EXCEPTION 'approval_combined_evidence_write_forbidden';END IF;
   PERFORM private.approval_validate(OLD.id);
  END IF;RETURN NEW;
@@ -308,7 +343,11 @@ BEGIN
  SELECT id, deleted_at, purged_at, status, approval_evidence_version
   INTO a.id, a.deleted_at, a.purged_at, a.status, a.approval_evidence_version
   FROM public.applications WHERE id=_application_id FOR UPDATE OF applications NOWAIT;
- IF NOT FOUND OR a.deleted_at IS NOT NULL OR a.purged_at IS NOT NULL OR (a.status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+ IF NOT FOUND OR a.deleted_at IS NOT NULL OR a.purged_at IS NOT NULL THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+ IF a.status IN ('active','suspended') THEN
+  RAISE EXCEPTION 'application_status_not_approvable: an active or suspended application is a running renter' USING ERRCODE='42501';
+ END IF;
+ IF (a.status = ANY (private.approval_source_statuses())) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  IF _expected_version IS NULL OR a.approval_evidence_version<>_expected_version THEN RAISE EXCEPTION 'approval_version_stale';END IF;
  INSERT INTO private.approval_operations(operation_id,application_id,actor_id,evidence_version,requested_mode)
  VALUES(_operation_id,a.id,actor,_expected_version,_mode) RETURNING * INTO op;
@@ -317,11 +356,15 @@ BEGIN
 EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'approval_contention_retry_transaction' USING ERRCODE='40001';
 END $$;
 CREATE FUNCTION public.approval_readiness(_application_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE v bigint;
+DECLARE v bigint; st text;
 BEGIN
  PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM private.approval_actor();
- SELECT approval_evidence_version INTO v FROM public.applications WHERE id=_application_id AND status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate');
+ SELECT status, approval_evidence_version INTO st, v FROM public.applications WHERE id=_application_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+ IF st IN ('active','suspended') THEN
+  RAISE EXCEPTION 'application_status_not_approvable: an active or suspended application is a running renter' USING ERRCODE='42501';
+ END IF;
+ IF (st = ANY (private.approval_source_statuses())) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  PERFORM private.approval_validate(_application_id);
  RETURN jsonb_build_object('ready',true,'version',v);
 END $$;
@@ -349,6 +392,7 @@ REVOKE ALL ON FUNCTION
  private.approval_operation_immutable(),
  private.approval_serialize(),
  private.approval_snapshot(uuid),
+ private.approval_source_statuses(),
  private.approval_validate(uuid),
  private.approval_write_audit(uuid,text),
  private.approval_application_guard(),
@@ -358,7 +402,8 @@ REVOKE ALL ON FUNCTION
  private.approval_audit_guard(),
  private.approval_result(private.approval_operations,boolean)
  FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION private.approval_snapshot(uuid), private.approval_validate(uuid),
+GRANT EXECUTE ON FUNCTION private.approval_snapshot(uuid), private.approval_source_statuses(),
+ private.approval_validate(uuid),
  private.approval_result(private.approval_operations,boolean) TO rr_approval_executor;
 REVOKE ALL ON FUNCTION
  public.preview_approval_identity(uuid),

@@ -115,6 +115,8 @@ SELECT 'storage.objects one row per path' AS check_name, 'holds' AS expected, CA
 UNION ALL
 SELECT 'public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
+SELECT 'private.uploaded_content_sha' AS check_name, 'absent' AS expected, CASE WHEN (to_regclass('private.uploaded_content_sha') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regclass('private.uploaded_content_sha') IS NOT NULL) = ('absent' = 'present')) AS ok
+UNION ALL
 SELECT 'private.approval_object_version(uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('private.approval_object_version(uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_object_version(uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'private.approval_operation_immutable()' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('private.approval_operation_immutable()') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('private.approval_operation_immutable()') IS NOT NULL) = ('absent' = 'present')) AS ok

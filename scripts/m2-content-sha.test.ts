@@ -11,6 +11,7 @@ import {
   resetUploadedContentShaProbe,
 } from "../src/lib/document-content-sha";
 import { persistConfirmedDocument } from "../src/lib/documents.functions";
+import { backfillLicenseContentSha } from "./backfill-document-content-sha";
 
 const PROOF = new URL("./m2-functional-proof.sql", import.meta.url);
 const proof = readFileSync(PROOF, "utf8");
@@ -127,6 +128,48 @@ if (!stampedRow || stampedRow.content_sha256 !== "hashed-token") {
   throw new Error("confirm path did not record the returned content hash");
 }
 
+const stampFailed = confirmTable([{
+  id: "kept-current",
+  driver_id: confirmFields.driver_id,
+  category: "license_front",
+  is_current: true,
+}]);
+const stampAdmin = {
+  from(table: string) {
+    const real = stampFailed.admin.from(table);
+    const originalUpdate = real.update.bind(real);
+    let updates = 0;
+    real.update = (next: Record<string, unknown>) => {
+      updates += 1;
+      if (updates === 1 && "content_sha256" in next) {
+        const failed: any = {
+          eq() { return failed; },
+          then(resolve: (v: unknown) => void) {
+            return Promise.resolve({ data: null, error: { message: "hash stamp failed" } }).then(resolve);
+          },
+        };
+        return failed;
+      }
+      return originalUpdate(next);
+    };
+    return real;
+  },
+};
+let stampThrew = false;
+try {
+  await persistConfirmedDocument(stampAdmin, confirmFields, async () => "hashed-token");
+} catch (e) {
+  stampThrew = e instanceof Error && e.message === "hash stamp failed";
+}
+if (!stampThrew) throw new Error("a failed hash stamp did not throw");
+if (stampFailed.rows.filter((row) => row.is_current === true).length !== 1) {
+  throw new Error("a failed hash stamp left two current rows");
+}
+const failedRow = stampFailed.rows.find((row) => row.id !== "kept-current");
+if (!failedRow || failedRow.is_current !== false) {
+  throw new Error("a failed hash stamp left the new row current");
+}
+
 resetUploadedContentShaProbe();
 const missingLogs: string[] = [];
 const originalError = console.error;
@@ -150,11 +193,79 @@ const missingAdmin = {
     return { data: null, error: { code: "42883", message: "function public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) does not exist" } };
   },
 };
+let undefinedFunctionThrew = false;
+try {
+  await applyUploadedContentSha(missingAdmin, "driver-docs", "app/license_front.jpg");
+} catch (e) {
+  undefinedFunctionThrew = e instanceof Error && /does not exist/.test(e.message);
+}
+if (!undefinedFunctionThrew) throw new Error("42883 was treated as a missing packet function");
+if (missingLogs.length !== 0) throw new Error("42883 logged the missing-function notice");
+missingAdmin.rpc = async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
 await applyUploadedContentSha(missingAdmin, "driver-docs", "app/license_front.jpg");
 await applyUploadedContentSha(missingAdmin, "driver-docs", "app/license_front.jpg");
 console.error = originalError;
 resetUploadedContentShaProbe();
 if (missingLogs.length !== 1) throw new Error(`missing function was logged ${missingLogs.length} times`);
+
+const forged = "ab".repeat(32);
+const frontBytes = new TextEncoder().encode("m2-license-front-v1");
+const frontDigest = await contentSha256Hex(frontBytes);
+if (frontDigest === forged) throw new Error("fixture digest collided with the forged metadata");
+const rpcArgs: unknown[] = [];
+let downloads = 0;
+const backfillAdmin = {
+  from() {
+    const filters: { col: string; val: unknown }[] = [];
+    const rows = [
+      {
+        id: "license-row",
+        storage_bucket: "driver-docs",
+        storage_path: "app/license_front.jpg",
+        content_sha256: null as string | null,
+        category: "license_front",
+        is_current: true,
+      },
+    ];
+    const b: any = {
+      select() { return b; },
+      eq(col: string, val: unknown) { filters.push({ col, val }); return b; },
+      in() { return b; },
+      then(resolve: (v: unknown) => void) {
+        const data = rows.filter((row) => filters.every((f) => (row as Record<string, unknown>)[f.col] === f.val));
+        return Promise.resolve({ data, error: null }).then(resolve);
+      },
+    };
+    return b;
+  },
+  storage: {
+    from() {
+      return {
+        async info() {
+          return { data: { id: "11111111-1111-4111-8111-111111111111", version: "v1", updatedAt: "2026-10-21T01:02:03.000Z", metadata: { sha256: forged } }, error: null };
+        },
+        async download() {
+          downloads += 1;
+          return { data: new Blob([frontBytes]), error: null };
+        },
+      };
+    },
+  },
+  async rpc(_name: string, args: unknown) {
+    rpcArgs.push(args);
+    return { data: frontDigest, error: null };
+  },
+};
+const dry = await backfillLicenseContentSha(backfillAdmin, { write: false });
+if (dry.pending !== 1 || dry.hashed !== 0 || downloads !== 0 || rpcArgs.length !== 0) {
+  throw new Error(`dry-run touched storage: ${JSON.stringify(dry)} downloads=${downloads}`);
+}
+const wrote = await backfillLicenseContentSha(backfillAdmin, { write: true });
+if (wrote.hashed !== 1 || wrote.mismatched !== 0) throw new Error(`write counts ${JSON.stringify(wrote)}`);
+const sent = rpcArgs[0] as { p_sha256?: string };
+if (sent.p_sha256 !== frontDigest || sent.p_sha256 === forged) {
+  throw new Error("backfill sent the client metadata hash");
+}
 
 if (/[0-9a-f]{64}/i.test(proof)) {
   throw new Error("functional proof contains a 64-hex literal");

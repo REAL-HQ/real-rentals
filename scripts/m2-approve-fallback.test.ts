@@ -9,7 +9,8 @@ import {
   isMissingApprovalRpc,
   isMissingEvidenceVersionColumn,
 } from "../src/lib/approval-rpc.server";
-import { isUploadedContentShaRefusal } from "../src/lib/document-content-sha";
+import { isUploadedContentShaRefusal, isMissingContentShaFunction } from "../src/lib/document-content-sha";
+import { APPROVAL_SOURCE_STATUSES } from "../src/lib/approval-source-statuses";
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -102,5 +103,20 @@ assert(identityFn.includes('rpc("verify_approval_identity"'), "identity action c
 const identityUi = readFileSync(new URL("../src/components/admin/ApplicantDocuments.tsx", import.meta.url), "utf8");
 assert(identityUi.includes("if (!IDENTITY_VERIFICATION_ENABLED) return null;"), "identity action renders nothing while hidden");
 assert(identityUi.includes("Verify Identity"), "identity action label is Title Case");
+
+assert(!isMissingContentShaFunction({ code: "42883", message: "function does not exist" }), "42883 is not a missing content-sha function");
+assert(isMissingContentShaFunction({ code: "PGRST202", message: "missing" }), "PGRST202 is the missing content-sha function");
+assert(!isMissingContentShaFunction({ message: "Could not find the function public.record_uploaded_content_sha" }), "a message is not a missing content-sha function");
+
+const boundary = readFileSync(new URL("../proposed/m2-with-approval-boundary/00-approval-boundary.sql", import.meta.url), "utf8");
+const listed = boundary.slice(boundary.indexOf("ARRAY['partial'"), boundary.indexOf("]::text[]"));
+for (const status of APPROVAL_SOURCE_STATUSES) assert(listed.includes(`'${status}'`), `sql list contains ${status}`);
+assert(!listed.includes("'active'"), "sql list does not approve active");
+assert(!listed.includes("'suspended'"), "sql list does not approve suspended");
+assert(boundary.split("application_status_not_approvable").length - 1 === 4, "active and suspended are refused in all four gates");
+const approveFn = readFileSync(new URL("../src/lib/applications.functions.ts", import.meta.url), "utf8");
+const legacy = approveFn.slice(approveFn.indexOf("legacy: async ()"), approveFn.indexOf("const patch: Record<string, unknown> = { status: \"approved\" }"));
+assert(legacy.includes("DOCUMENT_CONTENT_SHA256_ENABLED && IDENTITY_VERIFICATION_ENABLED"), "legacy refusal waits for the flag-on path");
+assert(legacy.includes("APPROVAL_STATUS_NOT_APPROVABLE"), "legacy path names the running-renter refusal");
 
 console.log("approve fallback pass");

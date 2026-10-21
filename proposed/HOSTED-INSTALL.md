@@ -20,7 +20,7 @@ After the application is deployed and this packet verifies, Approve goes through
 
 ## Window
 
-The window starts when `proposed/m2-packet/01.sql` commits and ends when `21-revoke-executor-create.sql` verifies. Approval and signing during that window see a partial install. Stop at the first failed check. Do not start the next file. Do not open this window until the application deploy above is live, and do not install step 2 until the hold below is satisfied.
+The window starts when `proposed/m2-packet/01.sql` commits and ends when `21-revoke-executor-create.sql` verifies. Approval and signing during that window see a partial install. Stop at the first failed check. Do not start the next file. Do not open this window until the application deploy above is live, and do not install step 3 until the hold below is satisfied. Step 2 installs the content-sha function first, so the byte backfill can run before the approval boundary.
 
 ## How a file runs
 
@@ -42,17 +42,17 @@ Stop if any of these fail. Nothing has been written yet, so there is nothing to 
 3. The `postgres` role is superuser or `BYPASSRLS`. That is the preflight row `postgres bypassrls or superuser`.
 4. Object versioning is off on `driver-docs`, `license-uploads`, `profile-screenshots`, `rental-agreements`, and `condition-media`. The preflight row `storage.objects one row per path` must be `holds`. A second row for the same bucket and name means versioning is on, or a duplicate was left behind. If the Storage dashboard shows versioning on, stop even when that row says `holds`.
 5. `proposed/m2-preflight.sql`, without `-1`. Every `ok` value is true. `private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are `absent`. `public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is `absent`.
-6. The preflight row `public CREATE holders` lists who holds `CREATE` on `public`. Step 4 grants `CREATE` on `public` and `private` to `rr_record_executor` because PostgreSQL requires the new owner to hold `CREATE` on the schema. That step moves `public.booking_vehicle_assignments` and `public.record_existing_rental_tx` to that role. Later steps move more objects to the same role. Step 29 revokes `CREATE` on both schemas after those transfers. Read the `actual` column before installing. Stop if `anon` or `authenticated` is in the list.
+6. The preflight row `public CREATE holders` lists who holds `CREATE` on `public`. Step 5 grants `CREATE` on `public` and `private` to `rr_record_executor` because PostgreSQL requires the new owner to hold `CREATE` on the schema. That step moves `public.booking_vehicle_assignments` and `public.record_existing_rental_tx` to that role. Later steps move more objects to the same role. Step 29 revokes `CREATE` on both schemas after those transfers. Read the `actual` column before installing. Stop if `anon` or `authenticated` is in the list.
 
-## Step 2 hold
+## Step 3 hold
 
-Do not install step 2, `proposed/m2-with-approval-boundary/00-approval-boundary.sql`, until all three of the following are true. Otherwise Approve closes for everyone. The approval snapshot requires a verified `approval_identity` review and license documents whose `content_sha256` matches the stored object. A real application fails `documents_unverified`, and after staff document review it fails `approval_storage_version_unverified`.
+Do not install step 3, `proposed/m2-with-approval-boundary/00-approval-boundary.sql`, until all of the following are true. Step 2 is already installed. Otherwise Approve closes for everyone. The approval snapshot requires a verified `approval_identity` review and a server-recorded hash of the license bytes. A client-set `user_metadata.sha256` does not satisfy it. A real application fails `documents_unverified`, and after staff document review it fails `approval_storage_version_unverified`.
 
-1. The staff identity-verification action is deployed. It calls `verify_approval_identity` from the application review screen. `IDENTITY_VERIFICATION_ENABLED` in `src/lib/identity-verification.ts` stays false until a rebuild turns it on. The server checks that flag before any role lookup or RPC.
-2. Hash-on-upload is deployed. `registerDocument` and `confirmDocumentUpload` record `content_sha256` when `DOCUMENT_CONTENT_SHA256_ENABLED` is on. That constant in `src/lib/document-content-sha.ts` stays false until a rebuild turns it on.
-3. `proposed/backfill-document-content-sha.sql` has been run in write mode for the existing documents, and those rows now have `content_sha256`. That file is not a step in the order below. It is read-only unless the session sets `m2.backfill_content_sha` to `write` and `m2.backfill_local` to `yes`, and the server address is loopback or a local socket. Do not run it on the hosted database as part of this procedure. Run it only where you can restore the database, before step 2.
+1. The flag-on builds are deployed. `DOCUMENT_CONTENT_SHA256_ENABLED` in `src/lib/document-content-sha.ts` and `IDENTITY_VERIFICATION_ENABLED` in `src/lib/identity-verification.ts` are true in that build. Both constants stay false in this repository. Turning either one on is a separate owner approval. Do not flip them as part of this install. The identity action calls `verify_approval_identity` from the application review screen, and it checks its flag before any role lookup or RPC. Hash-on-upload records `content_sha256` from the downloaded bytes when its flag is on.
+2. `scripts/backfill-document-content-sha.ts --write` has been run with the service role. It downloads each unhashed current `license_front` and `license_back` object and calls `writeUploadedContentSha`. That writes both sides through `record_uploaded_content_sha` from those bytes. It overwrites a client-set `user_metadata.sha256`. It does not copy metadata into `documents.content_sha256`. A second run skips a row that already has a recorded hash, so it resumes. A stored hash that differs from the bytes is left in place and counted mismatched. Clear that `content_sha256` and run `--write` again.
+3. A dry-run of that same script, after the write, prints `missing=0` and `mismatched=0` (and `pending=0`). Then `proposed/backfill-document-content-sha.sql` has been run as a report. It does not write a hash. A session that sets `m2.backfill_content_sha` to `write` is refused. The report's `missing` and `mismatched` counts are both 0. The SQL report is the gate: a forged `user_metadata` sha, or a `content_sha256` with no server binding, is mismatched there even when the script skipped the row.
 
-Installing step 2 before those three leaves no path that can satisfy the snapshot. Approve stays closed for every applicant.
+Installing step 3 before those three leaves no path that can satisfy the snapshot. Approve stays closed for every applicant.
 
 ```sql
 SHOW server_version;
@@ -73,36 +73,36 @@ After each file, run the verification query in a new execution. The query must r
 | Step | File | Transaction | Verify | Rollback if this step committed and the check failed |
 | --- | --- | --- | --- | --- |
 | 1 | `proposed/m2-packet/01.sql` | `-1` or one editor run | Step 1 query below | `proposed/rollback/01-auth-binding.sql` |
-| 2 | `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | own `BEGIN`/`COMMIT`, no `-1` | Step 2 query below | `proposed/rollback/00-approval-boundary.sql` |
-| 3 | `proposed/m2-packet/02.sql` | `-1` | Step 3 query below | `proposed/rollback/02-safe-release.sql` |
-| 4 | `proposed/m2-packet/03.sql` | `-1` | Step 4 query below | `proposed/rollback/03-record-rental.sql` |
-| 5 | `proposed/m2-packet/04.sql` | `-1` | Step 5 query below | `proposed/rollback/04-closeout-legacy-guard.sql` |
-| 6 | `proposed/m2-packet/05.sql` | `-1` | Step 6 query below | `proposed/rollback/05-evidence.sql` |
-| 7 | `proposed/m2-packet/06.sql` | `-1` | Step 7 query below | `proposed/rollback/06-document-identity.sql` |
-| 8 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | own, no `-1` | Step 8 query below | `proposed/rollback/06b-approval-identity-check.sql` |
-| 9 | `proposed/m2-packet/07.sql` | `-1` | Step 9 query below | `proposed/rollback/07-evidence-consumer.sql` |
-| 10 | `proposed/m2-packet/08.sql` | `-1` | Step 10 query below | `proposed/rollback/08-evidence-recovery.sql` |
-| 11 | `proposed/m2-packet/09.sql` | `-1` | Step 11 query below | `proposed/rollback/09-issuer-permissions.sql` |
-| 12 | `proposed/m2-packet/10.sql` | `-1` | Step 12 query below | `proposed/rollback/10-approval-permissions.sql` |
-| 13 | `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | own, no `-1` | Step 13 query below | `proposed/rollback/10b-approval-executor-writes.sql` |
-| 14 | `proposed/m2-packet/11.sql` | `-1` | Step 14 query below | `proposed/rollback/11-executor-permissions.sql` |
-| 15 | `proposed/m2-packet/12.sql` | `-1` | Step 15 query below | `proposed/rollback/12-deposit-nullability.sql` |
-| 16 | `proposed/m2-packet/13.sql` | `-1` | Step 16 query below | `proposed/rollback/13-closeout-projection.sql` |
-| 17 | `proposed/m2-packet/14.sql` | `-1` | Step 17 query below | `proposed/rollback/14-issuer-identity-permissions.sql` |
-| 18 | `proposed/m2-packet/15.sql` | `-1` | Step 18 query below | `proposed/rollback/15-consumption-scope.sql` |
-| 19 | `proposed/m2-packet/16.sql` | `-1` | Step 19 query below | `proposed/rollback/16-closeout-scope.sql` |
-| 20 | `proposed/m2-packet/17.sql` | `-1` | Step 20 query below | `proposed/rollback/17-storage-integrity.sql` |
-| 21 | `proposed/m2-packet/18.sql` | `-1` | Step 21 query below | `proposed/rollback/18-subscription-coordination.sql` |
-| 22 | `proposed/m2-packet/19.sql` | `-1` | Step 22 query below | `proposed/rollback/19-signed-archive-protection.sql` |
-| 23 | `proposed/m2-packet/19b.sql` | `-1` | Step 23 query below | `proposed/rollback/19b-agreement-evidence.sql` |
-| 24 | `proposed/m2-with-approval-boundary/19c-agreement-contract.sql` | own, no `-1` | Step 24 query below | `proposed/rollback/19c-agreement-contract.sql` |
-| 25 | `proposed/m2-packet/20.sql` | `-1` | Step 25 query below | `proposed/rollback/20-vehicle-swap.sql` |
-| 26 | `proposed/m2-packet/extend.sql` | `-1` | Step 26 query below | `proposed/rollback/extend-rental.sql` |
-| 27 | `proposed/m2-packet/return.sql` | `-1` | Step 27 query below | `proposed/rollback/return-checklist.sql` |
-| 28 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | own, no `-1` | Step 28 query below | `proposed/rollback/record-uploaded-content-sha.sql` |
+| 2 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | own `BEGIN`/`COMMIT`, no `-1` | Step 2 query below | `proposed/rollback/record-uploaded-content-sha.sql` |
+| 3 | `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | own `BEGIN`/`COMMIT`, no `-1` | Step 3 query below | `proposed/rollback/00-approval-boundary.sql` |
+| 4 | `proposed/m2-packet/02.sql` | `-1` | Step 4 query below | `proposed/rollback/02-safe-release.sql` |
+| 5 | `proposed/m2-packet/03.sql` | `-1` | Step 5 query below | `proposed/rollback/03-record-rental.sql` |
+| 6 | `proposed/m2-packet/04.sql` | `-1` | Step 6 query below | `proposed/rollback/04-closeout-legacy-guard.sql` |
+| 7 | `proposed/m2-packet/05.sql` | `-1` | Step 7 query below | `proposed/rollback/05-evidence.sql` |
+| 8 | `proposed/m2-packet/06.sql` | `-1` | Step 8 query below | `proposed/rollback/06-document-identity.sql` |
+| 9 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | own, no `-1` | Step 9 query below | `proposed/rollback/06b-approval-identity-check.sql` |
+| 10 | `proposed/m2-packet/07.sql` | `-1` | Step 10 query below | `proposed/rollback/07-evidence-consumer.sql` |
+| 11 | `proposed/m2-packet/08.sql` | `-1` | Step 11 query below | `proposed/rollback/08-evidence-recovery.sql` |
+| 12 | `proposed/m2-packet/09.sql` | `-1` | Step 12 query below | `proposed/rollback/09-issuer-permissions.sql` |
+| 13 | `proposed/m2-packet/10.sql` | `-1` | Step 13 query below | `proposed/rollback/10-approval-permissions.sql` |
+| 14 | `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | own, no `-1` | Step 14 query below | `proposed/rollback/10b-approval-executor-writes.sql` |
+| 15 | `proposed/m2-packet/11.sql` | `-1` | Step 15 query below | `proposed/rollback/11-executor-permissions.sql` |
+| 16 | `proposed/m2-packet/12.sql` | `-1` | Step 16 query below | `proposed/rollback/12-deposit-nullability.sql` |
+| 17 | `proposed/m2-packet/13.sql` | `-1` | Step 17 query below | `proposed/rollback/13-closeout-projection.sql` |
+| 18 | `proposed/m2-packet/14.sql` | `-1` | Step 18 query below | `proposed/rollback/14-issuer-identity-permissions.sql` |
+| 19 | `proposed/m2-packet/15.sql` | `-1` | Step 19 query below | `proposed/rollback/15-consumption-scope.sql` |
+| 20 | `proposed/m2-packet/16.sql` | `-1` | Step 20 query below | `proposed/rollback/16-closeout-scope.sql` |
+| 21 | `proposed/m2-packet/17.sql` | `-1` | Step 21 query below | `proposed/rollback/17-storage-integrity.sql` |
+| 22 | `proposed/m2-packet/18.sql` | `-1` | Step 22 query below | `proposed/rollback/18-subscription-coordination.sql` |
+| 23 | `proposed/m2-packet/19.sql` | `-1` | Step 23 query below | `proposed/rollback/19-signed-archive-protection.sql` |
+| 24 | `proposed/m2-packet/19b.sql` | `-1` | Step 24 query below | `proposed/rollback/19b-agreement-evidence.sql` |
+| 25 | `proposed/m2-with-approval-boundary/19c-agreement-contract.sql` | own, no `-1` | Step 25 query below | `proposed/rollback/19c-agreement-contract.sql` |
+| 26 | `proposed/m2-packet/20.sql` | `-1` | Step 26 query below | `proposed/rollback/20-vehicle-swap.sql` |
+| 27 | `proposed/m2-packet/extend.sql` | `-1` | Step 27 query below | `proposed/rollback/extend-rental.sql` |
+| 28 | `proposed/m2-packet/return.sql` | `-1` | Step 28 query below | `proposed/rollback/return-checklist.sql` |
 | 29 | `proposed/m2-packet/21-revoke-executor-create.sql` | `-1` | Step 29 query below | `proposed/rollback/21-revoke-executor-create.sql` |
 
-Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, `list_assignment_history_v1`, and `link_replacement_agreement_checked`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. Step 23 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 24. Step 25 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
+Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, `list_assignment_history_v1`, and `link_replacement_agreement_checked`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. `record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is `service_role` only. Step 24 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 25. Step 26 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
 
 ### Step 1
 
@@ -145,6 +145,47 @@ SELECT to_regprocedure('private.approval_provider_actor()') IS NOT NULL
 ### Step 2
 
 ```sql
+SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL
+ AND to_regclass('private.uploaded_content_sha') IS NOT NULL
+ AND to_regprocedure('private.approval_provider_actor()') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=6 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=public'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=public'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 3
+
+```sql
 SELECT to_regprocedure('private.approval_validate(uuid)') IS NOT NULL AND to_regclass('private.approval_operations') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
@@ -165,7 +206,7 @@ SELECT to_regprocedure('private.approval_validate(uuid)') IS NOT NULL AND to_reg
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=22 AND coalesce(bool_and(
+ AND (SELECT count(*)=24 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -189,15 +230,17 @@ SELECT to_regprocedure('private.approval_validate(uuid)') IS NOT NULL AND to_reg
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 3
+### Step 4
 
 ```sql
 SELECT to_regprocedure('private.lock_vehicle_release()') IS NOT NULL
@@ -220,7 +263,7 @@ SELECT to_regprocedure('private.lock_vehicle_release()') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=28 AND coalesce(bool_and(
+ AND (SELECT count(*)=30 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -245,6 +288,7 @@ SELECT to_regprocedure('private.lock_vehicle_release()') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
@@ -252,73 +296,7 @@ SELECT to_regprocedure('private.lock_vehicle_release()') IS NOT NULL
  ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 4
-
-```sql
-SELECT to_regclass('public.booking_vehicle_assignments') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=34 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -328,7 +306,7 @@ SELECT to_regclass('public.booking_vehicle_assignments') IS NOT NULL
 ### Step 5
 
 ```sql
-SELECT to_regclass('private.record_close_operations') IS NOT NULL
+SELECT to_regclass('public.booking_vehicle_assignments') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -357,6 +335,75 @@ SELECT to_regclass('private.record_close_operations') IS NOT NULL
  ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 6
+
+```sql
+SELECT to_regclass('private.record_close_operations') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=38 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -374,6 +421,7 @@ SELECT to_regclass('private.record_close_operations') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
@@ -388,13 +436,14 @@ SELECT to_regclass('private.record_close_operations') IS NOT NULL
  ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 6
+### Step 7
 
 ```sql
 SELECT to_regclass('private.record_evidence_v1') IS NOT NULL
@@ -417,7 +466,7 @@ SELECT to_regclass('private.record_evidence_v1') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=43 AND coalesce(bool_and(
+ AND (SELECT count(*)=45 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -443,6 +492,7 @@ SELECT to_regclass('private.record_evidence_v1') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
@@ -464,91 +514,7 @@ SELECT to_regclass('private.record_evidence_v1') IS NOT NULL
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 7
-
-```sql
-SELECT to_regprocedure('private.document_integrity_guard_v1()') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=52 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -558,178 +524,7 @@ SELECT to_regprocedure('private.document_integrity_guard_v1()') IS NOT NULL
 ### Step 8
 
 ```sql
-SELECT (SELECT pg_get_functiondef('private.integrity_serialize_v1()'::regprocedure) LIKE '%SECURITY DEFINER%')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=52 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 9
-
-```sql
-SELECT to_regprocedure('private.record_identity_reader_v2(uuid)') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=53 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 10
-
-```sql
-SELECT to_regprocedure('private.recover_record_evidence_v1(uuid)') IS NOT NULL
+SELECT to_regprocedure('private.document_integrity_guard_v1()') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -775,15 +570,16 @@ SELECT to_regprocedure('private.recover_record_evidence_v1(uuid)') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
  ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
@@ -794,29 +590,115 @@ SELECT to_regprocedure('private.recover_record_evidence_v1(uuid)') IS NOT NULL
  ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
  ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
  ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
  ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
  ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 11
+### Step 9
 
 ```sql
-SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
+SELECT (SELECT pg_get_functiondef('private.integrity_serialize_v1()'::regprocedure) LIKE '%SECURITY DEFINER%')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=54 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 10
+
+```sql
+SELECT to_regprocedure('private.record_identity_reader_v2(uuid)') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -849,6 +731,183 @@ SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 11
+
+```sql
+SELECT to_regprocedure('private.recover_record_evidence_v1(uuid)') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=56 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 12
+
+```sql
+SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=57 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
  ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
@@ -862,6 +921,7 @@ SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -895,95 +955,7 @@ SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 12
-
-```sql
-SELECT to_regprocedure('private.record_approval_scope_v3(uuid)') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=56 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -993,546 +965,7 @@ SELECT to_regprocedure('private.record_approval_scope_v3(uuid)') IS NOT NULL
 ### Step 13
 
 ```sql
-SELECT has_column_privilege('rr_approval_executor','public.applications','approval_evidence_version','SELECT') AND (SELECT count(*) = 2 FROM pg_policy WHERE polrelid = 'public.audit_log'::regclass AND polname IN ('approval_scope_permissive_v3','approval_scope_restrictive_v3') AND pg_get_expr(polqual, polrelid) LIKE '%application.approved%')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=56 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 14
-
-```sql
-SELECT to_regprocedure('private.record_executor_scope_v3(uuid)') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=57 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 15
-
-```sql
-SELECT (SELECT is_nullable = 'YES' FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='deposit_amount')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=57 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 16
-
-```sql
-SELECT (SELECT pg_get_functiondef('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)'::regprocedure) LIKE '%pickup_reading_id,driver_id INTO r%')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=57 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 17
-
-```sql
-SELECT (SELECT count(*) = 1 FROM pg_policy WHERE polname='issuer_identity_allow_v5')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=57 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 18
-
-```sql
-SELECT (SELECT pg_get_functiondef('public.record_existing_rental_evidence_v1(uuid,jsonb)'::regprocedure) LIKE '%record.application_id%')
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=57 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 19
-
-```sql
-SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
+SELECT to_regprocedure('private.record_approval_scope_v3(uuid)') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -1558,19 +991,19 @@ SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
     ), false)
  FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
@@ -1578,6 +1011,7 @@ SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -1597,13 +1031,11 @@ SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
  ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
  ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
  ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
  ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
  ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
@@ -1614,16 +1046,108 @@ SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 20
+### Step 14
 
 ```sql
-SELECT to_regprocedure('private.storage_integrity_v1()') IS NOT NULL
+SELECT has_column_privilege('rr_approval_executor','public.applications','approval_evidence_version','SELECT') AND (SELECT count(*) = 2 FROM pg_policy WHERE polrelid = 'public.audit_log'::regclass AND polname IN ('approval_scope_permissive_v3','approval_scope_restrictive_v3') AND pg_get_expr(polqual, polrelid) LIKE '%application.approved%')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=58 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 15
+
+```sql
+SELECT to_regprocedure('private.record_executor_scope_v3(uuid)') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -1669,6 +1193,560 @@ SELECT to_regprocedure('private.storage_integrity_v1()') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 16
+
+```sql
+SELECT (SELECT is_nullable = 'YES' FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='deposit_amount')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=59 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 17
+
+```sql
+SELECT (SELECT pg_get_functiondef('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)'::regprocedure) LIKE '%pickup_reading_id,driver_id INTO r%')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=59 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 18
+
+```sql
+SELECT (SELECT count(*) = 1 FROM pg_policy WHERE polname='issuer_identity_allow_v5')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=59 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 19
+
+```sql
+SELECT (SELECT pg_get_functiondef('public.record_existing_rental_evidence_v1(uuid,jsonb)'::regprocedure) LIKE '%record.application_id%')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=59 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 20
+
+```sql
+SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=60 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 21
+
+```sql
+SELECT to_regprocedure('private.storage_integrity_v1()') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=61 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -1706,13 +1784,14 @@ SELECT to_regprocedure('private.storage_integrity_v1()') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 21
+### Step 22
 
 ```sql
 SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
@@ -1735,7 +1814,7 @@ SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=63 AND coalesce(bool_and(
+ AND (SELECT count(*)=65 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -1761,6 +1840,7 @@ SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -1800,6 +1880,7 @@ SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -1808,7 +1889,7 @@ SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 22
+### Step 23
 
 ```sql
 SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
@@ -1831,7 +1912,7 @@ SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=66 AND coalesce(bool_and(
+ AND (SELECT count(*)=68 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -1857,6 +1938,7 @@ SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -1899,6 +1981,7 @@ SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -1907,7 +1990,7 @@ SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 23
+### Step 24
 
 ```sql
 SELECT to_regclass('private.agreement_evidence') IS NOT NULL
@@ -1930,7 +2013,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=69 AND coalesce(bool_and(
+ AND (SELECT count(*)=71 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -1958,6 +2041,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -2001,6 +2085,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2009,7 +2094,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
 
-### Step 24
+### Step 25
 
 ```sql
 SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,timestamptz,numeric)'::regprocedure) LIKE '%record_rental_terms_v1%')
@@ -2032,7 +2117,7 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=69 AND coalesce(bool_and(
+ AND (SELECT count(*)=71 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2060,6 +2145,7 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -2103,115 +2189,10 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 25
-
-```sql
-SELECT to_regclass('private.swap_operations') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=73 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
@@ -2220,221 +2201,7 @@ SELECT to_regclass('private.swap_operations') IS NOT NULL
 ### Step 26
 
 ```sql
-SELECT to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)') IS NOT NULL AND to_regclass('private.extend_operations') IS NOT NULL AND coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'') LIKE '%manager_required%' AND position('manager_required' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) < position('private.approval_lock' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'private.approval_lock')) AND position('approval_actor' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) = 0 AND position('FOR SHARE NOWAIT' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) > position('private.approval_lock' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'private.approval_lock'))
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=74 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 27
-
-```sql
-SELECT to_regclass('public.return_checklists') IS NOT NULL
- AND NOT has_schema_privilege('anon','private','USAGE')
- AND NOT has_schema_privilege('authenticated','private','USAGE')
- AND NOT EXISTS (
-  SELECT 1
-  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
-  CROSS JOIN (VALUES
-   ('authenticated'),
-   ('service_role'),
-   ('postgres'),
-   ('authenticator'),
-   ('rr_record_executor'),
-   ('rr_approval_executor'),
-   ('rr_evidence_issuer')
-  ) AS priv(rol)
-  WHERE to_regrole(w.who) IS NOT NULL
-    AND to_regrole(priv.rol) IS NOT NULL
-    AND w.who <> priv.rol
-    AND pg_has_role(w.who, priv.rol, 'member')
- )
- AND (SELECT count(*)=74 AND coalesce(bool_and(
-      p.proacl::text IS NOT DISTINCT FROM e.acl
-      AND p.prosecdef = e.definer
-      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
-    ), false)
- FROM (VALUES
- ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
- ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
- ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
- ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
- ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
- ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
- ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
- ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
- ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
- ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
- ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
- ) AS e(sig, acl, definer, spath)
- JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
-```
-
-### Step 28
-
-```sql
-SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL
+SELECT to_regclass('private.swap_operations') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
  AND NOT has_schema_privilege('authenticated','private','USAGE')
  AND NOT EXISTS (
@@ -2466,7 +2233,6 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
  ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
- ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
@@ -2484,6 +2250,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -2538,6 +2305,225 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
+
+### Step 27
+
+```sql
+SELECT to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)') IS NOT NULL AND to_regclass('private.extend_operations') IS NOT NULL AND coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'') LIKE '%manager_required%' AND position('manager_required' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) < position('private.approval_lock' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'private.approval_lock')) AND position('approval_actor' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) = 0 AND position('FOR SHARE NOWAIT' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'')) > position('private.approval_lock' in coalesce(pg_get_functiondef(to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')),'private.approval_lock'))
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=76 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
+### Step 28
+
+```sql
+SELECT to_regclass('public.return_checklists') IS NOT NULL
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=76 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_checked(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
 ### Step 29
 
 ```sql
@@ -2563,7 +2549,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
     AND w.who <> priv.rol
     AND pg_has_role(w.who, priv.rol, 'member')
  )
- AND (SELECT count(*)=75 AND coalesce(bool_and(
+ AND (SELECT count(*)=76 AND coalesce(bool_and(
       p.proacl::text IS NOT DISTINCT FROM e.acl
       AND p.prosecdef = e.definer
       AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
@@ -2593,6 +2579,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
  ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
@@ -2649,11 +2636,12 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
 ```
 
 
+
 Each verify query returns `f` immediately before its file and `t` immediately after. The same query is false after `GRANT authenticated TO anon`, and it is false if `prosecdef` or the `search_path` entry differs from the recorded row. A later file may replace a function again. Run the query for the file just applied, not after the whole install.
 
-Step 8's function already exists as an invoker after step 7. The check is `SECURITY DEFINER` in `pg_get_functiondef`. Step 10 already creates `approval_scope_permissive_v3` and `approval_scope_restrictive_v3` on `public.audit_log`, so step 13 counts those two policies on `public.audit_log` only when `pg_get_expr` contains `application.approved`, and it also requires `SELECT` on `applications.approval_evidence_version`. Step 16's signature already exists after step 5. The check is the column list `pickup_reading_id,driver_id INTO r`, which step 5's body does not have. Step 18's signature already exists after step 6. The check is `record.application_id`. Step 23 leaves the four-argument `record_agreement_evidence` as a deny-all. Step 24's check is `record_rental_terms_v1` in that body. Step 26 installs `public.extend_rental_tx(uuid,uuid,date,date,text,uuid)`, revokes `PUBLIC`, `anon`, and `authenticated`, grants `EXECUTE` to `service_role`, checks the actor id is a manager before `private.approval_lock`, repeats that check with `FOR SHARE` after the rental lock, and does not call `private.approval_actor`.
+Step 9's function already exists as an invoker after step 8. The check is `SECURITY DEFINER` in `pg_get_functiondef`. Step 11 already creates `approval_scope_permissive_v3` and `approval_scope_restrictive_v3` on `public.audit_log`, so step 14 counts those two policies on `public.audit_log` only when `pg_get_expr` contains `application.approved`, and it also requires `SELECT` on `applications.approval_evidence_version`. Step 17's signature already exists after step 6. The check is the column list `pickup_reading_id,driver_id INTO r`, which step 6's body does not have. Step 19's signature already exists after step 7. The check is `record.application_id`. Step 24 leaves the four-argument `record_agreement_evidence` as a deny-all. Step 25's check is `record_rental_terms_v1` in that body. Step 27 installs `public.extend_rental_tx(uuid,uuid,date,date,text,uuid)`, revokes `PUBLIC`, `anon`, and `authenticated`, grants `EXECUTE` to `service_role`, checks the actor id is a manager before `private.approval_lock`, repeats that check with `FOR SHARE` after the rental lock, and does not call `private.approval_actor`. Step 2 installs `public.record_uploaded_content_sha` and `private.uploaded_content_sha` before the approval boundary.
 
-Roll `21-revoke-executor-create.sql` back before `record-uploaded-content-sha.sql` when undoing a committed prefix. Then roll back the content-sha file, return, extend, 20, 19c, 19b, 19 through 2, 00, and 01. Do not skip backward over a later committed step. Step 29's rollback grants `CREATE` on `public` and `private` back to `rr_record_executor`.
+Roll `21-revoke-executor-create.sql` back first when undoing a committed prefix. Then roll back return, extend, 20, 19c, 19b, 19 through 2, 00, the content-sha file, and 01. Do not skip backward over a later committed step. Step 29's rollback grants `CREATE` on `public` and `private` back to `rr_record_executor`.
 
 ## Stop points
 

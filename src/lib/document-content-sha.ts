@@ -43,11 +43,7 @@ export function isUploadedContentShaRefusal(error: unknown): boolean {
 
 export function isMissingContentShaFunction(error: { message?: string; code?: string } | null | undefined): boolean {
   if (!error) return false;
-  const code = String(error.code ?? "");
-  if (code === "42883" || code === "PGRST202") return true;
-  const message = error.message ?? "";
-  return /function .*record_uploaded_content_sha.* does not exist/i.test(message)
-    || /could not find the function public\.record_uploaded_content_sha/i.test(message);
+  return String(error.code ?? "") === "PGRST202";
 }
 
 export async function contentSha256Hex(bytes: Uint8Array): Promise<string> {

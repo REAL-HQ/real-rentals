@@ -117,21 +117,21 @@ echo "APPROVE BEFORE INSTALL" | tee -a "$LOG"
 psqlq -f "$ROOT/scripts/m2-approve-before.sql" | tee -a "$LOG"
 
 apply_packet 01.sql; snap inst-01; verify_step 1
-apply_own 00-approval-boundary.sql; snap inst-00; verify_step 2
-step_n=3
+apply_own record-uploaded-content-sha.sql; snap inst-sha; verify_step 2
+apply_own 00-approval-boundary.sql; snap inst-00; verify_step 3
+step_n=4
 for n in 02 03 04 05 06; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
-apply_own 06b-approval-identity-check.sql; snap inst-06b; verify_step 8
-step_n=9
+apply_own 06b-approval-identity-check.sql; snap inst-06b; verify_step 9
+step_n=10
 for n in 07 08 09 10; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
-apply_own 10b-approval-executor-writes.sql; snap inst-10b; verify_step 13
-step_n=14
+apply_own 10b-approval-executor-writes.sql; snap inst-10b; verify_step 14
+step_n=15
 for n in 11 12 13 14 15 16 17 18 19; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
-apply_packet 19b.sql; snap inst-19b; verify_step 23
-apply_own 19c-agreement-contract.sql; snap inst-19c; verify_step 24
-apply_packet 20.sql; snap inst-20; verify_step 25
-apply_packet extend.sql; snap inst-extend; verify_step 26
-apply_packet return.sql; snap inst-return; verify_step 27
-apply_own record-uploaded-content-sha.sql; snap inst-sha; verify_step 28
+apply_packet 19b.sql; snap inst-19b; verify_step 24
+apply_own 19c-agreement-contract.sql; snap inst-19c; verify_step 25
+apply_packet 20.sql; snap inst-20; verify_step 26
+apply_packet extend.sql; snap inst-extend; verify_step 27
+apply_packet return.sql; snap inst-return; verify_step 28
 apply_packet 21-revoke-executor-create.sql; snap inst-21; verify_step 29
 
 echo "PROOF" | tee -a "$LOG"
@@ -147,6 +147,26 @@ if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-realistic-approve.sql" "$ROOT/pr
   exit 1
 fi
 psqlq -f "$ROOT/scripts/m2-realistic-approve.sql" | tee -a "$LOG"
+
+echo "BACKFILL WRITE REFUSED" | tee -a "$LOG"
+set +e
+psqlq <<EOF >>"$LOG" 2>&1
+BEGIN;
+SELECT set_config('m2.backfill_content_sha', 'write', true);
+\\ir ${ROOT}/proposed/backfill-document-content-sha.sql
+ROLLBACK;
+EOF
+backfill_write_status=$?
+set -e
+if [[ "$backfill_write_status" -eq 0 ]]; then
+  echo "content-sha report accepted write mode" | tee -a "$LOG"
+  exit 1
+fi
+if ! grep -q 'backfill_refused_report_only' "$LOG"; then
+  echo "content-sha report failed for a different reason" | tee -a "$LOG"
+  exit 1
+fi
+echo "backfill write refusal pass" | tee -a "$LOG"
 
 echo "19b REAPPLY GUARD" | tee -a "$LOG"
 set +e
@@ -235,8 +255,7 @@ DELETE FROM auth.users WHERE id='12121212-1212-4121-8121-121212121212';
 COMMIT;
 SQL
 
-rollback_to 21-revoke-executor-create.sql inst-sha
-rollback_to record-uploaded-content-sha.sql inst-return
+rollback_to 21-revoke-executor-create.sql inst-return
 rollback_to return-checklist.sql inst-extend
 rollback_to extend-rental.sql inst-20
 rollback_to 20-vehicle-swap.sql inst-19c
@@ -378,8 +397,9 @@ DELETE FROM public.application_identity_reviews
 COMMIT;
 SQL
 
-rollback_to 00-approval-boundary.sql inst-01
+rollback_to 00-approval-boundary.sql inst-sha
 psqlq -c "DELETE FROM public.applications WHERE id IN ('15151515-1515-4151-8151-151515151515','19191919-1919-4191-8191-191919191919');" >>"$LOG" 2>&1
+rollback_to record-uploaded-content-sha.sql inst-01
 rollback_to 01-auth-binding.sql baseline
 
 echo "FINAL COUNTS" | tee -a "$LOG"

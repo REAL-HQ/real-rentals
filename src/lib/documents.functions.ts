@@ -637,7 +637,16 @@ export async function persistConfirmedDocument(
   }
   if (contentSha) {
     const stamped = await admin.from("documents").update({ content_sha256: contentSha }).eq("id", row.id);
-    if (stamped?.error) throw new Error(stamped.error.message || "Could not record the content hash");
+    if (stamped?.error) {
+      const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+      if (demoted?.error) {
+        console.error(
+          "[documents] could not mark the unhashed upload not current",
+          demoted.error.message ?? demoted.error,
+        );
+      }
+      throw new Error(stamped.error.message || "Could not record the content hash");
+    }
   }
   await admin
     .from("documents")

@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/approval-source-statuses";
+import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
+import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 
@@ -1280,6 +1283,18 @@ export const approveApplication = createServerFn({ method: "POST" })
               }
             ).rpc(name, params),
           legacy: async () => {
+            // The packet refuses active and suspended. This fallback runs only
+            // when that function is not installed. Once an owner has approved
+            // the flag-on build, the same refusal applies here too.
+            if (DOCUMENT_CONTENT_SHA256_ENABLED && IDENTITY_VERIFICATION_ENABLED) {
+              const status = String(app.status ?? "").toLowerCase();
+              if (status === "active" || status === "suspended") {
+                return { error: { message: APPROVAL_STATUS_NOT_APPROVABLE } };
+              }
+              if (!(APPROVAL_SOURCE_STATUSES as readonly string[]).includes(status)) {
+                return { error: { message: "application_state_invalid" } };
+              }
+            }
             const patch: Record<string, unknown> = { status: "approved" };
             if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
             const { error: updErr } = await supabaseAdmin

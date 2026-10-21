@@ -469,7 +469,8 @@ BEGIN
 END $$;
 
 -- A hosted upsert replaces the object and advances storage.objects.version.
--- This UPDATE is that version change. The stored review still says v1.
+-- The server binding still says v1, so approval_object_version refuses
+-- before the stored review can be compared.
 RESET SESSION AUTHORIZATION;
 UPDATE storage.objects SET version = 'v2'
  WHERE bucket_id = 'driver-docs'
@@ -493,7 +494,7 @@ BEGIN
   'bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc', 'approve_only');
  RAISE EXCEPTION 'version change was accepted';
 EXCEPTION WHEN OTHERS THEN
- IF SQLERRM NOT LIKE '%positive_identity_required%' THEN
+ IF SQLERRM NOT LIKE '%approval_storage_version_unverified%' THEN
   GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
   RAISE NOTICE 'RESULT version context %', ctx;
   RAISE;
