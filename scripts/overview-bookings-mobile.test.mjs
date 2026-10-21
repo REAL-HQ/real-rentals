@@ -18,13 +18,15 @@ const details = readFileSync("src/components/admin/BookingDetails.tsx", "utf8");
 
 check(overview.includes('className="min-w-0 space-y-6"'), "the overview root can shrink inside the admin column");
 check(overview.includes("grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]"), "the fleet chart stacks under the donut on a phone");
-check(overview.includes("flex flex-wrap items-center gap-x-3 gap-y-2"), "application rows wrap the status pills");
+check(overview.includes("flex flex-wrap items-center") && overview.includes("max-lg:gap-x-3 max-lg:gap-y-2"), "application rows wrap the status pills");
 check(overview.includes("max-w-[11rem] flex-wrap justify-end"), "the billed and collected figures wrap in the card header");
+check(overview.includes("lg:items-baseline") && overview.includes("lg:gap-3") && overview.includes("lg:leading-none"), "desktop restores baseline alignment, gap, and leading");
 check(overview.includes("getOverviewApplicants"), "overview still reads applicants through the server function");
 check(!overview.includes("text-transform"), "overview does not add a text-transform");
 
 check(bookings.includes('aria-label="Search bookings"'), "the bookings search stays");
 check(bookings.includes("w-full min-w-0 rounded-md border"), "the bookings search is a full-width field");
+check(bookings.includes("flex flex-col gap-2") && bookings.includes("lg:flex-row lg:items-center lg:gap-3"), "the bookings toolbar stacks only below lg");
 check(bookings.includes('data-testid="booking-phases"'), "the phase chips stay");
 check(bookings.includes("hidden md:block") && bookings.includes("md:hidden grid grid-cols-1"), "the table and the phone cards both remain");
 check(bookings.includes("data-booking-card") && bookings.includes("min-w-0 flex-1"), "a phone card keeps the driver name inside the row");

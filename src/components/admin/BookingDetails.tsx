@@ -137,14 +137,14 @@ export function BookingDetails({
       }}
     >
       <div
-        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full"
+        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold text-[#111114]">
+                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold text-[#111114] lg:min-w-[auto] lg:max-w-none">
                   {b?.driverName ?? (loading ? "…" : "Driver Record Not Linked")}
                 </h2>
                 {b && (
@@ -159,7 +159,7 @@ export function BookingDetails({
                 )}
                 {b && <RecordNumber label="Booking" value={persistedNumber(b, "bookingNumber")} />}
               </div>
-              <p className="mt-1 break-words text-[13px] text-[#55555E]">
+              <p className="mt-1 break-words text-[13px] text-[#55555E] lg:break-normal">
                 {b ? (
                   <>
                     {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") ||
@@ -784,8 +784,8 @@ function Money({ d }: { d: BookingDetail }) {
         {m.payments.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">No payment rows exist for this booking.</p>
         ) : (
-          <div className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
-          <table className="w-full min-w-[36rem] text-[12px]" data-testid="booking-payments">
+          <div className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0 lg:overflow-visible">
+          <table className="w-full min-w-[36rem] text-[12px] lg:min-w-[auto]" data-testid="booking-payments">
             <thead className="text-left text-[#9A9AA3]">
               <tr>
                 <th className="py-1 font-medium">Type</th>

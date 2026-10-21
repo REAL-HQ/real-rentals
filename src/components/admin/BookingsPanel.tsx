@@ -160,15 +160,16 @@ export function BookingsPanel({
 
   return (
     <div>
-      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2">
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:items-center lg:gap-3">
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search driver, email, unit, plate, VIN…"
           aria-label="Search bookings"
-          className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm"
+          className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
           {/* The phase chips ARE the filter, and they count the scope the
               current search covers — not the page, which would change the
               numbers as you paged. */}
@@ -222,6 +223,7 @@ export function BookingsPanel({
               Clear
             </button>
           )}
+        </div>
         </div>
       </div>
 
