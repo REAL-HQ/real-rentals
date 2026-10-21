@@ -1,22 +1,19 @@
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
-import { StripeCollections } from "./StripeCollections";
 import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
+import { displayPersonName } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
   Wrench,
   ArrowUpRight,
   Plus,
-  Flame,
   CheckCircle2,
   ChevronDown,
   TrendingUp,
   Receipt,
-  CalendarDays,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -30,14 +27,13 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
-import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
+import { compareReadiness, selectHotProspects, type ReadinessResult } from "@/lib/readiness";
+import { revenuePaymentsSearch } from "@/lib/payment-reporting";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
-  APPLICANT_WINDOW,
   type OverviewApplicantRow,
-  type ReadinessByApplicant,
 } from "@/lib/admin-overview";
 import { useServerFn } from "@tanstack/react-start";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
@@ -124,32 +120,6 @@ function shortDate(iso?: string | null) {
  * application filed at 11pm still reads "Today" a few minutes later and
  * "Yesterday" the next morning.
  */
-function appliedAgo(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  const days = Math.floor(
-    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
-      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
-      86_400_000,
-  );
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  return `${days} Days Ago`;
-}
-/**
- * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
- * from the application's own created_at — never reviewed_at or last contact —
- * and says so plainly when that date is missing instead of guessing.
- */
-function appliedLine(iso?: string | null) {
-  const rel = appliedAgo(iso);
-  if (!rel) return "Date Unknown";
-  const d = new Date(iso as string);
-  return `Applied ${fmtDate(d)} · ${rel}`;
-}
-
 export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const client=useQueryClient();
   const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
@@ -178,12 +148,6 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
 
 function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
-  // Null, not 0, until the read lands. A rendered 0 reads as "nobody
-  // applied"; the truth before the answer arrives is "we do not know yet",
-  // and after a failure it is "we could not find out".
-  const [newApps, setNewApps] = useState<number | null>(null);
-  const [pendingApps, setPendingApps] = useState<number | null>(null);
-  const [appsFailed, setAppsFailed] = useState(false);
   const [overdueCount, setOverdueCount] = useState(0);
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
@@ -196,12 +160,21 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
-  const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
-  // Readiness arrives already computed. The licence, insurance, screening
-  // and document evidence it is derived from stays on the server.
-  const [readiness, setReadiness] = useState<ReadinessByApplicant>({});
-  const [canSeeReadiness, setCanSeeReadiness] = useState(true);
   const loadApplicants = useServerFn(getOverviewApplicants);
+  // Null counts until this resolves. A failure stays null rather than 0.
+  // Window focus and lead-priority saves invalidate the same key.
+  const applicantsQuery = useQuery({
+    queryKey: ["overview-applicants"],
+    queryFn: () => loadApplicants({ data: undefined }),
+    refetchOnWindowFocus: true,
+  });
+  const newApps = applicantsQuery.data?.newApps ?? null;
+  const pendingApps = applicantsQuery.data?.pendingApps ?? null;
+  const recentApps = applicantsQuery.data?.applicants ?? [];
+  const readiness = applicantsQuery.data?.readiness ?? {};
+  const canSeeReadiness = !!applicantsQuery.data?.canSeeReadiness;
+  const appsLoading = applicantsQuery.isLoading && !applicantsQuery.data;
+  const appsFailed = applicantsQuery.isError;
   const fleetMaint = useServerFn(getFleetMaintenance);
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
   useEffect(() => {
@@ -215,15 +188,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const now = new Date();
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
 
-      // The applicant reads happen on the server now. Migration 0030
-      // revokes the blanket SELECT on applications and its column
-      // allow-list carries no deleted_at, which all three of these
-      // filtered on — so in the browser they would fail for every tier.
-      // The server also decides whether readiness comes back at all.
-      const applicantsP = loadApplicants({ data: undefined })
-        .then((r) => ({ ok: true as const, r }))
-        .catch(() => ({ ok: false as const, r: null }));
-
+      // Applicants, including Hot Leads, load through overview-applicants
+      // above. Migration 0030 keeps that read on the server.
       const [
         overdueQ,
         pay12wQ,
@@ -261,25 +227,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
 
-      // Hot Prospect is not a column you can filter on — it is derived from
-      // the application, the screening and the documents. That derivation
-      // now happens on the server, which returns the verdict and keeps the
-      // evidence. The window is bounded (APPLICANT_WINDOW) because readiness
-      // is computed on read, so the rows have to come back.
-      const applicants = await applicantsP;
-      if (applicants.ok && applicants.r) {
-        setNewApps(applicants.r.newApps);
-        setPendingApps(applicants.r.pendingApps);
-        setRecentApps(applicants.r.applicants);
-        setReadiness(applicants.r.readiness ?? {});
-        setCanSeeReadiness(!!applicants.r.canSeeReadiness);
-        setAppsFailed(false);
-      } else {
-        // Leave the counts null. A dashboard that renders 0 because the read
-        // failed is a confident lie about the pipeline, and somebody acts on
-        // it.
-        setAppsFailed(true);
-      }
       const sumAmt = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
       const overdueRows = (overdueQ.data ?? []) as any[];
@@ -387,21 +334,20 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   );
 
   /**
-   * Hot Prospect: worth prioritising for follow-up. Not approved, not decision
-   * ready, not verified, not rental ready. The rule lives in the readiness
-   * module — qualification, coverage and no critical concern — and this strip
-   * only renders what it returns.
+   * Hot Leads and the modal list are this one array. Qualification, coverage,
+   * and no critical concern — not the interested contact-status bucket.
    */
-  const hot = useMemo(() => {
-    if (!canSeeReadiness) return [];
-    return recentApps
-      .flatMap((a) => {
-        const r = readinessIndex.get(a.id);
-        return r && isHotProspect(r) ? [{ app: a, readiness: r }] : [];
-      })
-      .sort((x, y) => compareReadiness(x.readiness, y.readiness))
-      .slice(0, 5);
-  }, [recentApps, readinessIndex, canSeeReadiness]);
+  const hotProspects = useMemo(
+    () => (canSeeReadiness ? selectHotProspects(recentApps, readinessIndex) : []),
+    [recentApps, readinessIndex, canSeeReadiness],
+  );
+  const hot = appsFailed
+    ? { state: "unavailable" as const, prospects: [] }
+    : appsLoading
+      ? { state: "loading" as const, prospects: [] }
+      : canSeeReadiness
+        ? { state: "ready" as const, prospects: hotProspects }
+        : { state: "withheld" as const, prospects: [] };
 
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
@@ -437,74 +383,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      <LeadPriorities />
-
-      {/* Priority strip — who is worth calling first, above everything else.
-          Absent entirely when there is nobody, rather than an empty module.
-
-          Hot Prospect means "worth prioritising for follow-up" and nothing
-          more. It is not approval, not Decision Ready, not verification. So
-          the strip carries the readiness state alongside the name: a hot
-          prospect who is still 55% known says so on its face. */}
-      {hot.length > 0 && (
-        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
-            <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
-              {hot.length}
-            </span>
-            <span className="text-[11px] text-[#9A9AA3]">Worth Following Up First</span>
-            <Link
-              to="/admin"
-              search={{ tab: "drivers" }}
-              className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
-            >
-              {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          {/* One card per person, and the whole card is the link. The previous
-              version was a wrapped row of text links, so the click target was
-              the name itself — a few pixels tall, on the busiest strip on the
-              page. */}
-          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {hot.map(({ app, readiness }) => (
-              <li key={app.id} className="min-w-0">
-                <Link
-                  to="/admin"
-                  search={{ tab: "drivers", id: app.id }}
-                  className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                        {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
-                      </span>
-                      <ReadinessStatePill state={readiness.state} short />
-                    </span>
-                    {/* Full width of the card: at phone width the badge and the
-                        name share the row above, so this line gets the room it
-                        needs instead of ending in an ellipsis. */}
-                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
-                      <CalendarDays className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{appliedLine(app.created_at)}</span>
-                    </span>
-                  </span>
-                  <ReadinessMetrics result={readiness} />
-                  {readiness.positives.length > 0 && (
-                    <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
-                      {readiness.positives
-                        .slice(0, 2)
-                        .map((f) => displayTitleCase(f.detail))
-                        .join(" · ")}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <LeadPriorities hot={hot} />
 
       {/* Four cards. Each control matches what the card is for — a plus only
           where something gets created. */}
@@ -698,12 +577,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             </div>
           }
         >
-          {recentApps.length === 0 ? (
+          {appsLoading || recentApps.length === 0 ? (
             <div
               className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]"
-              data-applicants-state={appsFailed ? "failed" : "empty"}
+              data-applicants-state={appsFailed ? "failed" : appsLoading ? "loading" : "empty"}
             >
-              {appsFailed ? "Could Not Load Applications." : "No Applications Yet."}
+              {appsFailed ? "Could Not Load Applications." : appsLoading ? "Loading Applications…" : "No Applications Yet."}
             </div>
           ) : (
             <ul>
@@ -756,7 +635,10 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         </SectionCard>
       </div>
 
-      {/* Billed vs Collected — full width */}
+      {/* Billed vs Collected stays on Overview. Payments lists charges and one
+          outstanding total; it does not show this 12-week billed-versus-collected
+          trend, the collection rate, or the worst week. Weekly Cash Flow is
+          Stripe cash against expenses, not invoices against collections. */}
       {(() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
@@ -872,7 +754,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           </SectionCard>
         );
       })()}
-      {canSeeCollections && <StripeCollections />}
     </div>
   );
 }
@@ -995,11 +876,14 @@ function RevenueCard({
   const shownAmount = c ? c.amount : amount;
   const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
   const coverageHint = coverage === "Unavailable"
-    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
+    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Open Payments and choose Stripe for the verified collections detail."
     : c
       ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
       : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
-  const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
+  const goPayments = () => {
+    if (open) return;
+    navigate({ to: "/admin", search: revenuePaymentsSearch(range) });
+  };
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
   return (
@@ -1059,8 +943,8 @@ function RevenueCard({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute z-30 right-4 top-14 w-52 rounded-lg border border-[#EDEDF0] bg-white shadow-lg py-1">
+          <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div className="absolute z-30 right-4 top-14 w-52 rounded-lg border border-[#EDEDF0] bg-white shadow-lg py-1" onClick={(e) => e.stopPropagation()}>
             {RANGE_LABELS.map((r) => (
               <button
                 key={r.key}

@@ -124,6 +124,9 @@ type AdminSearch = {
   vehicle?: string;
   /** Incidents form prefilled from a driver issue. Does not create the incident. */
   issue?: string;
+  /** Payments summary range, carried from the Overview revenue card. */
+  from?: string;
+  to?: string;
 };
 
 /**
@@ -168,6 +171,8 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   phase: ["bookings"],
   vehicle: ["bookings"],
   issue: ["incidents"],
+  from: ["payments"],
+  to: ["payments"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -179,7 +184,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle", "issue"] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle", "issue", "from", "to"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -216,6 +221,9 @@ export const Route = createFileRoute("/admin")({
     if (typeof raw.q === "number") out.q = String(raw.q);
     for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle", "issue"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
+    const day = (value: unknown) => (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined);
+    if (day(raw.from)) out.from = day(raw.from);
+    if (day(raw.to)) out.to = day(raw.to);
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
     return out;
@@ -882,7 +890,14 @@ function Admin() {
             )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
-            {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
+            {tab === "payments" && (
+              <PaymentsPanel
+                initialFilter={urlFilter ?? undefined}
+                autoOpenAdd={urlAdd}
+                canSeeCollections={tierAllows(tier, "manager")}
+                initialRange={search?.from && search?.to ? { from: search.from, to: search.to } : undefined}
+              />
+            )}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
             {tab === "shops" && <ShopsPanel />}
             {tab === "vendors" && <VendorsPanel />}

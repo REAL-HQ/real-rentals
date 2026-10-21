@@ -27,6 +27,7 @@ describe("read-only Stripe reporting service", () => {
     expect(r.collectionsComplete).toBe(false); expect(r.totals).toBeNull(); expect(r.successful).toBeNull(); expect(r.failed).toBeNull(); expect(r.customers).toEqual([]);
     expect(r.verifiedCollections.scope).toBe("Verified Only"); expect(r.verifiedCollections.totals[0].gross).toBe(35000); expect(r.verifiedCollections.customers[0].net).toBe(33955);
     expect(r.verifiedCollections.charges.map(c => c.id)).toEqual(["ch_test"]); expect(r.incompletePortions[0].id).toBe("ip_missing");
+    expect(r.verifiedCollections.charges[0]).toMatchObject({ paymentIntentId: "pi_test", invoiceId: "in_test" });
   });
   it("quarantines a charge with an unresolved relationship to the same intent", async () => {
     const rows = await client.invoicePayments.list(); client.invoicePayments.list.mockResolvedValue(page([...rows.data, { id: "ip_ambiguous", invoice: "in_missing", payment: { payment_intent: "pi_test" } }]));

@@ -32,7 +32,11 @@ export async function readAllPages<T extends { id: string }>(
 export type CollectionCharge = {
   id: string; customerId: string; created: number; currency: string;
   amount: number; paid: boolean; captured: boolean; status: string; fee: number | null;
-};
+  /** Stripe PaymentIntent id, when the charge carries one. Used only to dedupe against payments.stripe_payment_intent_id. */
+  paymentIntentId?: string | null;
+  /** Invoice id when exactly one verified invoice payment names this charge or its PaymentIntent. Absent when the link is ambiguous. */
+  invoiceId?: string | null;
+}
 export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
   amount: number; status: string | null; fee: number | null;

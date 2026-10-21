@@ -104,6 +104,10 @@ export type PriorityLead = ReturnType<typeof projectLead>;
 export type LeadPrioritiesResult = {
   rows: PriorityLead[];
   total: number;
+  /**
+   * `hot` is the interested contact-status bucket, excluding anyone already
+   * counted as overdue. It is not a Hot Lead. Hot Leads are `isHotProspect`.
+   */
   counts: { new: number; overdue: number; hot: number };
   today: string;
   offset: number;

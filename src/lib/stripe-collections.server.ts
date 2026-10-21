@@ -30,6 +30,14 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     incompletePortions.push({ source, id, reason });
   };
   const unresolvedIntents = new Set<string>(), unresolvedCharges = new Set<string>();
+  const intentInvoices = new Map<string, Set<string>>();
+  const chargeInvoices = new Map<string, Set<string>>();
+  const addInvoice = (map: Map<string, Set<string>>, id: string | undefined, invoiceId: string) => {
+    if (!id) return;
+    const ids = map.get(id) ?? new Set<string>();
+    ids.add(invoiceId);
+    map.set(id, ids);
+  };
   for (const payment of invoicePayments) {
     const invoice = invoiceIndex.get(idOf(payment.invoice) || "");
     const subId = idOf(invoice?.parent?.subscription_details?.subscription);
@@ -49,6 +57,8 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       const owners = map.get(id) || new Set<string>(); owners.add(customer); map.set(id, owners);
     };
     add(linkedIntents, intent); add(linkedCharges, charge);
+    addInvoice(intentInvoices, intent, invoice.id);
+    addInvoice(chargeInvoices, charge, invoice.id);
   }
   // Refunds in this range can relate to collections from an earlier range.
   const chargeIndex = new Map(charges.map(c => [c.id, c]));
@@ -76,7 +86,18 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       continue;
     }
     const fee = balance && typeof balance !== "string" && balance.currency === charge.currency ? balance.fee : null;
-    verifiedCharges.push({ id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency, amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee });
+    const paymentIntentId = idOf(charge.payment_intent) || null;
+    const invoiceIds = new Set<string>([
+      ...(chargeInvoices.get(charge.id) ?? []),
+      ...(paymentIntentId ? intentInvoices.get(paymentIntentId) ?? [] : []),
+    ]);
+    // Two invoices for one charge is not a match. Leaving it blank refuses the dedupe rather than picking one.
+    const invoiceId = invoiceIds.size === 1 ? [...invoiceIds][0]! : null;
+    verifiedCharges.push({
+      id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency,
+      amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee,
+      paymentIntentId, invoiceId,
+    });
   }
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {
     const customer = s.customer;

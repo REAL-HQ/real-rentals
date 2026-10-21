@@ -52,7 +52,8 @@ describe("Revenue card Stripe Collected", () => {
     const src = readFileSync(new URL("../src/components/admin/OverviewPanel.tsx", import.meta.url), "utf8");
     expect(src).toContain("consolidated={canSeeCollections ? { internalNonStripe } : null}");
     expect(src).not.toContain("Stripe Collected");
-    expect(src).toContain('search: { tab: "payments" }');
+    expect(src).toContain("revenuePaymentsSearch(range)");
+    expect(readFileSync(new URL("../src/lib/payment-reporting.ts", import.meta.url), "utf8")).toContain('tab: "payments"');
     expect(readFileSync(new URL("../src/lib/revenue-state.ts", import.meta.url), "utf8")).toContain("!row.stripe_payment_intent_id");
     expect(src).toMatch(/\.from\("payments"\)\s*\.select\("net_collected, stripe_payment_intent_id", \{ count: "exact" \}\)/);
   });

@@ -174,6 +174,9 @@ await assert.rejects(
 );
 checks++;
 state.fail = false;
+const onlyNew = await getLeadPriorities({ context: { userId: "staff" }, data: { limit: 3, offset: 0, bucket: "new" } });
+check(onlyNew.rows.every((r) => r.bucket === "new") && onlyNew.rows.length === 1, "new card lists only new leads");
+check(onlyNew.total === 1 && onlyNew.counts.hot === 1 && onlyNew.counts.overdue === 1, "filtered rows keep the full counters");
 assert.throws(() => getLeadPriorities({ context: { userId: "staff" }, data: { limit: 1000 } }));
 checks++;
 check(JSON.stringify(state.rows) === before, "no records changed");

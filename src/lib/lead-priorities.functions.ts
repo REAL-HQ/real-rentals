@@ -22,6 +22,9 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
       .object({
         offset: z.number().int().min(0).max(100000).default(0),
         limit: z.number().int().min(1).max(25).default(5),
+        // A card filter. It selects a bucket already built below; it is never
+        // interpolated into a PostgREST filter.
+        bucket: z.enum(["overdue", "new"]).optional(),
       })
       .parse(input),
   )
@@ -55,17 +58,21 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
     if (counted.some((q) => q.error || !Number.isSafeInteger(q.count) || q.count! < 0))
       throw new Error("Lead priorities could not be loaded. Please retry.");
     const counts = counted.map((q) => q.count!);
-    const total = counts.reduce((a, b) => a + b, 0);
+    // The three summary counters always cover every bucket. A clicked New or
+    // Overdue card only narrows the rows underneath them.
+    const pageBuckets: LeadBucket[] = data.bucket ? [data.bucket] : [...LEAD_BUCKETS];
+    const total = pageBuckets.reduce((sum, bucket) => sum + counts[LEAD_BUCKETS.indexOf(bucket)]!, 0);
     if (total > 0 && data.offset >= total)
       throw new Error("Lead priorities changed. Please refresh.");
     const rows: ReturnType<typeof projectLead>[] = [];
     let skip = data.offset;
-    for (const [i, bucket] of LEAD_BUCKETS.entries()) {
-      if (skip >= counts[i]) {
-        skip -= counts[i];
+    for (const bucket of pageBuckets) {
+      const available = counts[LEAD_BUCKETS.indexOf(bucket)]!;
+      if (skip >= available) {
+        skip -= available;
         continue;
       }
-      const take = Math.min(data.limit - rows.length, counts[i] - skip);
+      const take = Math.min(data.limit - rows.length, available - skip);
       if (!take) break;
       const result = await query(bucket, false)
         .order("contact_follow_up_on", { ascending: true, nullsFirst: false })

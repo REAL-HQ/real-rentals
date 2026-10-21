@@ -281,9 +281,9 @@ ok(/data-applicants-state/.test(panel), "a failed applicant read renders a disti
 ok(/Could Not Load Applications/.test(panel), "  and says so rather than 'No Applications Yet'");
 ok(/data-notifs-state/.test(admin), "a failed notification read renders a distinct state");
 ok(/Could Not Load Activity/.test(admin), "  and says so rather than 'No Recent Activity'");
-ok(/const \[newApps, setNewApps\] = useState<number \| null>\(null\)/.test(panel),
+ok(/const newApps = applicantsQuery\.data\?\.newApps \?\? null/.test(panel),
   "the New count starts unknown, not zero");
-ok(/const \[pendingApps, setPendingApps\] = useState<number \| null>\(null\)/.test(panel),
+ok(/const pendingApps = applicantsQuery\.data\?\.pendingApps \?\? null/.test(panel),
   "the Pending count starts unknown, not zero");
 ok(/Counts Unavailable/.test(panel), "and a failed read says the counts are unavailable");
 ok(/canSeeReadiness && <option value="readiness">/.test(panel),

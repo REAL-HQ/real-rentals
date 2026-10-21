@@ -1,8 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
 import type { Payment, Application, Vehicle } from "./types";
 import { toast } from "sonner";
+import { StripeCollections } from "./StripeCollections";
+import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
+import { resolveRange, type DayRange } from "@/lib/date-range";
+import {
+  DEDUPE_RULE,
+  SOURCE_FILTERS,
+  SOURCE_LABEL,
+  SOURCE_MAPPING_GAPS,
+  classifyPaymentSource,
+  summarizePayments,
+  type DepositRentalFact,
+  type Metric,
+  type RefundLink,
+  type SourceFilter,
+} from "@/lib/payment-reporting";
 import {
   Select,
   SelectContent,
@@ -62,10 +80,25 @@ function fmtDate(iso?: string | null) {
   return formatDate(d);
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: string; autoOpenAdd?: boolean } = {}) {
+export function PaymentsPanel({
+  initialFilter,
+  autoOpenAdd,
+  initialRange,
+  canSeeCollections = false,
+}: {
+  initialFilter?: string;
+  autoOpenAdd?: boolean;
+  initialRange?: DayRange;
+  canSeeCollections?: boolean;
+} = {}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [source, setSource] = useState<SourceFilter>("all");
+  const [range, setRange] = useState<DayRange>(() => initialRange ?? resolveRange("last_30"));
+  const [refundLinks, setRefundLinks] = useState<RefundLink[]>([]);
+  const [depositRentals, setDepositRentals] = useState<DepositRentalFact[] | null>(null);
+  const [extras, setExtras] = useState<"loading" | "ready" | "failed">("loading");
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
@@ -86,6 +119,18 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
       .from("vehicles")
       .select("*")
       .then(({ data }) => setVehicles((data as any) || []));
+    Promise.all([
+      supabase.from("payment_refunds").select("stripe_charge_id,stripe_payment_intent_id,payment_ids"),
+      supabase.from("rentals").select("id,deposit_amount,deposit_held,deposit_status"),
+    ]).then(([refunds, rentals]) => {
+      if (refunds.error || rentals.error || !refunds.data || !rentals.data) {
+        setExtras("failed");
+        return;
+      }
+      setRefundLinks(refunds.data);
+      setDepositRentals(rentals.data);
+      setExtras("ready");
+    }).catch(() => setExtras("failed"));
   }, []);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
@@ -113,12 +158,40 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     setShowAdd(false);
   }
 
+  const sourced = source === "all" ? payments : payments.filter((p) => classifyPaymentSource(p) === source);
+  const loadCollections = useServerFn(getStripeCollections);
+  const stripeQuery = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, canSeeCollections && (source === "all" || source === "stripe")));
+  const summary = useMemo(() => {
+    if (extras === "loading") return null;
+    const stripe = !canSeeCollections
+      ? { status: "hidden" as const, collectionsComplete: false, totals: null, charges: [] }
+      : stripeQuery.isError
+        ? { status: "error" as const, collectionsComplete: false, totals: null, charges: [] }
+        : stripeQuery.data
+          ? {
+              status: "ready" as const,
+              collectionsComplete: stripeQuery.data.collectionsComplete,
+              totals: stripeQuery.data.totals,
+              charges: stripeQuery.data.verifiedCollections.charges,
+            }
+          : { status: "loading" as const, collectionsComplete: false, totals: null, charges: [] };
+    return summarizePayments({
+      payments,
+      refundLinks: extras === "failed" ? null : refundLinks,
+      stripe,
+      deposits: extras === "ready" && depositRentals ? { rentals: depositRentals, payments } : null,
+      source,
+      range,
+    });
+  }, [extras, canSeeCollections, stripeQuery.isError, stripeQuery.data, payments, refundLinks, depositRentals, source, range]);
+  const stripeTagged = sourced.filter((p) => p.stripe_payment_intent_id || p.stripe_invoice_id || p.stripe_subscription_id);
+
   const filtered = (
     statusFilter === "all"
-      ? payments
+      ? sourced
       : statusFilter === "overdue"
-        ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
-        : payments.filter((p) => p.status === statusFilter)
+        ? sourced.filter((p) => OVERDUE_SET.has(p.status as string))
+        : sourced.filter((p) => p.status === statusFilter)
   )
     .slice()
     .sort((a, b) => {
@@ -139,6 +212,19 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     <div>
       <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2">
         <div className="flex flex-wrap gap-2 text-xs">
+          {SOURCE_FILTERS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={source === id}
+              onClick={() => setSource(id)}
+              className={`px-3 py-1.5 rounded-md ${source === id ? "bg-black text-white" : "bg-white border border-border"}`}
+            >
+              {SOURCE_LABEL[id]}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
           {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
             <button
               key={s}
@@ -149,8 +235,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
               {s !== "all" &&
                 `(${
                   s === "overdue"
-                    ? payments.filter((p) => OVERDUE_SET.has(p.status as string)).length
-                    : payments.filter((p) => p.status === s).length
+                    ? sourced.filter((p) => OVERDUE_SET.has(p.status as string)).length
+                    : sourced.filter((p) => p.status === s).length
                 })`}
             </button>
           ))}
@@ -183,6 +269,46 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
         </button>
       </div>
 
+      <PaymentSummaryBar
+        summary={summary}
+        range={range}
+        onRange={setRange}
+        source={source}
+        duplicateCount={summary?.duplicateIds.length ?? 0}
+      />
+      {source !== "all" && source !== "stripe" && (
+        <section className="mb-4 rounded-2xl border border-[#EDEDF0] bg-white p-4 text-sm">
+          <h2 className="font-semibold">Reconciliation</h2>
+          <p className="mt-1 text-muted-foreground">{DEDUPE_RULE}</p>
+          <p className="mt-2">
+            {sourced.length} recorded {SOURCE_LABEL[source]} {sourced.length === 1 ? "transaction" : "transactions"}.{" "}
+            {stripeTagged.length} also {stripeTagged.length === 1 ? "has" : "have"} a Stripe payment intent, invoice, or subscription id.
+          </p>
+          {stripeTagged.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {stripeTagged.slice(0, 8).map((p) => (
+                <li key={p.id}>
+                  {p.stripe_payment_intent_id || p.stripe_invoice_id || p.stripe_subscription_id} · {p.status} · ${Number(p.amount).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      {source === "stripe" && canSeeCollections && (
+        <div className="mb-4">
+          <StripeCollections from={range.from} to={range.to} hideRange />
+        </div>
+      )}
+      {source === "stripe" && !canSeeCollections && (
+        <p className="mb-4 text-sm text-muted-foreground">Verified Stripe collections are Manager only. Recorded Stripe payments are listed below.</p>
+      )}
+      <details className="mb-4 text-xs text-muted-foreground">
+        <summary className="cursor-pointer font-medium text-foreground">Source Mapping</summary>
+        <ul className="mt-2 list-disc space-y-1 pl-4">
+          {SOURCE_MAPPING_GAPS.map((gap) => <li key={gap}>{gap}</li>)}
+        </ul>
+      </details>
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -312,6 +438,64 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
         />
       )}
     </div>
+  );
+}
+
+function metricText(metric: Metric) {
+  if (metric.amount === null) return "Unavailable";
+  return metric.amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function PaymentSummaryBar({
+  summary,
+  range,
+  onRange,
+  source,
+  duplicateCount,
+}: {
+  summary: ReturnType<typeof summarizePayments> | null;
+  range: DayRange;
+  onRange: (range: DayRange) => void;
+  source: SourceFilter;
+  duplicateCount: number;
+}) {
+  const tiles: { label: string; metric: Metric }[] = summary
+    ? [
+        { label: "Gross Collected", metric: summary.grossCollected },
+        { label: "Net Collected", metric: summary.netCollected },
+        { label: "Outstanding Balances", metric: summary.outstanding },
+        { label: "Refunds", metric: summary.refunds },
+        { label: "Deposits Held", metric: summary.depositsHeld },
+        { label: "Processing Fees", metric: summary.fees },
+      ]
+    : [];
+  return (
+    <section aria-label="Payment Summary" className="mb-4 rounded-2xl border border-[#EDEDF0] bg-white p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Summary · {SOURCE_LABEL[source]}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {summary ? `${summary.coverage}. ${summary.coverageReason}` : "Loading summary…"}
+            {duplicateCount > 0 ? ` ${duplicateCount} recorded ${duplicateCount === 1 ? "payment matches" : "payments match"} a verified Stripe charge and ${duplicateCount === 1 ? "is" : "are"} not added again.` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <label>From <input aria-label="Summary From" type="date" value={range.from} onChange={(e) => onRange({ ...range, from: e.target.value })} className="h-8 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+          <label>To <input aria-label="Summary To" type="date" value={range.to} onChange={(e) => onRange({ ...range, to: e.target.value })} className="h-8 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+        </div>
+      </div>
+      {summary && (
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {tiles.map((tile) => (
+            <div key={tile.label} className="rounded-md border border-border p-3" title={tile.metric.reason ?? undefined}>
+              <div className="text-xs text-muted-foreground">{tile.label}</div>
+              <div className={`mt-2 text-xl font-semibold tabular-nums ${tile.metric.amount === null ? "text-muted-foreground" : tile.metric.amount < 0 ? "text-[#CC0000]" : ""}`}>{metricText(tile.metric)}</div>
+              {tile.metric.reason && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{tile.metric.reason}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
