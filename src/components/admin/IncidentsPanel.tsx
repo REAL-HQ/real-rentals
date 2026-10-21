@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -14,6 +15,8 @@ import {
 import { incidentSeedForIssue } from "@/lib/driver-issues.functions";
 import type { IssueIncidentSeed } from "@/lib/driver-issues";
 import { fmtDateTime } from "@/lib/date-format";
+import { INCIDENT_AGING_ENABLED } from "@/lib/incident-aging-flag";
+import { listIncidentAging } from "@/lib/incident-aging.functions";
 
 type VehicleLite = {
   id: string;
@@ -88,6 +91,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   const openCount = rows.filter((r) => r.status !== "closed" && r.status !== "written_off").length;
 
   return (
+    <IncidentAgingGate incidentIds={rows.map((row) => row.id)}>
     <div className="space-y-4">
       <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -120,6 +124,8 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
           </button>
         ))}
       </div>
+
+      <IncidentAgingNotice />
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -171,6 +177,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                     {r.description ? (
                       <p className="mt-1.5 text-sm text-[#55555E]">{r.description}</p>
                     ) : null}
+                    <IncidentAgingLine incidentId={r.id} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -231,6 +238,66 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         />
       ) : null}
     </div>
+    </IncidentAgingGate>
+  );
+}
+
+type AgingView = {
+  status: "off" | "loading" | "error" | "ready";
+  byId: Map<string, { daysOpen: string; lastUpdate: string; unresolvedDeduction: "unresolved" | "resolved" | "unknown" }>;
+};
+
+const INCIDENT_AGING_OFF: AgingView = { status: "off", byId: new Map() };
+const IncidentAgingContext = createContext<AgingView>(INCIDENT_AGING_OFF);
+
+function IncidentAgingGate({ incidentIds, children }: { incidentIds: string[]; children: ReactNode }) {
+  if (!INCIDENT_AGING_ENABLED) return (
+    <IncidentAgingContext.Provider value={INCIDENT_AGING_OFF}>{children}</IncidentAgingContext.Provider>
+  );
+  return <IncidentAgingLive incidentIds={incidentIds}>{children}</IncidentAgingLive>;
+}
+
+function IncidentAgingLive({ incidentIds, children }: { incidentIds: string[]; children: ReactNode }) {
+  const load = useServerFn(listIncidentAging);
+  const result = useQuery({
+    queryKey: ["incident-aging", incidentIds],
+    queryFn: () => load({ data: { incidentIds } }),
+    enabled: incidentIds.length > 0,
+  });
+  const value: AgingView = incidentIds.length === 0
+    ? { status: "ready", byId: new Map() }
+    : result.isError
+      ? { status: "error", byId: new Map() }
+      : result.isLoading || !result.data
+        ? { status: "loading", byId: new Map() }
+        : {
+            status: "ready",
+            byId: new Map(result.data.rows.map((row) => [row.incidentId, row])),
+          };
+  return <IncidentAgingContext.Provider value={value}>{children}</IncidentAgingContext.Provider>;
+}
+
+function IncidentAgingNotice() {
+  const aging = useContext(IncidentAgingContext);
+  if (INCIDENT_AGING_ENABLED && aging.status === "error") {
+    return <p className="text-[12px] text-[#D03020]">Could Not Load Incident Aging</p>;
+  }
+  return null;
+}
+
+function IncidentAgingLine({ incidentId }: { incidentId: string }) {
+  const aging = useContext(IncidentAgingContext);
+  if (!(INCIDENT_AGING_ENABLED && aging.status === "ready")) return null;
+  const row = aging.byId.get(incidentId);
+  const days = row?.daysOpen ?? "Unknown";
+  const updated = row?.lastUpdate ?? "Unknown";
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {INCIDENT_AGING_ENABLED ? days : null}
+      {INCIDENT_AGING_ENABLED && <> · Last Update {updated}</>}
+      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unresolved" ? " · Unresolved Deduction" : null}
+      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown" ? " · Unknown" : null}
+    </p>
   );
 }
 
