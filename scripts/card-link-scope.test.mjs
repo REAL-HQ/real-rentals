@@ -1,4 +1,4 @@
-/** Card-link scope, reuse, and the resume cap. No network and no database. */
+/** Card-link scope on the real 7-column table shape. No network and no database. */
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -18,7 +18,7 @@ await build({
 });
 const tokens = await import(pathToFileURL(join(out, "tokens.mjs")).href);
 
-function createAdmin(purposeColumn) {
+function createAdmin() {
   const rows = [];
   let seq = 0;
   let clock = Date.parse("2026-10-21T15:00:00.000Z");
@@ -26,11 +26,10 @@ function createAdmin(purposeColumn) {
   const from = () => {
     const state = { filters: [], orders: [], op: "read", values: null, one: false, cols: "*" };
     const run = () => {
-      const wantsPurpose = state.cols.includes("purpose");
-      if (wantsPurpose && !purposeColumn) {
+      if (state.cols.includes("purpose")) {
         return { data: null, error: { code: "42703", message: "column purpose does not exist" } };
       }
-      if (state.op === "insert" && state.values && Object.prototype.hasOwnProperty.call(state.values, "purpose") && !purposeColumn) {
+      if (state.op === "insert" && state.values && Object.prototype.hasOwnProperty.call(state.values, "purpose")) {
         return {
           data: null,
           error: { code: "PGRST204", message: "Could not find the 'purpose' column of 'application_resume_tokens' in the schema cache" },
@@ -43,7 +42,6 @@ function createAdmin(purposeColumn) {
           created_at: stamp(),
           revoked_at: null,
           last_used_at: null,
-          purpose: null,
           ...state.values,
         };
         rows.push(row);
@@ -79,7 +77,7 @@ function createAdmin(purposeColumn) {
   return { from, rows };
 }
 
-const live = (admin, purpose) => admin.rows.filter((row) => !row.revoked_at && (purpose === "card" ? row.purpose === "card" : row.purpose !== "card"));
+const live = (admin, kind) => admin.rows.filter((row) => !row.revoked_at && tokens.isCardRow(row) === (kind === "card"));
 let passed = 0;
 function ok(name) {
   passed += 1;
@@ -87,19 +85,24 @@ function ok(name) {
 }
 
 {
-  const admin = createAdmin(false);
-  await assert.rejects(
-    tokens.issueResumeToken(admin, APP, { purpose: "card", ttlMs: tokens.CARD_LINK_MS }),
-    /card-purpose column/,
-  );
-  assert.equal(admin.rows.length, 0);
+  const admin = createAdmin();
+  const card = await tokens.issueResumeToken(admin, APP, { purpose: "card", ttlMs: tokens.CARD_LINK_MS });
   const resume = await tokens.issueResumeToken(admin, APP);
+  assert.equal(card.startsWith(tokens.CARD_TOKEN_PREFIX), true);
+  assert.equal(resume.startsWith(tokens.CARD_TOKEN_PREFIX), false);
+  const cardRow = admin.rows.find((row) => tokens.isCardRow(row));
+  assert.equal(new Date(cardRow.expires_at).getTime() - new Date(cardRow.created_at).getTime(), tokens.CARD_LINK_MS);
+  assert.equal(Object.hasOwn(cardRow, "purpose"), false);
+  await assert.rejects(tokens.exchangeResumeToken(admin, card), /no longer valid/);
+  await assert.rejects(tokens.resolveResumeToken(admin, card), /no longer valid/);
+  await assert.rejects(tokens.resolveCardToken(admin, resume), /no longer valid/);
+  assert.equal(await tokens.resolveCardToken(admin, card), APP);
   assert.equal(await tokens.resolveResumeToken(admin, resume), APP);
-  ok("without the purpose column a card link is not issued and a resume link still opens");
+  ok("on the real schema a card link issues, thank-you and the wizard reject it, and a resume token is rejected at /card");
 }
 
 {
-  const admin = createAdmin(true);
+  const admin = createAdmin();
   await assert.rejects(
     tokens.issueResumeToken(admin, APP, { purpose: "card", ttlMs: 30 * 60_000 }),
     /longer than one hour/,
@@ -109,7 +112,7 @@ function ok(name) {
 }
 
 {
-  const admin = createAdmin(true);
+  const admin = createAdmin();
   const resumes = [];
   for (let i = 0; i < 5; i += 1) resumes.push(await tokens.issueResumeToken(admin, APP));
   const card = await tokens.issueResumeToken(admin, APP, { purpose: "card" });
@@ -121,31 +124,30 @@ function ok(name) {
   await assert.rejects(tokens.exchangeResumeToken(admin, card), /no longer valid/);
   await assert.rejects(tokens.resolveResumeToken(admin, card), /no longer valid/);
   assert.equal(await tokens.resolveCardToken(admin, card), APP);
-  const cardRow = admin.rows.find((row) => row.purpose === "card");
-  const remaining = new Date(cardRow.expires_at).getTime() - Date.now();
-  assert.ok(Math.abs(remaining - tokens.CARD_LINK_MS) < 5000);
+  const cardRow = admin.rows.find((row) => tokens.isCardRow(row));
+  assert.equal(new Date(cardRow.expires_at).getTime() - new Date(cardRow.created_at).getTime(), tokens.CARD_LINK_MS);
   assert.ok(tokens.CARD_LINK_MS > 60 * 60_000);
   ok("a card link is reused for 72 hours and does not revoke resume links");
 }
 
 {
-  const admin = createAdmin(true);
+  const admin = createAdmin();
   const resume = await tokens.issueResumeToken(admin, APP);
   let previous = null;
   for (let i = 0; i < 6; i += 1) {
-    if (previous) previous.expires_at = "2000-01-01T00:00:00.000Z";
+    if (previous) previous.token_hash = `stale-${i}`;
     await tokens.issueResumeToken(admin, APP, { purpose: "card" });
-    previous = admin.rows.filter((row) => row.purpose === "card").at(-1);
+    previous = admin.rows.filter((row) => tokens.isCardRow(row)).at(-1);
   }
-  assert.equal(admin.rows.find((row) => row.token_hash && row.purpose !== "card").revoked_at, null);
+  assert.equal(admin.rows.find((row) => !tokens.isCardRow(row)).revoked_at, null);
   assert.equal(await tokens.resolveResumeToken(admin, resume), APP);
-  assert.equal(admin.rows.filter((row) => row.purpose === "card" && row.revoked_at).length >= 1, true);
+  assert.equal(admin.rows.filter((row) => tokens.isCardRow(row) && row.revoked_at).length >= 1, true);
   assert.ok(live(admin, "card").length <= 5);
   ok("extra card links trim card links only");
 }
 
 {
-  const admin = createAdmin(true);
+  const admin = createAdmin();
   const [first, second] = await Promise.all([
     tokens.issueResumeToken(admin, APP, { purpose: "card" }),
     tokens.issueResumeToken(admin, APP, { purpose: "card" }),
