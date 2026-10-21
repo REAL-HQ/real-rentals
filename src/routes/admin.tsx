@@ -76,6 +76,8 @@ import { OwnerExpenseEntryPanel } from "@/components/admin/OwnerExpenseEntryPane
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
+import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -350,6 +352,10 @@ function Admin() {
     if (urlTab === "accountant_export") {
       if (!ACCOUNTANT_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "accountant_export";
+    }
+    if (urlTab === "tax_export") {
+      if (!TAX_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "tax_export";
     }
     if (urlTab === "payout_breakdown") {
       if (!PAYOUT_BREAKDOWN_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
@@ -884,6 +890,7 @@ function Admin() {
             {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
             {OWNER_EXPENSE_ENTRY_ENABLED && tab === "expense_entry" && <OwnerExpenseEntryPanel />}
             {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
+            {TAX_EXPORT_ENABLED && tab === "tax_export" && <TaxExportPanel />}
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
