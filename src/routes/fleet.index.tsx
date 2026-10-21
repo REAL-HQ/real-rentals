@@ -432,7 +432,7 @@ function FleetPage() {
         {(!loaded || (FLEET_FILTERS_ENABLED === true && !filterRows)) && filtered.length === 0 && (
           <div className="text-center py-20 text-muted-foreground">Loading the fleet…</div>
         )}
-        {loaded && (FLEET_FILTERS_ENABLED !== true || !!filterRows) && filtered.length === 0 && (
+        {loaded && filtered.length === 0 && (FLEET_FILTERS_ENABLED !== true || !!filterRows) && (
           <div className="mt-2">
             <FadeUp className="text-center max-w-2xl mx-auto">
               <h2 className="text-2xl md:text-3xl">Vehicles Built For Gig Work.</h2>

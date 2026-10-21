@@ -151,7 +151,13 @@ function Rate({ v }: { v: VehicleListRow }) {
   return v.weekly_rate == null ? <span className="text-muted-foreground">Rate Not Set</span> : <span className="font-medium text-foreground">${v.weekly_rate}/wk</span>;
 }
 
-type VehiclesPanelProps = { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState };
+type VehiclesPanelProps = {
+  externalSearch?: string;
+  autoOpenAdd?: boolean;
+  openId?: string | null;
+  listState?: ListState;
+  canSeeMaintenanceDue?: boolean;
+};
 
 export function VehiclesPanel(props: VehiclesPanelProps = {}) {
   return (
