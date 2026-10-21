@@ -83,6 +83,9 @@ import { getPortalPickupChecklist } from "@/lib/portal-pickup-checklist.function
 import { PortalNotices } from "@/components/portal/PortalNotices";
 import { PORTAL_NOTICES_ENABLED } from "@/lib/portal-notices";
 import { getPortalNotices } from "@/lib/portal-notices.functions";
+import { DriverReceipts } from "@/components/portal/DriverReceipts";
+import { DRIVER_RECEIPTS_ENABLED } from "@/lib/driver-receipts";
+import { getDriverReceipts } from "@/lib/driver-receipts.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -2029,6 +2032,11 @@ function MyChargesCard() {
   );
 }
 
+function DriverReceiptsGate() {
+  const read = usePortalRead(getDriverReceipts);
+  return <DriverReceipts read={() => read()} />;
+}
+
 function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
@@ -2066,6 +2074,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
 
   return (
     <div className="space-y-6">
+      {DRIVER_RECEIPTS_ENABLED ? <DriverReceiptsGate /> : null}
       <MyChargesCard />
 
       {billing && billing.rentalId && (
