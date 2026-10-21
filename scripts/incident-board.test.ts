@@ -100,7 +100,7 @@ for (const name of ["listIncidentBoard", "createIncidentBoard", "setIncidentBoar
     const at = body.indexOf(token);
     return at === -1 ? soonest : Math.min(soonest, at);
   }, Number.POSITIVE_INFINITY);
-  ok(staff >= 0 && gate > staff && gate < readAt, `${name} checks staff, then refuses while the flag is off, before any read`);
+  ok(gate >= 0 && gate < staff && staff < readAt, `${name} refuses while the flag is off, then checks staff, before any read`);
 }
 ok(!/requireManager\(/.test(fn) && !/requireOwner\(/.test(fn), "the board does not raise the bar above coordinator");
 const code = fn.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -235,18 +235,18 @@ ok(buckets.vehicleTotals.find((item) => item.id === "vehicle:unknown")?.label ==
 ok(buckets.vehicleTotals.find((item) => item.id === "vehicle:blank")?.label === "No Vehicle" && buckets.vehicleTotals.find((item) => item.id === "vehicle:blank")?.incidents === 1, "a blank vehicle id stays out of the Unknown Vehicle bucket");
 
 const capped = chooseIncidentTotals({ capped: true, allRows: null, openRows: claimedRows });
-ok(capped.totalsCapped && capped.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL, "a capped scan labels totals as the latest 200 open incidents");
+ok(capped.totalsCapped && capped.totalsReason === "page_cap" && capped.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL, "a capped scan labels totals as the latest 200 open incidents");
 const closedRow = claimRow("closed-row", vehicleId, "Unit 12 · 2020 Honda Civic", driverId, "Ada Lovelace", null);
 closedRow.claims = linked.get(incidentId) ?? null;
 const full = chooseIncidentTotals({ capped: false, allRows: [...claimedRows, closedRow], openRows: claimedRows });
-ok(!full.totalsCapped && full.totalsLabel === null && full.vehicleTotals.find((item) => item.id === vehicleId)?.incidents === 3, "a finished scan includes closed incidents in the totals");
+ok(!full.totalsCapped && full.totalsReason === null && full.totalsLabel === null && full.vehicleTotals.find((item) => item.id === vehicleId)?.incidents === 3, "a finished scan includes closed incidents in the totals");
 const overflowClaims = linked.get(incidentId)!;
 const overflowRows = [
   { ...claimedRows[0]!, claims: { ...overflowClaims, estimatedCostCents: Number.MAX_SAFE_INTEGER } },
   { ...claimedRows[1]!, claims: { ...overflowClaims, estimatedCostCents: 1 } },
 ];
 const overflow = chooseIncidentTotals({ capped: false, allRows: overflowRows, openRows: [claimedRows[0]!] });
-ok(overflow.totalsCapped && overflow.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL && overflow.vehicleTotals[0]?.estimatedCostCents === 40000, "a cent overflow falls back to the open incidents");
+ok(overflow.totalsCapped && overflow.totalsReason === "overflow" && overflow.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL && overflow.vehicleTotals[0]?.estimatedCostCents === 40000, "a cent overflow falls back to the open incidents");
 
 const columns = fn.slice(fn.indexOf("const COLUMNS ="), fn.indexOf("function missingIssueColumn"));
 ok(!columns.includes("estimated_cost") && !columns.includes("actual_cost") && !columns.includes("claim_number"), "the operational select does not name claim columns");
@@ -258,7 +258,7 @@ ok(claimSrc.includes('"incidents_log_v1"') && claimSrc.includes('"incidents_log_
 ok(claimSrc.includes("proposedTableMissing(") && !claimSrc.includes("PGRST204") && !claimSrc.includes("42703") && !claimSrc.includes("relation does not exist"), "claim tables are missing only through the 42P01 and PGRST205 predicate");
 const listBody = fn.slice(fn.indexOf("export const listIncidentBoard"), fn.indexOf("export const createIncidentBoard"));
 const listGate = listBody.indexOf("assertIncidentBoardEnabled()");
-ok(listBody.indexOf("await requireStaff(") < listGate && listGate < listBody.indexOf("incidentBoardShowsClaims(") && listBody.indexOf("incidentBoardShowsClaims(") < listBody.indexOf("loadIncidentClaims("), "claim reads run after the flag check and the manager check");
+ok(listGate < listBody.indexOf("await requireStaff(") && listBody.indexOf("await requireStaff(") < listBody.indexOf("incidentBoardShowsClaims(") && listBody.indexOf("incidentBoardShowsClaims(") < listBody.indexOf("loadIncidentClaims("), "claim reads run after the flag check and the staff check");
 ok(listBody.indexOf("incidentBoardShowsClaims(") < listBody.indexOf("loadIncidentTotals("), "totals are loaded only for a manager or owner");
 const totalsSrc = fn.slice(fn.indexOf("async function loadIncidentTotals"), fn.indexOf("async function eachClaimPage"));
 const pageSrc = fn.slice(fn.indexOf("async function eachClaimPage"), fn.indexOf("async function rowsById"));
@@ -270,7 +270,10 @@ ok(!fn.includes("company_share") && !fn.includes("createStripeClient") && !fn.in
 const ui = readFileSync("src/components/admin/IncidentBoard.tsx", "utf8");
 const admin = readFileSync("src/routes/admin.tsx", "utf8");
 ok(ui.includes("Estimated Cost") && ui.includes("Actual Cost") && ui.includes("Claim Number") && ui.includes("Amount Recovered") && ui.includes("Photo Links Not Installed"), "the board shows the claim columns");
-ok(ui.includes("claimsVisible") && ui.includes("open.claims") && ui.includes("open.rentalHref") && ui.includes("incidentMoneyText") && ui.includes("totalsLabel"), "claim columns, rental links, unknown counts, and the cap label render from the server");
+ok(ui.includes("claimsVisible") && ui.includes("open.claims") && ui.includes("open.rentalHref") && ui.includes("incidentMoneyText") && ui.includes("totalsLabel") && ui.includes("All Incidents"), "claim columns, rental links, unknown counts, and the totals heading render from the server");
+ok(ui.includes("The full incident list is past the page cap.") && ui.includes("A cent total could not be added."), "the page cap and a cent overflow use different sentences");
+const labelsSrc = fn.slice(fn.indexOf("async function labelsFor"), fn.indexOf("function vehicleLabel"));
+ok(labelsSrc.includes("rowsById(") && !labelsSrc.includes('.in("id"'), "vehicle and applicant labels use the 100-id batch");
 ok(ui.includes("href={photo.href}"), "photo rows are links");
 ok(ui.includes("does not create a charge or deduct a deposit"), "the board says recovery is not a charge or a deduction");
 ok(ui.includes("Vehicle Totals") && ui.includes("Driver Totals"), "vehicle and driver totals stay on the board");

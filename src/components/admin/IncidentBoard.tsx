@@ -30,8 +30,8 @@ export function IncidentBoard() {
   const [recoveryInstalled, setRecoveryInstalled] = useState<boolean | null>(null);
   const [vehicleTotals, setVehicleTotals] = useState<IncidentClaimTotal[] | null>(null);
   const [driverTotals, setDriverTotals] = useState<IncidentClaimTotal[] | null>(null);
-  const [totalsCapped, setTotalsCapped] = useState(false);
   const [totalsLabel, setTotalsLabel] = useState<string | null>(null);
+  const [totalsReason, setTotalsReason] = useState<"page_cap" | "overflow" | null>(null);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [logging, setLogging] = useState(false);
@@ -52,8 +52,8 @@ export function IncidentBoard() {
       setRecoveryInstalled(res.recoveryInstalled);
       setVehicleTotals(res.vehicleTotals);
       setDriverTotals(res.driverTotals);
-      setTotalsCapped(res.totalsCapped);
       setTotalsLabel(res.totalsLabel);
+      setTotalsReason(res.totalsReason);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load the Incident Board");
     } finally {
@@ -281,8 +281,9 @@ export function IncidentBoard() {
 
       {claimsVisible && vehicleTotals && driverTotals && (
         <div className="space-y-4">
-          {totalsLabel ? <h2 className="text-sm font-semibold">{totalsLabel}</h2> : null}
-          {totalsCapped ? <p className="text-sm text-muted-foreground">The full incident list is past the page cap.</p> : null}
+          <h2 className="text-sm font-semibold">{totalsLabel ?? "All Incidents"}</h2>
+          {totalsReason === "page_cap" ? <p className="text-sm text-muted-foreground">The full incident list is past the page cap.</p> : null}
+          {totalsReason === "overflow" ? <p className="text-sm text-muted-foreground">A cent total could not be added. These totals are the latest 200 open incidents.</p> : null}
           <ClaimTotals title="Vehicle Totals" rows={vehicleTotals} recoveryInstalled={recoveryInstalled === true} />
           <ClaimTotals title="Driver Totals" rows={driverTotals} recoveryInstalled={recoveryInstalled === true} />
         </div>

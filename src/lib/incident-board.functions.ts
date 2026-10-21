@@ -55,9 +55,9 @@ function missingIssueColumn(err: { code?: string | null; message?: string | null
 export const listIncidentBoard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<IncidentBoardList> => {
+    assertIncidentBoardEnabled();
     const { requireStaff } = await import("@/lib/roles.server");
     const actor = await requireStaff(context.userId);
-    assertIncidentBoardEnabled();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const loaded = await loadOpen(supabaseAdmin);
     const issueTitles = await titlesFor(supabaseAdmin, loaded.rows, loaded.linkColumn);
@@ -116,6 +116,7 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
       driverTotals: totals ? totals.driverTotals : null,
       totalsCapped: totals?.totalsCapped ?? false,
       totalsLabel: totals?.totalsLabel ?? null,
+      totalsReason: totals?.totalsReason ?? null,
     };
   });
 
@@ -133,9 +134,9 @@ export const createIncidentBoard = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<{ id: string }> => {
+    assertIncidentBoardEnabled();
     const { requireStaff } = await import("@/lib/roles.server");
     const actor = await requireStaff(context.userId);
-    assertIncidentBoardEnabled();
     const blockers = incidentCreateBlockers(data);
     if (blockers.length) throw new Error(blockers.join(" "));
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -184,9 +185,9 @@ export const setIncidentBoardStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), status: z.enum(STATUSES) }).parse(d))
   .handler(async ({ data, context }): Promise<{ ok: true; status: IncidentStatus }> => {
+    assertIncidentBoardEnabled();
     const { requireStaff } = await import("@/lib/roles.server");
     const actor = await requireStaff(context.userId);
-    assertIncidentBoardEnabled();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: existing, error: readError } = await supabaseAdmin.from("incidents").select("id,status").eq("id", data.id).maybeSingle();
     if (readError) throw new Error(readError.message);
@@ -283,6 +284,7 @@ async function loadIncidentTotals(
   driverTotals: IncidentBoardList["driverTotals"];
   totalsCapped: boolean;
   totalsLabel: string | null;
+  totalsReason: IncidentBoardList["totalsReason"];
   recoveryInstalled: boolean;
 }> {
   const incidents = await eachClaimPage(sb, "incidents", "id,vehicle_id,application_id,estimated_cost,actual_cost", "id");
@@ -353,7 +355,12 @@ async function eachClaimPage(
   return { capped: true, installed: true, rows: [] };
 }
 
-async function rowsById(sb: any, table: "documents" | "inspections" | "rentals", columns: string, ids: string[]): Promise<any[]> {
+async function rowsById(
+  sb: any,
+  table: "documents" | "inspections" | "rentals" | "vehicles" | "applications",
+  columns: string,
+  ids: string[],
+): Promise<any[]> {
   const loaded: any[] = [];
   for (let index = 0; index < ids.length; index += 100) {
     const slice = ids.slice(index, index + 100);
@@ -388,12 +395,11 @@ async function titlesFor(sb: any, rows: any[], linkColumn: boolean): Promise<Map
 }
 
 async function labelsFor(sb: any, table: "vehicles" | "applications", ids: string[], label: (row: any) => string): Promise<Map<string, string>> {
-  const unique = [...new Set(ids)];
+  const unique = uniqueIds(ids);
   if (!unique.length) return new Map();
   const columns = table === "vehicles" ? "id,unit_number,year,make,model,license_plate" : "id,full_name";
-  const { data, error } = await sb.from(table).select(columns).in("id", unique);
-  if (error) throw new Error(error.message);
-  return new Map((data ?? []).map((row: any) => [String(row.id), label(row)]));
+  const rows = await rowsById(sb, table, columns, unique);
+  return new Map(rows.map((row: any) => [String(row.id), label(row)]));
 }
 
 function vehicleLabel(row: any): string {

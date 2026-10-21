@@ -355,6 +355,7 @@ export type IncidentBoardList = {
   driverTotals: IncidentClaimTotal[] | null;
   totalsCapped: boolean;
   totalsLabel: string | null;
+  totalsReason: "page_cap" | "overflow" | null;
 };
 
 export function incidentMoneyText(cents: number | null, unknown: number): string {
@@ -432,6 +433,7 @@ export function chooseIncidentTotals(input: {
   driverTotals: IncidentClaimTotal[];
   totalsCapped: boolean;
   totalsLabel: string | null;
+  totalsReason: "page_cap" | "overflow" | null;
 } {
   if (!input.capped && input.allRows) {
     const all = incidentClaimTotals(input.allRows);
@@ -441,8 +443,17 @@ export function chooseIncidentTotals(input: {
         driverTotals: all.driverTotals,
         totalsCapped: false,
         totalsLabel: null,
+        totalsReason: null,
       };
     }
+    const open = incidentClaimTotals(input.openRows);
+    return {
+      vehicleTotals: open.vehicleTotals,
+      driverTotals: open.driverTotals,
+      totalsCapped: true,
+      totalsLabel: OPEN_INCIDENT_TOTALS_LABEL,
+      totalsReason: "overflow",
+    };
   }
   const open = incidentClaimTotals(input.openRows);
   return {
@@ -450,6 +461,7 @@ export function chooseIncidentTotals(input: {
     driverTotals: open.driverTotals,
     totalsCapped: true,
     totalsLabel: OPEN_INCIDENT_TOTALS_LABEL,
+    totalsReason: "page_cap",
   };
 }
 
