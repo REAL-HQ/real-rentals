@@ -597,6 +597,20 @@ EXCEPTION WHEN OTHERS THEN
  RAISE;
 END $$;
 
+RESET SESSION AUTHORIZATION;
+DO $$
+DECLARE em text; rl text;
+BEGIN
+ SELECT actor_email, actor_role INTO em, rl
+ FROM public.audit_log
+ WHERE action = 'application.approved'
+   AND entity_id = '44444444-4444-4444-8444-444444444444';
+ IF em IS DISTINCT FROM 'manager@example.test' OR rl IS DISTINCT FROM 'admin' THEN
+  RAISE EXCEPTION 'approval audit actor email=% role=%', em, rl;
+ END IF;
+ RAISE NOTICE 'RESULT d audit pass email=% role=%', em, rl;
+END $$;
+
 SELECT r.id AS rental_id, r.status AS rental_status, r.weekly_rate
  FROM public.rentals r WHERE r.application_id='44444444-4444-4444-8444-444444444444';
 SELECT id AS agreement_id, rental_id, status, archive_status, storage_path_ok

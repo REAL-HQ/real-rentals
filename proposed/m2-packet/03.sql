@@ -2,11 +2,11 @@
 -- Existing approval_actor/lock/validate are reused; their provider adapters remain deny-by-default.
 CREATE ROLE rr_record_executor NOLOGIN NOSUPERUSER NOBYPASSRLS;
 -- INSTALLER ONLY: required by PostgreSQL non-superuser ownership transfers.
--- CREATE on public stays. ALTER ... OWNER TO requires the new owner to hold
--- CREATE on the object's schema. This step moves public.booking_vehicle_assignments
--- and public.record_existing_rental_tx to rr_record_executor. CREATE on private
--- stays for the private tables and sequences that move with them. The preflight
--- row "public CREATE holders" lists who already holds CREATE on public.
+-- ALTER ... OWNER TO requires the new owner to hold CREATE on the object's schema.
+-- This step moves public.booking_vehicle_assignments and public.record_existing_rental_tx
+-- to rr_record_executor. Later steps move more objects, so CREATE stays until
+-- 21-revoke-executor-create.sql, which runs after every ownership transfer.
+-- The preflight row "public CREATE holders" lists who already holds CREATE on public.
 GRANT rr_record_executor TO postgres WITH SET TRUE;
 GRANT CREATE ON SCHEMA private, public TO rr_record_executor;
 CREATE SEQUENCE private.record_customer_number_seq AS bigint MINVALUE 1 NO CYCLE;

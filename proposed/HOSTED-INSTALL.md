@@ -10,7 +10,7 @@ The local rehearsal that proved these files is `docs/m2-rehearsal.md`. `SHOW ser
 
 Ship the application first. Then run this migration.
 
-`approveApplication` calls `approve_application_checked` with the manager's own JWT (`context.supabase`, not the service role). The packet grants that function to `authenticated` only. When the function is not installed yet, PostgREST returns `PGRST202` and Postgres returns `42883`. Only those two errors use the legacy service-role update of `applications.status` and the legacy `application.approved` audit insert. Any other error is returned and is not retried as a legacy write.
+`approveApplication` calls `approve_application_checked` with the manager's own JWT (`context.supabase`, not the service role). The packet grants that function to `authenticated` only. When the function is not installed yet, PostgREST returns `PGRST202`. Only that code uses the legacy service-role update of `applications.status` and the legacy `application.approved` audit insert. Postgres `42883`, and a message that mentions either code, is returned and is not retried as a legacy write.
 
 Installing this packet before that application is deployed breaks live Approve. `approval_application_guard` refuses a direct status change to `approved` (`approval_rpc_required`), and `approval_audit_guard` refuses a direct insert of `application.approved` (`approval_audit_rpc_required`).
 
@@ -20,7 +20,7 @@ After the application is deployed and this packet verifies, Approve goes through
 
 ## Window
 
-The window starts when `proposed/m2-packet/01.sql` commits and ends when `record-uploaded-content-sha.sql` verifies. Approval and signing during that window see a partial install. Stop at the first failed check. Do not start the next file. Do not open this window until the application deploy above is live.
+The window starts when `proposed/m2-packet/01.sql` commits and ends when `21-revoke-executor-create.sql` verifies. Approval and signing during that window see a partial install. Stop at the first failed check. Do not start the next file. Do not open this window until the application deploy above is live, and do not install step 2 until the hold below is satisfied.
 
 ## How a file runs
 
@@ -42,7 +42,17 @@ Stop if any of these fail. Nothing has been written yet, so there is nothing to 
 3. The `postgres` role is superuser or `BYPASSRLS`. That is the preflight row `postgres bypassrls or superuser`.
 4. Object versioning is off on `driver-docs`, `license-uploads`, `profile-screenshots`, `rental-agreements`, and `condition-media`. The preflight row `storage.objects one row per path` must be `holds`. A second row for the same bucket and name means versioning is on, or a duplicate was left behind. If the Storage dashboard shows versioning on, stop even when that row says `holds`.
 5. `proposed/m2-preflight.sql`, without `-1`. Every `ok` value is true. `private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are `absent`. `public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is `absent`.
-6. The preflight row `public CREATE holders` lists who holds `CREATE` on `public`. Step 4 grants `CREATE` on `public` to `rr_record_executor` because PostgreSQL requires the new owner to hold `CREATE` on the schema. That step moves `public.booking_vehicle_assignments` and `public.record_existing_rental_tx` to that role. Read the `actual` column before installing. Stop if `anon` or `authenticated` is in the list.
+6. The preflight row `public CREATE holders` lists who holds `CREATE` on `public`. Step 4 grants `CREATE` on `public` and `private` to `rr_record_executor` because PostgreSQL requires the new owner to hold `CREATE` on the schema. That step moves `public.booking_vehicle_assignments` and `public.record_existing_rental_tx` to that role. Later steps move more objects to the same role. Step 29 revokes `CREATE` on both schemas after those transfers. Read the `actual` column before installing. Stop if `anon` or `authenticated` is in the list.
+
+## Step 2 hold
+
+Do not install step 2, `proposed/m2-with-approval-boundary/00-approval-boundary.sql`, until all three of the following are true. Otherwise Approve closes for everyone. The approval snapshot requires a verified `approval_identity` review and license documents whose `content_sha256` matches the stored object. A real application fails `documents_unverified`, and after staff document review it fails `approval_storage_version_unverified`.
+
+1. The staff identity-verification action is deployed. It calls `verify_approval_identity` from the application review screen. `IDENTITY_VERIFICATION_ENABLED` in `src/lib/identity-verification.ts` stays false until a rebuild turns it on. The server checks that flag before any role lookup or RPC.
+2. Hash-on-upload is deployed. `registerDocument` and `confirmDocumentUpload` record `content_sha256` when `DOCUMENT_CONTENT_SHA256_ENABLED` is on. That constant in `src/lib/document-content-sha.ts` stays false until a rebuild turns it on.
+3. `proposed/backfill-document-content-sha.sql` has been run in write mode for the existing documents, and those rows now have `content_sha256`. That file is not a step in the order below. It is read-only unless the session sets `m2.backfill_content_sha` to `write` and `m2.backfill_local` to `yes`, and the server address is loopback or a local socket. Do not run it on the hosted database as part of this procedure. Run it only where you can restore the database, before step 2.
+
+Installing step 2 before those three leaves no path that can satisfy the snapshot. Approve stays closed for every applicant.
 
 ```sql
 SHOW server_version;
@@ -90,6 +100,7 @@ After each file, run the verification query in a new execution. The query must r
 | 26 | `proposed/m2-packet/extend.sql` | `-1` | Step 26 query below | `proposed/rollback/extend-rental.sql` |
 | 27 | `proposed/m2-packet/return.sql` | `-1` | Step 27 query below | `proposed/rollback/return-checklist.sql` |
 | 28 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | own, no `-1` | Step 28 query below | `proposed/rollback/record-uploaded-content-sha.sql` |
+| 29 | `proposed/m2-packet/21-revoke-executor-create.sql` | `-1` | Step 29 query below | `proposed/rollback/21-revoke-executor-create.sql` |
 
 Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, and `list_assignment_history_v1`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. Step 23 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 24. Step 25 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
 
@@ -2521,12 +2532,121 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ) AS e(sig, acl, definer, spath)
  JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
 ```
+### Step 29
+
+```sql
+SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL
+ AND NOT has_schema_privilege('rr_record_executor','public','CREATE')
+ AND NOT has_schema_privilege('rr_record_executor','private','CREATE')
+ AND NOT has_schema_privilege('anon','private','USAGE')
+ AND NOT has_schema_privilege('authenticated','private','USAGE')
+ AND NOT EXISTS (
+  SELECT 1
+  FROM (VALUES ('anon'), ('authenticated')) AS w(who)
+  CROSS JOIN (VALUES
+   ('authenticated'),
+   ('service_role'),
+   ('postgres'),
+   ('authenticator'),
+   ('rr_record_executor'),
+   ('rr_approval_executor'),
+   ('rr_evidence_issuer')
+  ) AS priv(rol)
+  WHERE to_regrole(w.who) IS NOT NULL
+    AND to_regrole(priv.rol) IS NOT NULL
+    AND w.who <> priv.rol
+    AND pg_has_role(w.who, priv.rol, 'member')
+ )
+ AND (SELECT count(*)=74 AND coalesce(bool_and(
+      p.proacl::text IS NOT DISTINCT FROM e.acl
+      AND p.prosecdef = e.definer
+      AND (SELECT c FROM unnest(p.proconfig) c WHERE split_part(c, '=', 1) = 'search_path') IS NOT DISTINCT FROM e.spath
+    ), false)
+ FROM (VALUES
+ ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.approval_readiness(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.approve_application_checked(uuid,bigint,uuid,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""'),
+ ('public.close_recorded_rental_v2(uuid,uuid,timestamp with time zone,text,integer,text)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.end_rental_safe_v1(uuid,date,text,integer,uuid,text)','{postgres=X/postgres,service_role=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.link_replacement_agreement_v1(uuid,uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('public.list_assignment_history_v1(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.preview_approval_identity(uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('private.approval_actor()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_after()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_application_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_evidence_changed()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.approval_lock()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_object_version(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_operation_immutable()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_result(private.approval_operations,boolean)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.approval_review_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_serialize()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.approval_snapshot(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
+ ('private.bind_document_integrity_v1(uuid,jsonb,text,text,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.completed_archive_storage_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.document_integrity_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.finalized_archive_document_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.finalized_archive_pointer_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.guard_safe_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.hold_vehicle_on_evidence()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.integrity_serialize_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.issue_record_evidence_v1(jsonb,jsonb,jsonb)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.license_snapshot_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.positive_audit_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.positive_review_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_approval_scope_v3(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_assignment_interval_guard()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_audit_guard()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.record_close_guard_v2()','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_close_scope_v5(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_executor_scope_v3(uuid)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_existing_rental_evidence_core_v1(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor,postgres=X/rr_record_executor}',true,'search_path=""'),
+ ('private.record_identity_reader_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_immutable()','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_issuer_scope_v2(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',false,'search_path=""'),
+ ('private.record_session_v1()','{postgres=X/postgres,rr_evidence_issuer=X/postgres,rr_approval_executor=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.record_snapshot_v1(uuid,uuid,uuid,uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.record_subscription_evidence_v1(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.recover_record_evidence_v1(uuid)','{postgres=X/postgres,rr_evidence_issuer=X/postgres}',true,'search_path=""'),
+ ('private.signed_binding_guard_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.storage_integrity_v1()','{postgres=X/postgres}',false,'search_path=""'),
+ ('private.subscription_actor_v1(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.subscription_guard_v1()','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.swap_agreement_evidence(uuid,uuid,uuid,timestamp with time zone)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,uuid,uuid,bigint,text)','{postgres=X/postgres,rr_record_executor=X/postgres}',true,'search_path=""'),
+ ('private.validate_license_v1(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres,rr_evidence_issuer=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
+ ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
+ ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
+ ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid)','{rr_record_executor=X/rr_record_executor,authenticated=X/rr_record_executor}',true,'search_path=""'),
+ ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
+ ) AS e(sig, acl, definer, spath)
+ JOIN pg_proc p ON p.oid=to_regprocedure(e.sig));
+```
+
 
 Each verify query returns `f` immediately before its file and `t` immediately after. The same query is false after `GRANT authenticated TO anon`, and it is false if `prosecdef` or the `search_path` entry differs from the recorded row. A later file may replace a function again. Run the query for the file just applied, not after the whole install.
 
 Step 8's function already exists as an invoker after step 7. The check is `SECURITY DEFINER` in `pg_get_functiondef`. Step 10 already creates `approval_scope_permissive_v3` and `approval_scope_restrictive_v3` on `public.audit_log`, so step 13 counts those two policies on `public.audit_log` only when `pg_get_expr` contains `application.approved`, and it also requires `SELECT` on `applications.approval_evidence_version`. Step 16's signature already exists after step 5. The check is the column list `pickup_reading_id,driver_id INTO r`, which step 5's body does not have. Step 18's signature already exists after step 6. The check is `record.application_id`. Step 23 leaves the four-argument `record_agreement_evidence` as a deny-all. Step 24's check is `record_rental_terms_v1` in that body. Step 26 installs `public.extend_rental_tx(uuid,uuid,date,date,text,uuid)`, revokes `PUBLIC`, `anon`, and `authenticated`, grants `EXECUTE` to `service_role`, checks the actor id is a manager before `private.approval_lock`, repeats that check with `FOR SHARE` after the rental lock, and does not call `private.approval_actor`.
 
-Roll `record-uploaded-content-sha.sql` back before the return checklist when undoing a committed prefix. Then roll back return, extend, 20, 19c, 19b, 19 through 2, 00, and 01. Do not skip backward over a later committed step.
+Roll `21-revoke-executor-create.sql` back before `record-uploaded-content-sha.sql` when undoing a committed prefix. Then roll back the content-sha file, return, extend, 20, 19c, 19b, 19 through 2, 00, and 01. Do not skip backward over a later committed step. Step 29's rollback grants `CREATE` on `public` and `private` back to `rr_record_executor`.
 
 ## Stop points
 
@@ -2535,4 +2655,4 @@ Roll `record-uploaded-content-sha.sql` back before the return checklist when und
 - A file commits and its verification fails. Stop. Run only that step's rollback, then stop. Do not continue the install in the same window.
 - `06b-approval-identity-check.sql` rollback raises `06b_rollback_unused_install_only` when a verified `approval_identity` row exists. `00-approval-boundary.sql` rollback raises `00_rollback_unused_install_only` when any `approval_identity` or `verified` row exists. Export with `proposed/rollback/00-approval-data-export.sql` (read-only, no `-1`), move those rows, and remove them before that rollback. If they cannot be moved, restore the backup or the point-in-time recovery snapshot. Do not force the rollback.
 
-After step 28 verifies, the window is closed. The upload flag in `src/lib/document-content-sha.ts` stays false until a separate rebuild turns it on. This procedure does not change that constant.
+After step 29 verifies, the window is closed. `rr_record_executor` no longer holds `CREATE` on `public` or `private`. The upload flag in `src/lib/document-content-sha.ts` stays false until a separate rebuild turns it on. `IDENTITY_VERIFICATION_ENABLED` stays false the same way. This procedure does not change either constant.

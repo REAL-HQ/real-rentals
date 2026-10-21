@@ -60,6 +60,7 @@ ALTER TABLE "public"."application_identity_reviews" ADD CONSTRAINT "application_
 -- indexes removed by this step
 -- functions whose bodies changed
 -- functions added by this step
+DROP FUNCTION IF EXISTS "private"."approval_actor_label"(_actor uuid);
 DROP FUNCTION IF EXISTS "private"."approval_after"();
 DROP FUNCTION IF EXISTS "private"."approval_application_guard"();
 DROP FUNCTION IF EXISTS "private"."approval_audit_guard"();

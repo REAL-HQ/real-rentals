@@ -4,19 +4,16 @@
  * applications.status to approved, and inserts of audit action
  * application.approved, are refused once the approval triggers exist.
  *
- * Before that migration the function is absent. PostgREST reports PGRST202
- * and Postgres reports 42883. Only those two mean "fall back to the legacy
- * service-role write". Any other error is returned as-is.
+ * Before that migration the function is absent. PostgREST reports PGRST202.
+ * Only that code means "fall back to the legacy service-role write".
+ * Postgres 42883 and a message that mentions either code are returned as-is.
  */
 
 export type RpcError = { code?: string | null; message?: string | null };
 
 export function isMissingApprovalRpc(error: RpcError | null | undefined): boolean {
   if (!error) return false;
-  const code = String(error.code ?? "");
-  if (code === "PGRST202" || code === "42883") return true;
-  const message = String(error.message ?? "");
-  return message.includes("PGRST202") || message.includes("42883");
+  return error.code === "PGRST202";
 }
 
 /** The version column arrives with the same migration as the RPC. */

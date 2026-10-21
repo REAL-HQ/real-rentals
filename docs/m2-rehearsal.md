@@ -185,7 +185,7 @@ After step 7, the remaining packet call is `record_existing_rental_tx`. Before s
 
 ## Application deploy, then this migration
 
-Ship the application before the packet. `approveApplication` calls `approve_application_checked` with the manager JWT. `PGRST202` and `42883` are the only errors that use the legacy service-role status update and `application.approved` audit insert. Installing the packet first makes live Approve fail: the approval triggers refuse both of those writes. The rehearsal runs `scripts/m2-approve-before.sql` on the baseline, then `scripts/m2-functional-proof.sql` after install. The before script records a successful legacy approve. The proof records `approval_rpc_required` and `approval_audit_rpc_required` for the same service-role writes, then a successful `approve_application_checked`. Each hosted verify query also requires `prosecdef`, the `search_path` proconfig entry, and that `anon` and `authenticated` are not members of the privileged roles. `GRANT authenticated TO anon` leaves `proacl` unchanged and makes that query false.
+Ship the application before the packet. `approveApplication` calls `approve_application_checked` with the manager JWT. `PGRST202` is the only error that uses the legacy service-role status update and `application.approved` audit insert. `42883` does not. Installing the packet first makes live Approve fail: the approval triggers refuse both of those writes. Do not install step 2 until the identity-verification action, hash-on-upload, and the `content_sha256` backfill are live and the backfill has been run. Otherwise the snapshot closes Approve for every real application. The rehearsal runs `scripts/m2-approve-before.sql` on the baseline, then `scripts/m2-functional-proof.sql` after install. The before script records a successful legacy approve. The proof records `approval_rpc_required` and `approval_audit_rpc_required` for the same service-role writes, then a successful `approve_application_checked`. Each hosted verify query also requires `prosecdef`, the `search_path` proconfig entry, and that `anon` and `authenticated` are not members of the privileged roles. `GRANT authenticated TO anon` leaves `proacl` unchanged and makes that query false.
 
 ## Recommended install order
 
@@ -310,8 +310,11 @@ Install mode is `proposed/INSTALL.md`. Packet files, including `17.sql`, are app
 9. `19c-agreement-contract.sql`
 10. Packet step 20, extend rental, return checklist
 11. `record-uploaded-content-sha.sql` after the return checklist. The proof rolls it back before the return checklist so the privilege dumps stay comparable.
+12. `proposed/m2-packet/21-revoke-executor-create.sql`. This revokes `CREATE` on `public` and `private` from `rr_record_executor`. Its rollback grants that privilege back. The proof rolls it back before the content-sha file.
 
-SHA-256 of the files as rehearsed. `19b.sql` and `20.sql` changed executable statements for the swap and the install-order guard. The other files in this list changed header comments only:
+`00-approval-boundary.sql` now records `actor_email` and `actor_role` on the approval audit rows and accepts every application status the legacy update accepts, except a direct call on an already-approved row. `deleted_at` and `purged_at` stay refused. `10b` grants the executor `INSERT` on those two audit columns.
+
+SHA-256 of the files as rehearsed:
 
 | File | SHA-256 |
 | --- | --- |
@@ -321,9 +324,10 @@ SHA-256 of the files as rehearsed. `19b.sql` and `20.sql` changed executable sta
 | `proposed/m2-packet/19b.sql` | `57b82055838bde638518f6c889802d0ba892cf65eb57af6af0ca17dfba62bc36` |
 | `proposed/m2-packet/20.sql` | `c23e187d4aada1280616197e876151a1668810c235e5c1504901ee15349ee70a` |
 | `proposed/m2-packet/extend.sql` | `ef1c6a1dc1dea9138a2c9a2a223eeba2e23cf75fc0e8d041115cf03a134f1fb3` |
-| `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | `e0d0b896388ace43125faf8e5df2b1710413b7130d150ea136599a46e5020bb0` |
+| `proposed/m2-packet/21-revoke-executor-create.sql` | `2eea1a9184bc545d668e7821a3782156ee80492d31543dd11b5dac8b3744c70a` |
+| `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | `618f9c7c3fae2d344e1987bb0a41626f80472fc1ec8a80d40ddf6ec60366d1e3` |
 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | `ba5db19b8e8910c2501ad63c10d16d0a8b9ac616b264a3d8f10c908fd3240683` |
-| `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | `b7ea20b919a1527f66ec46dcc1feb9ee7940fe7f470bd6b97e4cd7a05c488456` |
+| `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | `d5855b63ad7811684f2d5dda465a098efc4d4c96b1d43c7966f4fc6c3d3b23f4` |
 | `proposed/m2-with-approval-boundary/19c-agreement-contract.sql` | `81aec62a997acf4ff5a3f5e26398a09d193a33c71dd97a1242466e80042c5d49` |
 | `proposed/m2-with-approval-boundary/approval-boundary.local.sql` | `e377ee948cd294b6afdc34b7f7441fdd1d86801a66b2337a57d4431f84995e78` |
 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | `16177844b26c26be9fbff2543c0cf8240a159612e678aeb7c54d9b30e54ff479` |

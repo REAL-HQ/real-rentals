@@ -132,6 +132,7 @@ apply_packet 20.sql; snap inst-20; verify_step 25
 apply_packet extend.sql; snap inst-extend; verify_step 26
 apply_packet return.sql; snap inst-return; verify_step 27
 apply_own record-uploaded-content-sha.sql; snap inst-sha; verify_step 28
+apply_packet 21-revoke-executor-create.sql; snap inst-21; verify_step 29
 
 echo "PROOF" | tee -a "$LOG"
 if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
@@ -139,6 +140,13 @@ if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
   exit 1
 fi
 psqlq -f "$ROOT/scripts/m2-functional-proof.sql" | tee -a "$LOG"
+
+echo "REALISTIC APPROVE" | tee -a "$LOG"
+if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-realistic-approve.sql" "$ROOT/proposed/backfill-document-content-sha.sql"; then
+  echo "realistic approve SQL contains a 64-hex literal" | tee -a "$LOG"
+  exit 1
+fi
+psqlq -f "$ROOT/scripts/m2-realistic-approve.sql" | tee -a "$LOG"
 
 echo "19b REAPPLY GUARD" | tee -a "$LOG"
 set +e
@@ -227,6 +235,7 @@ DELETE FROM auth.users WHERE id='12121212-1212-4121-8121-121212121212';
 COMMIT;
 SQL
 
+rollback_to 21-revoke-executor-create.sql inst-sha
 rollback_to record-uploaded-content-sha.sql inst-return
 rollback_to return-checklist.sql inst-extend
 rollback_to extend-rental.sql inst-20

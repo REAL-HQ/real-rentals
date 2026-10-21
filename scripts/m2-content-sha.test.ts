@@ -116,6 +116,17 @@ if (thrown.rows.filter((row) => row.is_current === true).length !== 1) {
 }
 if (thrown.rows.length !== 3) throw new Error("a retry deleted an unhashed row");
 
+const stamped = confirmTable([]);
+const stampedSaved = await persistConfirmedDocument(
+  stamped.admin,
+  { ...confirmFields, storage_path: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/hashed.jpg" },
+  async () => "hashed-token",
+);
+const stampedRow = stamped.rows.find((row) => row.id === stampedSaved.id);
+if (!stampedRow || stampedRow.content_sha256 !== "hashed-token") {
+  throw new Error("confirm path did not record the returned content hash");
+}
+
 resetUploadedContentShaProbe();
 const missingLogs: string[] = [];
 const originalError = console.error;

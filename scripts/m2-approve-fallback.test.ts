@@ -16,7 +16,9 @@ function assert(cond: boolean, message: string): void {
 }
 
 assert(isMissingApprovalRpc({ code: "PGRST202", message: "missing" }), "PGRST202");
-assert(isMissingApprovalRpc({ code: "42883", message: "undefined" }), "42883");
+assert(!isMissingApprovalRpc({ code: "42883", message: "undefined" }), "42883 is not a fallback");
+assert(!isMissingApprovalRpc({ code: "P0001", message: "function missing PGRST202" }), "message substring is not a fallback");
+assert(!isMissingApprovalRpc({ message: "42883" }), "42883 in the message is not a fallback");
 assert(!isMissingApprovalRpc({ code: "42501", message: "approval_rpc_required" }), "42501 is not a fallback");
 assert(!isMissingApprovalRpc({ code: "PGRST204", message: "column" }), "PGRST204 is not a missing function");
 assert(!isMissingApprovalRpc(null), "null error");
@@ -84,5 +86,21 @@ assert(fn.includes("if (!DOCUMENT_CONTENT_SHA256_ENABLED)"), "flag gates the cat
 assert(fn.includes("isUploadedContentShaRefusal"), "catch checks the hash refusal");
 const flagOff = fn.slice(fn.indexOf("if (!DOCUMENT_CONTENT_SHA256_ENABLED)"), fn.indexOf("try {"));
 assert(!flagOff.includes("catch"), "flag off does not catch");
+
+const identityFlag = readFileSync(new URL("../src/lib/identity-verification.ts", import.meta.url), "utf8");
+assert(identityFlag.includes("IDENTITY_VERIFICATION_ENABLED = false"), "identity flag is false");
+assert(!identityFlag.includes("process.env"), "identity flag does not read the environment");
+
+const identityFn = readFileSync(new URL("../src/lib/identity-verification.functions.ts", import.meta.url), "utf8");
+const identityHandler = identityFn.slice(identityFn.indexOf(".handler"));
+const beforeRole = identityHandler.slice(0, identityHandler.indexOf("requireManager"));
+assert(beforeRole.includes("if (!IDENTITY_VERIFICATION_ENABLED)"), "identity flag is checked before the manager lookup");
+assert(!beforeRole.includes(".rpc("), "identity flag is checked before either RPC");
+assert(identityFn.includes('rpc("preview_approval_identity"'), "identity action previews on the caller JWT");
+assert(identityFn.includes('rpc("verify_approval_identity"'), "identity action calls verify_approval_identity");
+
+const identityUi = readFileSync(new URL("../src/components/admin/ApplicantDocuments.tsx", import.meta.url), "utf8");
+assert(identityUi.includes("if (!IDENTITY_VERIFICATION_ENABLED) return null;"), "identity action renders nothing while hidden");
+assert(identityUi.includes("Verify Identity"), "identity action label is Title Case");
 
 console.log("approve fallback pass");

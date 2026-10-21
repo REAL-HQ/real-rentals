@@ -13,4 +13,5 @@ CREATE POLICY approval_scope_restrictive_v3 ON public.audit_log AS RESTRICTIVE F
  WITH CHECK (actor_user_id=private.approval_actor() AND action='identity_review.positive_license_v1' AND entity_type='application' AND private.record_approval_scope_v3(entity_id::uuid));
 REVOKE SELECT (status, purged_at, approval_evidence_version, contacted_at), UPDATE (status, contacted_at) ON public.applications FROM rr_approval_executor;
 REVOKE INSERT (resolution_note, approval_evidence) ON public.application_identity_reviews FROM rr_approval_executor;
+REVOKE INSERT (actor_email, actor_role) ON public.audit_log FROM rr_approval_executor;
 COMMIT;

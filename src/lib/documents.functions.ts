@@ -590,11 +590,12 @@ async function assertMayTouch(userId: string, documentId: string): Promise<void>
 type UploadHasher = (admin: any, bucket: string, path: string) => Promise<string | null>;
 
 /**
- * Insert the documents row, then hash. The hasher returns null when the flag
- * is off, and when the packet function is not installed yet. A thrown hasher
- * marks this new row not current and is rethrown. The previous current row
- * stays current. The new row is not deleted. Supersede runs only after the
- * hasher returns.
+ * Insert the documents row, then hash. The hasher returns null when
+ * DOCUMENT_CONTENT_SHA256_ENABLED is off, and when the packet function is
+ * not installed yet. A returned hex is written to content_sha256. A thrown
+ * hasher marks this new row not current and is rethrown. The previous
+ * current row stays current. The new row is not deleted. Supersede runs
+ * only after the hasher returns.
  */
 export async function persistConfirmedDocument(
   admin: any,
@@ -621,8 +622,9 @@ export async function persistConfirmedDocument(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  let contentSha: string | null = null;
   try {
-    await hash(admin, fields.storage_bucket, fields.storage_path);
+    contentSha = await hash(admin, fields.storage_bucket, fields.storage_path);
   } catch (hashError) {
     const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
     if (demoted?.error) {
@@ -632,6 +634,10 @@ export async function persistConfirmedDocument(
       );
     }
     throw hashError;
+  }
+  if (contentSha) {
+    const stamped = await admin.from("documents").update({ content_sha256: contentSha }).eq("id", row.id);
+    if (stamped?.error) throw new Error(stamped.error.message || "Could not record the content hash");
   }
   await admin
     .from("documents")

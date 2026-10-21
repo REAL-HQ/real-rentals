@@ -1,8 +1,8 @@
 -- Proposed M2 step 0. Local rehearsal. A hosted run follows proposed/HOSTED-INSTALL.md.
--- The excluded approval-boundary script is copied byte for byte as
--- approval-boundary.local.sql in this directory. Packet SQL is unchanged.
+-- approval-boundary.local.sql in this directory is excluded and is not applied.
 --
--- This file is that script with three CREATE FUNCTION statements removed:
+-- This file is the installed approval boundary. Three functions created by
+-- packet step 1 are not created again here:
 -- private.approval_provider_actor, private.approval_actor, and private.approval_lock.
 -- Packet step 1 creates those three. Its provider body checks the session.
 -- The excluded script's provider is the deny stub. Applying this file after
@@ -149,10 +149,27 @@ BEGIN
  'back',jsonb_build_object('id',b.id,'bucket',b.storage_bucket,'path',b.storage_path,'sha256',b.content_sha256,'reviewer',b.reviewed_by,'reviewed_at',b.reviewed_at,'object_version',bv));
 END $$;
 
+-- Email and strongest staff role, matching the application audit helper:
+-- admin, then team, then coordinator. Owned by the installer so the lookup
+-- is not subject to the executor's row policies. The approval writer calls it.
+CREATE FUNCTION private.approval_actor_label(_actor uuid)
+RETURNS TABLE(actor_email text, actor_role text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ actor_email:=(SELECT u.email FROM auth.users u WHERE u.id=_actor);
+ actor_role:=(SELECT r.role::text FROM public.user_roles r
+  WHERE r.user_id=_actor AND r.role::text IN ('admin','team','coordinator')
+  ORDER BY CASE r.role::text WHEN 'admin' THEN 1 WHEN 'team' THEN 2 ELSE 3 END
+  LIMIT 1);
+ RETURN NEXT;
+END $$;
+REVOKE ALL ON FUNCTION private.approval_actor_label(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.approval_actor_label(uuid) TO rr_approval_executor;
+
 CREATE FUNCTION public.preview_approval_identity(_application_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 BEGIN PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM private.approval_actor();RETURN private.approval_snapshot(_application_id);END $$;
 CREATE FUNCTION public.verify_approval_identity(_application_id uuid,_reviewed_evidence jsonb,_note text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE actor uuid; evidence jsonb; rid uuid;
+DECLARE actor uuid; evidence jsonb; rid uuid; em text; rl text;
 BEGIN
  -- Reject anon and non-staff before the global approval lock. Re-check after
  -- the lock because role membership can change while this call waits.
@@ -161,15 +178,16 @@ BEGIN
  IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  -- Scope the executor's own review insert. Callers cannot SET ROLE to this owner.
  PERFORM set_config('record.application_id',_application_id::text,true);
- PERFORM 1 FROM public.applications WHERE id=_application_id AND status IN ('new','reviewing','approved','active') FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.applications WHERE id=_application_id AND status IN ('partial','new','complete','reviewing','approved','active','suspended','declined','closed','duplicate') FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  evidence:=private.approval_snapshot(_application_id);
  IF _reviewed_evidence IS NULL OR evidence IS DISTINCT FROM _reviewed_evidence THEN RAISE EXCEPTION 'review_evidence_stale';END IF;
  IF _note IS NULL OR length(btrim(_note))<3 OR length(_note)>500 THEN RAISE EXCEPTION 'review_note_required';END IF;
  INSERT INTO public.application_identity_reviews(application_id,kind,status,resolution,resolution_note,resolved_by,resolved_at,approval_evidence)
  VALUES(_application_id,'approval_identity','resolved','verified',_note,actor,clock_timestamp(),evidence) RETURNING id INTO rid;
- INSERT INTO public.audit_log(actor_user_id,action,entity_type,entity_id,summary,metadata)
- VALUES(actor,'identity_review.approval_verified','application',_application_id::text,'Positive identity decision recorded',jsonb_build_object('review_id',rid,'evidence_version',evidence->'version'));
+ SELECT l.actor_email, l.actor_role INTO em, rl FROM private.approval_actor_label(actor) l;
+ INSERT INTO public.audit_log(actor_user_id,actor_email,actor_role,action,entity_type,entity_id,summary,metadata)
+ VALUES(actor,em,rl,'identity_review.approval_verified','application',_application_id::text,'Positive identity decision recorded',jsonb_build_object('review_id',rid,'evidence_version',evidence->'version'));
  RETURN rid;
 EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'approval_contention_retry_transaction' USING ERRCODE='40001';
 END $$;
@@ -182,13 +200,14 @@ BEGIN
  IF rid IS NULL THEN RAISE EXCEPTION 'positive_identity_required';END IF;RETURN rid;
 END $$;
 CREATE FUNCTION private.approval_write_audit(_id uuid,_old text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE actor uuid;rid uuid;op private.approval_operations%ROWTYPE;
+DECLARE actor uuid;rid uuid;op private.approval_operations%ROWTYPE; em text; rl text;
 BEGIN
  actor:=private.approval_actor();rid:=private.approval_validate(_id);
  SELECT * INTO op FROM private.approval_operations WHERE application_id=_id AND actor_id=actor AND transaction_id=pg_current_xact_id() ORDER BY confirmed_at DESC,operation_id DESC LIMIT 1;
  IF NOT FOUND THEN RAISE EXCEPTION 'approval_operation_required';END IF;
- INSERT INTO public.audit_log(actor_user_id,action,entity_type,entity_id,summary,metadata)
- VALUES(actor,'application.approved','application',_id::text,'Approval confirmed; invitation is a separate operation',jsonb_build_object('previous_status',_old,'review_id',rid,'operation_id',op.operation_id,'requested_mode',op.requested_mode,'approval_outcome','confirmed','invitation_requested',op.requested_mode='approve_invite','invitation_execution_outcome','not_started','delivery_outcome','unverified','agreement_sent',false));
+ SELECT l.actor_email, l.actor_role INTO em, rl FROM private.approval_actor_label(actor) l;
+ INSERT INTO public.audit_log(actor_user_id,actor_email,actor_role,action,entity_type,entity_id,summary,metadata)
+ VALUES(actor,em,rl,'application.approved','application',_id::text,'Approval confirmed; invitation is a separate operation',jsonb_build_object('previous_status',_old,'review_id',rid,'operation_id',op.operation_id,'requested_mode',op.requested_mode,'approval_outcome','confirmed','invitation_requested',op.requested_mode='approve_invite','invitation_execution_outcome','not_started','delivery_outcome','unverified','agreement_sent',false));
 END $$;
 
 -- INVOKER trigger: nested legacy definers and service clients cannot impersonate
@@ -217,7 +236,7 @@ BEGIN
  END IF;
  IF NEW.status='approved' AND OLD.status IS DISTINCT FROM NEW.status THEN
   IF current_user<>'rr_approval_executor' THEN RAISE EXCEPTION 'approval_rpc_required' USING ERRCODE='42501';END IF;
-  IF (OLD.status IN ('new','reviewing')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+  IF (OLD.status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
   IF NEW.approval_evidence_version<>OLD.approval_evidence_version THEN RAISE EXCEPTION 'approval_combined_evidence_write_forbidden';END IF;
   PERFORM private.approval_validate(OLD.id);
  END IF;RETURN NEW;
@@ -289,7 +308,7 @@ BEGIN
  SELECT id, deleted_at, purged_at, status, approval_evidence_version
   INTO a.id, a.deleted_at, a.purged_at, a.status, a.approval_evidence_version
   FROM public.applications WHERE id=_application_id FOR UPDATE OF applications NOWAIT;
- IF NOT FOUND OR a.deleted_at IS NOT NULL OR a.purged_at IS NOT NULL OR (a.status IN ('new','reviewing')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
+ IF NOT FOUND OR a.deleted_at IS NOT NULL OR a.purged_at IS NOT NULL OR (a.status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  IF _expected_version IS NULL OR a.approval_evidence_version<>_expected_version THEN RAISE EXCEPTION 'approval_version_stale';END IF;
  INSERT INTO private.approval_operations(operation_id,application_id,actor_id,evidence_version,requested_mode)
  VALUES(_operation_id,a.id,actor,_expected_version,_mode) RETURNING * INTO op;
@@ -301,7 +320,7 @@ CREATE FUNCTION public.approval_readiness(_application_id uuid) RETURNS jsonb LA
 DECLARE v bigint;
 BEGIN
  PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM private.approval_actor();
- SELECT approval_evidence_version INTO v FROM public.applications WHERE id=_application_id AND status IN ('new','reviewing');
+ SELECT approval_evidence_version INTO v FROM public.applications WHERE id=_application_id AND status IN ('partial','new','complete','reviewing','active','suspended','declined','closed','duplicate');
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  PERFORM private.approval_validate(_application_id);
  RETURN jsonb_build_object('ready',true,'version',v);
