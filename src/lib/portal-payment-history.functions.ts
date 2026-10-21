@@ -1,7 +1,6 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history-flag";
-import { readOwnPaymentHistory, type PortalPaymentHistory } from "@/lib/portal-payment-history";
+import { PORTAL_PAYMENT_HISTORY_ENABLED, readOwnPaymentHistory, type PortalPaymentHistory } from "@/lib/portal-payment-history";
 
 /** Refuses before auth. The handler never receives a driver id from the client. */
 const portalPaymentHistoryGate = createMiddleware({ type: "function" }).server(async ({ next }) => {

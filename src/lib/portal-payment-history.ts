@@ -2,11 +2,40 @@
  * Driver payment history. The reader uses the signed-in user's client, so RLS
  * stays in force. A payments row is a charge. A payment is that charge collected
  * through a verified source. Balance due is the open balance, in cents.
+ *
+ * PORTAL_PAYMENT_HISTORY_ENABLED is the only payment-history switch. The card
+ * and the server function import it from here.
  */
 import { decimalSourceCents } from "@/lib/unified-finance-live-mapping";
 
+export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false as boolean;
+
 export const HISTORY_READ_CAP = 999;
 export const HISTORY_CHUNK = 50;
+
+export const PORTAL_PAYMENT_TIME_ZONE = "America/New_York";
+
+/** YYYY-MM-DD in Eastern Time. */
+export function easternCalendarDate(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PORTAL_PAYMENT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+}
+
+/** A date column stays that calendar day. A timestamp becomes its Eastern day. */
+export function asEasternCalendarDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) return null;
+  return easternCalendarDate(new Date(parsed));
+}
 
 const CLOSED_CHARGE_STATUSES = ["paid", "refunded", "void", "waived"] as const;
 
@@ -90,16 +119,27 @@ const STATUS_LABEL: Record<string, string> = {
   late: "Late",
 };
 
+/**
+ * Integer cents. A leading minus is a credit: the unsigned value still goes
+ * through decimalSourceCents, then the sign is put back. Invalid text stays null.
+ */
 function cents(value: number | string | null | undefined): number | null {
   if (value == null || value === "") return null;
-  return decimalSourceCents(value);
+  const text = String(value).trim();
+  if (!text) return null;
+  const negative = text.startsWith("-");
+  const parsed = decimalSourceCents(negative ? text.slice(1) : text);
+  if (parsed == null) return null;
+  return negative ? -parsed : parsed;
 }
 
 export function formatHistoryCents(cents: number | null): string {
   if (cents == null) return "Unknown";
-  const whole = Math.trunc(cents / 100);
-  const rest = Math.abs(cents % 100);
-  return `$${whole}.${String(rest).padStart(2, "0")}`;
+  const sign = cents < 0 ? "-" : "";
+  const absolute = Math.abs(cents);
+  const whole = Math.trunc(absolute / 100);
+  const rest = absolute % 100;
+  return `${sign}$${whole}.${String(rest).padStart(2, "0")}`;
 }
 
 function statusKey(status: string | null | undefined): string {
@@ -180,7 +220,7 @@ export function buildPortalPaymentHistory(input: {
     });
     if (!(CLOSED_CHARGE_STATUSES as readonly string[]).includes(status)) {
       if (balanceDueCents == null) balanceUnknown = true;
-      else if (balanceDueCents > 0) balance += balanceDueCents;
+      else balance += balanceDueCents;
     }
     const source = verifiedPaymentSource(row);
     if ((status === "paid" || status === "refunded") && source) {
@@ -219,7 +259,7 @@ export function receiptText(payment: HistoryPayment): string {
     `Amount: ${formatHistoryCents(payment.amountCents)}`,
     `Collected: ${formatHistoryCents(payment.collectedCents)}`,
     `Refunded: ${formatHistoryCents(payment.refundedCents)}`,
-    payment.paidDate ? `Paid: ${payment.paidDate.slice(0, 10)}` : "Paid: Not Recorded",
+    payment.paidDate ? `Paid: ${asEasternCalendarDate(payment.paidDate) ?? "Not Recorded"}` : "Paid: Not Recorded",
   ].join("\n");
 }
 

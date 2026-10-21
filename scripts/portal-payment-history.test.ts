@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { PORTAL_PAYMENT_HISTORY_ENABLED } from "../src/lib/portal-payment-history-flag";
 import {
+  PORTAL_PAYMENT_HISTORY_ENABLED,
+  asEasternCalendarDate,
   buildPortalPaymentHistory,
+  easternCalendarDate,
+  formatHistoryCents,
   readOwnPaymentHistory,
   receiptText,
   verifiedPaymentSource,
@@ -11,10 +14,9 @@ import {
   type HistoryRow,
 } from "../src/lib/portal-payment-history";
 
-const flag = readFileSync("src/lib/portal-payment-history-flag.ts", "utf8");
 const rules = readFileSync("src/lib/portal-payment-history.ts", "utf8");
 const fn = readFileSync("src/lib/portal-payment-history.functions.ts", "utf8");
-const panel = readFileSync("src/components/portal/PortalPaymentHistory.tsx", "utf8");
+const panel = readFileSync("src/components/portal/PaymentHistoryCard.tsx", "utf8");
 const portal = readFileSync("src/routes/portal.tsx", "utf8");
 
 function row(over: Partial<HistoryRow> & { id: string }): HistoryRow {
@@ -38,12 +40,14 @@ function row(over: Partial<HistoryRow> & { id: string }): HistoryRow {
 describe("portal payment history", () => {
   it("stays off and refuses before auth, ownership, and reads", () => {
     assert.equal(PORTAL_PAYMENT_HISTORY_ENABLED, false);
-    assert.equal((flag.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 1);
-    assert.match(flag, /export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false as boolean/);
-    assert.doesNotMatch(flag, /process\.env/);
-    for (const source of [rules, fn, panel, portal]) {
+    assert.equal((rules.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 1);
+    assert.match(rules, /export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false as boolean/);
+    assert.doesNotMatch(rules, /process\.env/);
+    for (const source of [fn, panel, portal]) {
       assert.equal((source.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 0);
     }
+    assert.doesNotMatch(portal, /DRIVER_PAYMENT_HISTORY_ENABLED|DriverPaymentHistoryCard|PaymentHistoryGate|PortalPaymentHistory/);
+    assert.equal((portal.match(/<PaymentHistoryCard \/>/g) ?? []).length, 1);
 
     const middleware = fn.match(/\.middleware\(\[([^\]]+)\]/);
     assert.equal(middleware?.[1].replace(/\s/g, ""), "portalPaymentHistoryGate,requireSupabaseAuth");
@@ -62,7 +66,7 @@ describe("portal payment history", () => {
     assert.match(rules, /HISTORY_CHUNK/);
     assert.match(rules, /HISTORY_READ_CAP \+ 1/);
     assert.doesNotMatch(fn, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
-    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? <PortalPaymentHistory \/>/);
+    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? <PaymentHistoryCard \/>/);
     assert.match(panel, /if \(PORTAL_PAYMENT_HISTORY_ENABLED !== true\) return null/);
     assert.match(panel, /Download Receipt/);
     assert.match(panel, /Unknown/);
@@ -116,6 +120,38 @@ describe("portal payment history", () => {
     assert.equal(invalid.balanceDueCents, null);
     assert.equal(invalid.charges[0].amountCents, null);
     assert.equal(invalid.charges[0].balanceDueCents, null);
+
+    const credit = buildPortalPaymentHistory({
+      truncated: false,
+      rows: [
+        row({ id: "credit", status: "current", amount: "-12.50", balance_due: "-12.50", net_collected: 0, payment_method: null, paid_date: null }),
+        row({ id: "open-more", status: "past_due", amount: 80, balance_due: "80.00", net_collected: 0, payment_method: null, paid_date: null }),
+      ],
+    });
+    assert.equal(credit.balanceState, "known");
+    assert.equal(credit.charges.find((charge) => charge.id === "credit")?.balanceDueCents, -1250);
+    assert.equal(credit.balanceDueCents, 6750);
+    const small = buildPortalPaymentHistory({
+      truncated: false,
+      rows: [row({ id: "small-credit", status: "current", amount: -0.5, balance_due: -0.5, net_collected: 0, payment_method: null, paid_date: null })],
+    });
+    assert.equal(small.balanceState, "known");
+    assert.equal(small.balanceDueCents, -50);
+    assert.equal(formatHistoryCents(-50), "-$0.50");
+    assert.equal(formatHistoryCents(-150), "-$1.50");
+    assert.equal(formatHistoryCents(50), "$0.50");
+    assert.equal(formatHistoryCents(small.balanceDueCents), "-$0.50");
+    const badCredit = buildPortalPaymentHistory({
+      truncated: false,
+      rows: [row({ id: "bad-credit", status: "current", amount: "-80.555", balance_due: "-80.555", net_collected: 0, payment_method: null, paid_date: null })],
+    });
+    assert.equal(badCredit.balanceState, "unknown");
+    assert.equal(badCredit.balanceDueCents, null);
+
+    assert.equal(easternCalendarDate(new Date("2026-10-21T03:30:00Z")), "2026-10-20");
+    assert.equal(easternCalendarDate(new Date("2026-10-21T04:00:00Z")), "2026-10-21");
+    assert.equal(asEasternCalendarDate("2026-10-21"), "2026-10-21");
+    assert.equal(asEasternCalendarDate("2026-10-21T03:30:00Z"), "2026-10-20");
   });
 
   it("returns only the rows RLS would show for this user's applications", async () => {
