@@ -160,15 +160,34 @@ export async function notifyIssueStatusChanged(issueId: string): Promise<DriverN
   return deliverDriverNotice(notice, { send: sendDriverNoticeChannels });
 }
 
+type NoticeChannelDeps = {
+  sendEmail?: (args: { to: string; subject: string; html: string }) => Promise<{ ok: boolean; error?: string }>;
+  insertInApp?: (row: {
+    driver_id: string;
+    kind: DriverNotice["kind"];
+    title: string;
+    body: string;
+    channels: Array<"in_app" | "email">;
+  }) => Promise<{ error: { message: string } | null }>;
+};
+
 /** Activation's three channels. Consent for SMS stays inside sendSms. */
-export async function sendDriverNoticeChannels(notice: DriverNotice): Promise<DriverNoticeResult> {
+export async function sendDriverNoticeChannels(
+  notice: DriverNotice,
+  deps: NoticeChannelDeps = {},
+): Promise<DriverNoticeResult> {
   const result: DriverNoticeResult = { email: "skipped", sms: "skipped", inApp: "skipped", skipped: null };
 
   if (notice.email) {
     try {
-      const { sendEmail } = await import("@/lib/email.server");
-      await sendEmail({ to: notice.email, subject: notice.emailSubject, html: notice.emailHtml });
-      result.email = "sent";
+      const sendEmail = deps.sendEmail ?? (await import("@/lib/email.server")).sendEmail;
+      const r = await sendEmail({ to: notice.email, subject: notice.emailSubject, html: notice.emailHtml });
+      if (!r.ok) {
+        console.error("[driver-notifications] email failed", notice.kind, r.error ?? "not sent");
+        result.email = "failed";
+      } else {
+        result.email = "sent";
+      }
     } catch (err) {
       console.error("[driver-notifications] email failed", notice.kind, err);
       result.email = "failed";
@@ -194,14 +213,17 @@ export async function sendDriverNoticeChannels(notice: DriverNotice): Promise<Dr
 
   if (notice.driverId) {
     try {
-      const admin = await db();
-      const { error } = await admin.from("notifications").insert({
+      const row = {
         driver_id: notice.driverId,
         kind: notice.kind,
         title: notice.title,
         body: notice.body,
         channels: noticeChannels(result.email),
-      });
+      };
+      const inserted = deps.insertInApp
+        ? await deps.insertInApp(row)
+        : await (await db()).from("notifications").insert(row);
+      const { error } = inserted;
       if (error) {
         console.error("[driver-notifications] in-app failed", notice.kind, error.message);
         result.inApp = "failed";

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
 import {
   DRIVER_NOTIFICATIONS_ENABLED,
   deliverDriverNotice,
@@ -14,7 +13,10 @@ import {
   notifyIncidentOpened,
   notifyIssueStatusChanged,
   notifyRentalEnded,
+  sendDriverNoticeChannels,
 } from "../src/lib/driver-notifications.server";
+
+const { describe, it } = process.versions.bun ? await import("bun:test") : await import("node:test");
 
 const lib = readFileSync("src/lib/driver-notifications.ts", "utf8");
 const server = readFileSync("src/lib/driver-notifications.server.ts", "utf8");
@@ -85,6 +87,9 @@ describe("driver notifications flag", () => {
     assert.match(sendBody, /import\("@\/lib\/sms\.server"\)/);
     assert.match(sendBody, /sendSms\(\{/);
     assert.match(sendBody, /from\("notifications"\)\.insert/);
+    assert.match(sendBody, /const r = await sendEmail\(/);
+    assert.match(sendBody, /if \(!r\.ok\)/);
+    assert.doesNotMatch(sendBody, /await sendEmail\([\s\S]{0,240}\);\s*result\.email = "sent"/);
     assert.match(sendBody, /channels: noticeChannels\(result\.email\)/);
     assert.doesNotMatch(sendBody, /channels:\s*\[[^\]]*email/);
     assert.doesNotMatch(sendBody, /requireConsent:\s*false/);
@@ -113,5 +118,21 @@ describe("driver notifications flag", () => {
     const hostile = issueStatusChangedNotice({ ...sample, issueTitle: "<script>", statusLabel: "Resolved" });
     assert.doesNotMatch(hostile.emailHtml, /<script>/);
     assert.match(hostile.emailHtml, /&lt;script&gt;/);
+  });
+
+  it("marks email failed when sendEmail returns ok false", async () => {
+    const notice = rentalEndedNotice({ ...sample, phone: null, vehicleLabel: "2020 Toyota Camry" });
+    let channels: string[] | null = null;
+    const result = await sendDriverNoticeChannels(notice, {
+      sendEmail: async () => ({ ok: false, error: "rejected" }),
+      insertInApp: async (row) => {
+        channels = [...row.channels];
+        return { error: null };
+      },
+    });
+    assert.equal(result.email, "failed");
+    assert.equal(result.sms, "skipped");
+    assert.equal(result.inApp, "sent");
+    assert.deepEqual(channels, ["in_app"]);
   });
 });
