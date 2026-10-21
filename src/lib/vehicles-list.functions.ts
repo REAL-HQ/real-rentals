@@ -2,13 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff } from "@/lib/roles.server";
+import { VEHICLE_COMPLIANCE_ENABLED } from "@/lib/vehicle-compliance-flag";
 import {
   buildVehicleSearchOr,
   isReadinessFilter,
+  pageListedVehicles,
   readinessBand,
   readinessGaps,
   VEHICLE_LIST_PAGE_SIZE,
   VEHICLE_SORTS,
+  vehicleListIdPlan,
   type ReadinessBand,
   type ReadinessCounts,
   type VehicleListRow,
@@ -73,27 +76,44 @@ export const listVehicles = createServerFn({ method: "POST" })
         ready: z.string().max(20).optional().default("all"),
         page: z.number().int().min(1).max(100000).optional().default(1),
         pageSize: z.number().int().min(1).max(100).optional().default(VEHICLE_LIST_PAGE_SIZE),
+        /** Set only by the Compliance filter. Omitted, the list is unchanged. */
+        ids: z.array(z.string().uuid()).max(2000).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<VehicleListResult> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const idPlan = vehicleListIdPlan(VEHICLE_COMPLIANCE_ENABLED, data.ids);
+    if (idPlan.action === "empty") {
+      const options = await filterOptions(supabaseAdmin);
+      return {
+        rows: [],
+        total: 0,
+        page: data.page,
+        pageSize: data.pageSize,
+        ...options,
+        readinessCounts: { listing_ready: 0, rental_ready: 0, not_ready: 0 },
+        readinessPartial: false,
+      };
+    }
     const sort = (VEHICLE_SORTS as readonly string[]).includes(data.sort) ? data.sort : "unit";
 
     const ready = isReadinessFilter(data.ready) ? data.ready : "all";
 
     /** The same scope for every query below: filters, minus readiness itself. */
-    const scoped = <T>(q: T): T => {
+    const scoped = <T>(q: T, idChunk?: readonly string[]): T => {
       // The client's builder type is not exported; these four methods are all
       // this chains, so the shape is declared rather than widened to `any`.
       type Filters = {
         eq: (c: string, v: unknown) => Filters;
         neq: (c: string, v: unknown) => Filters;
         is: (c: string, v: unknown) => Filters;
+        in: (c: string, v: readonly string[]) => Filters;
         or: (e: string) => Filters;
       };
       let x = q as unknown as Filters;
+      if (idChunk?.length) x = x.in("id", idChunk);
       // Archived vehicles leave the normal fleet view; the Archived filter shows them.
       if (data.status !== "all") x = x.eq("status", data.status);
       else x = x.neq("status", "archived");
@@ -108,14 +128,19 @@ export const listVehicles = createServerFn({ method: "POST" })
     // Readiness over the whole filtered scope, so the chips count the fleet
     // and not the page, and so the filter can page correctly: the matching ids
     // go into the page query BEFORE range().
-    const [sweep, publishedMedia] = await Promise.all([
-      scoped(supabaseAdmin.from("vehicles").select(READINESS_COLUMNS)).limit(
-        READINESS_SWEEP_MAX + 1,
-      ),
-      // Published listing photos are a small set; one read beats an id list in
-      // a URL. `published` is the explicit publish flag — never inferred.
-      supabaseAdmin.from("vehicle_media").select("vehicle_id").eq("published", true).limit(20000),
-    ]);
+    const publishedMedia = await supabaseAdmin.from("vehicle_media").select("vehicle_id").eq("published", true).limit(20000);
+    const sweep = idPlan.action === "filter"
+      ? await sweepChunks(idPlan.chunks)
+      : await scoped(supabaseAdmin.from("vehicles").select(READINESS_COLUMNS)).limit(READINESS_SWEEP_MAX + 1);
+
+    async function sweepChunks(chunks: readonly (readonly string[])[]) {
+      const data: Array<Record<string, unknown>> = [];
+      for (const idChunk of chunks) {
+        const part = await scoped(supabaseAdmin.from("vehicles").select(READINESS_COLUMNS), idChunk).limit(idChunk.length);
+        data.push(...((part.data ?? []) as Array<Record<string, unknown>>));
+      }
+      return { data };
+    }
     const publishedFor = new Set<string>(
       (publishedMedia.data ?? []).map((m: { vehicle_id: string }) => m.vehicle_id),
     );
@@ -128,6 +153,65 @@ export const listVehicles = createServerFn({ method: "POST" })
       const band = readinessBand(r, publishedFor.has(id));
       bandOf.set(id, band);
       readinessCounts[band] += 1;
+    }
+
+    if (idPlan.action === "filter") {
+      const collected: Array<Record<string, unknown>> = [];
+      for (const idChunk of idPlan.chunks) {
+        let partQuery = scoped(supabaseAdmin.from("vehicles").select(LIST_COLUMNS), idChunk);
+        if (ready !== "all") {
+          const matching = idChunk.filter((id) => bandOf.get(id) === ready);
+          if (!matching.length) continue;
+          partQuery = partQuery.in("id", matching);
+        }
+        const { data: part, error } = await partQuery.limit(idChunk.length);
+        if (error) throw new Error(error.message);
+        collected.push(...((part ?? []) as Array<Record<string, unknown>>));
+      }
+      const pageRows = pageListedVehicles(
+        collected.filter((row): row is Record<string, unknown> & { id: string } => typeof row.id === "string"),
+        sort,
+        data.page,
+        data.pageSize,
+      );
+      const options = await filterOptions(supabaseAdmin);
+      const ids = pageRows.map((row) => String(row.id));
+      const onRent = new Set<string>();
+      if (ids.length) {
+        const { data: running } = await supabaseAdmin
+          .from("rentals")
+          .select("vehicle_id")
+          .eq("status", "active")
+          .in("vehicle_id", ids);
+        for (const rental of running ?? []) if ((rental as { vehicle_id?: string }).vehicle_id) onRent.add((rental as { vehicle_id: string }).vehicle_id);
+      }
+      return {
+        rows: pageRows.map((r): VehicleListRow => ({
+          id: String(r.id),
+          unit_number: (r.unit_number as string | null) ?? null,
+          year: (r.year as number | null) ?? null,
+          make: (r.make as string | null) ?? null,
+          model: (r.model as string | null) ?? null,
+          trim: (r.trim as string | null) ?? null,
+          color: (r.color as string | null) ?? null,
+          license_plate: (r.license_plate as string | null) ?? null,
+          vin: (r.vin as string | null) ?? null,
+          status: (r.status as string | null) ?? null,
+          body_type: (r.body_type as string | null) ?? null,
+          weekly_rate: r.weekly_rate == null ? null : Number(r.weekly_rate),
+          partner_id: (r.partner_id as string | null) ?? null,
+          photo: Array.isArray(r.photos) && r.photos.length ? String(r.photos[0]) : null,
+          on_rent: onRent.has(String(r.id)),
+          readiness: bandOf.get(String(r.id)) ?? readinessBand(r, publishedFor.has(String(r.id))),
+          readinessGaps: readinessGaps(r, publishedFor.has(String(r.id))),
+        })),
+        total: collected.length,
+        page: data.page,
+        pageSize: data.pageSize,
+        ...options,
+        readinessCounts,
+        readinessPartial,
+      };
     }
 
     let query = scoped(supabaseAdmin.from("vehicles").select(LIST_COLUMNS, { count: "exact" }));

@@ -123,6 +123,73 @@ export function buildVehicleSearchOr(raw: string): string | null {
   return parts.join(",");
 }
 
+/** PostgREST `.in` lists stay short. 2,000 compliance ids would blow the URL. */
+export const VEHICLE_LIST_ID_CHUNK = 100;
+
+export function chunkVehicleIds(ids: readonly string[], size = VEHICLE_LIST_ID_CHUNK): string[][] {
+  if (!Number.isInteger(size) || size < 1) throw new Error("Invalid id chunk");
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += size) chunks.push(ids.slice(index, index + size));
+  return chunks;
+}
+
+export type VehicleListIdPlan =
+  | { action: "ignore" }
+  | { action: "empty" }
+  | { action: "filter"; chunks: string[][] };
+
+/**
+ * Compliance ids change the Vehicles list only while that flag is on.
+ * An empty id list is an empty page. Otherwise the ids are chunked for `.in`.
+ */
+export function vehicleListIdPlan(enabled: boolean, ids: readonly string[] | undefined): VehicleListIdPlan {
+  if (!enabled || ids === undefined) return { action: "ignore" };
+  if (ids.length === 0) return { action: "empty" };
+  return { action: "filter", chunks: chunkVehicleIds(ids) };
+}
+
+type ListedSortRow = {
+  id: string;
+  unit_number?: string | null;
+  make?: string | null;
+  model?: string | null;
+  weekly_rate?: number | string | null;
+  created_at?: string | null;
+};
+
+function cmpNullsLast(a: string | null | undefined, b: string | null | undefined): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Same order as the SQL list: nulls last, then id, so chunked reads page the same way. */
+export function pageListedVehicles<T extends ListedSortRow>(rows: readonly T[], sort: string, page: number, pageSize: number): T[] {
+  const sorted = [...rows].sort((a, b) => {
+    let diff = 0;
+    if (sort === "make") diff = cmpNullsLast(a.make, b.make) || cmpNullsLast(a.model, b.model);
+    else if (sort === "rate") {
+      const left = a.weekly_rate == null || a.weekly_rate === "" ? null : Number(a.weekly_rate);
+      const right = b.weekly_rate == null || b.weekly_rate === "" ? null : Number(b.weekly_rate);
+      if (left == null && right == null) diff = 0;
+      else if (left == null || !Number.isFinite(left)) diff = 1;
+      else if (right == null || !Number.isFinite(right)) diff = -1;
+      else diff = left - right;
+    }     else if (sort === "newest") {
+      if (a.created_at == null && b.created_at == null) diff = 0;
+      else if (a.created_at == null) diff = 1;
+      else if (b.created_at == null) diff = -1;
+      else if (a.created_at < b.created_at) diff = 1;
+      else if (a.created_at > b.created_at) diff = -1;
+    }
+    else diff = cmpNullsLast(a.unit_number, b.unit_number);
+    return diff || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+  const from = Math.max(0, (page - 1) * pageSize);
+  return sorted.slice(from, from + pageSize);
+}
+
 /** Availability shown in the list: running rental first, then operational status. */
 export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status">): string {
   if (row.on_rent) return "On Rent";

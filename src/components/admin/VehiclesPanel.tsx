@@ -24,6 +24,17 @@ import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
 import { MaintenanceDue } from "./MaintenanceDue";
 import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import type { VehicleComplianceRow } from "@/lib/vehicle-compliance";
+import { VEHICLE_COMPLIANCE_ENABLED } from "@/lib/vehicle-compliance-flag";
+import {
+  ComplianceCardStatus,
+  ComplianceColumnHeader,
+  ComplianceFilterSelect,
+  ComplianceNotes,
+  ComplianceStatusText,
+  useVehicleCompliance,
+  type ComplianceFilter,
+} from "./VehicleCompliance";
 import { MaintenanceLogBadge, MaintenanceLogBadgeSource } from "./MaintenanceLog";
 import type { LogAttention } from "@/lib/maintenance-log";
 import {
@@ -159,12 +170,50 @@ type VehiclesPanelProps = {
   canSeeMaintenanceDue?: boolean;
 };
 
+type ComplianceColumn = {
+  enabled: boolean;
+  filter: ComplianceFilter;
+  setFilter: (next: ComplianceFilter) => void;
+  listIds: string[] | undefined;
+  notices: string[];
+  byId: Map<string, VehicleComplianceRow>;
+  loading: boolean;
+};
+
+const COMPLIANCE_OFF: ComplianceColumn = {
+  enabled: false,
+  filter: "all",
+  setFilter: () => {},
+  listIds: undefined,
+  notices: [],
+  byId: new Map(),
+  loading: false,
+};
+
 export function VehiclesPanel(props: VehiclesPanelProps = {}) {
   return (
     <MaintenanceLogBadgeSource>
-      {(reminders, remindersFailed) => <FleetVehicles {...props} reminders={reminders} remindersFailed={remindersFailed} />}
+      {(reminders, remindersFailed) =>
+        VEHICLE_COMPLIANCE_ENABLED ? (
+          <FleetVehiclesLive {...props} reminders={reminders} remindersFailed={remindersFailed} />
+        ) : (
+          <FleetVehicles {...props} reminders={reminders} remindersFailed={remindersFailed} compliance={COMPLIANCE_OFF} />
+        )
+      }
     </MaintenanceLogBadgeSource>
   );
+}
+
+type FleetVehicleProps = VehiclesPanelProps & {
+  reminders?: Record<string, LogAttention>;
+  remindersFailed?: boolean;
+  compliance: ComplianceColumn;
+};
+
+/** Only referenced while the flag is on, so the flag-off bundle drops the hook and its module. */
+function FleetVehiclesLive(props: Omit<FleetVehicleProps, "compliance">) {
+  const compliance = useVehicleCompliance();
+  return <FleetVehicles {...props} compliance={compliance} />;
 }
 
 function FleetVehicles({
@@ -175,11 +224,8 @@ function FleetVehicles({
   canSeeMaintenanceDue = false,
   reminders = {},
   remindersFailed = false,
-}: VehiclesPanelProps & {
-  canSeeMaintenanceDue?: boolean;
-  reminders?: Record<string, LogAttention>;
-  remindersFailed?: boolean;
-} = {}) {
+  compliance,
+}: FleetVehicleProps) {
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const navigate = useNavigate();
   const viewing = openId;
@@ -248,7 +294,17 @@ function FleetVehicles({
 
   const effectiveQ = (externalSearch || q).trim();
   const fetchList = useServerFn(listVehicles);
-  const params = { q: effectiveQ, status: statusFilter, body: bodyFilter, partner: partnerFilter, sort, ready: readyFilter, page, pageSize: VEHICLE_LIST_PAGE_SIZE };
+  const params = {
+    q: effectiveQ,
+    status: statusFilter,
+    body: bodyFilter,
+    partner: partnerFilter,
+    sort,
+    ready: readyFilter,
+    page,
+    pageSize: VEHICLE_LIST_PAGE_SIZE,
+    ...(VEHICLE_COMPLIANCE_ENABLED && compliance.listIds !== undefined ? { ids: compliance.listIds } : {}),
+  };
   const listQuery = useQuery({
     queryKey: ["admin-vehicles-list", params],
     queryFn: () => fetchList({ data: params }),
@@ -288,7 +344,7 @@ function FleetVehicles({
     void navigate({ to: "/admin", search: listSearch({ view: next }) as any, replace: true });
   }
 
-  const hasActiveFilters = q !== "" || statusFilter !== "all" || bodyFilter !== "all" || partnerFilter !== "all" || readyFilter !== "all";
+  const hasActiveFilters = q !== "" || statusFilter !== "all" || bodyFilter !== "all" || partnerFilter !== "all" || readyFilter !== "all" || (compliance.enabled && compliance.filter !== "all");
   const firstShown = total === 0 ? 0 : (page - 1) * VEHICLE_LIST_PAGE_SIZE + 1;
   const lastShown = Math.min(total, page * VEHICLE_LIST_PAGE_SIZE);
 
@@ -314,6 +370,9 @@ function FleetVehicles({
                 <Rate v={v} /><span className="mx-1.5">·</span><Availability v={v} />
               </div>
               <div className="mt-2"><ReadinessPill v={v} /></div>
+              {VEHICLE_COMPLIANCE_ENABLED ? (
+                <ComplianceCardStatus row={compliance.byId.get(v.id)} loading={compliance.loading} />
+              ) : null}
               <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
                 <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
@@ -378,6 +437,9 @@ function FleetVehicles({
               {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          {VEHICLE_COMPLIANCE_ENABLED ? (
+            <ComplianceFilterSelect filter={compliance.filter} onChange={(next) => { compliance.setFilter(next); setList({ page: "1" }); }} />
+          ) : null}
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
             <SelectTrigger className="h-9 w-[150px] bg-white text-foreground text-sm" aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
             <SelectContent>
@@ -437,7 +499,7 @@ function FleetVehicles({
             </span>
           )}
           {hasActiveFilters && (
-            <button onClick={() => { setSearchInput(""); setList({ q: "", status: "all", body: "all", partner: "all", ready: "all" }); }} className="text-sm text-muted-foreground hover:text-foreground px-2">
+            <button onClick={() => { setSearchInput(""); compliance.setFilter("all"); setList({ q: "", status: "all", body: "all", partner: "all", ready: "all" }); }} className="text-sm text-muted-foreground hover:text-foreground px-2">
               Clear
             </button>
           )}
@@ -459,6 +521,8 @@ function FleetVehicles({
         </div>
       </div>
 
+      {VEHICLE_COMPLIANCE_ENABLED ? <ComplianceNotes notices={compliance.notices} /> : null}
+
       {view === "due" && dueAllowed && (
         <MaintenanceDue query={effectiveQ} status={statusFilter} body={bodyFilter} partner={partnerFilter} />
       )}
@@ -474,6 +538,8 @@ function FleetVehicles({
                 <th className="px-3 py-2 font-medium">VIN</th>
                 <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Readiness</th>
+                {/* Compliance overlaps this Readiness pill. It is not a second readiness gate. */}
+                {VEHICLE_COMPLIANCE_ENABLED ? <ComplianceColumnHeader /> : null}
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
                 <th className="px-3 py-2 font-medium">Partner</th>
                 <th className="px-3 py-2 font-medium sr-only">Open</th>
@@ -488,6 +554,11 @@ function FleetVehicles({
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
+                  {VEHICLE_COMPLIANCE_ENABLED ? (
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <ComplianceStatusText row={compliance.byId.get(v.id)} loading={compliance.loading} />
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
                   <td className="px-3 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
                   <td className="px-3 py-2 text-right">
