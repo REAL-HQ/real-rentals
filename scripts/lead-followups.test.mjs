@@ -93,26 +93,24 @@ function fakeAdmin(result) {
 }
 
 const closed = fakeAdmin({ data: row({}), error: null });
-const skipped = await lib.loadLeadFollowUp(closed, id, false, new Date("2026-10-21T16:00:00Z"));
-check(skipped.ok === false && skipped.skipped === "flag" && closed.calls.length === 0, "a false flag does not read applications");
-const def = await lib.loadLeadFollowUp(closed, id);
-check(def.skipped === "flag" && closed.calls.length === 0, "the default flag does not read applications");
-
-const opened = fakeAdmin({ data: row({}), error: null });
-const loaded = await lib.loadLeadFollowUp(opened, id, true, new Date("2026-10-21T16:00:00Z"));
-check(loaded.ok === true && loaded.draft.bucket === "overdue" && opened.calls[0] === "applications" && opened.calls[1].includes("contact_follow_up_on") && !opened.calls[1].includes("*"), "an enabled read selects the lead columns and drafts");
-const missing = await lib.loadLeadFollowUp(fakeAdmin({ data: null, error: null }), id, true);
-check(missing.skipped === "missing", "a missing row does not invent a draft");
-const failed = await lib.loadLeadFollowUp(fakeAdmin({ data: null, error: { message: "no column" } }), id, true);
-check(failed.skipped === "missing", "a query error does not invent a draft");
-const notDue = await lib.loadLeadFollowUp(fakeAdmin({ data: row({ contact_follow_up_on: "2026-10-30" }), error: null }), id, true, new Date("2026-10-21T16:00:00Z"));
-check(notDue.skipped === "not-due", "a future row is not due");
+const skipped = await lib.loadLeadFollowUp(closed, id, new Date("2026-10-21T16:00:00Z"));
+check(skipped.ok === false && skipped.skipped === "flag" && closed.calls.length === 0, "the loader does not read applications while the flag is off");
+let refused = false;
+try { lib.assertLeadFollowupsEnabled(); } catch (error) { refused = /not enabled/.test(String(error?.message ?? error)); }
+check(refused, "the flag assertion throws while the flag is off");
+const loaderSrc = declaration.slice(declaration.indexOf("export async function loadLeadFollowUp"));
+const loaderSig = loaderSrc.slice(0, loaderSrc.indexOf("): Promise"));
+check(!loaderSig.includes("enabled"), "the loader has no enabled override");
+check(loaderSrc.indexOf("LEAD_FOLLOWUPS_ENABLED") < loaderSrc.indexOf(".from(") && loaderSrc.includes("LEAD_SELECT") && loaderSrc.includes('is("deleted_at", null)'), "the read stays behind the flag and selects the lead columns");
 
 const fn = readFileSync("src/lib/lead-followups.functions.ts", "utf8");
 const handler = fn.slice(fn.indexOf(".handler"));
-check(handler.includes("await requireStaff(context.userId)"), "the preview stays staff gated");
-check(handler.indexOf("LEAD_FOLLOWUPS_ENABLED") < handler.indexOf("client.server"), "a disabled preview returns before the database import");
+check(fn.includes(".middleware([leadFollowupGate, requireSupabaseAuth])"), "the flag gate runs before auth");
+check(fn.slice(fn.indexOf("const leadFollowupGate"), fn.indexOf("export const prepareLeadFollowUp")).includes("assertLeadFollowupsEnabled()"), "the gate refuses before it continues to auth");
+check(handler.indexOf("assertLeadFollowupsEnabled()") < handler.indexOf("requireStaff"), "the handler refuses before the role check");
+check(handler.indexOf("requireStaff") < handler.indexOf("client.server"), "the role check is still before the database import");
 check(handler.includes("loadLeadFollowUp(supabaseAdmin, data.applicationId)") && !handler.includes(", true"), "the handler does not force the flag on");
+check(handler.includes('await import("@/lib/roles.server")') && !fn.slice(0, fn.indexOf("const leadFollowupGate")).includes("roles.server"), "the role module is imported only after the flag refusal");
 check(!fn.includes("email.server") && !fn.includes("sendEmail") && !fn.includes("sendSms") && !fn.includes("notifications"), "the preview does not send");
 
 const ui = readFileSync("src/components/admin/LeadFollowUpDraft.tsx", "utf8");

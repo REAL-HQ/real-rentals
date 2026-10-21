@@ -16,6 +16,12 @@ import { LEAD_SELECT, leadBucket, leadToday, type LeadRow } from "@/lib/lead-pri
 
 export const LEAD_FOLLOWUPS_ENABLED: boolean = false;
 
+export function assertLeadFollowupsEnabled(): void {
+  if (LEAD_FOLLOWUPS_ENABLED !== true) {
+    throw new Error("Lead follow-up is not enabled.");
+  }
+}
+
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function utcDate(iso: string): Date | null {
@@ -80,17 +86,16 @@ export function leadFollowUpDraft(row: LeadRow, today: string): LeadFollowUpDraf
 }
 
 /**
- * Read one application and build a draft. enabled defaults to the flag, so
- * the server handler does not pass true. A false flag returns before the query.
- * The query result is narrowed here so the generated client type can be passed in.
+ * Read one application and build a draft. The flag is the constant above.
+ * There is no parameter that can turn the read on. A false flag returns
+ * before the query.
  */
 export async function loadLeadFollowUp(
   admin: { from: (table: string) => { select: (columns: string) => any } },
   applicationId: string,
-  enabled: boolean = LEAD_FOLLOWUPS_ENABLED,
   now = new Date(),
 ): Promise<LeadFollowUpResult> {
-  if (enabled !== true) return { ok: false, skipped: "flag" };
+  if (LEAD_FOLLOWUPS_ENABLED !== true) return { ok: false, skipped: "flag" };
   const today = leadToday(now);
   const { data, error } = await admin
     .from("applications")

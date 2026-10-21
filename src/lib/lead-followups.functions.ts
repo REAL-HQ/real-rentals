@@ -1,19 +1,25 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requireStaff } from "@/lib/roles.server";
+import { assertLeadFollowupsEnabled, loadLeadFollowUp } from "@/lib/lead-followups";
 
 /**
- * Staff preview of a follow-up draft. With the flag off this returns before
- * any application read. It does not send email or SMS.
+ * Staff preview of a follow-up draft. The flag refusal runs before auth,
+ * before the role check, and again before the application read. It does not
+ * send email or SMS.
  */
+const leadFollowupGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  assertLeadFollowupsEnabled();
+  return next();
+});
+
 export const prepareLeadFollowUp = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([leadFollowupGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ applicationId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
+    assertLeadFollowupsEnabled();
+    const { requireStaff } = await import("@/lib/roles.server");
     await requireStaff(context.userId);
-    const { LEAD_FOLLOWUPS_ENABLED, loadLeadFollowUp } = await import("@/lib/lead-followups");
-    if (LEAD_FOLLOWUPS_ENABLED !== true) return { ok: false as const, skipped: "flag" as const };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     return loadLeadFollowUp(supabaseAdmin, data.applicationId);
   });
