@@ -429,7 +429,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   }, [recentApps, appSort, readinessIndex]);
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="max-lg:min-w-0 space-y-6">
       {/* Heading — the floating Weekly Revenue metric that sat here has moved
           into the Revenue card, where it has a range and a comparison. */}
       <div>
@@ -448,8 +448,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           prospect who is still 55% known says so on its face. */}
       {hot.length > 0 && (
         <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Flame className="w-4 h-4 shrink-0 text-[#D03020]" strokeWidth={2} />
+          <div className="flex items-center lg:gap-2 max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-1">
+            <Flame className="w-4 h-4 text-[#D03020] max-lg:shrink-0" strokeWidth={2} />
             <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
               {hot.length}

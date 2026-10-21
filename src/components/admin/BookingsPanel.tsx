@@ -161,7 +161,7 @@ export function BookingsPanel({
   return (
     <div>
       <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:items-center lg:gap-3">
-        <div className="flex w-full min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
+        <div className="flex w-full max-lg:min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
@@ -174,7 +174,7 @@ export function BookingsPanel({
               current search covers — not the page, which would change the
               numbers as you paged. */}
           {result && (
-            <span className="inline-flex shrink-0 items-center gap-2" data-testid="booking-phases">
+            <span className="inline-flex max-lg:shrink-0 items-center gap-2" data-testid="booking-phases">
               {(["active", "completed", "cancelled"] as const).map((p) => {
                 const n = result.counts?.[p] ?? 0;
                 const on = phase === p;
@@ -200,7 +200,7 @@ export function BookingsPanel({
           )}
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
             <SelectTrigger
-              className="h-9 w-[150px] shrink-0 bg-white text-foreground text-sm"
+              className="h-9 w-[150px] max-lg:shrink-0 bg-white text-foreground text-sm"
               aria-label="Sort"
             >
               <SelectValue placeholder="Sort" />
@@ -218,7 +218,7 @@ export function BookingsPanel({
                 setSearchInput("");
                 setList({ q: "", phase: "all", vehicle: "" });
               }}
-              className="shrink-0 whitespace-nowrap px-2 text-sm text-muted-foreground hover:text-foreground"
+              className="max-lg:shrink-0 max-lg:whitespace-nowrap px-2 text-sm text-muted-foreground hover:text-foreground"
             >
               Clear
             </button>
@@ -332,7 +332,7 @@ export function BookingsPanel({
       )}
 
       {result && total > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-muted-foreground">
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground max-lg:flex-wrap max-lg:gap-x-3 max-lg:gap-y-2">
           <span>
             Showing {firstShown}–{lastShown} of {total}
           </span>
