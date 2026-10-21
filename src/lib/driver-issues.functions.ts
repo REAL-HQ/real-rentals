@@ -9,6 +9,9 @@ import {
   type IssueIncidentSeed,
 } from "@/lib/driver-issues";
 
+/** Duplicated so this module does not load the notice sender while the flag is off. */
+const DRIVER_NOTIFICATIONS_ENABLED: boolean = false as boolean;
+
 // Manager inbox for public.issues.
 //
 // RLS lets admin and team (Owner and Manager) manage every row, and lets a
@@ -160,6 +163,11 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       entityId: data.id,
       metadata: { from: existing.status, to: data.status },
     });
+    if (DRIVER_NOTIFICATIONS_ENABLED === true) {
+      await import("@/lib/driver-notifications.server")
+        .then((m) => m.notifyIssueStatusChanged(data.id))
+        .catch((err) => console.error("[driver-notifications] issue_status", err));
+    }
     return { ok: true, status: data.status };
   });
 
