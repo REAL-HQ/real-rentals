@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { VehicleCard } from "@/components/site/VehicleCard";
@@ -14,6 +14,9 @@ import { HeroQuoteBar } from "@/components/site/HeroQuoteBar";
 import { StickyCallBar } from "@/components/site/StickyCallBar";
 import { DEFAULT_BUSINESS_PHONE } from "@/lib/company";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
+
+/** Duplicated so this route does not import the resume module while the flag is off. */
+const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
 
 const FAQS = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
@@ -71,6 +74,25 @@ const STRUCTURED_DATA = {
     },
   ],
 };
+
+function ContinueApplicationSlot() {
+  const [banner, setBanner] = useState<ReactNode>(null);
+  useEffect(() => {
+    if (APPLICATION_RESUME_ENABLED !== true) return;
+    let live = true;
+    void import("@/lib/application-resume-client").then(async (mod) => {
+      const draft = await mod.loadContinueDraft();
+      if (!live || !draft) return;
+      const ui = await import("@/components/site/ContinueApplicationBanner");
+      if (!live) return;
+      setBanner(<ui.ContinueApplicationBanner draft={draft} />);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return banner;
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -133,6 +155,7 @@ function Index() {
 
   return (
     <SiteLayout>
+      {APPLICATION_RESUME_ENABLED === true ? <ContinueApplicationSlot /> : null}
       <div id="quote">
       <HeroQuoteBar
         eyebrow="Rent. Drive. Earn."

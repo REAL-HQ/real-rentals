@@ -67,6 +67,11 @@ export function clearResumeToken() {
   }
 }
 
+/** This tab's stashed resume token, or null. Does not read the address bar. */
+export function readResumeToken(): string | null {
+  return read();
+}
+
 /**
  * Resolve the token from the URL or this tab's stash, and strip it from the
  * address bar. Returns undefined while resolving on the very first render.

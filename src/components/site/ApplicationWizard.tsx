@@ -28,6 +28,9 @@ import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
 
+/** Duplicated so this file does not import the resume module while the flag is off. */
+const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+
 /*
  * ONE application, TWO parts.
  *
@@ -327,7 +330,13 @@ export function ApplicationWizard({ token }: { token: string }) {
 
   useEffect(() => {
     fetchApp({ data: { token } })
-      .then((row) => {
+      .then(async (row) => {
+        let phase = phaseFrom(row.current_step);
+        if (APPLICATION_RESUME_ENABLED === true) {
+          const mod = await import("@/lib/application-resume");
+          const progress = mod.progressFromWizard(row);
+          if (progress.phase) phase = progress.phase;
+        }
         setState({
           full_name: row.full_name ?? "",
           city: row.city,
@@ -358,7 +367,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           insurance_policy_last4: row.insurance_policy_last4,
           insurance_policy_number: null,
         });
-        setPhase(phaseFrom(row.current_step));
+        setPhase(phase);
       })
       .catch((e) => setLoadError(e?.message ?? "Could not load your application."));
   }, [token, fetchApp]);
