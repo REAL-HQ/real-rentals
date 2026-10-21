@@ -65,6 +65,7 @@ import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { RETURNS_DUE_ENABLED } from "@/lib/returns-due-flag";
 
 export type TabDef = {
   id: string;
@@ -221,6 +222,16 @@ const RENEWALS_DUE_TAB: TabDef = {
   minTier: "manager",
   group: "RENTALS",
   description: "Active Rentals With A Billing Or End Date In The Next 7 Days",
+};
+
+/** Shown only while Returns Due is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RETURNS_DUE_TAB: TabDef = {
+  id: "returns_due",
+  label: "Returns Due",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Active Rentals Due Back Within 7 Days, Including Overdue",
 };
 
 /** Shown only while Fleet Calendar is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -593,6 +604,9 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "bookings", { ...RENEWALS_DUE_TAB, href: "renewals_due" });
   }
+  if (RETURNS_DUE_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "bookings", { ...RETURNS_DUE_TAB, href: "returns_due" });
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
@@ -730,6 +744,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "renewals_due") {
     if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "renewals_due";
+  }
+  if (args.urlTab === "returns_due") {
+    if (!RETURNS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "returns_due";
   }
   if (args.urlTab === "stripe_payout_recon") {
     if (!STRIPE_PAYOUT_RECON_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
