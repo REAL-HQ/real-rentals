@@ -224,7 +224,9 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
-  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path, args.mimeType);
+  // Flag on, a missing object or a user_metadata write throws. Callers catch
+  // that. Flag off, this returns null and the insert columns stay as they are.
+  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path);
   const { data: row, error } = await admin
     .from("documents")
     .insert({
@@ -353,38 +355,48 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: field.category,
-      bucket: field.bucket,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: field.label,
-      expiresAt:
-        field.category === "license_front" ? (application.license_expiration ?? null) : null,
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, field.bucket, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: field.category,
+        bucket: field.bucket,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: field.label,
+        expiresAt:
+          field.category === "license_front" ? (application.license_expiration ?? null) : null,
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, field.bucket, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      // Flag on, registerDocument throws when the content hash cannot be
+      // recorded. One file must not drop the rest of the wizard sync.
+      console.error("[documents] registration refused", field.category, e);
+    }
   }
 
   // Gig trip screenshots arrive as an array of paths.
   const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
   for (const path of shots) {
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: "trip_history",
-      bucket: TRIP_SCREENSHOT_BUCKET,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: "Trip screenshot (from application)",
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: "trip_history",
+        bucket: TRIP_SCREENSHOT_BUCKET,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: "Trip screenshot (from application)",
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      console.error("[documents] registration refused", "trip_history", e);
+    }
   }
 
   /*
@@ -609,7 +621,9 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path, data.mimeType);
+    // Flag on, this throws and the confirm fails closed. The row is not
+    // inserted without a content hash.
+    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
 
     const { data: row, error } = await supabaseAdmin
       .from("documents")
