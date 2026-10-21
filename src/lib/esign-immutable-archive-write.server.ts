@@ -7,7 +7,10 @@
 // option on storage.objects.user_metadata (storage migration 0025), which
 // is the column approval reads. The metadata column stays system data.
 // The documents row is hidden from the driver until the agreement update
-// commits. A failed attempt deletes the row and object it created.
+// commits. A failed attempt does not delete that row or object: a concurrent
+// winner may have adopted them after this attempt last read the agreement.
+// SIGNED_ARCHIVE_V1_ENABLED must stay false when immutable-v1 is on.
+// archiveDocument checks that flag first and runs completed-v1 instead.
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 import { renderCompletedPdf, sha256Hex } from "@/lib/esign-pdf.server";
@@ -36,9 +39,6 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
   let documentId = "";
   let fileSha = "";
   let path = "";
-  let uploadedThisAttempt = false;
-  let createdDocument = false;
-  let finalized = false;
 
   try {
     if (ag.archive_status === "archived") {
@@ -106,8 +106,6 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
       if (stored.error || !stored.data) throw new Error("upload: existing object is unreadable");
       const storedSha = await sha256Hex(new Uint8Array(await stored.data.arrayBuffer()));
       if (storedSha !== fileSha) throw new Error("upload: existing object hash mismatch");
-    } else {
-      uploadedThisAttempt = true;
     }
 
     if (!existing.data) {
@@ -141,9 +139,8 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
         if (again.error || !row || row.driver_id !== ag.application_id || row.storage_bucket !== BUCKET || row.storage_path !== path || row.content_sha256 !== fileSha) {
           throw new Error("documents: existing row does not match this archive");
         }
-      } else {
-        if (doc.id !== documentId) throw new Error("documents: inserted id mismatch");
-        createdDocument = true;
+      } else if (doc.id !== documentId) {
+        throw new Error("documents: inserted id mismatch");
       }
     }
 
@@ -172,7 +169,6 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
         throw new Error("finalize: agreement was not updated");
       }
     }
-    finalized = true;
     await revealToDriver(admin, documentId);
     if (wasFailed)
       await logAudit(actor, { action: "document.archive_recovered", summary: "Signed document archived after retry", entityType: "esign_document", entityId: ag.id });
@@ -180,36 +176,49 @@ export async function archiveImmutableV1(admin: any, ag: any, actor: Actor | nul
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[esign] archive failed", ag.id, msg);
-    if (!finalized && !alreadyArchived && documentId && fileSha) {
-      try {
-        const again = await admin.from("agreements").select("id,document_id,sha256,archive_status").eq("id", ag.id).maybeSingle();
-        const row = again?.data;
-        if (!again?.error && row?.archive_status === "archived" && row.document_id === documentId && row.sha256 === fileSha) finalized = true;
-      } catch {
-        // The agreement row could not be re-read. The attempt stays a failure.
-      }
-    }
-    if (finalized) {
-      try {
-        await revealToDriver(admin, documentId);
-      } catch {
-        // The agreement is already archived. A later call reveals the document.
+    const adoptedWinner = async () => {
+      const again = await admin.from("agreements").select("id,document_id,sha256,archive_status").eq("id", ag.id).maybeSingle();
+      const row = again?.data;
+      if (again?.error || !row || row.archive_status !== "archived" || !row.document_id || !row.sha256) return null;
+      return row;
+    };
+    const finishWinner = async (row: { document_id: string; sha256: string }) => {
+      if (row.document_id === documentId && row.sha256 === fileSha) {
+        try {
+          await revealToDriver(admin, documentId);
+        } catch {
+          // The agreement is already archived. A later call reveals the document.
+        }
       }
       if (wasFailed)
         await logAudit(actor, { action: "document.archive_recovered", summary: "Signed document archived after retry", entityType: "esign_document", entityId: ag.id });
       return true;
+    };
+    if (!alreadyArchived) {
+      try {
+        const adopted = await adoptedWinner();
+        if (adopted) return await finishWinner(adopted);
+      } catch {
+        // The agreement row could not be re-read. The conditional update below is the next check.
+      }
     }
-    if (createdDocument && documentId) {
-      await admin.from("documents").delete().eq("id", documentId);
-    }
-    if (uploadedThisAttempt && path) {
-      await admin.storage.from(BUCKET).remove([path]);
-    }
-    await admin
+    const failedWrite = await admin
       .from("agreements")
       .update({ archive_status: "failed", archive_error: msg.slice(0, 500), archive_attempts: (ag.archive_attempts ?? 0) + 1, archive_last_attempt_at: new Date().toISOString() })
       .eq("id", ag.id)
-      .neq("archive_status", "archived");
+      .neq("archive_status", "archived")
+      .select("id")
+      .maybeSingle();
+    if (!failedWrite?.data && !alreadyArchived) {
+      try {
+        const adopted = await adoptedWinner();
+        if (adopted) return await finishWinner(adopted);
+      } catch {
+        // The failure update matched nothing and the agreement could not be re-read.
+      }
+    }
+    // Do not delete the document or the object. The check above can be stale:
+    // another attempt can finalize this same row and object before a delete runs.
     await logAudit(actor, { action: "document.archive_failed", summary: "Signed document could not be archived", entityType: "esign_document", entityId: ag.id, metadata: { error: msg.slice(0, 200) } });
     return false;
   }

@@ -102,7 +102,15 @@ type Call = {
   error?: string | null;
 };
 type Doc = Record<string, unknown> & { id: string };
-type Faults = { upload?: string; insert?: string; finalize?: string };
+type Faults = {
+  upload?: string;
+  insert?: string;
+  finalize?: string;
+  /** B commits A's archived payload, and the update returns no row. */
+  loseToConcurrent?: boolean;
+  /** The next N agreement reads still look pending. */
+  staleAgreementReads?: number;
+};
 
 function match(row: Record<string, unknown>, filters: Filter[]): boolean {
   return filters.every((f) => {
@@ -154,6 +162,10 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
         return Promise.resolve({ data: { id }, error: null });
       }
       if (op === "update" && table === "agreements") {
+        if (payload?.archive_status === "archived" && faults.loseToConcurrent) {
+          Object.assign(agreement, payload);
+          return Promise.resolve({ data: null, error: null });
+        }
         if (payload?.archive_status === "archived" && faults.finalize) {
           recorded.error = faults.finalize;
           return Promise.resolve({ data: null, error: { message: faults.finalize } });
@@ -173,6 +185,11 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
         return Promise.resolve({ data: null, error: null });
       }
       if (op === "select" && table === "agreements") {
+        if ((faults.staleAgreementReads ?? 0) > 0) {
+          faults.staleAgreementReads = (faults.staleAgreementReads ?? 0) - 1;
+          const stale = { ...agreement, archive_status: "pending", document_id: null, sha256: null, completed_document_id: null };
+          return Promise.resolve({ data: match(stale, filters) ? stale : null, error: null });
+        }
         return Promise.resolve({ data: match(agreement, filters) ? { ...agreement } : null, error: null });
       }
       if (op === "select" && table === "documents") {
@@ -252,6 +269,10 @@ ok(flagFile.includes("export const ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED = false;")
 ok(!/process\.env/.test(flagFile), "no environment variable can open the flag");
 ok(!livePath.includes("ESIGN_IMMUTABLE_ARCHIVE_V1_ENABLED"), "the new flag is not the completed-v1 switch");
 ok(livePath.includes("export const SIGNED_ARCHIVE_V1_ENABLED = false;"), "SIGNED_ARCHIVE_V1_ENABLED stays false");
+ok(
+  flagFile.includes("SIGNED_ARCHIVE_V1_ENABLED must stay false when immutable-v1 is on"),
+  "the flag file says SIGNED_ARCHIVE_V1_ENABLED must stay false when immutable-v1 is on",
+);
 
 const stripped = esign.replace(FLAG_IMPORT, "").replace(WRITE_IMPORT, "").replace(GATE, "");
 ok(
@@ -298,6 +319,7 @@ ok(!writer.includes("randomUUID"), "the writer does not mint a fresh document id
 ok(writer.includes("user_metadata"), "the writer records that the upload metadata option lands in user_metadata");
 ok(writer.includes('.is("document_id", null)'), "the success update requires document_id IS NULL");
 ok(writer.includes('.neq("archive_status", "archived")'), "the writer guards archived agreements");
+ok(!writer.includes(".delete(") && !writer.includes(".remove("), "a failed attempt does not delete the document or the object");
 ok(
   writer.indexOf("content_sha256: fileSha") < writer.indexOf("document_id: documentId,\n        completed_document_id: documentId,\n        sha256: fileSha"),
   "the writer source stores content_sha256 before the agreement sha256",
@@ -374,17 +396,31 @@ ok(hasFilter(uploadFailUpdate, "neq", "archive_status", "archived"), "upload fai
 
 const insertFail = openArchive(agreement, { insert: "insert refused" });
 ok(await archiveImmutableV1(insertFail.admin, agreement, null) === false, "insert failure returns false");
-ok(insertFail.docs.size === 0 && insertFail.objects.size === 0, "insert failure removes the object it uploaded");
-ok(insertFail.calls.some((c) => c.op === "remove"), "insert failure deletes the storage object");
+ok(insertFail.docs.size === 0 && insertFail.objects.size === 1, "insert failure leaves the uploaded object");
+ok(!insertFail.calls.some((c) => c.op === "remove") && !insertFail.calls.some((c) => c.op === "delete"), "insert failure does not delete the object");
 ok(insertFail.agreement.archive_status === "failed" && insertFail.agreement.document_id == null, "insert failure does not keep a document id on the agreement");
 
 const finalizeFail = openArchive(agreement, { finalize: "finalize down" });
 ok(await archiveImmutableV1(finalizeFail.admin, agreement, null) === false, "agreement update failure returns false");
-ok(finalizeFail.docs.size === 0 && finalizeFail.objects.size === 0, "agreement update failure removes the row and the object created this attempt");
-ok(finalizeFail.calls.some((c) => c.op === "delete") && finalizeFail.calls.some((c) => c.op === "remove"), "agreement update failure cleans the document and the storage object");
+ok(finalizeFail.docs.size === 1 && finalizeFail.objects.size === 1, "agreement update failure keeps the row and the object created this attempt");
+ok(!finalizeFail.calls.some((c) => c.op === "delete") && !finalizeFail.calls.some((c) => c.op === "remove"), "agreement update failure does not delete the document or the storage object");
 const finalizeFailUpdate = finalizeFail.calls.find((c) => c.op === "update" && c.payload?.archive_status === "failed");
 ok(hasFilter(finalizeFailUpdate, "neq", "archive_status", "archived"), "agreement update failure guards archive_status <> archived");
 ok(finalizeFail.agreement.archive_status === "failed" && finalizeFail.agreement.sha256 == null, "agreement update failure does not record a sha256");
+ok(finalizeFail.agreement.document_id == null, "agreement update failure does not point the agreement at the hidden document");
+
+const lost = openArchive(agreement, { loseToConcurrent: true, staleAgreementReads: 1 });
+ok(await archiveImmutableV1(lost.admin, agreement, null) === true, "A fails its finalize read and B's archived row is kept");
+ok(lost.agreement.archive_status === "archived" && typeof lost.agreement.document_id === "string" && lost.agreement.document_id.length > 0, "A-fails / B-wins leaves a valid document_id");
+ok(typeof lost.agreement.sha256 === "string" && /^[0-9a-f]{64}$/.test(String(lost.agreement.sha256)), "A-fails / B-wins keeps the archived sha256");
+ok(lost.docs.size === 1 && lost.docs.has(String(lost.agreement.document_id)), "A-fails / B-wins keeps the document row");
+ok(lost.objects.size === 1, "A-fails / B-wins keeps the storage object");
+ok(!lost.calls.some((c) => c.op === "delete") && !lost.calls.some((c) => c.op === "remove"), "A-fails / B-wins does not delete the document or the object");
+
+const lostLate = openArchive(agreement, { loseToConcurrent: true, staleAgreementReads: 2 });
+ok(await archiveImmutableV1(lostLate.admin, agreement, null) === true, "a stale catch re-read still adopts B after the guarded failure update misses");
+ok(lostLate.agreement.archive_status === "archived" && lostLate.docs.size === 1 && lostLate.objects.size === 1, "the late re-check leaves the archived document and object");
+ok(!lostLate.calls.some((c) => c.op === "delete") && !lostLate.calls.some((c) => c.op === "remove"), "the late re-check does not delete");
 
 const protectedId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const protectedSha = "ab".repeat(32);
