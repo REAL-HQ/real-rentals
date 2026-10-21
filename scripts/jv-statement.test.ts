@@ -563,6 +563,215 @@ describe("partner statement worked example", () => {
     expect(statement?.notes.join(" ")).toContain("Partner revenue base is not chosen");
   });
 
+  it("does not count a linked service again when its expense is in another period", () => {
+    const { directory } = worked();
+    directory.payments = [];
+    directory.refunds = [];
+    directory.expenses = [
+      expense({
+        id: "e-oil",
+        amount: "30.00",
+        maintenanceRecordId: "m-oil",
+        incurredOn: "2026-09-15",
+      }),
+    ];
+    directory.maintenance = [
+      service({
+        id: "m-oil",
+        companyShare: "20.00",
+        partnerShare: "10.00",
+        totalCost: "30.00",
+        performedOn: "2026-10-10",
+      }),
+    ];
+    const october = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [],
+    });
+    const september = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "last_month",
+      now: NOW,
+      charges: [],
+    });
+    expect(october?.expensesComplete).toBe(true);
+    expect(october?.expenseCents).toBe(0);
+    expect(september?.expensesComplete).toBe(true);
+    expect(september?.companyExpenseCents).toBe(2000);
+    expect(september?.partnerExpenseCents).toBe(1000);
+    expect(september?.expenseCents).toBe(3000);
+  });
+
+  it("does not let another vehicle's undated refund or non-USD charge blank the statement", () => {
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [
+      pay({ id: "pay-rent", amount: "40.00", paymentMethod: "cash", paidDate: "2026-10-06" }),
+      pay({ id: "pay-eur", vehicleId: OTHER, amount: "10.00", paymentIntentId: "pi_eur" }),
+    ];
+    directory.refunds = [
+      {
+        id: "re-other",
+        amount: "5.00",
+        status: "succeeded",
+        createdAt: null,
+        paymentIds: ["pay-eur"],
+      },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_eur",
+          customerId: null,
+          paymentIntentId: "pi_eur",
+          invoiceId: null,
+          subscriptionId: null,
+          amountCents: 1000,
+          currency: "eur",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: ["pay-eur"],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(true);
+    expect(statement?.refundsComplete).toBe(true);
+    expect(statement?.coverage).toBe("complete");
+    expect(statement?.incomeCents).toBe(4000);
+  });
+
+  it("withholds a non-USD charge and an undated refund for this vehicle", () => {
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [pay({ id: "pay-eur", amount: "10.00", type: "rent" })];
+    directory.refunds = [
+      {
+        id: "re-here",
+        amount: "1.00",
+        status: "succeeded",
+        createdAt: null,
+        paymentIds: ["pay-eur"],
+      },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_eur",
+          customerId: null,
+          paymentIntentId: null,
+          invoiceId: null,
+          subscriptionId: null,
+          amountCents: 1000,
+          currency: "eur",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: ["pay-eur"],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(false);
+    expect(statement?.refundsComplete).toBe(false);
+    expect(statement?.coverage).toBe("unavailable");
+  });
+
+  it("withholds a customer-only Stripe charge while the revenue base is unset", () => {
+    expect(PARTNER_REVENUE_BASE).toBeNull();
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [];
+    directory.refunds = [];
+    directory.rentals = [
+      { id: "r1", vehicleId: VEHICLE, customerId: "cus_1", subscriptionId: null },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_cus",
+          customerId: "cus_1",
+          paymentIntentId: null,
+          invoiceId: null,
+          subscriptionId: null,
+          amountCents: 5000,
+          currency: "usd",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: [],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(false);
+    expect(statement?.incomeCents).toBeNull();
+    expect(statement?.partnerIncomeCents).toBeNull();
+    expect(statement?.notes.join(" ")).toContain("tied only to the customer");
+  });
+
+  it("withholds a non-rent Stripe charge while the revenue base is unset", () => {
+    expect(PARTNER_REVENUE_BASE).toBeNull();
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.refunds = [];
+    directory.payments = [
+      pay({
+        id: "pay-late",
+        type: "late_fee",
+        amount: "15.00",
+        paidDate: "2026-09-02",
+      }),
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_late",
+          customerId: null,
+          paymentIntentId: null,
+          invoiceId: null,
+          subscriptionId: null,
+          amountCents: 1500,
+          currency: "usd",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: ["pay-late"],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(false);
+    expect(statement?.incomeCents).toBeNull();
+    expect(statement?.notes.join(" ")).toContain("Partner revenue base is not chosen");
+    expect(statement?.notes.join(" ")).not.toContain("tied only to the customer");
+  });
+
   it("leaves an unmatched Stripe row out and marks the period Partial", () => {
     const { directory } = worked();
     directory.payments = [

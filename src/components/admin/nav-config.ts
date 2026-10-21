@@ -81,22 +81,8 @@ export const GROUP_ORDER = ["HOME", "PEOPLE", "RENTALS", "FLEET", "BUSINESS", "M
 export type Group = (typeof GROUP_ORDER)[number];
 
 export const TABS: readonly TabDef[] = [
-  {
-    id: "overview",
-    label: "Overview",
-    icon: LayoutDashboard,
-    minTier: "coordinator",
-    group: "HOME",
-    description: "Pipeline, Fleet And Revenue At A Glance",
-  },
-  {
-    id: "drivers",
-    label: "Drivers",
-    icon: Users,
-    minTier: "coordinator",
-    group: "PEOPLE",
-    description: "Manage Applicants, Active Renters And Driver Lifecycle",
-  },
+  { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
+  { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
   // Bookings sits above Payments under RENTALS: what is out on rent, and what
   // came back, before the money it generated. Coordinator-visible — the money
   // columns are withheld by the SERVER for that tier, not by this list.
@@ -116,134 +102,27 @@ export const TABS: readonly TabDef[] = [
     group: "RENTALS",
     description: "Who Is Out, What Is Due, And What Is Still Open",
   },
-  {
-    id: "payments",
-    label: "Payments",
-    icon: CreditCard,
-    minTier: "manager",
-    group: "RENTALS",
-    description: "Rent, Deposits, Balances And Renter Charges",
-  },
-  {
-    id: "charges",
-    label: "Charges",
-    icon: Receipt,
-    minTier: "manager",
-    description: "Tolls And Violations, Matched To The Renter Who Had The Car",
-  },
-  {
-    id: "stripe_match",
-    label: "Stripe Match",
-    icon: ArrowLeftRight,
-    minTier: "manager",
-    description: "Live Stripe Customers Next To The Driver They Belong To",
-  },
-  {
-    id: "collections_watch",
-    label: "Collections Watch",
-    icon: Bell,
-    minTier: "manager",
-    description: "Past Due Subscriptions, Failed Charges And What Is Due This Week",
-  },
-  {
-    id: "deposits_ledger",
-    label: "Deposits & Refunds",
-    icon: Banknote,
-    minTier: "manager",
-    description: "Stripe Refunds, Deposits Held And The Period Net",
-  },
-  {
-    id: "weekly_cash_flow",
-    label: "Weekly Cash Flow",
-    icon: TrendingUp,
-    minTier: "manager",
-    description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow",
-  },
-  {
-    id: "vehicles",
-    label: "Vehicles",
-    icon: Car,
-    minTier: "coordinator",
-    group: "FLEET",
-    description: "Fleet Inventory & Vehicle Status",
-  },
-  {
-    id: "fleet_inbox",
-    label: "Fleet Inbox",
-    icon: Inbox,
-    minTier: "coordinator",
-    group: "FLEET",
-    description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review",
-  },
-  {
-    id: "maintenance",
-    label: "Service",
-    icon: Wrench,
-    minTier: "manager",
-    group: "FLEET",
-    description: "Maintenance, Due Work And Inspections",
-  },
-  {
-    id: "inspections",
-    label: "Inspections",
-    icon: ClipboardCheck,
-    minTier: "coordinator",
-    description: "Pre-Delivery And Return Checklists With Photo Proof",
-  },
-  {
-    id: "incidents",
-    label: "Incidents",
-    icon: ShieldAlert,
-    minTier: "manager",
-    group: "FLEET",
-    description: "Accidents, Damage And Insurance Claims",
-  },
-  {
-    id: "driver_issues",
-    label: "Driver Issues",
-    icon: AlertTriangle,
-    minTier: "manager",
-    group: "FLEET",
-    description: "Breakdowns And Other Reports From Renters",
-  },
-  {
-    id: "expenses",
-    label: "Expenses",
-    icon: Wallet,
-    minTier: "manager",
-    group: "BUSINESS",
-    description: "Every Cost Against Every Car, And What Each One Earns",
-  },
-  {
-    id: "vendors",
-    label: "Vendors",
-    icon: Truck,
-    minTier: "coordinator",
-    description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance",
-  },
-  {
-    id: "shops",
-    label: "Repair Shops",
-    icon: Truck,
-    minTier: "manager",
-    description: "Preferred Maintenance Providers By Market",
-  },
-  {
-    id: "partners",
-    label: "Partners",
-    icon: Handshake,
-    minTier: "manager",
-    group: "BUSINESS",
-    description: "Vehicle Owners, Lenders And Vendors",
-  },
+  { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
+  { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
+  { id: "stripe_match", label: "Stripe Match", icon: ArrowLeftRight, minTier: "manager", description: "Live Stripe Customers Next To The Driver They Belong To" },
+  { id: "collections_watch", label: "Collections Watch", icon: Bell, minTier: "manager", description: "Past Due Subscriptions, Failed Charges And What Is Due This Week" },
+  { id: "deposits_ledger", label: "Deposits & Refunds", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
+  { id: "weekly_cash_flow", label: "Weekly Cash Flow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
+  { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
+  { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
+  { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
+  { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
+  { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
+  { id: "driver_issues", label: "Driver Issues", icon: AlertTriangle, minTier: "manager", group: "FLEET", description: "Breakdowns And Other Reports From Renters" },
+  { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
+  { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
+  { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
+  { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
   // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */
-export const LEGACY_TABS: Record<
-  string,
-  { tab: string; section?: string; filter?: string; messages?: true }
-> = {
+export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter?: string; messages?: true }> = {
   automations: { tab: "settings", section: "automations" },
   team: { tab: "settings", section: "team" },
   messages: { tab: "overview", messages: true },
@@ -269,12 +148,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "agreement_templates", label: "Agreement Templates", group: "RENTALS", minTier: "owner" },
   { id: "payments", label: "Payment Settings", group: "PAYMENTS", minTier: "owner" },
   { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
-  {
-    id: "notifications",
-    label: "Notifications & Email",
-    group: "COMMUNICATIONS",
-    minTier: "owner",
-  },
+  { id: "notifications", label: "Notifications & Email", group: "COMMUNICATIONS", minTier: "owner" },
   { id: "automations", label: "Automations", group: "AUTOMATION", minTier: "manager" },
   { id: "team", label: "Team", group: "TEAM", minTier: "owner" },
   { id: "activity", label: "Activity", group: "TEAM", minTier: "manager" },
@@ -390,11 +264,26 @@ const FINANCE_DATA_QUALITY_TAB: TabDef = {
   description: "Gaps That Leave Finance Totals Partial Or Unavailable",
 };
 
-function withFinanceDataQuality<T extends TabDef>(
-  tabs: T[],
-  tier: StaffTier | null,
-  href?: string,
-): T[] {
+/** Shown only while the JV partner statement is compiled on. Kept out of TABS so a dark build cannot list it. */
+const JV_TAB: TabDef = {
+  id: "jv",
+  label: "Partner Statement",
+  icon: Scale,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Partner Income, Expenses And The Split For One Vehicle",
+};
+
+function withJv<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_JV_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...JV_TAB, href } : JV_TAB;
+  next.splice(at < 0 ? next.length : at + 1, 0, entry as T);
+  return next;
+}
+
+function withFinanceDataQuality<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!FINANCE_DATA_QUALITY_ENABLED || !tierAllows(tier, "manager")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
@@ -432,11 +321,7 @@ const FINANCE_DEPOSIT_LEDGER_TAB: TabDef = {
   description: "Deposit Collected, Held, Applied, Refunded, And Still Held",
 };
 
-function withFinanceDepositLedger<T extends TabDef>(
-  tabs: T[],
-  tier: StaffTier | null,
-  href?: string,
-): T[] {
+function withFinanceDepositLedger<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!FINANCE_DEPOSIT_LEDGER_ENABLED || !tierAllows(tier, "manager")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
@@ -565,11 +450,7 @@ const EXPENSE_ENTRY_TAB: TabDef = {
   description: "Add One Vehicle Expense",
 };
 
-function withPartnerStatement<T extends TabDef>(
-  tabs: T[],
-  tier: StaffTier | null,
-  href?: string,
-): T[] {
+function withPartnerStatement<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "partners");
@@ -593,25 +474,6 @@ function withExpenseEntry<T extends TabDef>(tabs: T[], tier: StaffTier | null, h
   const at = next.findIndex((t) => t.id === "expenses");
   const entry = href ? { ...EXPENSE_ENTRY_TAB, href } : EXPENSE_ENTRY_TAB;
   next.splice(at + 1, 0, entry as T);
-  return next;
-}
-
-/** Shown only while the JV partner statement is compiled on. Kept out of TABS so a dark build cannot list it. */
-const JV_TAB: TabDef = {
-  id: "jv",
-  label: "Partner Statement",
-  icon: Scale,
-  minTier: "owner",
-  group: "BUSINESS",
-  description: "Partner Income, Expenses And The Split For One Vehicle",
-};
-
-function withJv<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
-  if (!FINANCE_JV_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "partners");
-  const entry = href ? { ...JV_TAB, href } : JV_TAB;
-  next.splice(at < 0 ? next.length : at + 1, 0, entry as T);
   return next;
 }
 
@@ -645,11 +507,7 @@ function withTaxExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href
   return next;
 }
 
-function withAccountantExport<T extends TabDef>(
-  tabs: T[],
-  tier: StaffTier | null,
-  href?: string,
-): T[] {
+function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
   const ownerPnl = next.findIndex((t) => t.id === "owner_pnl");
@@ -703,55 +561,14 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push(AGING_TAB);
   if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push(DEPOSIT_TAB);
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
-  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager"))
-    extra.push(RENT_RECONCILIATION_TAB);
-  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner"))
-    extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
-  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager"))
-    extra.push(STRIPE_RISK_MONITOR_TAB);
-  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager"))
-    extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length)
-    return withJv(
-      withFinanceDepositLedger(
-        withRentAging(
-          withFinanceDataQuality(
-            withTaxExport(
-              withAccountantExport(
-                withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier),
-                tier,
-              ),
-              tier,
-            ),
-            tier,
-          ),
-          tier,
-        ),
-        tier,
-      ),
-      tier,
-    );
+  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push(RENT_RECONCILIATION_TAB);
+  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
+  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
+  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
+  if (!extra.length) return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withJv(
-    withFinanceDepositLedger(
-      withRentAging(
-        withFinanceDataQuality(
-          withTaxExport(
-            withAccountantExport(
-              withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier),
-              tier,
-            ),
-            tier,
-          ),
-          tier,
-        ),
-        tier,
-      ),
-      tier,
-    ),
-    tier,
-  );
+  return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -759,29 +576,14 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [
-    { id: "payments", label: "Payments" },
-    { id: "charges", label: "Charges" },
-    { id: "stripe_match", label: "Stripe Match" },
-    { id: "collections_watch", label: "Collections Watch" },
-    { id: "deposits_ledger", label: "Deposits & Refunds" },
-    { id: "weekly_cash_flow", label: "Weekly Cash Flow" },
-  ],
-  maintenance: [
-    { id: "maintenance", label: "Maintenance" },
-    { id: "inspections", label: "Inspections" },
-  ],
-  partners: [
-    { id: "partners", label: "Partners" },
-    { id: "vendors", label: "Vendors" },
-    { id: "shops", label: "Repair Shops" },
-  ],
+  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Stripe Match" }, { id: "collections_watch", label: "Collections Watch" }, { id: "deposits_ledger", label: "Deposits & Refunds" }, { id: "weekly_cash_flow", label: "Weekly Cash Flow" }],
+  maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
+  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
 };
 
 /** Which rail entry is highlighted for a tab (Charges → Payments, Inspections → Service, Vendors → Partners). */
 export function navOwner(tab: string): string {
-  for (const [parent, kids] of Object.entries(WORKSPACE_TABS))
-    if (kids.some((k) => k.id === tab)) return parent;
+  for (const [parent, kids] of Object.entries(WORKSPACE_TABS)) if (kids.some((k) => k.id === tab)) return parent;
   return tab;
 }
 
@@ -806,27 +608,18 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     entries = spliceAfter(entries, "vehicles", { ...FLEET_CALENDAR_TAB, href: "fleet_calendar" });
   }
   if (VEHICLE_TURNAROUND_ENABLED && tierAllows(tier, "manager")) {
-    entries = spliceAfter(entries, "vehicles", {
-      ...VEHICLE_TURNAROUND_TAB,
-      href: "vehicle_turnaround",
-    });
+    entries = spliceAfter(entries, "vehicles", { ...VEHICLE_TURNAROUND_TAB, href: "vehicle_turnaround" });
   }
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "bookings", { ...RENEWALS_DUE_TAB, href: "renewals_due" });
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
-    entries = spliceAfter(entries, "vehicles", {
-      ...FLEET_AVAILABILITY_TAB,
-      href: "fleet_availability",
-    });
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
     const at = entries.findIndex((t) => t.id === "incidents");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
-    entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, {
-      ...INCIDENT_BOARD_TAB,
-      href: "incident_board",
-    });
+    entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
   }
   if (APPLICANT_FUNNEL_ENABLED && tierAllows(tier, "manager")) {
     const drivers = entries.findIndex((t) => t.id === "drivers");
@@ -835,140 +628,31 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const extra: (TabDef & { href: string })[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
-  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
-  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner"))
-    extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
-  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner"))
-    extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
-  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...AGING_TAB, href: "receivables_aging" });
-  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
-  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner"))
-    extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
-  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
-  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner"))
-    extra.push({ ...OWNER_FINANCE_SNAPSHOT_TAB, href: "owner_finance_snapshot" });
-  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
-  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager"))
-    extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
+  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
+  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push({ ...AGING_TAB, href: "receivables_aging" });
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
+  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
+  if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push({ ...OWNER_FINANCE_SNAPSHOT_TAB, href: "owner_finance_snapshot" });
+  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
+  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withJv(
-      withFinanceDepositLedger(
-        withRentAging(
-          withFinanceDataQuality(
-            withTaxExport(
-              withAccountantExport(
-                withExpenseEntry(
-                  withOwnerPnl(
-                    withPartnerStatement(entries, tier, "partner_statement"),
-                    tier,
-                    "owner_pnl",
-                  ),
-                  tier,
-                  "expense_entry",
-                ),
-                tier,
-                "accountant_export",
-              ),
-              tier,
-              "tax_export",
-            ),
-            tier,
-            "finance_data_quality",
-          ),
-          tier,
-          "rent_aging",
-        ),
-        tier,
-        "finance_deposit_ledger",
-      ),
-      tier,
-      "jv",
-    );
+    return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "jv");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withJv(
-    withFinanceDepositLedger(
-      withRentAging(
-        withFinanceDataQuality(
-          withTaxExport(
-            withAccountantExport(
-              withExpenseEntry(
-                withOwnerPnl(
-                  withPartnerStatement(entries, tier, "partner_statement"),
-                  tier,
-                  "owner_pnl",
-                ),
-                tier,
-                "expense_entry",
-              ),
-              tier,
-              "accountant_export",
-            ),
-            tier,
-            "tax_export",
-          ),
-          tier,
-          "finance_data_quality",
-        ),
-        tier,
-        "rent_aging",
-      ),
-      tier,
-      "finance_deposit_ledger",
-    ),
-    tier,
-    "jv",
-  );
+  return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "jv");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
-export type CreateAction = {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  tab: string;
-  add: boolean;
-  minTier: StaffTier;
-};
+export type CreateAction = { id: string; label: string; icon: LucideIcon; tab: string; add: boolean; minTier: StaffTier };
 export const CREATE_ACTIONS: readonly CreateAction[] = [
-  {
-    id: "vehicle",
-    label: "Vehicle",
-    icon: Car,
-    tab: "vehicles",
-    add: true,
-    minTier: "coordinator",
-  },
-  {
-    id: "fleet_files",
-    label: "Files",
-    icon: Upload,
-    tab: "fleet_inbox",
-    add: false,
-    minTier: "coordinator",
-  },
-  {
-    id: "service",
-    label: "Service",
-    icon: Wrench,
-    tab: "maintenance",
-    add: true,
-    minTier: "manager",
-  },
-  {
-    id: "payment",
-    label: "Payment",
-    icon: CreditCard,
-    tab: "payments",
-    add: true,
-    minTier: "manager",
-  },
+  { id: "vehicle", label: "Vehicle", icon: Car, tab: "vehicles", add: true, minTier: "coordinator" },
+  { id: "fleet_files", label: "Files", icon: Upload, tab: "fleet_inbox", add: false, minTier: "coordinator" },
+  { id: "service", label: "Service", icon: Wrench, tab: "maintenance", add: true, minTier: "manager" },
+  { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];
 
@@ -984,62 +668,47 @@ export function resolveAdminTab(args: {
 }): string {
   if (args.urlTab === "settings") return "settings";
   if (args.urlTab === "finance") {
-    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance";
   }
   if (args.urlTab === "vehicle_profit") {
-    if (!VEHICLE_PROFITABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!VEHICLE_PROFITABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "vehicle_profit";
   }
   if (args.urlTab === "incident_board") {
-    if (!INCIDENT_BOARD_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator")))
-      return "overview";
+    if (!INCIDENT_BOARD_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
     return "incident_board";
   }
   if (args.urlTab === "fleet_availability") {
-    if (!FLEET_AVAILABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator")))
-      return "overview";
+    if (!FLEET_AVAILABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
     return "fleet_availability";
   }
   if (args.urlTab === "partner_statement") {
-    if (!PARTNER_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!PARTNER_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "partner_statement";
-  }
-  if (args.urlTab === "jv") {
-    if (!FINANCE_JV_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
-    return "jv";
   }
   if (args.urlTab === "owner_pnl") {
     if (!OWNER_PNL_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "owner_pnl";
   }
   if (args.urlTab === "expense_entry") {
-    if (!OWNER_EXPENSE_ENTRY_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!OWNER_EXPENSE_ENTRY_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "expense_entry";
   }
   if (args.urlTab === "accountant_export") {
-    if (!ACCOUNTANT_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!ACCOUNTANT_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "accountant_export";
   }
   if (args.urlTab === "payout_breakdown") {
-    if (!PAYOUT_BREAKDOWN_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!PAYOUT_BREAKDOWN_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "payout_breakdown";
   }
   if (args.urlTab === "billing_health") {
-    if (!BILLING_HEALTH_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!BILLING_HEALTH_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "billing_health";
   }
   if (args.urlTab === "funnel") {
-    if (!APPLICANT_FUNNEL_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!APPLICANT_FUNNEL_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "funnel";
   }
   if (args.urlTab === "todays_ops") {
@@ -1047,53 +716,43 @@ export function resolveAdminTab(args: {
     return "todays_ops";
   }
   if (args.urlTab === "fleet_calendar") {
-    if (!FLEET_CALENDAR_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!FLEET_CALENDAR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "fleet_calendar";
   }
   if (args.urlTab === "revenue_forecast") {
-    if (!REVENUE_FORECAST_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!REVENUE_FORECAST_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "revenue_forecast";
   }
   if (args.urlTab === "receivables_aging") {
-    if (!RECEIVABLES_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!RECEIVABLES_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "receivables_aging";
   }
   if (args.urlTab === "deposit_ledger") {
-    if (!DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "deposit_ledger";
   }
   if (args.urlTab === "vehicle_turnaround") {
-    if (!VEHICLE_TURNAROUND_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!VEHICLE_TURNAROUND_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "vehicle_turnaround";
   }
   if (args.urlTab === "rent_reconciliation") {
-    if (!RENT_RECONCILIATION_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!RENT_RECONCILIATION_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "rent_reconciliation";
   }
   if (args.urlTab === "owner_finance_snapshot") {
-    if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (args.tier && !tierAllows(args.tier, "owner")))
-      return "overview";
+    if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "owner_finance_snapshot";
   }
   if (args.urlTab === "stripe_risk_monitor") {
-    if (!STRIPE_RISK_MONITOR_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!STRIPE_RISK_MONITOR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "stripe_risk_monitor";
   }
   if (args.urlTab === "renewals_due") {
-    if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "renewals_due";
   }
   if (args.urlTab === "stripe_payout_recon") {
-    if (!STRIPE_PAYOUT_RECON_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!STRIPE_PAYOUT_RECON_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "stripe_payout_recon";
   }
   if (args.urlTab === "tax_export") {
@@ -1101,18 +760,19 @@ export function resolveAdminTab(args: {
     return "tax_export";
   }
   if (args.urlTab === "finance_data_quality") {
-    if (!FINANCE_DATA_QUALITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!FINANCE_DATA_QUALITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_data_quality";
   }
+  if (args.urlTab === "jv") {
+    if (!FINANCE_JV_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "jv";
+  }
   if (args.urlTab === "rent_aging") {
-    if (!FINANCE_AR_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!FINANCE_AR_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "rent_aging";
   }
   if (args.urlTab === "finance_deposit_ledger") {
-    if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager")))
-      return "overview";
+    if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_deposit_ledger";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";

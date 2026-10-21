@@ -1,9 +1,4 @@
-import {
-  createFileRoute,
-  useSearch as useRouterSearch,
-  useNavigate,
-  Link,
-} from "@tanstack/react-router";
+import { createFileRoute, useSearch as useRouterSearch, useNavigate, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,7 +55,6 @@ import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
-import { JvStatementPanel } from "@/components/admin/JvStatementPanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
@@ -70,7 +64,9 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FinanceDataQualityPanel } from "@/components/admin/FinanceDataQualityPanel";
+import { JvStatementPanel } from "@/components/admin/JvStatementPanel";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
+import { FINANCE_JV_STATEMENT_ENABLED } from "@/lib/jv-statement-flag";
 import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
 import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedgerPanel";
@@ -112,18 +108,11 @@ import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel"
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
-import { FINANCE_JV_STATEMENT_ENABLED } from "@/lib/jv-statement-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
-import {
-  availableExperiences,
-  navTierFor,
-  resolveExperience,
-  storeExperience,
-  type Experience,
-} from "@/lib/experience";
+import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
 import {
   DropdownMenu,
@@ -216,23 +205,7 @@ export function rootSearch(tab: string): AdminSearch {
 function ownedSearch(tab: string, search: AdminSearch): AdminSearch {
   const out: AdminSearch = { tab };
   if (search.msg) out.msg = search.msg;
-  for (const key of [
-    "id",
-    "filter",
-    "add",
-    "section",
-    "q",
-    "vstatus",
-    "body",
-    "partner",
-    "sort",
-    "page",
-    "view",
-    "ready",
-    "phase",
-    "vehicle",
-    "issue",
-  ] as const) {
+  for (const key of ["id", "filter", "add", "section", "q", "vstatus", "body", "partner", "sort", "page", "view", "ready", "phase", "vehicle", "issue"] as const) {
     const value = search[key];
     if (value !== undefined && PARAM_OWNER[key].includes(tab)) {
       // TypeScript cannot see that the key and value agree; they do.
@@ -267,21 +240,8 @@ export const Route = createFileRoute("/admin")({
     if (raw.add === "1" || raw.add === 1 || raw.add === true) out.add = "1";
     if (str(raw.section)) out.section = str(raw.section);
     if (typeof raw.q === "number") out.q = String(raw.q);
-    for (const k of [
-      "q",
-      "vstatus",
-      "body",
-      "partner",
-      "sort",
-      "view",
-      "ready",
-      "phase",
-      "vehicle",
-      "issue",
-    ] as const)
-      if (str(raw[k])) out[k] = str(raw[k]);
-    if (raw.page !== undefined && Number(raw.page) > 1)
-      out.page = String(Math.floor(Number(raw.page)));
+    for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle", "issue"] as const) if (str(raw[k])) out[k] = str(raw[k]);
+    if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";
     else if (str(raw.msg)) out.msg = str(raw.msg);
     return out;
@@ -345,10 +305,7 @@ function Admin() {
     const set = () => {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
       const header = el.querySelector("header");
-      root.style.setProperty(
-        "--admin-sticky-h",
-        `${desktop ? el.offsetHeight : (header?.offsetHeight ?? 0)}px`,
-      );
+      root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
       const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
       root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
     };
@@ -367,11 +324,7 @@ function Admin() {
     });
     if (main) mo.observe(main, { childList: true, subtree: true });
     window.addEventListener("resize", set);
-    return () => {
-      ro.disconnect();
-      mo.disconnect();
-      window.removeEventListener("resize", set);
-    };
+    return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener("resize", set); };
   });
   const [notifs, setNotifs] = useState<
     Array<{
@@ -399,13 +352,11 @@ function Admin() {
     if (urlTab === "settings") return "settings";
     // Reviewed Unified Finance is not an Overview block. This tab is the screen.
     if (urlTab === "finance") {
-      if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager")))
-        return "overview";
+      if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
     }
     if (urlTab === "vehicle_profit") {
-      if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager")))
-        return "overview";
+      if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "vehicle_profit";
     }
     if (urlTab === "incident_board") {
@@ -413,8 +364,7 @@ function Admin() {
       return "incident_board";
     }
     if (urlTab === "fleet_availability") {
-      if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator")))
-        return "overview";
+      if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
       return "fleet_availability";
     }
     if (urlTab === "partner_statement") {
@@ -446,17 +396,19 @@ function Admin() {
       return "billing_health";
     }
     if (urlTab === "finance_data_quality") {
-      if (!FINANCE_DATA_QUALITY_ENABLED || (tier && !tierAllows(tier, "manager")))
-        return "overview";
+      if (!FINANCE_DATA_QUALITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance_data_quality";
+    }
+    if (urlTab === "jv") {
+      if (!FINANCE_JV_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "jv";
     }
     if (urlTab === "rent_aging") {
       if (!FINANCE_AR_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "rent_aging";
     }
     if (urlTab === "finance_deposit_ledger") {
-      if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager")))
-        return "overview";
+      if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance_deposit_ledger";
     }
     // Stripe Disputes & Failed-Payment Monitor is not in TABS. While the flag is off a direct link falls back to Overview.
@@ -506,18 +458,13 @@ function Admin() {
     }
     // Owner Weekly Finance Snapshot is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "owner_finance_snapshot") {
-      if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner")))
-        return "overview";
+      if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_finance_snapshot";
     }
     // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "renewals_due";
-    }
-    if (urlTab === "jv") {
-      if (!FINANCE_JV_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
-      return "jv";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -572,11 +519,7 @@ function Admin() {
   const msgApp = search.msg && search.msg !== "inbox" ? search.msg : null;
   const setMsg = useCallback(
     (value: string | null) =>
-      void navigate({
-        to: "/admin",
-        search: (prev: AdminSearch) => ({ ...prev, msg: value ?? undefined }),
-        replace: true,
-      }),
+      void navigate({ to: "/admin", search: (prev: AdminSearch) => ({ ...prev, msg: value ?? undefined }), replace: true }),
     [navigate],
   );
   // Contextual "Message" actions anywhere in the back office open the overlay
@@ -605,12 +548,11 @@ function Admin() {
   }, [tier]);
   function chooseExperience(e: Experience) {
     storeExperience(e);
-    if (e === "driver") {
-      window.location.assign("/portal?preview=1");
-      return;
-    }
+    if (e === "driver") { window.location.assign("/portal?preview=1"); return; }
     setExperience(e);
   }
+
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -717,10 +659,9 @@ function Admin() {
   const ownerTab = navOwner(tab);
   const appTabs = railEntries(navTier);
   const expOptions = availableExperiences(tier, false);
-  const switcher =
-    experience && experience !== "driver" ? (
-      <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
-    ) : null;
+  const switcher = experience && experience !== "driver"
+    ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
+    : null;
   const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
   const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
@@ -753,9 +694,7 @@ function Admin() {
       if (!items.length) return null;
       return (
         <div key={group} className="mb-4 last:mb-0">
-          <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">
-            {group}
-          </div>
+          <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
           <div className="space-y-0.5">{items.map((t) => navLink(t, onClick))}</div>
         </div>
       );
@@ -765,10 +704,7 @@ function Admin() {
     <>
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
         {/* Single business navigation rail */}
-        <aside
-          aria-label="Main navigation"
-          className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen"
-        >
+        <aside aria-label="Main navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
           <div className="flex justify-center pt-6 pb-4">
             <Logo offset={false} />
           </div>
@@ -780,9 +716,7 @@ function Admin() {
         <Sheet open={mobileNav} onOpenChange={setMobileNav}>
           <SheetContent side="left" className="w-[280px] p-0 bg-[#141416] border-r-0 text-white">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <div className="flex justify-center pt-6 pb-3">
-              <Logo offset={false} />
-            </div>
+            <div className="flex justify-center pt-6 pb-3"><Logo offset={false} /></div>
             {switcher}
             <nav className="px-2.5 pb-6 overflow-y-auto max-h-[calc(100vh-170px)]">
               {(() => {
@@ -793,12 +727,8 @@ function Admin() {
                   if (!items.length) return null;
                   return (
                     <div key={group} className="mb-4">
-                      <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">
-                        {group}
-                      </div>
-                      <div className="space-y-0.5">
-                        {items.map((t) => navLink(t, () => setMobileNav(false)))}
-                      </div>
+                      <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
+                      <div className="space-y-0.5">{items.map((t) => navLink(t, () => setMobileNav(false)))}</div>
                     </div>
                   );
                 });
@@ -813,298 +743,218 @@ function Admin() {
               height is published as --admin-sticky-h so panel filter rows
               can lock directly underneath. */}
           <div ref={stickyRef} className="max-md:contents md:sticky md:top-0 z-20 bg-[#FAFAFB]">
-            <header className="sticky top-0 z-20 md:static bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <button
-                  aria-label="Open navigation"
-                  onClick={() => setMobileNav(true)}
-                  className="md:hidden w-11 h-11 -ml-1 grid place-items-center rounded-lg text-[#111114] hover:bg-[#F4F4F6]"
-                >
-                  <Menu className="w-5 h-5" strokeWidth={1.75} />
-                </button>
-                <div className="relative hidden sm:block w-[340px] max-w-full">
-                  <Search
-                    className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2"
-                    strokeWidth={1.75}
-                  />
-                  <input
-                    type="search"
-                    aria-label="Search drivers, vehicles and partners"
-                    placeholder="Search Drivers, Vehicles, Partners…"
-                    value={globalSearch}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setGlobalSearch(v);
-                      if (v && !["drivers", "vehicles", "partners"].includes(tab))
-                        goRoot("drivers", { replace: true });
-                    }}
-                    className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3]"
-                  />
-                </div>
-                <div className="md:hidden text-[15px] font-semibold truncate">{current.label}</div>
-              </div>
-              <div className="flex items-center gap-1.5 md:gap-2">
-                {createActions.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      aria-label="Add"
-                      className="h-10 md:h-9 px-3 rounded-full bg-[#D03020] text-white text-[13px] font-semibold flex items-center gap-1.5 hover:bg-[#B5281A] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D03020]/30"
-                    >
-                      <Plus className="w-4 h-4" strokeWidth={2.25} />
-                      <span className="hidden sm:inline">Add</span>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44 min-w-[11rem]">
-                      {createActions.map((a) => {
-                        const Icon = a.icon;
-                        return (
-                          <DropdownMenuItem
-                            key={a.id}
-                            onSelect={() =>
-                              void navigate({
-                                to: "/admin",
-                                search: a.add ? { tab: a.tab, add: "1" } : rootSearch(a.tab),
-                              })
-                            }
-                            className="gap-2.5 py-2"
-                          >
-                            <Icon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
-                            {a.label}
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                <button
-                  aria-label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs} unread)` : ""}`}
-                  onClick={() => setMsg("inbox")}
-                  className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
-                >
-                  <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                  {unreadMsgs > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#111114] text-white text-[10px] font-semibold grid place-items-center">
-                      {unreadMsgs}
-                    </span>
-                  )}
-                </button>
-                <DropdownMenu
-                  onOpenChange={(o) => {
-                    if (o) markNotifsSeen();
+          <header className="sticky top-0 z-20 md:static bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <button
+                aria-label="Open navigation"
+                onClick={() => setMobileNav(true)}
+                className="md:hidden w-11 h-11 -ml-1 grid place-items-center rounded-lg text-[#111114] hover:bg-[#F4F4F6]"
+              >
+                <Menu className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+              <div className="relative hidden sm:block w-[340px] max-w-full">
+                <Search className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
+                <input
+                  type="search"
+                  aria-label="Search drivers, vehicles and partners"
+                  placeholder="Search Drivers, Vehicles, Partners…"
+                  value={globalSearch}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setGlobalSearch(v);
+                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) goRoot("drivers", { replace: true });
                   }}
-                >
-                  <DropdownMenuTrigger
-                    aria-label="Notifications"
-                    className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
-                  >
-                    <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 p-0">
-                    <div className="px-3 py-2 border-b border-[#EDEDF0] flex items-center justify-between">
-                      <div className="text-sm font-semibold text-[#111114]">Notifications</div>
-                      <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {notifs.length === 0 && (
-                        <div
-                          className="px-3 py-8 text-center text-xs text-[#9A9AA3]"
-                          data-notifs-state={notifsFailed ? "failed" : "empty"}
-                        >
-                          {notifsFailed ? "Could Not Load Activity" : "No Recent Activity"}
-                        </div>
-                      )}
-                      {notifs.map((n) => {
-                        const created = n.created_at ? new Date(n.created_at) : null;
-                        const isNew = created && created.getTime() > notifSeenAt;
-                        return (
-                          <DropdownMenuItem
-                            key={n.id}
-                            onSelect={() =>
-                              void navigate({ to: "/admin", search: { tab: "drivers", id: n.id } })
-                            }
-                            className="block px-3 py-2.5 rounded-none border-b border-[#F4F4F6] last:border-0"
-                          >
-                            <div className="flex items-center gap-2">
-                              {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
-                              <div className="text-[13px] font-medium text-[#111114] truncate flex-1">
-                                New Lead: {n.full_name || n.email || "Unnamed"}
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
-                              {n.email || n.phone || "—"} · {created ? fmtDateTime(created) : ""}
-                            </div>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3]"
+                />
+              </div>
+              <div className="md:hidden text-[15px] font-semibold truncate">{current.label}</div>
+            </div>
+            <div className="flex items-center gap-1.5 md:gap-2">
+              {createActions.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    aria-label="Account"
-                    className="w-10 h-10 rounded-full hover:bg-[#F4F4F6] grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#D03020]/20"
+                    aria-label="Add"
+                    className="h-10 md:h-9 px-3 rounded-full bg-[#D03020] text-white text-[13px] font-semibold flex items-center gap-1.5 hover:bg-[#B5281A] transition-colors focus:outline-none focus:ring-2 focus:ring-[#D03020]/30"
                   >
-                    <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">
-                      {initials}
-                    </div>
+                    <Plus className="w-4 h-4" strokeWidth={2.25} />
+                    <span className="hidden sm:inline">Add</span>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-[300px] p-3 rounded-2xl bg-white text-[#111114] border border-[#D6D6DB] shadow-xl"
-                  >
-                    <div className="flex items-center gap-3 px-1 pt-1 pb-3">
-                      <div className="w-12 h-12 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[15px] font-bold shrink-0">
-                        {initials}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold text-[#111114] truncate">
-                          {displayName}
-                        </div>
-                        <div className="text-[13px] text-[#55555E] truncate">
-                          {session?.user?.email}
-                        </div>
-                        {tier && (
-                          <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
-                            {TIER_LABELS[tier]}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {tierAllows(tier, "owner") && (
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          void navigate({
-                            to: "/admin",
-                            search: { tab: "settings", section: "team" },
-                          })
-                        }
-                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-[#D6D6DB] bg-white text-[14px] font-semibold text-[#111114] cursor-pointer focus:bg-[#F4F4F6]"
-                      >
-                        <UserPlus className="w-4 h-4" strokeWidth={1.75} />
-                        Invite Members
-                      </DropdownMenuItem>
-                    )}
-                    <div className="h-px bg-[#EDEDF0] my-3" />
-                    {tierAllows(tier, "manager") && (
-                      <>
+                  <DropdownMenuContent align="end" className="w-44 min-w-[11rem]">
+                    {createActions.map((a) => {
+                      const Icon = a.icon;
+                      return (
                         <DropdownMenuItem
+                          key={a.id}
                           onSelect={() =>
-                            void navigate({
-                              to: "/admin",
-                              search: { tab: "settings", section: "activity" },
-                            })
+                            void navigate({ to: "/admin", search: a.add ? { tab: a.tab, add: "1" } : rootSearch(a.tab) })
                           }
-                          className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
+                          className="gap-2.5 py-2"
                         >
-                          <HistoryIcon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
-                          Activity
+                          <Icon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                          {a.label}
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            void navigate({ to: "/admin", search: rootSearch("settings") })
-                          }
-                          className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
-                        >
-                          <SettingsGear className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
-                          Settings
-                        </DropdownMenuItem>
-                        <div className="h-px bg-[#EDEDF0] my-3" />
-                      </>
-                    )}
-                    <button
-                      onClick={signOut}
-                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[14px] font-semibold hover:bg-[#B5281A] transition-colors duration-150"
-                    >
-                      <LogOut className="w-4 h-4" strokeWidth={2} />
-                      Log Out
-                    </button>
+                      );
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
-            </header>
-
-            <div className="px-4 md:px-8 pt-3 md:pt-4">
-              {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-              {tab !== "overview" && !recordParent && (
-                <div className="mb-3">
-                  <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">
-                    {workspace.label}
-                  </h1>
-                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
-                </div>
               )}
-              {workspaceTabs.length > 1 && !recordParent && (
-                <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-3 overflow-x-auto">
-                  <div
-                    role="tablist"
-                    aria-label={`${workspace.label} sections`}
-                    className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max"
-                  >
-                    {workspaceTabs.map((v) => (
-                      <Link
-                        key={v.id}
-                        to="/admin"
-                        search={rootSearch(v.id)}
-                        role="tab"
-                        aria-selected={tab === v.id}
-                        className={`px-3 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
-                      >
-                        {v.label}
-                      </Link>
-                    ))}
+              <button
+                aria-label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs} unread)` : ""}`}
+                onClick={() => setMsg("inbox")}
+                className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
+              >
+                <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                {unreadMsgs > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#111114] text-white text-[10px] font-semibold grid place-items-center">{unreadMsgs}</span>
+                )}
+              </button>
+              <DropdownMenu onOpenChange={(o) => { if (o) markNotifsSeen(); }}>
+                <DropdownMenuTrigger
+                  aria-label="Notifications"
+                  className="relative w-10 h-10 rounded-full border border-[#EDEDF0] bg-white grid place-items-center text-[#55555E] hover:text-[#111114] hover:border-[#D6D6DB] transition-colors duration-150"
+                >
+                  <Bell className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#D03020] text-white text-[10px] font-semibold grid place-items-center">{unreadCount}</span>
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 p-0">
+                  <div className="px-3 py-2 border-b border-[#EDEDF0] flex items-center justify-between">
+                    <div className="text-sm font-semibold text-[#111114]">Notifications</div>
+                    <div className="text-[11px] text-[#9A9AA3]">Last 7 Days</div>
                   </div>
-                </div>
-              )}
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifs.length === 0 && (
+                      <div className="px-3 py-8 text-center text-xs text-[#9A9AA3]" data-notifs-state={notifsFailed ? "failed" : "empty"}>
+                        {notifsFailed ? "Could Not Load Activity" : "No Recent Activity"}
+                      </div>
+                    )}
+                    {notifs.map((n) => {
+                      const created = n.created_at ? new Date(n.created_at) : null;
+                      const isNew = created && created.getTime() > notifSeenAt;
+                      return (
+                        <DropdownMenuItem
+                          key={n.id}
+                          onSelect={() => void navigate({ to: "/admin", search: { tab: "drivers", id: n.id } })}
+                          className="block px-3 py-2.5 rounded-none border-b border-[#F4F4F6] last:border-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
+                            <div className="text-[13px] font-medium text-[#111114] truncate flex-1">New Lead: {n.full_name || n.email || "Unnamed"}</div>
+                          </div>
+                          <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
+                            {n.email || n.phone || "—"} ·{" "}
+                            {created ? fmtDateTime(created) : ""}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Account"
+                  className="w-10 h-10 rounded-full hover:bg-[#F4F4F6] grid place-items-center focus:outline-none focus:ring-2 focus:ring-[#D03020]/20"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[11px] font-bold">{initials}</div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[300px] p-3 rounded-2xl bg-white text-[#111114] border border-[#D6D6DB] shadow-xl">
+                  <div className="flex items-center gap-3 px-1 pt-1 pb-3">
+                    <div className="w-12 h-12 rounded-full bg-[#D03020]/15 text-[#D03020] grid place-items-center text-[15px] font-bold shrink-0">{initials}</div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold text-[#111114] truncate">{displayName}</div>
+                      <div className="text-[13px] text-[#55555E] truncate">{session?.user?.email}</div>
+                      {tier && (
+                        <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
+                          {TIER_LABELS[tier]}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {tierAllows(tier, "owner") && (
+                    <DropdownMenuItem
+                      onSelect={() => void navigate({ to: "/admin", search: { tab: "settings", section: "team" } })}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-[#D6D6DB] bg-white text-[14px] font-semibold text-[#111114] cursor-pointer focus:bg-[#F4F4F6]"
+                    >
+                      <UserPlus className="w-4 h-4" strokeWidth={1.75} />
+                      Invite Members
+                    </DropdownMenuItem>
+                  )}
+                  <div className="h-px bg-[#EDEDF0] my-3" />
+                  {tierAllows(tier, "manager") && (
+                    <>
+                      <DropdownMenuItem
+                        onSelect={() => void navigate({ to: "/admin", search: { tab: "settings", section: "activity" } })}
+                        className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
+                      >
+                        <HistoryIcon className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                        Activity
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => void navigate({ to: "/admin", search: rootSearch("settings") })}
+                        className="gap-3 px-2 py-2.5 text-[14px] text-[#111114] cursor-pointer"
+                      >
+                        <SettingsGear className="w-4 h-4 text-[#55555E]" strokeWidth={1.75} />
+                        Settings
+                      </DropdownMenuItem>
+                      <div className="h-px bg-[#EDEDF0] my-3" />
+                    </>
+                  )}
+                  <button
+                    onClick={signOut}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#D03020] text-white text-[14px] font-semibold hover:bg-[#B5281A] transition-colors duration-150"
+                  >
+                    <LogOut className="w-4 h-4" strokeWidth={2} />
+                    Log Out
+                  </button>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+          </header>
+
+          <div className="px-4 md:px-8 pt-3 md:pt-4">
+            {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
+            {tab !== "overview" && !recordParent && (
+              <div className="mb-3">
+                <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
+                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+              </div>
+            )}
+            {workspaceTabs.length > 1 && !recordParent && (
+              <div className="-mx-4 px-4 md:mx-0 md:px-0 mb-3 overflow-x-auto">
+                <div role="tablist" aria-label={`${workspace.label} sections`} className="inline-flex rounded-lg bg-[#F0F0F2] p-0.5 w-max">
+                  {workspaceTabs.map((v) => (
+                    <Link
+                      key={v.id}
+                      to="/admin"
+                      search={rootSearch(v.id)}
+                      role="tab"
+                      aria-selected={tab === v.id}
+                      className={`px-3 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap ${tab === v.id ? "bg-white text-[#111114] shadow-sm" : "text-[#55555E] hover:text-[#111114]"}`}
+                    >
+                      {v.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           </div>
 
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
-            {tab === "overview" && (
-              <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />
-            )}
+            {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
             {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
             {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
             {VEHICLE_TURNAROUND_ENABLED && tab === "vehicle_turnaround" && <VehicleTurnaround />}
-            {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && (
-              <RentReconciliationPanel />
-            )}
-            {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && (
-              <OwnerFinanceSnapshotPanel />
-            )}
+            {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
+            {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && <OwnerFinanceSnapshotPanel />}
             {RENEWALS_DUE_ENABLED && tab === "renewals_due" && <RenewalsDue />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
-              <DriversPanel
-                externalSearch={globalSearch}
-                initialOpenId={urlRecordId ?? undefined}
-                isOwner={tier === "owner"}
-                isManager={tierAllows(tier, "manager")}
-                canManageWaitlist={tierAllows(tier, "manager")}
-                urlFilter={urlFilter ?? undefined}
-              />
+              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && (
-              <VehiclesPanel
-                externalSearch={globalSearch}
-                autoOpenAdd={urlAdd}
-                openId={urlRecordId}
-                canSeeMaintenanceDue={tierAllows(tier, "manager")}
-                listState={{
-                  q: search?.q,
-                  status: search?.vstatus,
-                  body: search?.body,
-                  partner: search?.partner,
-                  sort: search?.sort,
-                  page: search?.page,
-                  view: search?.view,
-                  ready: search?.ready,
-                }}
-              />
-            )}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
             {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
               <BookingsPanel
@@ -1121,9 +971,7 @@ function Admin() {
             )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
-            {tab === "payments" && (
-              <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />
-            )}
+            {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
             {tab === "shops" && <ShopsPanel />}
             {tab === "vendors" && <VendorsPanel />}
@@ -1149,26 +997,16 @@ function Admin() {
             {TAX_EXPORT_ENABLED && tab === "tax_export" && <TaxExportPanel />}
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
-            {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && (
-              <FinanceDataQualityPanel />
-            )}
+            {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && <FinanceDataQualityPanel />}
+            {FINANCE_JV_STATEMENT_ENABLED && tab === "jv" && <JvStatementPanel />}
             {FINANCE_AR_AGING_ENABLED && tab === "rent_aging" && <RentAgingPanel />}
-            {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && (
-              <FinanceDepositLedgerPanel />
-            )}
-            {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && (
-              <StripeRiskMonitorPanel />
-            )}
-            {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && (
-              <StripePayoutReconPanel />
-            )}
+            {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && <FinanceDepositLedgerPanel />}
+            {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
+            {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && <StripePayoutReconPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
             {DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger" && <DepositLedgerPanel />}
-            {FINANCE_JV_STATEMENT_ENABLED && tab === "jv" && <JvStatementPanel />}
-            {tab === "settings" && (
-              <SettingsWorkspace tier={tier} section={search.section ?? null} />
-            )}
+            {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
       </div>
@@ -1331,15 +1169,8 @@ function NoAccess({ onSignOut }: { userId?: string; onSignOut: () => void }) {
           This account doesn't have permission to access the management area.
         </p>
         <div className="mt-6 flex justify-center gap-3">
-          <a
-            href="/portal"
-            className="rounded-lg bg-real-red px-6 py-2 text-sm font-medium text-primary-foreground"
-          >
-            Go To Driver Portal
-          </a>
-          <button onClick={onSignOut} className="rounded-lg border border-border px-6 py-2 text-sm">
-            Sign Out
-          </button>
+          <a href="/portal" className="rounded-lg bg-real-red px-6 py-2 text-sm font-medium text-primary-foreground">Go To Driver Portal</a>
+          <button onClick={onSignOut} className="rounded-lg border border-border px-6 py-2 text-sm">Sign Out</button>
         </div>
       </div>
     </AdminShell>

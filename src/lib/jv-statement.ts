@@ -200,6 +200,8 @@ const ALL_REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage"
 const DISPUTED_REVENUE_TYPES = new Set(["late_fee", "other", "toll", "damage", "fee"]);
 const REVENUE_BASE_NOTE =
   "Partner revenue base is not chosen. Rent only, as on partner earnings, and all revenue types (late fee, toll, damage, fee, and other) are both open. This vehicle has one of those types in the period, or its date cannot be placed, so income and the split are withheld.";
+const CUSTOMER_ONLY_NOTE =
+  "Partner revenue base is not chosen. A Stripe charge is tied only to the customer, not to a rent payment, so income and the split are withheld.";
 
 function acceptedRevenueTypes(): ReadonlySet<string> {
   if (PARTNER_REVENUE_BASE === "rent") return new Set(["rent"]);
@@ -461,9 +463,16 @@ function hasAuthoritativeReference(payment: JvPayment, charges: JvCharge[]): boo
 }
 
 type ChargeDecision =
-  | { kind: "vehicle"; vehicleId: string }
+  | { kind: "vehicle"; vehicleId: string; basis: "rent" | "non_rent" | "customer" }
   | { kind: "deposit"; vehicleId: string | null }
   | { kind: "unattributed"; conflict: boolean };
+
+function revenueBasis(rows: JvPayment[]): "rent" | "non_rent" {
+  const types = rows
+    .filter((payment) => !isDeposit(payment))
+    .map((payment) => (payment.type ?? "").trim().toLowerCase());
+  return types.length > 0 && types.every((type) => type === "rent") ? "rent" : "non_rent";
+}
 
 function isDeposit(payment: JvPayment): boolean {
   return (payment.type ?? "").trim().toLowerCase() === "deposit";
@@ -489,7 +498,8 @@ function decideCharge(
         return { kind: "deposit", vehicleId: vehicles.size === 1 ? [...vehicles][0]! : null };
       }
       if (rows.some(isDeposit)) return { kind: "unattributed", conflict: true };
-      if (vehicles.size === 1) return { kind: "vehicle", vehicleId: [...vehicles][0]! };
+      if (vehicles.size === 1)
+        return { kind: "vehicle", vehicleId: [...vehicles][0]!, basis: revenueBasis(rows) };
       if (vehicles.size > 1) return { kind: "unattributed", conflict: true };
     }
   }
@@ -516,14 +526,19 @@ function decideCharge(
       return { kind: "unattributed", conflict: true };
     if (paymentHits.length > 0 && paymentHits.every(isDeposit))
       return { kind: "deposit", vehicleId };
-    return { kind: "vehicle", vehicleId };
+    return {
+      kind: "vehicle",
+      vehicleId,
+      basis: paymentHits.length > 0 ? revenueBasis(paymentHits) : "rent",
+    };
   }
   const customerHits = charge.customerId
     ? rentals.filter((rental) => rental.vehicleId && rental.customerId === charge.customerId)
     : [];
   const customers = new Set(customerHits.map((rental) => rental.vehicleId as string));
   if (customers.size > 1) return { kind: "unattributed", conflict: true };
-  if (customers.size === 1) return { kind: "vehicle", vehicleId: [...customers][0]! };
+  if (customers.size === 1)
+    return { kind: "vehicle", vehicleId: [...customers][0]!, basis: "customer" };
   return { kind: "unattributed", conflict: false };
 }
 
@@ -658,6 +673,7 @@ export function buildJvStatement(
       continue;
     }
     if (expensesInside.length === 0) {
+      if (links.length > 0) continue;
       const company = readCents(record.companyShare);
       const partnerShare = readCents(record.partnerShare);
       const total = readCents(record.totalCost);
@@ -794,33 +810,44 @@ export function buildJvStatement(
       sourceTotals.set(source, sourceNext);
     }
   };
+  const chargeMoneyOk = (charge: JvCharge) =>
+    charge.currency === "usd" &&
+    Number.isSafeInteger(charge.amountCents) &&
+    charge.amountCents >= 0;
   for (const charge of input.charges) {
     if (!charge.succeeded) continue;
-    if (
-      charge.currency !== "usd" ||
-      !Number.isSafeInteger(charge.amountCents) ||
-      charge.amountCents < 0
-    ) {
-      incomeComplete = false;
-      continue;
-    }
     if (charge.created < window.gte || charge.created >= window.lt) continue;
     const decision = decideCharge(charge, input.payments, input.rentals);
     if (decision.kind === "deposit") {
       if (decision.vehicleId !== input.vehicleId) continue;
+      if (!chargeMoneyOk(charge)) {
+        incomeComplete = false;
+        continue;
+      }
       const next = deposits + charge.amountCents;
       if (!Number.isSafeInteger(next)) incomeComplete = false;
       else deposits = next;
       continue;
     }
     if (decision.kind === "unattributed") {
+      if (!chargeMoneyOk(charge)) continue;
       if (decision.conflict) conflicting += 1;
       const next = unattributed + charge.amountCents;
       if (!Number.isSafeInteger(next)) incomeComplete = false;
       else unattributed = next;
       continue;
     }
-    if (decision.vehicleId === input.vehicleId) addIncome(charge.amountCents, "stripe");
+    if (decision.vehicleId !== input.vehicleId) continue;
+    if (!chargeMoneyOk(charge)) {
+      incomeComplete = false;
+      continue;
+    }
+    if (PARTNER_REVENUE_BASE === null && decision.basis !== "rent") {
+      incomeComplete = false;
+      notes.push(decision.basis === "customer" ? CUSTOMER_ONLY_NOTE : REVENUE_BASE_NOTE);
+      continue;
+    }
+    addIncome(charge.amountCents, "stripe");
   }
 
   const unmatched: JvUnmatched[] = [];
@@ -913,11 +940,7 @@ export function buildJvStatement(
   };
   for (const refund of input.refunds) {
     const place = placed([refund.createdAt]);
-    if (place.invalid || !place.date) {
-      refundsComplete = false;
-      continue;
-    }
-    if (!inWindow(place.date)) continue;
+    if (place.date && !inWindow(place.date)) continue;
     if (!refund.paymentIds.length) {
       refundsComplete = false;
       continue;
@@ -932,6 +955,10 @@ export function buildJvStatement(
     const touches = vehicles.has(input.vehicleId);
     if (!touches && vehicles.size > 0 && ![...vehicles].includes("")) continue;
     if (vehicles.size !== 1 || !touches) {
+      refundsComplete = false;
+      continue;
+    }
+    if (place.invalid || !place.date) {
       refundsComplete = false;
       continue;
     }
