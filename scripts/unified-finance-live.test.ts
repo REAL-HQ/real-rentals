@@ -134,7 +134,7 @@ describe("live report behind the same flag", () => {
     expect(result.report.financialScope).toBe("operating_only");
     expect(result.report.verifiedCollections.grossCollected).toEqual({ value: null, complete: false });
     expect(result.report.verifiedCollections.operatingResult.value).toBeNull();
-    expect(result.report.sources.stripe.state).toBe("unavailable");
+    expect(result.report.sources.stripe.state).toBe("incomplete");
     expect(result.report.sources.payments.state).toBe("incomplete");
     expect(JSON.stringify(result.report.reconciliation)).not.toContain("12550");
     expect(result.vehicles.complete).toBe(true);
@@ -148,7 +148,7 @@ describe("live report behind the same flag", () => {
     supabase.from = (table: string) => {
       if (table !== "payments") return original(table);
       reads += 1;
-      return chain([{ ...dbPayment, net_collected: reads === 1 ? 125.5 : 130 }]);
+      return chain([{ ...dbPayment, net_collected: reads % 2 === 1 ? 125.5 : 130 }]);
     };
     const result = await loadUnifiedFinanceReport({ request, userId: "manager-1", roles: ["team"], supabase: supabase as never });
     expect(result.status).toBe("ready");
@@ -168,6 +168,11 @@ describe("live report behind the same flag", () => {
     expect(admin).toContain("UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === \"finance\" && <UnifiedFinancePanel />");
     expect(panel).toContain("Per-Vehicle Profitability");
     expect(panel).toContain("Not Complete");
-    expect(live).not.toMatch(/\.(insert|update|upsert|delete|rpc)\s*\(|\bfetch\s*\(|supabaseAdmin|client\.server|from\s+["']stripe["']|createStripeClient|process\.env/);
+    expect(live).not.toMatch(/\.(insert|update|upsert|delete|rpc)\s*\(|\bfetch\s*\(|supabaseAdmin|client\.server|from\s+["']stripe["']|process\.env/);
+    expect(live).toContain('createStripeClient("live")');
+    expect(live).toContain("readStripeFinanceWindow");
+    const endpoint = readFileSync("src/lib/unified-finance.functions.ts", "utf8");
+    expect(endpoint).not.toContain("readStripeFinanceWindow");
+    expect(endpoint).not.toContain("createStripeClient");
   });
 });

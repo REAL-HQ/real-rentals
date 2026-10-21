@@ -8,7 +8,7 @@ import { getUnifiedFinanceReport } from "@/lib/unified-finance.functions";
 import { financeSessionSnapshot } from "@/lib/unified-finance-session";
 import { unifiedFinanceQueryOptions } from "@/lib/unified-finance-query";
 import type { FinanceReport } from "@/lib/unified-finance";
-import type { FinanceSource, UnifiedFinanceRequest, UnifiedFinanceResponse } from "@/lib/unified-finance-contract";
+import type { FinanceSource, UnifiedFinanceReport, UnifiedFinanceRequest, UnifiedFinanceResponse } from "@/lib/unified-finance-contract";
 import { FINANCE_SOURCES } from "@/lib/unified-finance-contract";
 
 /**
@@ -65,6 +65,18 @@ function periodRange(id: string): { from: string; to: string } {
   const from = new Date(now.getFullYear(), now.getMonth() - months, 1);
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   return { from: ymd(from), to: ymd(to) };
+}
+
+function UnmatchedCounts({ unmatched }: { unmatched: NonNullable<UnifiedFinanceReport["unmatched"]> }) {
+  const items = [
+    [unmatched.charges, "Unmatched Charges"],
+    [unmatched.refunds, "Unmatched Refunds"],
+    [unmatched.payouts, "Unmatched Payouts"],
+    [unmatched.payments, "Unmatched Payments"],
+    [unmatched.balanceTransactions, "Unmatched Balance Transactions"],
+  ].filter(([count]) => Number(count) > 0);
+  if (!items.length) return null;
+  return <p className="text-sm text-[#D03020]">{items.map(([count, label]) => `${count} ${label}`).join(" · ")}</p>;
 }
 
 function moneyCents(cents: number): string {
@@ -181,7 +193,7 @@ export function UnifiedFinancePanel() {
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {report.financialScope === "operating_only" ? "Operating Only" : "Authorized Owner"}
-            {report.complete ? "" : " · Combined totals are Not Complete, so they are left blank."}
+            {" · A card stays Not Complete when its source is missing or an item is unmatched. A missing amount is left blank."}
           </p>
           {([
             ["Verified Collections", report.verifiedCollections],
@@ -189,6 +201,7 @@ export function UnifiedFinancePanel() {
           ] as const).map(([title, section]) => (
             <div key={title} className="space-y-2">
               <h3 className="text-sm font-semibold">{title}</h3>
+              {title === "Verified Collections" && report.unmatched && <UnmatchedCounts unmatched={report.unmatched} />}
               <div className="grid gap-3 sm:grid-cols-3">
                 {MEASURES.map((item) => (
                   <div key={item.key} className="rounded-xl border border-border p-4">
