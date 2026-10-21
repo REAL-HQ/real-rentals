@@ -9,7 +9,7 @@
  */
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 
-/** Hard off. The route and the listing card duplicate this and must not import this module while it is off. */
+/** The only declaration. The route and the listing card import this constant. The detail view stays unloaded unless it is exactly true. */
 export const VEHICLE_DETAIL_PAGE_ENABLED: boolean = false as boolean;
 
 /**

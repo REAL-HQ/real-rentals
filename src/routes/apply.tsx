@@ -6,6 +6,7 @@ import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ApplyProgressSlot, ProgressBar } from "@/components/site/ApplicationWizard";
 import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
+import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
@@ -75,9 +76,7 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
   xl: "XL",
 };
 
-/** Hard off. Duplicated so /apply does not import the prefill module while the flag is off. */
-const APPLY_VEHICLE_PREFILL_ENABLED: boolean = false as boolean;
-
+/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
 function ApplyVehiclePrefillSlot({ vehicleId }: { vehicleId?: string }) {
   const [Panel, setPanel] = useState<ComponentType<{ vehicleId?: string; source: "search" }> | null>(null);
   useEffect(() => {

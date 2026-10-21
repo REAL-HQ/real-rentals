@@ -1,11 +1,6 @@
 import { createFileRoute, redirect, useParams } from "@tanstack/react-router";
 import { useEffect, useState, type ComponentType } from "react";
-
-/**
- * Hard off, duplicated so this route does not import the detail module while
- * the flag is off. beforeLoad redirects to the fleet listing before any load.
- */
-export const VEHICLE_DETAIL_PAGE_ENABLED: boolean = false as boolean;
+import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
 
 const PAGE_DESCRIPTION = "Photos, weekly rate, rideshare eligibility, and rental requirements for this vehicle.";
 

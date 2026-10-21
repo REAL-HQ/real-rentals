@@ -40,8 +40,10 @@ describe("vehicle detail flag", () => {
   it("is a hard false, and the listing does not import or link the new page", () => {
     assert.equal(VEHICLE_DETAIL_PAGE_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(route), "false");
-    assert.equal(flagValue(card), "false");
+    assert.equal(flagValue(route), null);
+    assert.equal(flagValue(card), null);
+    assert.match(route, /import \{ VEHICLE_DETAIL_PAGE_ENABLED \} from "@\/lib\/vehicle-detail"/);
+    assert.match(card, /import \{ VEHICLE_DETAIL_PAGE_ENABLED \} from "@\/lib\/vehicle-detail"/);
 
     const gate = route.indexOf("VEHICLE_DETAIL_PAGE_ENABLED !== true");
     const redirectAt = route.indexOf('throw redirect({ to: "/fleet" })');
@@ -49,9 +51,9 @@ describe("vehicle detail flag", () => {
     assert.ok(gate !== -1 && redirectAt > gate && load > gate);
     assert.equal(route.indexOf(".from("), -1);
     assert.doesNotMatch(route, /loader\s*:/);
-    assert.doesNotMatch(route, /from "@\/lib\/vehicle-detail"|from "@\/components\/site\/VehicleDetailView"|supabase/);
+    assert.doesNotMatch(route, /from "@\/components\/site\/VehicleDetailView"|supabase/);
 
-    assert.doesNotMatch(card, /from "@\/lib\/vehicle-detail"|from "@\/components\/site\/VehicleDetailView"/);
+    assert.doesNotMatch(card, /from "@\/components\/site\/VehicleDetailView"/);
     const cardGate = card.indexOf("VEHICLE_DETAIL_PAGE_ENABLED === true");
     const newLink = card.indexOf('to="/vehicles/$id"');
     assert.ok(cardGate !== -1 && newLink > cardGate);

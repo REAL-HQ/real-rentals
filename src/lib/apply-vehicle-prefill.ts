@@ -5,6 +5,10 @@
  * updateApplicationStep do not accept it, and getApplicationForWizard does
  * not return it. Writing it would be a new applicant write, so the choice
  * stays in this tab's sessionStorage.
+ *
+ * APPLY_VEHICLE_PREFILL_ENABLED is the only declaration. /apply and
+ * ApplicationWizard import it from here. The panel is still loaded only
+ * when the flag is exactly true.
  */
 export const APPLY_VEHICLE_PREFILL_ENABLED: boolean = false as boolean;
 

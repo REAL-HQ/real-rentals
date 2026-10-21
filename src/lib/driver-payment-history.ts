@@ -5,6 +5,9 @@
  * payments" (supabase/migrations/20260615003005). paid_date and due_date are
  * calendar dates and are not timezone-shifted. A real timestamp is shown in
  * America/New_York.
+ *
+ * DRIVER_PAYMENT_HISTORY_ENABLED is the only declaration. The portal imports
+ * it from here. The card is still loaded only when the flag is exactly true.
  */
 import { fmtDate } from "@/lib/date-format";
 

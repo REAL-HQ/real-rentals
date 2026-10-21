@@ -16,12 +16,7 @@ import {
 } from "lucide-react";
 import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
-
-/**
- * Hard off, duplicated so this card does not import the vehicle detail module.
- * While off, a real unit keeps linking to /fleet/$id.
- */
-const VEHICLE_DETAIL_PAGE_ENABLED: boolean = false as boolean;
+import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
 
 /**
  * One merchandising card.

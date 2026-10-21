@@ -29,6 +29,7 @@ import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
 import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
 import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
+import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 
 /*
  * ONE application, TWO parts.
@@ -1929,9 +1930,7 @@ function fmtDate(s: string) {
   return formatDate(d);
 }
 
-/** Hard off. Duplicated so the wizard does not import the prefill module while the flag is off. */
-const APPLY_VEHICLE_PREFILL_ENABLED: boolean = false as boolean;
-
+/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
 function ApplyVehiclePrefillSlot() {
   const [Panel, setPanel] = useState<ComponentType<{ source: "session" }> | null>(null);
   useEffect(() => {

@@ -34,14 +34,15 @@ describe("apply vehicle prefill flag", () => {
   it("is a hard false, and /apply does not load the panel while it is off", () => {
     assert.equal(APPLY_VEHICLE_PREFILL_ENABLED, false);
     assert.equal(flagValue(lib), "false");
-    assert.equal(flagValue(apply), "false");
-    assert.equal(flagValue(wizard), "false");
+    assert.equal(flagValue(apply), null);
+    assert.equal(flagValue(wizard), null);
 
     for (const source of [apply, wizard]) {
       const gate = source.indexOf("APPLY_VEHICLE_PREFILL_ENABLED !== true");
       const load = source.indexOf('import("@/components/site/ApplyVehiclePrefill")');
       assert.ok(gate !== -1 && load > gate);
-      assert.doesNotMatch(source, /from "@\/lib\/apply-vehicle-prefill"|from "@\/components\/site\/ApplyVehiclePrefill"/);
+      assert.match(source, /import \{ APPLY_VEHICLE_PREFILL_ENABLED \} from "@\/lib\/apply-vehicle-prefill"/);
+      assert.doesNotMatch(source, /from "@\/components\/site\/ApplyVehiclePrefill"/);
     }
     assert.match(apply, /<ApplyVehiclePrefillSlot vehicleId=\{preVehicle\} \/>/);
     assert.match(wizard, /<ApplyVehiclePrefillSlot \/>/);
