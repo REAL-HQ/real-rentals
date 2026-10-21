@@ -59,13 +59,13 @@ Do not merge or publish `release/rc5-ops-finance`. Do not merge #91. Do not merg
 - Open `/apply` with no token. Step 1 is the contact form.
 - Open `/apply?t=x`. It lands on `/thank-you?t=x`, then the recovery screen that says Get A New Secure Link. On `/thank-you` the address bar no longer shows `t`.
 - Open `/thank-you` with no token. It says Get A Secure Link To Your Application and asks for an email. That screen does not say the link expired.
-- Run the no-login script. It only sends GET:
+- Run the no-login script. It opens a headless browser, waits for the client route to settle, and reads the page. It does not submit a form or send its own POST:
 
 ```
 BASE_URL=https://drivereal.com bun scripts/smoke-public.ts
 ```
 
-The line marked `[after RC4]` stays red until this publish. On the current RC2 site, `/apply?t=x` fails as well.
+The line marked `[after RC4]` stays red until this publish. On the current RC2 site, `/apply?t=x` fails as well. Install the script's browser library once with `npm install --prefix scripts`, and have Chrome available or set `CHROME_PATH`. The library stays under `scripts/` and is not an application dependency.
 
 ## What must stay hidden or off
 
