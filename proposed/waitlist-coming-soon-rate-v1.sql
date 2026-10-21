@@ -14,7 +14,8 @@
 -- An invoker function fails every anon insert with "permission denied for
 -- table waitlist", and a definer that still obeyed RLS would see none of the
 -- rows an authenticated user is hidden from, so the limit would never trip.
--- The advisory lock serializes one email. The index matches that count.
+-- The advisory lock serializes one email. The key is btrim(lower(email)),
+-- so surrounding spaces do not open a second bucket. The index matches that count.
 --
 -- created_at is not an anon insert column. The trigger stamps it so a
 -- backdated value cannot fall outside the hour. Anon is not granted the column.
@@ -36,11 +37,11 @@ BEGIN
   NEW.created_at := pg_catalog.now();
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtext('waitlist_coming_soon'),
-    pg_catalog.hashtext(pg_catalog.lower(NEW.email))
+    pg_catalog.hashtext(pg_catalog.btrim(pg_catalog.lower(NEW.email)))
   );
   SELECT count(*) INTO recent
   FROM public.waitlist
-  WHERE pg_catalog.lower(email) = pg_catalog.lower(NEW.email)
+  WHERE pg_catalog.btrim(pg_catalog.lower(email)) = pg_catalog.btrim(pg_catalog.lower(NEW.email))
     AND created_at > pg_catalog.now() - interval '1 hour';
   IF recent >= 5 THEN
     RAISE EXCEPTION 'waitlist coming soon rate limit';
@@ -49,8 +50,9 @@ BEGIN
 END;
 $$;
 
--- The inserting role must be allowed to fire the trigger. The body still
--- runs as the owner, so anon never receives SELECT on waitlist.
+-- EXECUTE only lets the inserting role fire this trigger. It is not a
+-- SELECT grant. The count runs as the function owner because the function
+-- is security definer, and anon still has no SELECT on waitlist.
 GRANT EXECUTE ON FUNCTION public.waitlist_coming_soon_email_limit() TO anon, authenticated;
 
 DROP TRIGGER IF EXISTS waitlist_coming_soon_email_limit ON public.waitlist;
@@ -60,4 +62,4 @@ CREATE TRIGGER waitlist_coming_soon_email_limit
   EXECUTE FUNCTION public.waitlist_coming_soon_email_limit();
 
 CREATE INDEX IF NOT EXISTS waitlist_coming_soon_email_created_idx
-  ON public.waitlist (pg_catalog.lower(email), created_at);
+  ON public.waitlist (pg_catalog.btrim(pg_catalog.lower(email)), created_at);

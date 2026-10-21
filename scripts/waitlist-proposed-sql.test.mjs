@@ -8,6 +8,8 @@ import { PGlite } from "@electric-sql/pglite";
 
 const rateSql = readFileSync("proposed/waitlist-coming-soon-rate-v1.sql", "utf8");
 const tokenSql = readFileSync("proposed/waitlist-claim-token-v1.sql", "utf8");
+const rollbackSql = readFileSync("proposed/waitlist-claim-rollback.sql", "utf8");
+const landingSql = readFileSync("proposed/application-landing-length-v1.sql", "utf8");
 
 const WAITLIST = `
   CREATE SCHEMA IF NOT EXISTS public;
@@ -86,12 +88,12 @@ check(
 );
 const fn = await rate.query(`SELECT pg_get_functiondef('public.waitlist_coming_soon_email_limit()'::regprocedure) AS def`);
 const fnDef = String(fn.rows[0]?.def);
-check(fnDef.includes("pg_catalog.pg_advisory_xact_lock") && fnDef.includes("NEW.created_at := pg_catalog.now()") && !fnDef.includes("homepage_waitlist"), "the rate function locks one email, stamps created_at, and counts every source");
+check(fnDef.includes("pg_catalog.pg_advisory_xact_lock") && fnDef.includes("pg_catalog.btrim(pg_catalog.lower") && fnDef.includes("NEW.created_at := pg_catalog.now()") && !fnDef.includes("homepage_waitlist"), "the rate function locks one trimmed email, stamps created_at, and counts every source");
 const index = await rate.query(`
   SELECT indexdef FROM pg_indexes
   WHERE indexname = 'waitlist_coming_soon_email_created_idx'
 `);
-check(String(index.rows[0]?.indexdef).includes("lower(email)") && String(index.rows[0]?.indexdef).includes("created_at"), "the rate index is on lower(email), created_at");
+check(String(index.rows[0]?.indexdef).includes("btrim") && String(index.rows[0]?.indexdef).includes("lower") && String(index.rows[0]?.indexdef).includes("created_at"), "the rate index is on btrim(lower(email)), created_at");
 
 let anonInserts = 0;
 for (let i = 0; i < 5; i += 1) {
@@ -106,6 +108,13 @@ try {
   sixth = String(error?.message ?? error);
 }
 check(sixth.includes("waitlist coming soon rate limit") && !sixth.includes("permission denied"), "the sixth anon insert is the email limit, not a permission error");
+let padded = "";
+try {
+  await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source) VALUES ('Sam', '  sam@example.com  ', 'homepage_waitlist')`);
+} catch (error) {
+  padded = String(error?.message ?? error);
+}
+check(padded.includes("waitlist coming soon rate limit"), "spaces around the email stay inside the same limit");
 
 let otherSource = 0;
 for (let i = 0; i < 5; i += 1) {
@@ -238,5 +247,189 @@ const selectHash = await grants.query(`
 `);
 check(selectHash.rows.length === 0, "claim_token_hash has no authenticated select grant");
 await grants.close();
+
+function sqlStatements(section) {
+  return section
+    .split(";")
+    .map((part) => part
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n")
+      .trim())
+    .filter((statement) => statement.length > 0);
+}
+
+async function waitlistCatalog(db) {
+  const result = await db.query(`
+    SELECT line FROM (
+      SELECT 'column|' || a.attname || '|' || pg_catalog.format_type(a.atttypid, a.atttypmod) AS line
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = 'waitlist' AND a.attnum > 0 AND NOT a.attisdropped
+      UNION ALL
+      SELECT 'index|' || indexdef
+      FROM pg_catalog.pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'waitlist'
+      UNION ALL
+      SELECT 'trigger|' || t.tgname
+      FROM pg_catalog.pg_trigger t
+      JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = 'waitlist' AND NOT t.tgisinternal
+      UNION ALL
+      SELECT 'function|' || p.proname
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'waitlist_coming_soon_email_limit'
+      UNION ALL
+      SELECT 'table_acl|' || r.rolname || '|' || e.privilege_type || '|' || e.is_grantable::text
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) e
+      JOIN pg_catalog.pg_roles r ON r.oid = e.grantee
+      WHERE n.nspname = 'public' AND c.relname = 'waitlist'
+        AND r.rolname IN ('anon', 'authenticated')
+      UNION ALL
+      SELECT 'column_acl|' || r.rolname || '|' || a.attname || '|' || e.privilege_type || '|' || e.is_grantable::text
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) e
+      JOIN pg_catalog.pg_roles r ON r.oid = e.grantee
+      WHERE n.nspname = 'public' AND c.relname = 'waitlist'
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND r.rolname IN ('anon', 'authenticated')
+    ) dump
+    ORDER BY line
+  `);
+  return result.rows.map((row) => row.line).join("\n");
+}
+
+check(
+  rollbackSql.includes("DROP TRIGGER IF EXISTS waitlist_coming_soon_email_limit")
+    && rollbackSql.includes("DROP FUNCTION IF EXISTS public.waitlist_coming_soon_email_limit()")
+    && rollbackSql.includes("DROP INDEX IF EXISTS public.waitlist_coming_soon_email_created_idx")
+    && rollbackSql.includes("GRANT SELECT, INSERT, UPDATE ON TABLE public.waitlist TO authenticated")
+    && rollbackSql.includes("GRANT INSERT (")
+    && rollbackSql.includes("ALTER TABLE public.waitlist DROP COLUMN IF EXISTS claim_token_hash")
+    && !/GRANT\s+DELETE/i.test(rollbackSql),
+  "the rollback file drops the trigger, function, index, and column and restores the grants",
+);
+
+const catalog = new PGlite();
+await catalog.exec(`
+  ${WAITLIST}
+  CREATE ROLE anon NOLOGIN;
+  CREATE ROLE authenticated NOLOGIN;
+  GRANT USAGE ON SCHEMA public TO anon, authenticated;
+  REVOKE ALL ON public.waitlist FROM anon, authenticated;
+  GRANT SELECT, INSERT, UPDATE ON TABLE public.waitlist TO authenticated;
+  GRANT INSERT (
+    full_name, email, phone, market_id, driver_status, source,
+    utm_source, utm_medium, utm_campaign, utm_term, utm_content, gclid
+  ) ON public.waitlist TO anon;
+`);
+const before = await waitlistCatalog(catalog);
+await catalog.exec(tokenSql);
+await catalog.exec(rateSql);
+const applied = await waitlistCatalog(catalog);
+check(applied !== before, "applying the proposal changes the waitlist catalog");
+check(applied.includes("function|waitlist_coming_soon_email_limit"), "the applied catalog has the rate function");
+check(applied.includes("column|claim_token_hash|text"), "the applied catalog has claim_token_hash");
+check(applied.includes("trigger|waitlist_coming_soon_email_limit"), "the applied catalog has the rate trigger");
+await catalog.exec(rollbackSql);
+const after = await waitlistCatalog(catalog);
+check(after === before, "rollback restores a pg_dump-identical waitlist catalog");
+await catalog.close();
+
+const [landingApply, landingRollback] = landingSql.split("-- ===== ROLLBACK =====");
+const landingApplySql = sqlStatements(landingApply);
+const landingRollbackSql = sqlStatements(landingRollback);
+check(landingApplySql.length === 4 && landingRollbackSql.length === 2, "the landing length file has an apply section and a rollback section");
+check(
+  landingSql.includes("CHECK (landing_page IS NULL OR length(landing_page) <= 500) NOT VALID")
+    && landingSql.includes("CHECK (referrer IS NULL OR length(referrer) <= 500) NOT VALID")
+    && landingSql.includes("VALIDATE CONSTRAINT applications_landing_page_length")
+    && landingSql.includes("VALIDATE CONSTRAINT applications_referrer_length")
+    && landingSql.includes("DROP CONSTRAINT IF EXISTS applications_landing_page_length")
+    && landingSql.includes("DROP CONSTRAINT IF EXISTS applications_referrer_length"),
+  "landing_page and referrer are checked at 500 characters, then the checks can be dropped",
+);
+
+const landing = new PGlite();
+await landing.exec(`
+  CREATE SCHEMA IF NOT EXISTS public;
+  CREATE TABLE public.applications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    landing_page text,
+    referrer text
+  );
+`);
+const longLanding = "L".repeat(501);
+const longReferrer = "R".repeat(501);
+await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${longLanding}', '${longReferrer}')`);
+await landing.exec(`${landingApplySql[0]};`);
+await landing.exec(`${landingApplySql[2]};`);
+const unvalidated = await landing.query(`
+  SELECT conname, convalidated
+  FROM pg_constraint
+  WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
+  ORDER BY conname
+`);
+check(
+  unvalidated.rows.length === 2 && unvalidated.rows.every((row) => row.convalidated === false),
+  "NOT VALID adds both checks without scanning the long rows",
+);
+let validateLanding = "";
+try {
+  await landing.exec(`${landingApplySql[1]};`);
+} catch (error) {
+  validateLanding = String(error?.message ?? error);
+}
+check(/applications_landing_page_length/.test(validateLanding), "VALIDATE refuses the existing long landing_page");
+let validateReferrer = "";
+try {
+  await landing.exec(`${landingApplySql[3]};`);
+} catch (error) {
+  validateReferrer = String(error?.message ?? error);
+}
+check(/applications_referrer_length/.test(validateReferrer), "VALIDATE refuses the existing long referrer");
+await landing.exec(`UPDATE public.applications SET landing_page = left(landing_page, 500), referrer = left(referrer, 500)`);
+await landing.exec(`${landingApplySql[1]};`);
+await landing.exec(`${landingApplySql[3]};`);
+const validated = await landing.query(`
+  SELECT bool_and(convalidated) AS ok
+  FROM pg_constraint
+  WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
+`);
+check(validated.rows[0]?.ok === true, "VALIDATE accepts the shortened rows");
+let tooLong = "";
+try {
+  await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${longLanding}', 'ok')`);
+} catch (error) {
+  tooLong = String(error?.message ?? error);
+}
+check(/applications_landing_page_length/.test(tooLong), "a new landing_page longer than 500 is refused");
+let tooLongReferrer = "";
+try {
+  await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('ok', '${longReferrer}')`);
+} catch (error) {
+  tooLongReferrer = String(error?.message ?? error);
+}
+check(/applications_referrer_length/.test(tooLongReferrer), "a new referrer longer than 500 is refused");
+await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES (NULL, NULL)`);
+await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${"L".repeat(500)}', '${"R".repeat(500)}')`);
+check(true, "null and 500-character landing values are accepted");
+await landing.exec(landingRollbackSql.map((statement) => `${statement};`).join("\n"));
+const dropped = await landing.query(`
+  SELECT count(*)::int AS n
+  FROM pg_constraint
+  WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
+`);
+check(Number(dropped.rows[0]?.n) === 0, "the landing rollback drops both checks");
+await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${longLanding}', '${longReferrer}')`);
+check(true, "a long landing_page inserts again after the rollback");
+await landing.close();
 
 console.log(`${passed} proposed waitlist SQL checks passed`);
