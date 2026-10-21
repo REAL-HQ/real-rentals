@@ -16,6 +16,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { FileDropBridge } from "@/components/FileDropBridge";
 import { captureAttribution } from "@/lib/attribution";
+import { googleAdsBootstrap } from "@/lib/tracking-url";
 
 function NotFoundComponent() {
   return (
@@ -144,19 +145,8 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
-        {/* Google tag (gtag.js) */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18340435293"></script>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-
-              gtag('config', 'AW-18340435293');
-            `,
-          }}
-        />
+        {/* Google Ads. Loaded from a snippet that strips credentials before config. */}
+        <script dangerouslySetInnerHTML={{ __html: googleAdsBootstrap() }} />
         <HeadContent />
       </head>
       <body>
