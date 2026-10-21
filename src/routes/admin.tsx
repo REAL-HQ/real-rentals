@@ -75,6 +75,8 @@ import { ReceivablesAgingPanel } from "@/components/admin/ReceivablesAgingPanel"
 import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 import { DepositLedgerPanel } from "@/components/admin/DepositLedgerPanel";
 import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
+import { VehicleTurnaround } from "@/components/admin/VehicleTurnaround";
+import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -394,6 +396,11 @@ function Admin() {
     if (urlTab === "deposit_ledger") {
       if (!DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "deposit_ledger";
+    }
+    // Vehicle Turnaround is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "vehicle_turnaround") {
+      if (!VEHICLE_TURNAROUND_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "vehicle_turnaround";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -875,6 +882,7 @@ function Admin() {
             {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
             {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
             {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
+            {VEHICLE_TURNAROUND_ENABLED && tab === "vehicle_turnaround" && <VehicleTurnaround />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />

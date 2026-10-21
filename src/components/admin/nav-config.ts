@@ -33,6 +33,7 @@ import {
   BarChart3,
   CalendarClock,
   CalendarRange,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -52,6 +53,7 @@ import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
+import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 
 export type TabDef = {
   id: string;
@@ -168,6 +170,16 @@ const TODAYS_OPS_TAB: TabDef = {
   minTier: "manager",
   group: "HOME",
   description: "Pickups, Returns, Payments And Open Issues For Today",
+};
+
+/** Shown only while Vehicle Turnaround is compiled on. Kept out of TABS so a dark build cannot list it. */
+const VEHICLE_TURNAROUND_TAB: TabDef = {
+  id: "vehicle_turnaround",
+  label: "Vehicle Turnaround",
+  icon: RotateCcw,
+  minTier: "manager",
+  group: "FLEET",
+  description: "Vehicles Between Rentals, Longest Idle First",
 };
 
 /** Shown only while Fleet Calendar is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -368,6 +380,9 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
     next = spliceAfter(next, "vehicles", FLEET_CALENDAR_TAB);
   }
+  if (VEHICLE_TURNAROUND_ENABLED && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, "vehicles", VEHICLE_TURNAROUND_TAB);
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
@@ -426,6 +441,9 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   }
   if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_CALENDAR_TAB, href: "fleet_calendar" });
+  }
+  if (VEHICLE_TURNAROUND_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "vehicles", { ...VEHICLE_TURNAROUND_TAB, href: "vehicle_turnaround" });
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
@@ -540,6 +558,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "deposit_ledger") {
     if (!DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "deposit_ledger";
+  }
+  if (args.urlTab === "vehicle_turnaround") {
+    if (!VEHICLE_TURNAROUND_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "vehicle_turnaround";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
