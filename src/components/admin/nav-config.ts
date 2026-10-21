@@ -29,6 +29,7 @@ import {
   ScrollText,
   Scale,
   FileSpreadsheet,
+  HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -41,6 +42,7 @@ import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
+import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 
 export type TabDef = {
   id: string;
@@ -169,6 +171,16 @@ const PAYOUT_BREAKDOWN_TAB: TabDef = {
   description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
 };
 
+/** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const BILLING_HEALTH_TAB: TabDef = {
+  id: "billing_health",
+  label: "Billing Health",
+  icon: HeartPulse,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Active Rentals Compared With Stripe Subscriptions",
+};
+
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
@@ -281,6 +293,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -330,6 +343,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
