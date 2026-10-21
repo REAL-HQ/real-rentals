@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 
 export type TabDef = {
   id: string;
@@ -112,13 +114,35 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Receivables Aging is compiled on. Kept out of TABS so a dark build cannot list it. */
+const AGING_TAB: TabDef = {
+  id: "receivables_aging",
+  label: "Receivables Aging",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Unpaid Rent By How Long It Has Been Due",
+};
+
+function businessExtras(tier: StaffTier | null): TabDef[] {
+  if (!tierAllows(tier, "manager")) return [];
+  const extra: TabDef[] = [];
+  if (UNIFIED_FINANCE_ENDPOINT_ENABLED) extra.push(FINANCE_TAB);
+  if (RECEIVABLES_AGING_ENABLED) extra.push(AGING_TAB);
+  return extra;
+}
+
+function spliceAfterExpenses<T extends { id: string }>(rows: T[], extra: T[]): T[] {
+  if (!extra.length) return rows;
+  const next = [...rows];
+  const at = next.findIndex((row) => row.id === "expenses");
+  next.splice(at + 1, 0, ...extra);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
-  return next;
+  return spliceAfterExpenses(tabs, businessExtras(tier));
 }
 
 /**
@@ -151,10 +175,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
-  return entries;
+  return spliceAfterExpenses(entries, businessExtras(tier).map((tab) => ({ ...tab, href: tab.id })));
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
