@@ -17,10 +17,46 @@
 -- LOCAL REVIEW PROPOSAL ONLY. Not a hosted installer; not in migration discovery.
 -- Preconditions supplied by the local harness: rr_approval_executor is NOLOGIN,
 -- NOSUPERUSER NOBYPASSRLS, has no application-role members, and narrowly scoped ACLs.
--- No historical rows are marked verified. Provider adapters below DENY by default.
+-- No historical rows are marked verified.
+-- Storage attestation. The excluded script left this as a deny stub. The snapshot
+-- accepts only bucket, path, sha256, and a non-empty version taken from the object
+-- that is actually stored for the document. This catalog's storage.objects has no
+-- version column (Supabase's provider column is used when present). metadata.version,
+-- then metadata.eTag, then the object id are the version token. The object must
+-- carry the same sha256 the document row claims. A missing, ambiguous, or
+-- mismatched object still raises approval_storage_version_unverified.
 CREATE FUNCTION private.approval_object_version(_document uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-BEGIN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END $$;
+DECLARE doc public.documents%ROWTYPE; obj_id uuid; obj_bucket text; obj_name text; obj_meta jsonb;
+ n integer; ver text; sha text; has_version boolean;
+BEGIN
+ SELECT * INTO doc FROM public.documents WHERE id=_document;
+ IF NOT FOUND OR nullif(btrim(doc.storage_bucket),'') IS NULL OR nullif(btrim(doc.storage_path),'') IS NULL
+  OR doc.content_sha256 IS NULL OR doc.content_sha256 !~ '^[0-9a-f]{64}$' THEN
+  RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
+ END IF;
+ SELECT count(*) INTO n FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path;
+ IF n<>1 THEN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END IF;
+ SELECT o.id, o.bucket_id, o.name, o.metadata INTO obj_id, obj_bucket, obj_name, obj_meta
+  FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path FOR SHARE;
+ sha:=nullif(lower(btrim(coalesce(obj_meta->>'sha256', obj_meta->>'content_sha256'))),'');
+ IF sha IS NULL OR sha IS DISTINCT FROM doc.content_sha256
+  OR obj_bucket IS DISTINCT FROM doc.storage_bucket OR obj_name IS DISTINCT FROM doc.storage_path THEN
+  RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';
+ END IF;
+ SELECT EXISTS (
+  SELECT 1 FROM pg_catalog.pg_attribute a
+  JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+  JOIN pg_catalog.pg_namespace ns ON ns.oid=c.relnamespace
+  WHERE ns.nspname='storage' AND c.relname='objects' AND a.attname='version' AND a.attnum>0 AND NOT a.attisdropped
+ ) INTO has_version;
+ IF has_version THEN EXECUTE 'SELECT version FROM storage.objects WHERE id=$1' INTO ver USING obj_id; END IF;
+ IF nullif(btrim(ver),'') IS NULL THEN ver:=nullif(btrim(obj_meta->>'version'),''); END IF;
+ IF nullif(btrim(ver),'') IS NULL THEN ver:=nullif(btrim(obj_meta->>'eTag'),''); END IF;
+ IF nullif(btrim(ver),'') IS NULL THEN ver:=obj_id::text; END IF;
+ IF nullif(btrim(ver),'') IS NULL THEN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END IF;
+ RETURN jsonb_build_object('sha256',sha,'bucket',obj_bucket,'path',obj_name,'version',ver);
+END $$;
 REVOKE ALL ON FUNCTION private.approval_provider_actor(),private.approval_object_version(uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION private.approval_provider_actor(),private.approval_object_version(uuid) TO rr_approval_executor;
 
@@ -113,6 +149,8 @@ CREATE FUNCTION public.verify_approval_identity(_application_id uuid,_reviewed_e
 DECLARE actor uuid; evidence jsonb; rid uuid;
 BEGIN
  PERFORM private.approval_lock();actor:=private.approval_actor();
+ -- Scope the executor's own review insert. Callers cannot SET ROLE to this owner.
+ PERFORM set_config('record.application_id',_application_id::text,true);
  PERFORM 1 FROM public.applications WHERE id=_application_id AND status IN ('new','reviewing','approved','active') FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  evidence:=private.approval_snapshot(_application_id);
@@ -151,7 +189,18 @@ BEGIN
   IF NEW.status='approved' THEN RAISE EXCEPTION 'approval_insert_forbidden' USING ERRCODE='42501';END IF;
   IF NEW.approval_evidence_version<>0 THEN RAISE EXCEPTION 'evidence_version_managed';END IF;RETURN NEW;
  END IF;
- IF NEW.approval_evidence_version IS DISTINCT FROM OLD.approval_evidence_version AND current_user<>'rr_approval_executor' THEN RAISE EXCEPTION 'evidence_version_managed';END IF;
+ -- A direct write of the managed version is refused for every role, including the
+ -- table owner. The evidence trigger's own bump is the one nested update that adds
+ -- exactly 1. That trigger stays owned by the table owner so the bump is not hidden
+ -- by the executor's application scope (a driver upload has no record.application_id
+ -- and is not a manager). Owning the bump as rr_approval_executor would update zero
+ -- rows under that policy, or raise inside approval_actor, and license uploads would
+ -- still fail or stop invalidating evidence.
+ IF NEW.approval_evidence_version IS DISTINCT FROM OLD.approval_evidence_version AND current_user<>'rr_approval_executor' THEN
+  IF pg_catalog.pg_trigger_depth()<=1 OR NEW.approval_evidence_version IS DISTINCT FROM OLD.approval_evidence_version+1 THEN
+   RAISE EXCEPTION 'evidence_version_managed';
+  END IF;
+ END IF;
  IF ROW(NEW.full_name,NEW.dob,NEW.email,NEW.phone,NEW.license_number,NEW.license_state,NEW.license_expiration,NEW.license_photo_url,NEW.user_id,NEW.deleted_at,NEW.purged_at,NEW.primary_application_id) IS DISTINCT FROM ROW(OLD.full_name,OLD.dob,OLD.email,OLD.phone,OLD.license_number,OLD.license_state,OLD.license_expiration,OLD.license_photo_url,OLD.user_id,OLD.deleted_at,OLD.purged_at,OLD.primary_application_id) THEN
   -- Only identity/ownership/license changes invalidate; notes/rates do not.
   NEW.approval_evidence_version:=OLD.approval_evidence_version+1;
@@ -216,13 +265,16 @@ CREATE FUNCTION public.approve_application_checked(_application_id uuid,_expecte
 DECLARE a public.applications%ROWTYPE;actor uuid;op private.approval_operations%ROWTYPE;
 BEGIN
  PERFORM private.approval_lock();actor:=private.approval_actor();
+ PERFORM set_config('record.application_id',_application_id::text,true);
  IF _operation_id IS NULL OR (_mode IN ('approve_only','approve_invite')) IS NOT TRUE THEN RAISE EXCEPTION 'approval_request_invalid';END IF;
  SELECT * INTO op FROM private.approval_operations WHERE operation_id=_operation_id;
  IF FOUND THEN
   IF op.actor_id<>actor OR op.application_id IS DISTINCT FROM _application_id OR op.evidence_version IS DISTINCT FROM _expected_version OR op.requested_mode IS DISTINCT FROM _mode THEN RAISE EXCEPTION 'approval_operation_mismatch' USING ERRCODE='42501';END IF;
   RETURN private.approval_result(op,true);
  END IF;
- SELECT * INTO a FROM public.applications WHERE id=_application_id FOR UPDATE NOWAIT;
+ SELECT id, deleted_at, purged_at, status, approval_evidence_version
+  INTO a.id, a.deleted_at, a.purged_at, a.status, a.approval_evidence_version
+  FROM public.applications WHERE id=_application_id FOR UPDATE OF applications NOWAIT;
  IF NOT FOUND OR a.deleted_at IS NOT NULL OR a.purged_at IS NOT NULL OR (a.status IN ('new','reviewing')) IS NOT TRUE THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  IF _expected_version IS NULL OR a.approval_evidence_version<>_expected_version THEN RAISE EXCEPTION 'approval_version_stale';END IF;
  INSERT INTO private.approval_operations(operation_id,application_id,actor_id,evidence_version,requested_mode)
@@ -240,3 +292,17 @@ BEGIN
  PERFORM private.approval_validate(_application_id);
  RETURN jsonb_build_object('ready',true,'version',v);
 END $$;
+
+-- The review and approval writers must run as the executor or their guards refuse
+-- the insert. approval_operations is private to that role for the application the
+-- function just scoped. Reads in approval_validate stay owned by the installer so
+-- the record executor can see the stored snapshot without a second membership.
+GRANT USAGE ON SCHEMA private TO rr_approval_executor;
+GRANT SELECT, INSERT ON private.approval_operations TO rr_approval_executor;
+CREATE POLICY approval_operations_executor_v1 ON private.approval_operations
+ FOR ALL TO rr_approval_executor
+ USING (actor_id=private.approval_actor() AND application_id=nullif(current_setting('record.application_id',true),'')::uuid)
+ WITH CHECK (actor_id=private.approval_actor() AND application_id=nullif(current_setting('record.application_id',true),'')::uuid);
+ALTER FUNCTION public.verify_approval_identity(uuid,jsonb,text) OWNER TO rr_approval_executor;
+ALTER FUNCTION public.approve_application_checked(uuid,bigint,uuid,text) OWNER TO rr_approval_executor;
+ALTER FUNCTION private.approval_write_audit(uuid,text) OWNER TO rr_approval_executor;

@@ -4,6 +4,7 @@
 -- This file does not change the install SQL.
 BEGIN;
 -- policies added by this step
+DROP POLICY IF EXISTS "approval_operations_executor_v1" ON "private"."approval_operations";
 -- policies removed or replaced by this step
 -- triggers added by this step
 DROP TRIGGER IF EXISTS "immutable_operation" ON "private"."approval_operations";

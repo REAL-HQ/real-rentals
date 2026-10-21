@@ -269,6 +269,53 @@ Line 31 is `identity_id:=private.approval_validate(_application_id)`. The call d
 
 The seed transaction was rolled back. Schema rollback then ran return, extend, 20, 19b, 19 through 2, `00-approval-boundary.sql`, and `01-auth-binding.sql`. `pg_dump --schema-only --no-owner --no-privileges` matched the production-matching baseline (normalized length 273072). Applications were 0, `rr_%` roles were 0, and no function whose name contains `approval` remained.
 
+## Functional rehearsal
+
+Triggers stayed on for the install and the seed. Nothing in this run used `session_replication_role = replica`. `approval-boundary.local.sql` is still the verbatim excluded script. Packet files were not edited.
+
+`private.approval_object_version` now reads the one `storage.objects` row for the document's bucket and path. It returns that object's bucket, path, and sha256, and a version token: the provider `version` column when this catalog has one, otherwise `metadata.version`, then `metadata.eTag`, then the object id. The object must carry the same sha256 the document row claims. A missing or mismatched object still raises `approval_storage_version_unverified`. This database's `storage.objects` has no `version` column, so the rehearsal token is the object id.
+
+`private.approval_evidence_changed` stays owned by the table owner. Under step 10 the executor's application policy calls `approval_actor` and requires `record.application_id`, so a driver upload cannot bump the version as `rr_approval_executor`. The guard still rejects every direct write of `approval_evidence_version`. It allows only a nested update that adds exactly 1, which is the trigger's own statement. `private.integrity_serialize_v1` is security definer for the same reason: it only takes `approval_lock`, and step 1 revokes that function from `authenticated` and `service_role`.
+
+`verify_approval_identity` and `approve_application_checked` are owned by `rr_approval_executor` and set `record.application_id` for that application. Step 10's audit policy allowed only `identity_review.positive_license_v1`, and its column grants omitted `status`, `contacted_at`, `approval_evidence`, and `resolution_note`. `10b-approval-executor-writes.sql` adds those columns and those two audit actions for the executor. Authenticated and service-role policies are unchanged.
+
+Step 6's check rejects `kind = 'approval_identity'` with `resolution = 'verified'`. That is the row `approval_validate` reads. `06b-approval-identity-check.sql` keeps the `positive_license_v1` arm and the other-kind arm, and adds the step 0 approval-identity shape with `positive_evidence_v1` null.
+
+Step 19b leaves the four-argument `record_agreement_evidence` as a deny-all. `19c-agreement-contract.sql` replaces that body. It locks the application's unlinked agreements, requires exactly one, and returns that agreement id only when the signed archived document, its storage object, the vehicle, and `merge_data.record_rental_terms_v1` match the call. Any other case still raises `agreement_contract_unverified`. The two-argument overload is unchanged.
+
+### Install order
+
+1. Packet step 1
+2. `proposed/m2-with-approval-boundary/00-approval-boundary.sql`
+3. Packet steps 2 through 6
+4. `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql`
+5. Packet steps 7 through 10
+6. `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql`
+7. Packet steps 11 through 19
+8. Packet step 19b
+9. `proposed/m2-with-approval-boundary/19c-agreement-contract.sql`
+10. Packet step 20, extend rental, return checklist
+
+SHA-256 of the installable step 0 file: `7fe4a95c9e84906e73675bdb4a068f23b92ce77e8ec25e238c3d8f26d1e1f8cd`.
+
+### Proof
+
+One transaction, then rolled back. A manager `auth.users` row, a matching `auth.sessions` row, an `admin` role, a `reviewing` application with the driver's `user_id` and a future license, and an available vehicle with a valid VIN and a positive weekly rate.
+
+| Check | Result |
+| --- | --- |
+| (a) Driver license upload | Pass. `service_role` insert of `license_front` in the `confirmDocumentUpload` shape (`uploaded_by` the driver, `uploaded_by_role` `driver`, bucket `driver-docs`). Row `55555555-5555-4555-8555-555555555555`. `approval_evidence_version` became 1. |
+| (b) Service-role upload | Pass. `service_role` insert of `license_back` in the same shape. Row `66666666-6666-4666-8666-666666666666`. Version became 2. |
+| (c) Version tamper | Pass. `postgres` and `service_role` updates of `approval_evidence_version` raised `evidence_version_managed`. `authenticated` has no `UPDATE` on `applications`, so that statement was `permission denied for table applications`. |
+| (d) `record_existing_rental_tx` | Pass. Returned `status = recorded`, rental `f2fdcf66-d6ea-4838-aa90-f91ec7b22732`, `active`, weekly rate 250.00, the seeded driver and vehicle. Agreement `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` is `signed` / `archived` and its `rental_id` is that rental. Identity review `f5cce53d-47a6-4ed6-9f02-05b59c4c54ce` is `approval_identity` / `resolved` / `verified`, with `approval_evidence` set and `positive_evidence_v1` null. |
+| (e) Step 6 check | Pass. That review was inserted under `application_identity_reviews_resolution_check` as installed by 06b. The unmodified step 6 text rejects `resolution = 'verified'` on `kind = 'approval_identity'`. 06b is what makes this row legal. |
+
+An authenticated manager insert of an `insurance` document also succeeded and left the evidence version at 2.
+
+### Rollback
+
+Return, extend, 20, `19c-agreement-contract.sql`, 19b, 19 through 11, `10b-approval-executor-writes.sql`, 10 through 7, `06b-approval-identity-check.sql`, 6 through 2, `00-approval-boundary.sql`, `01-auth-binding.sql`. Each script committed. `pg_dump --schema-only --no-owner --no-privileges`, with `\restrict`, `\unrestrict`, and the dump-version comments removed, matched the production-matching baseline (normalized length 273072). Applications were 0, `rr_%` roles were 0, and no function whose name contains `approval` remained.
+
 ## Step 0 install and rollback
 
 Order applied: step 1, step 0, steps 2 through the return checklist. Every step passed.
@@ -302,7 +349,7 @@ Order applied: step 1, step 0, steps 2 through the return checklist. Every step 
 
 Rollback ran return, extend, 20, 19b, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, then `00-approval-boundary.sql`, then `01-auth-binding.sql`. Each script committed. `pg_dump --schema-only` matched the production-matching baseline. No `rr_%` role remained, and no function whose name contains `approval` remained.
 
-SHA-256 of the installable step 0 file: `a6b749ce3b3a711750081848d1fcdd9c0c3982d543587249ad7ea42f536a1a66`.
+SHA-256 of the installable step 0 file at that rehearsal: `a6b749ce3b3a711750081848d1fcdd9c0c3982d543587249ad7ea42f536a1a66`. The current file is recorded in Functional rehearsal.
 
 ## Preflight
 
