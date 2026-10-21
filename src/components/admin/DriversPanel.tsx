@@ -1,3 +1,5 @@
+import { OnboardingChecklist } from "./OnboardingChecklist";
+import { ONBOARDING_CHECKLIST_ENABLED, onboardingCohort } from "@/lib/onboarding-checklist";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -296,10 +298,13 @@ export function DriversPanel({
   initialOpenId,
   isOwner = false,
   canManageWaitlist = false,
+  canViewOnboarding = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
+  /** Owner + Manager (team). The checklist stays unmounted while its flag is false. */
+  canViewOnboarding?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
@@ -775,6 +780,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        canViewOnboarding={canViewOnboarding}
       />
       {deleteDialog}
       </>
@@ -815,6 +821,7 @@ setDocCounts(requiredDocCounts(rows));
           onRestored={() => refreshDrivers()}
         />
       )}
+      {ONBOARDING_CHECKLIST_ENABLED === true && <OnboardingChecklist canView={canViewOnboarding} />}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
         {/*
@@ -1164,6 +1171,7 @@ function DriverDetail({
   isOwner,
   hasActiveRental,
   onRentalStarted,
+  canViewOnboarding = false,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1177,6 +1185,7 @@ function DriverDetail({
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
+  canViewOnboarding?: boolean;
 }) {
   const rentalActiveFlag = hasActiveRental;
   const rentalActive = hasActiveRental;
@@ -1613,17 +1622,25 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* The one operational checklist. Replaces the separate Readiness
-          Signals card and Requirements Checklist, which showed the same state twice. */}
+      {/* Flag off: the boolean rental checklist on this card. Flag on, a
+          manager sees the approved-driver steps, with source and time, here. */}
       <SectionCard
         title="Rental Readiness"
-        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
+        right={
+          ONBOARDING_CHECKLIST_ENABLED === true && canViewOnboarding && onboardingCohort(driver.status) ? undefined : (
+            <span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>
+          )
+        }
       >
-        <dl className="space-y-2 text-[12px]">
-          {requirements.map((r) => (
-            <SignalRow key={r.label} label={r.label} ok={r.ok} />
-          ))}
-        </dl>
+        {ONBOARDING_CHECKLIST_ENABLED === true && canViewOnboarding && onboardingCohort(driver.status) ? (
+          <OnboardingChecklist canView={canViewOnboarding} focusId={driver.id} />
+        ) : (
+          <dl className="space-y-2 text-[12px]">
+            {requirements.map((r) => (
+              <SignalRow key={r.label} label={r.label} ok={r.ok} />
+            ))}
+          </dl>
+        )}
       </SectionCard>
     </div>
   );
