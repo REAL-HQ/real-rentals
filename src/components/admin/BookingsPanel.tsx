@@ -469,27 +469,31 @@ function MileageOverageLive({ rentalIds, children }: { rentalIds: string[]; chil
 
 function MileageOverageNotice() {
   const overage = useContext(MileageOverageContext);
-  if (overage.status === "error") return <p className="mb-2 text-[12px] text-[#D03020]">Could Not Load Mileage Overage</p>;
-  if (overage.truncated) return <p className="mb-2 text-[12px] text-muted-foreground">Mileage Overage Is Capped</p>;
+  if (ACTIVE_MILEAGE_OVERAGE_ENABLED && overage.status === "error") {
+    return <p className="mb-2 text-[12px] text-[#D03020]">Could Not Load Mileage Overage</p>;
+  }
+  if (ACTIVE_MILEAGE_OVERAGE_ENABLED && overage.truncated) {
+    return <p className="mb-2 text-[12px] text-muted-foreground">Mileage Overage Is Capped</p>;
+  }
   return null;
 }
 
 function MileageOverageHeader() {
   const overage = useContext(MileageOverageContext);
-  if (overage.status === "off") return null;
+  if (!(ACTIVE_MILEAGE_OVERAGE_ENABLED && overage.status !== "off")) return null;
   return <th className="px-3 py-2 font-medium">Mileage Overage</th>;
 }
 
 function MileageOverageCell({ rentalId }: { rentalId: string }) {
   const overage = useContext(MileageOverageContext);
-  if (overage.status === "off") return null;
+  if (!(ACTIVE_MILEAGE_OVERAGE_ENABLED && overage.status !== "off")) return null;
   const text = overage.status === "ready" ? overage.byId.get(rentalId) ?? "Unknown" : "Unknown";
   return <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{text}</td>;
 }
 
 function MileageOverageLine({ rentalId }: { rentalId: string }) {
   const overage = useContext(MileageOverageContext);
-  if (overage.status === "off") return null;
+  if (!(ACTIVE_MILEAGE_OVERAGE_ENABLED && overage.status !== "off")) return null;
   const text = overage.status === "ready" ? overage.byId.get(rentalId) ?? "Unknown" : "Unknown";
   return <div className="mt-1 text-[13px] text-muted-foreground">Mileage Overage · {text}</div>;
 }

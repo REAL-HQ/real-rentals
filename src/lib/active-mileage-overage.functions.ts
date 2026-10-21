@@ -6,8 +6,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ACTIVE_MILEAGE_OVERAGE_ENABLED } from "@/lib/active-mileage-overage-flag";
 import {
-  allowanceTextFromAgreement,
   estimateMileageOverage,
+  statedAllowance,
   type MileageOverage,
 } from "@/lib/active-mileage-overage";
 
@@ -27,6 +27,14 @@ function idBatches(ids: string[]): string[][] {
 }
 
 type Page<T> = { data: T[] | null; error: { message: string } | null };
+
+type AgreementAllowance = {
+  id: string;
+  rental_id: string | null;
+  status: string;
+  signed_at: string | null;
+  agreement_mileage_allowance: string | null;
+};
 
 async function readBatches<T>(
   ids: string[],
@@ -59,7 +67,7 @@ export const listActiveMileageOverage = createServerFn({ method: "POST" })
 
     const rentalsQ = await supabaseAdmin
       .from("rentals")
-      .select("id,vehicle_id,start_date,pickup_reading_id")
+      .select("id,vehicle_id,start_date,pickup_reading_id,status")
       .eq("status", "active")
       .in("id", data.rentalIds)
       .order("id", { ascending: true })
@@ -75,15 +83,24 @@ export const listActiveMileageOverage = createServerFn({ method: "POST" })
 
     const [readingsQ, vehiclesQ, agreementsQ] = await Promise.all([
       readBatches(pickupIds, (batch) =>
-        supabaseAdmin.from("odometer_readings").select("id,mileage").in("id", batch).limit(LIMIT + 1),
+        supabaseAdmin.from("odometer_readings").select("id,mileage,status,vehicle_id").in("id", batch).limit(LIMIT + 1),
       ),
       readBatches(vehicleIds, (batch) =>
         supabaseAdmin.from("vehicles").select("id,current_odometer").in("id", batch).limit(LIMIT + 1),
       ),
-      readBatches(rentalIds, (batch) =>
-        supabaseAdmin
-          .from("agreements")
-          .select("id,rental_id,status,signed_at,body")
+      readBatches<AgreementAllowance>(rentalIds, (batch) =>
+        (supabaseAdmin.from("agreements") as unknown as {
+          select: (columns: string) => {
+            in: (column: string, values: string[]) => {
+              order: (column: string, options: { ascending: boolean; nullsFirst?: boolean }) => {
+                order: (column: string, options: { ascending: boolean }) => {
+                  limit: (count: number) => PromiseLike<Page<AgreementAllowance>>;
+                };
+              };
+            };
+          };
+        })
+          .select("id,rental_id,status,signed_at,agreement_mileage_allowance")
           .in("rental_id", batch)
           .order("signed_at", { ascending: false, nullsFirst: false })
           .order("id", { ascending: false })
@@ -91,7 +108,7 @@ export const listActiveMileageOverage = createServerFn({ method: "POST" })
       ),
     ]);
 
-    const startById = new Map(readingsQ.rows.map((row) => [row.id, row.mileage]));
+    const readingById = new Map(readingsQ.rows.map((row) => [row.id, row]));
     const lastByVehicle = new Map(vehiclesQ.rows.map((row) => [row.id, row.current_odometer]));
     const agreementsByRental = new Map<string, typeof agreementsQ.rows>();
     for (const row of agreementsQ.rows) {
@@ -113,13 +130,18 @@ export const listActiveMileageOverage = createServerFn({ method: "POST" })
         let allowanceText: string | null = null;
         for (const agreement of agreements) {
           if (agreement.status === "void" || agreement.status === "voided") continue;
-          allowanceText = allowanceTextFromAgreement(agreement.body);
+          allowanceText = statedAllowance(agreement.agreement_mileage_allowance);
           if (allowanceText) break;
         }
+        const reading = rental.pickup_reading_id ? readingById.get(rental.pickup_reading_id) : null;
         return estimateMileageOverage({
           rentalId: rental.id,
-          startMiles: rental.pickup_reading_id ? startById.get(rental.pickup_reading_id) : null,
-          lastMiles: lastByVehicle.get(rental.vehicle_id),
+          rentalStatus: rental.status,
+          vehicleId: rental.vehicle_id,
+          startMiles: reading?.mileage ?? null,
+          readingStatus: reading?.status ?? null,
+          readingVehicleId: reading?.vehicle_id ?? null,
+          lastMiles: lastByVehicle.get(rental.vehicle_id) ?? null,
           allowanceText,
           startDate: rental.start_date,
           today,
