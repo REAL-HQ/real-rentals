@@ -347,7 +347,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
+          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)

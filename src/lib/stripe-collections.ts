@@ -146,8 +146,9 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
 
 /**
  * The Revenue card's single figure: verified Stripe net (after refunds and
- * fees) plus internal net_collected from rows NOT tied to a Stripe payment
- * (those are already inside the Stripe figure — never counted twice).
+ * fees) plus internal net_collected from rows with neither a Stripe payment
+ * intent nor a Stripe invoice id (those charges are already inside the Stripe
+ * figure — never counted twice). Deposit rows are not removed here.
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */
