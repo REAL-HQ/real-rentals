@@ -7,8 +7,9 @@ import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
+import { LeadResponseReport } from "./LeadResponseReport";
 
-export default function LeadPriorities() {
+export default function LeadPriorities({ isManager = false }: { isManager?: boolean }) {
   const load = useServerFn(getLeadPriorities);
   const [result, setResult] = useState<LeadPrioritiesResult | null>(null);
   const [offset, setOffset] = useState(0);
@@ -70,6 +71,7 @@ export default function LeadPriorities() {
           Refresh
         </button>
       </div>
+      <LeadResponseReport isManager={isManager} />
       {loading ? (
         <p role="status" className="py-6 text-sm text-muted-foreground">
           Loading lead priorities…

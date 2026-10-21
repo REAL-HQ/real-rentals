@@ -443,7 +443,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
-      <LeadPriorities />
+      <LeadPriorities isManager={canSeeCollections} />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
