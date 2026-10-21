@@ -1648,6 +1648,15 @@ function InsuranceSection({
  * stored array — so the applicant can delete a wrong screenshot without us
  * handing back the paths of the right ones.
  */
+/**
+ * Hard off. The same constant lives in src/lib/upload-precheck.ts and in
+ * DocumentCapture. While it is false the trip uploader does not import the
+ * pre-check, and its upload call stays the one this screen already makes.
+ */
+const UPLOAD_PRECHECK_ENABLED: boolean = false;
+
+type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
+
 function MultiFileUpload({
   label,
   hint,
@@ -1669,6 +1678,25 @@ function MultiFileUpload({
   const [uploading, setUploading] = useState(false);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const overrideWait = useRef<((ok: boolean) => void) | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
+  const [PrecheckNotice, setPrecheckNotice] = useState<
+    null | ((props: PrecheckView & { onUpload: () => void; onRetake: () => void }) => React.ReactNode)
+  >(null);
+
+  async function askOverride(result: PrecheckView): Promise<boolean> {
+    if (UPLOAD_PRECHECK_ENABLED !== true) return true;
+    const mod = await import("@/components/site/UploadPrecheckNotice");
+    setPrecheckNotice(() => mod.UploadPrecheckNotice);
+    return new Promise((resolve) => {
+      overrideWait.current = (ok: boolean) => {
+        overrideWait.current = null;
+        setPrecheck(null);
+        resolve(ok);
+      };
+      setPrecheck(result);
+    });
+  }
   /** The screenshot a retake is about to stand in for, if any. */
   const [replacing, setReplacing] = useState<
     { name: string; stored: boolean; path?: string } | null
@@ -1719,6 +1747,18 @@ function MultiFileUpload({
     try {
       for (const file of chosen) {
         try {
+          if (UPLOAD_PRECHECK_ENABLED === true) {
+            const { reviewUpload } = await import("@/lib/upload-precheck");
+            const result = await reviewUpload(file);
+            if (result.blocked) {
+              toast.error(`${file.name}: ${result.blockMessage ?? "This file can't be uploaded."}`);
+              continue;
+            }
+            if (result.warnings.length && !(await askOverride(result))) {
+              toast.message("Choose another photo and try again.");
+              continue;
+            }
+          }
           const { path } = await uploadApplicantFile({ token, kind: "trip_history", file });
           uploaded.push(path);
         } catch (e) {
@@ -1882,6 +1922,14 @@ function MultiFileUpload({
           ))}
         </ul>
       )}
+      {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
+        <PrecheckNotice
+          warnings={precheck.warnings}
+          tips={precheck.tips}
+          onUpload={() => overrideWait.current?.(true)}
+          onRetake={() => overrideWait.current?.(false)}
+        />
+      ) : null}
     </div>
   );
 }
