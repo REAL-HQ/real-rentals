@@ -346,6 +346,7 @@ export const activateRental = createServerFn({ method: "POST" })
       throw new Error(txErr.message);
     }
     const rental = { id: rentalId as string };
+    if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_started", applicationId: data.applicationId, rentalId: rental.id })).catch((e) => console.error("[renter-lifecycle] rental_started", e));
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
     //    minted during provisioning; an existing one — which is now the normal
@@ -485,6 +486,7 @@ export const endRental = createServerFn({ method: "POST" })
       }).strict().parse(result);
       if (parsed.rentalId !== data.rentalId || parsed.operationId !== data.closeoutV2.operationId)
         throw new Error("Closeout response binding mismatch; reconcile the original operation");
+      if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_ended", rentalId: data.rentalId, fresh: !parsed.recovered })).catch((e) => console.error("[renter-lifecycle] rental_ended", e));
       return { ok: true, alreadyClosed: parsed.recovered, closeout: parsed };
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -564,6 +566,7 @@ export const endRental = createServerFn({ method: "POST" })
       entityId: String(rental.id),
       metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
     });
+    if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_ended", applicationId: rental.application_id, rentalId: data.rentalId })).catch((e) => console.error("[renter-lifecycle] rental_ended", e));
 
     return { ok: true, alreadyClosed: false, lifecycle };
   });
