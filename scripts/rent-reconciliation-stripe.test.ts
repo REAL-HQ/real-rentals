@@ -172,8 +172,8 @@ it("shows Stripe check unavailable and keeps the database payment when the charg
 
 it("refuses a charge write and a refund write before the Stripe client runs", () => {
   const stripe = createReadOnlyStripe("live", { cache: true });
-  expect(() => stripe.charges.create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
-  expect(() => stripe.refunds.create({ charge: "ch_1" })).toThrow("Stripe reader refuses refunds.create");
+  expect((stripe.charges as unknown as { create?: unknown }).create).toBeUndefined();
+  expect((stripe.refunds as unknown as { create?: unknown } | undefined)?.create).toBeUndefined();
   expect(stripeMock.chargesCreate).not.toHaveBeenCalled();
   expect(stripeMock.refundsCreate).not.toHaveBeenCalled();
 });

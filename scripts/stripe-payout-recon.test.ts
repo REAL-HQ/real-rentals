@@ -252,9 +252,9 @@ describe("Stripe Payout Reconciliation", () => {
     expect(refundCreate).not.toHaveBeenCalled();
 
     const stripe = createReadOnlyStripe("live", { cache: true });
-    expect(() => stripe.payouts.create({ amount: 1, currency: "usd" })).toThrow("Stripe reader refuses payouts.create");
-    expect(() => stripe.payouts.cancel("po_1")).toThrow("Stripe reader refuses payouts.cancel");
-    expect(() => stripe.refunds.create({ charge: "ch_1" })).toThrow("Stripe reader refuses refunds.create");
+    expect((stripe.payouts as unknown as { create?: unknown; cancel?: unknown }).create).toBeUndefined();
+    expect((stripe.payouts as unknown as { cancel?: unknown }).cancel).toBeUndefined();
+    expect((stripe.refunds as unknown as { create?: unknown } | undefined)?.create).toBeUndefined();
     expect(stripeMock.payoutCreate).not.toHaveBeenCalled();
     expect(stripeMock.payoutCancel).not.toHaveBeenCalled();
     expect(stripeMock.refundCreate).not.toHaveBeenCalled();
