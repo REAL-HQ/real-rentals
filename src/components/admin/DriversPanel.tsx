@@ -77,7 +77,7 @@ import {
   Link2 as LinkIcon,
   Loader2,
 } from "lucide-react";
-import { removeCardOnFile } from "@/lib/payments.functions";
+import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
@@ -3049,22 +3049,41 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   );
 }
 
-function cardLinkFor(applicationId: string) {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/card/${applicationId}`;
+function useCardOnFileLink(applicationId: string) {
+  const issue = useServerFn(issueCardOnFileLink);
+  const [link, setLink] = useState<string | null>(null);
+  return useCallback(async () => {
+    if (link) return link;
+    const res = await issue({ data: { applicationId } });
+    const next = `${window.location.origin}${res.path}`;
+    setLink(next);
+    return next;
+  }, [applicationId, issue, link]);
 }
 
 function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
-  const link = cardLinkFor(driver.id);
+  const ensureLink = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(await ensureLink());
       toast.success("Card-on-file link copied");
     } catch {
       toast.error("Failed to copy link");
+    }
+  }
+
+  async function openLink(kind: "sms" | "email") {
+    try {
+      const link = await ensureLink();
+      const text = `Save your card on file for Real Rentals: ${link}`;
+      window.location.href = kind === "sms"
+        ? `sms:${driver.phone}?&body=${encodeURIComponent(text)}`
+        : `mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(text)}`;
+    } catch {
+      toast.error("Failed to prepare the link");
     }
   }
 
@@ -3106,21 +3125,13 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
             <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
           </DropdownMenuItem>
           {driver.phone && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
-              </a>
+            <DropdownMenuItem onClick={() => void openLink("sms")}>
+              <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
             </DropdownMenuItem>
           )}
           {driver.email && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
-              </a>
+            <DropdownMenuItem onClick={() => void openLink("email")}>
+              <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
             </DropdownMenuItem>
           )}
           {hasCard && (
@@ -3312,7 +3323,7 @@ function CardOnFileCard({
   driver: any;
   onUpdate: (p: any) => void;
 }) {
-  const link = cardLinkFor(driver.id);
+  const ensureLink = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   return (
     <div className="rounded-xl border border-border bg-white p-5">
@@ -3362,7 +3373,7 @@ function CardOnFileCard({
             <button
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(link);
+                  await navigator.clipboard.writeText(await ensureLink());
                   toast.success("Link copied");
                 } catch {
                   toast.error("Failed to copy");
@@ -3372,14 +3383,19 @@ function CardOnFileCard({
             >
               Copy Link
             </button>
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  window.open(await ensureLink(), "_blank", "noopener,noreferrer");
+                } catch {
+                  toast.error("Failed to prepare the link");
+                }
+              }}
               className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
             >
               Preview
-            </a>
+            </button>
           </div>
         </div>
       )}

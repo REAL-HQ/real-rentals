@@ -1,0 +1,225 @@
+import { build } from "esbuild";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import assert from "node:assert/strict";
+
+const out = mkdtempSync(join(tmpdir(), "rr-card-on-file-"));
+const APP = "11111111-1111-4111-8111-111111111111";
+const OTHER = "22222222-2222-4222-8222-222222222222";
+const TOKEN = "resume-token-for-the-right-applicant-ok";
+const returnUrl = `http://127.0.0.1:5199/card/${APP}?status=success`;
+
+globalThis.__stripe = { clients: 0, customers: [], sessions: [] };
+globalThis.__headers = {};
+globalThis.__claims = { data: { claims: null }, error: null };
+globalThis.__actors = {};
+globalThis.__tokens = {};
+globalThis.__app = null;
+
+const stub = {
+  name: "card-stubs",
+  setup(b) {
+    const files = {
+      "@tanstack/react-start": `
+        export function createServerFn() {
+          const api = {
+            middleware() { return api; },
+            inputValidator(fn) { api.validate = fn; return api; },
+            handler(fn) { api.handle = fn; return api; },
+          };
+          return api;
+        }
+      `,
+      "@tanstack/react-start/server": `
+        export function getRequest() {
+          return { headers: { get: (name) => globalThis.__headers[String(name).toLowerCase()] ?? null } };
+        }
+      `,
+      "@/integrations/supabase/auth-middleware": `export const requireSupabaseAuth = {};`,
+      "@/lib/stripe.server": `
+        export function createStripeClient() {
+          globalThis.__stripe.clients += 1;
+          return {
+            customers: { create: async (body, opts) => { globalThis.__stripe.customers.push({ body, opts }); return { id: "cus_new" }; } },
+            checkout: { sessions: { create: async (body) => {
+              globalThis.__stripe.sessions.push(body);
+              return { client_secret: "cs_test_secret", id: "cs_sess", customer: body.customer, url: "https://checkout.stripe.test/secret" };
+            } } },
+          };
+        }
+        export function getStripeErrorMessage(error) { return error?.message || "Stripe request failed"; }
+      `,
+      "@/integrations/supabase/client.server": `
+        export const supabaseAdmin = { from() {
+          const chain = {
+            select() { return chain; },
+            eq() { return chain; },
+            is() { return chain; },
+            update() { return chain; },
+            maybeSingle: async () => ({ data: globalThis.__app, error: null }),
+          };
+          return chain;
+        } };
+      `,
+      "@/lib/resume-tokens.server": `
+        export async function resolveResumeToken(_admin, raw) {
+          const id = globalThis.__tokens[raw];
+          if (!id) throw new Error("This link is no longer valid.");
+          return id;
+        }
+        export async function issueResumeToken() { return "minted-resume-token-value"; }
+      `,
+      "@/lib/roles.server": `
+        export async function getActor(userId) { return globalThis.__actors[userId] ?? null; }
+        export async function requireManager() { return { tier: "manager" }; }
+      `,
+      "@supabase/supabase-js": `
+        export function createClient() {
+          return { auth: { getClaims: async () => globalThis.__claims } };
+        }
+      `,
+    };
+    b.onResolve({ filter: /.*/ }, (args) => {
+      if (files[args.path]) return { path: args.path, namespace: "stub" };
+    });
+    b.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: files[args.path], loader: "js" }));
+  },
+};
+
+await build({
+  entryPoints: ["src/lib/payments.functions.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  outfile: join(out, "payments.mjs"),
+  alias: { "@": resolve("src") },
+  plugins: [stub],
+});
+
+const { createCardOnFileSession } = await import(pathToFileURL(join(out, "payments.mjs")).href);
+process.env.SUPABASE_URL = "https://example.supabase.co";
+process.env.SUPABASE_PUBLISHABLE_KEY = "publishable-test-key";
+
+let passed = 0;
+function ok(name) {
+  passed += 1;
+  console.log("PASS", name);
+}
+
+function reset() {
+  globalThis.__stripe.clients = 0;
+  globalThis.__stripe.customers = [];
+  globalThis.__stripe.sessions = [];
+  globalThis.__headers = {};
+  globalThis.__claims = { data: { claims: null }, error: { message: "none" } };
+  globalThis.__actors = {};
+  globalThis.__tokens = {};
+  globalThis.__app = {
+    id: APP,
+    user_id: "applicant-1",
+    full_name: "Dana Reyes",
+    email: "dana@example.com",
+    phone: "555",
+    stripe_customer_id: "cus_existing",
+  };
+}
+
+const session = (extra = {}) => createCardOnFileSession.handle({
+  data: { applicationId: APP, returnUrl, environment: "sandbox", ...extra },
+});
+
+reset();
+assert.throws(() => createCardOnFileSession.validate({
+  applicationId: "not-a-uuid",
+  returnUrl,
+  environment: "sandbox",
+}), /Invalid application/);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("an invalid id is rejected before Stripe");
+
+reset();
+const anon = await session();
+assert.equal(anon.error, "This link is no longer valid. Ask us for a new one and we'll send it over.");
+assert.equal(globalThis.__stripe.clients, 0);
+assert.equal("clientSecret" in anon, false);
+ok("an unauthenticated request is refused before any Stripe call");
+
+reset();
+globalThis.__tokens[TOKEN] = OTHER;
+const wrong = await session({ token: TOKEN });
+assert.equal(wrong.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("the wrong applicant is refused before any Stripe call");
+
+reset();
+globalThis.__headers.authorization = "Bearer applicant-token";
+globalThis.__claims = { data: { claims: { sub: "someone-else" } }, error: null };
+globalThis.__actors["someone-else"] = null;
+const wrongUser = await session();
+assert.equal(wrongUser.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("a signed-in applicant cannot open somebody else's application");
+
+reset();
+globalThis.__tokens[TOKEN] = APP;
+const right = await session({ token: TOKEN });
+assert.deepEqual(Object.keys(right), ["clientSecret"]);
+assert.equal(right.clientSecret, "cs_test_secret");
+assert.equal(globalThis.__stripe.clients, 1);
+assert.equal(globalThis.__stripe.customers.length, 0);
+assert.equal(globalThis.__stripe.sessions[0].customer, "cus_existing");
+assert.equal(JSON.stringify(right).includes("cus_"), false);
+assert.equal(JSON.stringify(right).includes("dana@example.com"), false);
+ok("the correct applicant reuses the existing customer and receives only the client secret");
+
+reset();
+globalThis.__app.stripe_customer_id = null;
+globalThis.__tokens[TOKEN] = APP;
+const created = await session({ token: TOKEN });
+assert.equal(created.clientSecret, "cs_test_secret");
+assert.equal(globalThis.__stripe.customers.length, 1);
+assert.equal(globalThis.__stripe.customers[0].opts.idempotencyKey, `card-on-file-customer:${APP}`);
+assert.equal(globalThis.__stripe.sessions[0].customer, "cus_new");
+assert.equal(JSON.stringify(created).includes("cus_new"), false);
+ok("a first card setup creates one customer with a stable idempotency key");
+
+reset();
+globalThis.__headers.authorization = "Bearer manager-token";
+globalThis.__claims = { data: { claims: { sub: "manager-1" } }, error: null };
+globalThis.__actors["manager-1"] = { userId: "manager-1", tier: "manager" };
+const manager = await session();
+assert.equal(manager.clientSecret, "cs_test_secret");
+assert.equal(globalThis.__stripe.sessions[0].customer, "cus_existing");
+ok("a manager can open the card setup");
+
+reset();
+globalThis.__actors["owner-1"] = { userId: "owner-1", tier: "owner" };
+globalThis.__headers.authorization = "Bearer owner-token";
+globalThis.__claims = { data: { claims: { sub: "owner-1" } }, error: null };
+const owner = await session();
+assert.equal(owner.clientSecret, "cs_test_secret");
+ok("an owner is allowed through the manager path");
+
+reset();
+globalThis.__actors["coord-1"] = { userId: "coord-1", tier: "coordinator" };
+globalThis.__headers.authorization = "Bearer coord-token";
+globalThis.__claims = { data: { claims: { sub: "coord-1" } }, error: null };
+globalThis.__app.user_id = "not-the-coordinator";
+const coord = await session();
+assert.equal(coord.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("a coordinator is not a manager and cannot open another applicant's card");
+
+reset();
+globalThis.__headers.authorization = "Bearer manager-token";
+globalThis.__claims = { data: { claims: { sub: "manager-1" } }, error: null };
+globalThis.__actors["manager-1"] = { userId: "manager-1", tier: "manager" };
+const leaked = await session({ returnUrl: `https://evil.example/card/${APP}?status=success` });
+assert.equal(leaked.error?.includes("no longer valid"), true);
+assert.equal(globalThis.__stripe.clients, 0);
+ok("a return URL on another site is refused before Stripe");
+
+rmSync(out, { recursive: true, force: true });
+console.log(`${passed} card-on-file checks passed`);
