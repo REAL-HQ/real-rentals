@@ -6,11 +6,17 @@ import { readWeeklyCashFlow } from "../src/lib/weekly-cash-flow-read.server";
 
 const stripeMock = vi.hoisted(() => {
   const list = vi.fn();
-  const createStripeClient = vi.fn((_env: string, _options?: { timeout?: number }) => ({ charges: { list } }));
-  return { list, createStripeClient };
+  const create = vi.fn();
+  const refundCreate = vi.fn();
+  const createStripeClient = vi.fn((_env: string, _options?: { timeout?: number }) => ({
+    charges: { list, create },
+    refunds: { create: refundCreate },
+  }));
+  return { list, create, refundCreate, createStripeClient };
 });
 vi.mock("../src/lib/stripe.server", () => ({ createStripeClient: stripeMock.createStripeClient }));
 import { clearStripeReaderCache, createReadOnlyStripe } from "../src/lib/stripe-reader.server";
+import { readLivePartnerCharges, readPartnerCharges } from "../src/lib/partner-statement-read.server";
 
 const VERBS = "create|update|del|delete|capture|confirm|cancel|refund|finalizeInvoice|pay|voidInvoice|close|expire|approve|reject|attach|detach";
 const RESOURCES = "customers|charges|refunds|subscriptions|invoices|invoiceItems|invoicePayments|paymentIntents|setupIntents|paymentMethods|payouts|prices|products|coupons|disputes|creditNotes|plans|subscriptionItems|subscriptionSchedules|balanceTransactions|taxRates|promotionCodes|accounts|sessions";
@@ -33,6 +39,7 @@ const READERS = [
   "src/lib/driver-statement-read.server.ts",
   "src/lib/weekly-cash-flow-read.server.ts",
   "src/lib/stripe-collections.server.ts",
+  "src/lib/partner-statement-read.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
@@ -106,10 +113,60 @@ describe("shared Stripe reader", () => {
     await stripe.charges.list({ limit: 50 }, { timeout: 1_000 });
     expect(stripeMock.list).toHaveBeenCalledTimes(3);
     expect(() => (stripe.charges as unknown as { create: (body: unknown) => Promise<unknown> }).create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
+    expect(stripeMock.create).not.toHaveBeenCalled();
     stripeMock.list.mockRejectedValueOnce({ statusCode: 429, message: "rate limit" });
     await expect(stripe.charges.list({ limit: 1 })).rejects.toThrow(STRIPE_TEMPORARILY_UNAVAILABLE);
     stripeMock.list.mockRejectedValueOnce(new Error("Stripe unavailable"));
     await expect(stripe.charges.list({ limit: 2 })).rejects.toThrow("Stripe unavailable");
+  });
+
+  it("reads partner charges the same way through the read-only client and refuses a write", async () => {
+    const pages = [
+      {
+        data: [{
+          id: "ch_1", amount_captured: 5000, currency: "USD", status: "succeeded", paid: true, captured: true,
+          created: 1_700_000_000, customer: { id: "cus_1" }, payment_intent: "pi_1", livemode: true,
+          invoice: { id: "in_1", parent: { subscription_details: { subscription: "sub_1" } } },
+        }],
+        has_more: true,
+      },
+      {
+        data: [{
+          id: "ch_2", amount_captured: 0, currency: "usd", status: "failed", paid: false, captured: false,
+          created: 1_700_000_100, customer: "cus_2", payment_intent: null, invoice: "in_2", livemode: true,
+        }],
+        has_more: false,
+      },
+    ];
+    const list = async (params: { starting_after?: string }) => (params.starting_after ? pages[1] : pages[0]);
+    const direct = await readPartnerCharges(
+      { charges: { list } },
+      { gte: 10, lt: 20 },
+    );
+    stripeMock.list.mockImplementation(list);
+    const proxied = await readLivePartnerCharges({ gte: 10, lt: 20 });
+    expect(proxied).toEqual(direct);
+    expect(proxied).toEqual({
+      ok: true,
+      charges: [
+        {
+          id: "ch_1", customerId: "cus_1", paymentIntentId: "pi_1", invoiceId: "in_1", subscriptionId: "sub_1",
+          amountCents: 5000, currency: "usd", succeeded: true, created: 1_700_000_000,
+        },
+        {
+          id: "ch_2", customerId: "cus_2", paymentIntentId: null, invoiceId: "in_2", subscriptionId: null,
+          amountCents: 0, currency: "usd", succeeded: false, created: 1_700_000_100,
+        },
+      ],
+    });
+    expect(stripeMock.list).toHaveBeenCalledTimes(2);
+    expect(await readLivePartnerCharges({ gte: 10, lt: 20 })).toEqual(proxied);
+    expect(stripeMock.list).toHaveBeenCalledTimes(2);
+    const stripe = createReadOnlyStripe("live", { cache: true });
+    expect(() => (stripe.charges as unknown as { create: (body: unknown) => void }).create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
+    expect(() => (stripe.refunds as unknown as { create: (body: unknown) => void }).create({})).toThrow("Stripe reader refuses refunds.create");
+    expect(stripeMock.create).not.toHaveBeenCalled();
+    expect(stripeMock.refundCreate).not.toHaveBeenCalled();
   });
 
   it("sends every named reader through the read-only client", () => {
