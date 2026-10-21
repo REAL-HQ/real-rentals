@@ -9,5 +9,6 @@ BEGIN
 END $$;
 CREATE TRIGGER storage_integrity_v1 BEFORE UPDATE OR DELETE ON storage.objects FOR EACH ROW EXECUTE FUNCTION private.storage_integrity_v1();
 CREATE TRIGGER storage_integrity_truncate_v1 BEFORE TRUNCATE ON storage.objects FOR EACH STATEMENT EXECUTE FUNCTION private.storage_integrity_v1();
+REVOKE ALL ON FUNCTION private.storage_integrity_v1() FROM PUBLIC, anon, authenticated, service_role;
 -- Provider object-layer no-overwrite semantics must ALSO be accepted against actual Storage.
 -- A PostgreSQL metadata trigger alone does not prove remote blob immutability.

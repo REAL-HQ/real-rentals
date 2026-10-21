@@ -4,6 +4,10 @@
 -- exists, do not run this file and do not delete the row to make it run.
 -- Leave 06b installed. The historical review is valid only while that check
 -- remains. Run after later steps, and before proposed/rollback/06-document-identity.sql.
+--
+-- CREATE OR REPLACE keeps the step 6 proacl on integrity_serialize_v1
+-- (owner only; PUBLIC, anon, authenticated, and service_role revoked).
+-- The step 6 snapshot already has that ACL. Do not GRANT PUBLIC back.
 BEGIN;
 DO $guard$
 BEGIN

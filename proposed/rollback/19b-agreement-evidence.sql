@@ -2,6 +2,10 @@
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
+--
+-- Dropping public.link_replacement_agreement_v1 removes its
+-- rr_record_executor EXECUTE grant. authenticated is not granted that
+-- function at this step, and this rollback does not grant it.
 BEGIN;
 -- policies added by this step
 -- policies removed or replaced by this step

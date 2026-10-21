@@ -18,6 +18,9 @@ BEGIN;
 CREATE OR REPLACE FUNCTION private.integrity_serialize_v1() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 BEGIN PERFORM private.approval_lock(); RETURN NULL; END $$;
+-- CREATE OR REPLACE keeps the step 6 revoke. Repeat it so this definer
+-- cannot fall back to PUBLIC EXECUTE if step 6 is ever re-read alone.
+REVOKE ALL ON FUNCTION private.integrity_serialize_v1() FROM PUBLIC, anon, authenticated, service_role;
 
 ALTER TABLE public.application_identity_reviews DROP CONSTRAINT application_identity_reviews_resolution_check;
 ALTER TABLE public.application_identity_reviews ADD CONSTRAINT application_identity_reviews_resolution_check CHECK ((

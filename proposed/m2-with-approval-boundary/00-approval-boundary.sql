@@ -154,7 +154,11 @@ BEGIN PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM p
 CREATE FUNCTION public.verify_approval_identity(_application_id uuid,_reviewed_evidence jsonb,_note text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE actor uuid; evidence jsonb; rid uuid;
 BEGIN
- PERFORM private.approval_lock();actor:=private.approval_actor();
+ -- Reject anon and non-staff before the global approval lock. Re-check after
+ -- the lock because role membership can change while this call waits.
+ actor:=private.approval_actor();
+ PERFORM private.approval_lock();
+ IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  -- Scope the executor's own review insert. Callers cannot SET ROLE to this owner.
  PERFORM set_config('record.application_id',_application_id::text,true);
  PERFORM 1 FROM public.applications WHERE id=_application_id AND status IN ('new','reviewing','approved','active') FOR UPDATE NOWAIT;
@@ -262,7 +266,9 @@ $$;
 CREATE FUNCTION public.recover_application_approval(_application_id uuid,_operation_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE actor uuid;op private.approval_operations%ROWTYPE;
 BEGIN
- PERFORM private.approval_lock();actor:=private.approval_actor();
+ actor:=private.approval_actor();
+ PERFORM private.approval_lock();
+ IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  SELECT * INTO op FROM private.approval_operations WHERE operation_id=_operation_id AND application_id=_application_id AND actor_id=actor;
  IF NOT FOUND THEN RAISE EXCEPTION 'approval_operation_unavailable' USING ERRCODE='42501';END IF;
  RETURN private.approval_result(op,true);
@@ -270,7 +276,9 @@ END $$;
 CREATE FUNCTION public.approve_application_checked(_application_id uuid,_expected_version bigint,_operation_id uuid,_mode text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE a public.applications%ROWTYPE;actor uuid;op private.approval_operations%ROWTYPE;
 BEGIN
- PERFORM private.approval_lock();actor:=private.approval_actor();
+ actor:=private.approval_actor();
+ PERFORM private.approval_lock();
+ IF actor IS DISTINCT FROM private.approval_actor() THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  PERFORM set_config('record.application_id',_application_id::text,true);
  IF _operation_id IS NULL OR (_mode IN ('approve_only','approve_invite')) IS NOT TRUE THEN RAISE EXCEPTION 'approval_request_invalid';END IF;
  SELECT * INTO op FROM private.approval_operations WHERE operation_id=_operation_id;
@@ -292,7 +300,7 @@ END $$;
 CREATE FUNCTION public.approval_readiness(_application_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE v bigint;
 BEGIN
- PERFORM private.approval_lock();PERFORM private.approval_actor();
+ PERFORM private.approval_actor();PERFORM private.approval_lock();PERFORM private.approval_actor();
  SELECT approval_evidence_version INTO v FROM public.applications WHERE id=_application_id AND status IN ('new','reviewing');
  IF NOT FOUND THEN RAISE EXCEPTION 'application_state_invalid';END IF;
  PERFORM private.approval_validate(_application_id);
@@ -312,4 +320,39 @@ CREATE POLICY approval_operations_executor_v1 ON private.approval_operations
 ALTER FUNCTION public.verify_approval_identity(uuid,jsonb,text) OWNER TO rr_approval_executor;
 ALTER FUNCTION public.approve_application_checked(uuid,bigint,uuid,text) OWNER TO rr_approval_executor;
 ALTER FUNCTION private.approval_write_audit(uuid,text) OWNER TO rr_approval_executor;
+
+-- Default function privileges include PUBLIC EXECUTE. These are SECURITY DEFINER
+-- or trigger bodies. anon and PUBLIC must not execute them. The five public
+-- RPCs are the staff JWT surface: PUBLIC, anon, and service_role revoked,
+-- EXECUTE granted to authenticated. extend_rental_tx is service_role only
+-- and is not this shape.
+REVOKE ALL ON FUNCTION
+ private.approval_operation_immutable(),
+ private.approval_serialize(),
+ private.approval_snapshot(uuid),
+ private.approval_validate(uuid),
+ private.approval_write_audit(uuid,text),
+ private.approval_application_guard(),
+ private.approval_after(),
+ private.approval_evidence_changed(),
+ private.approval_review_guard(),
+ private.approval_audit_guard(),
+ private.approval_result(private.approval_operations,boolean)
+ FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.approval_snapshot(uuid), private.approval_validate(uuid),
+ private.approval_result(private.approval_operations,boolean) TO rr_approval_executor;
+REVOKE ALL ON FUNCTION
+ public.preview_approval_identity(uuid),
+ public.verify_approval_identity(uuid,jsonb,text),
+ public.recover_application_approval(uuid,uuid),
+ public.approve_application_checked(uuid,bigint,uuid,text),
+ public.approval_readiness(uuid)
+ FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION
+ public.preview_approval_identity(uuid),
+ public.verify_approval_identity(uuid,jsonb,text),
+ public.recover_application_approval(uuid,uuid),
+ public.approve_application_checked(uuid,bigint,uuid,text),
+ public.approval_readiness(uuid)
+ TO authenticated;
 COMMIT;

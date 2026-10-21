@@ -164,5 +164,12 @@ CREATE FUNCTION public.link_replacement_agreement_v1(_rental_id uuid, _agreement
 BEGIN
  RETURN private.record_agreement_evidence(_rental_id, _agreement_id);
 END $$;
+-- No JWT client, and no packet function, calls this wrapper. src and the
+-- record-rental transport call record_existing_rental_evidence_v1 instead.
+-- Restrict it to rr_record_executor, same as the private record helpers.
+-- The two-argument private function stays ungranted to that role. This
+-- public definer runs as the installer, so an executor-owned definer can
+-- enter it and still pass approval_actor under the authenticated gateway.
+-- A session whose current role is only rr_record_executor cannot.
 REVOKE ALL ON FUNCTION public.link_replacement_agreement_v1(uuid,uuid) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.link_replacement_agreement_v1(uuid,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.link_replacement_agreement_v1(uuid,uuid) TO rr_record_executor;

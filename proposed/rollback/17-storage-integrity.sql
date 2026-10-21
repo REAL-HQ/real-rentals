@@ -2,6 +2,10 @@
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
+--
+-- Dropping private.storage_integrity_v1 removes the REVOKE that cleared
+-- PUBLIC, anon, authenticated, and service_role EXECUTE. The signature
+-- is absent before step 17, so no GRANT is restored here.
 BEGIN;
 -- policies added by this step
 -- policies removed or replaced by this step

@@ -501,6 +501,30 @@ UPDATE storage.objects SET version = 'v1'
  WHERE bucket_id = 'driver-docs'
    AND name = '44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
 
+-- record_existing_rental_tx stays executable by authenticated: its body is
+-- the manager gateway entry. Confirm anon and a bare executor session are
+-- not required here. link_replacement_agreement_v1 is executor-only, so the
+-- authenticated manager must be denied before any write.
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+
+DO $$
+BEGIN
+ PERFORM public.link_replacement_agreement_v1(
+  '44444444-4444-4444-8444-444444444444',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ RAISE EXCEPTION 'authenticated was allowed to link a replacement agreement';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%link_replacement_agreement_v1%' THEN RAISE; END IF;
+ RAISE NOTICE 'RESULT link replacement permission denied for authenticated';
+END $$;
+
+RESET SESSION AUTHORIZATION;
 SET LOCAL SESSION AUTHORIZATION authenticator;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', json_build_object(
@@ -558,6 +582,52 @@ BEGIN
     AND approval_evidence IS NOT NULL AND positive_evidence_v1 IS NULL;
  IF n <> 1 THEN RAISE EXCEPTION 'review shape missing'; END IF;
  RAISE NOTICE 'RESULT e pass review is approval_identity/resolved/verified under the 06b check';
+END $$;
+
+-- Real service_role call, the PostgREST shape: session_user authenticator,
+-- role service_role. No stub of approval_actor. extend_rental_tx must accept
+-- a manager id and reject a non-manager before taking the approval lock.
+RESET SESSION AUTHORIZATION;
+UPDATE public.rentals SET end_date = DATE '2026-11-01'
+ WHERE application_id = '44444444-4444-4444-8444-444444444444' AND status = 'active';
+
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE service_role;
+DO $$
+DECLARE result jsonb; started timestamptz; ms numeric; msg text; rid uuid;
+BEGIN
+ IF session_user IS DISTINCT FROM 'authenticator' OR current_user IS DISTINCT FROM 'service_role' THEN
+  RAISE EXCEPTION 'service_role gateway missing session=% current=%', session_user, current_user;
+ END IF;
+ IF position('approval_actor' in pg_get_functiondef('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)'::regprocedure)) > 0 THEN
+  RAISE EXCEPTION 'extend still calls approval_actor';
+ END IF;
+ SELECT id INTO rid FROM public.rentals WHERE application_id='44444444-4444-4444-8444-444444444444' AND status='active';
+ IF rid IS NULL THEN RAISE EXCEPTION 'recorded rental missing'; END IF;
+ started := clock_timestamp();
+ BEGIN
+  PERFORM public.extend_rental_tx(rid, rid, DATE '2026-11-01', DATE '2026-12-01', 'keep the car',
+   '22222222-2222-4222-8222-222222222222');
+  RAISE EXCEPTION 'non-manager extend succeeded';
+ EXCEPTION WHEN insufficient_privilege THEN msg := SQLERRM;
+ END;
+ ms := extract(epoch FROM clock_timestamp()-started)*1000;
+ IF msg IS DISTINCT FROM 'manager_required' THEN RAISE EXCEPTION 'non-manager extend %', msg; END IF;
+ IF ms > 200 THEN RAISE EXCEPTION 'non-manager extend waited % ms', ms; END IF;
+ result := public.extend_rental_tx(
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc', rid, DATE '2026-11-01', DATE '2026-12-01', 'keep the car',
+  '11111111-1111-4111-8111-111111111111');
+ IF result->>'newEnd' IS DISTINCT FROM '2026-12-01' OR result->>'recovered' IS DISTINCT FROM 'false' THEN
+  RAISE EXCEPTION 'extend result %', result;
+ END IF;
+ IF (SELECT end_date FROM public.rentals WHERE id=rid) IS DISTINCT FROM DATE '2026-12-01' THEN
+  RAISE EXCEPTION 'end date was not written';
+ END IF;
+ IF (SELECT count(*) FROM public.audit_log WHERE action='rental.extended' AND entity_id=rid::text
+     AND actor_user_id='11111111-1111-4111-8111-111111111111') <> 1 THEN
+  RAISE EXCEPTION 'extend audit missing';
+ END IF;
+ RAISE NOTICE 'RESULT extend service_role pass %', result->>'newEnd';
 END $$;
 
 ROLLBACK;

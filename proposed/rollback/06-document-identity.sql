@@ -2,6 +2,10 @@
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
+--
+-- Dropping the step 6 trigger functions removes the REVOKE that cleared
+-- PUBLIC, anon, authenticated, and service_role EXECUTE. Those signatures
+-- do not exist in the step 5 catalog, so no GRANT is restored here.
 BEGIN;
 -- policies added by this step
 DROP POLICY IF EXISTS "positive_review_privacy_v1" ON "public"."application_identity_reviews";

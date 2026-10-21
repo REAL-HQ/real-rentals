@@ -16,6 +16,11 @@
 -- those rows are still in the table. Export them, migrate them, and remove
 -- them first. An empty install restores the original check and matches the
 -- pre-step-0 catalog.
+--
+-- The five public approval functions and the private helpers below are
+-- dropped. Dropping them removes the step 0 EXECUTE grants and the
+-- REVOKE from PUBLIC, anon, and service_role. There is no ACL left to
+-- restore on those signatures.
 BEGIN;
 DO $guard$
 BEGIN

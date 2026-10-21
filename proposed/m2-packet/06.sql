@@ -145,6 +145,13 @@ BEGIN
 END $$;
 CREATE TRIGGER signed_binding_v1 BEFORE UPDATE OR DELETE ON public.agreements FOR EACH ROW EXECUTE FUNCTION private.signed_binding_guard_v1();
 CREATE TRIGGER signed_binding_truncate_v1 BEFORE TRUNCATE ON public.agreements FOR EACH STATEMENT EXECUTE FUNCTION private.signed_binding_guard_v1();
+REVOKE ALL ON FUNCTION
+ private.document_integrity_guard_v1(),
+ private.positive_review_guard_v1(),
+ private.integrity_serialize_v1(),
+ private.positive_audit_guard_v1(),
+ private.signed_binding_guard_v1()
+ FROM PUBLIC, anon, authenticated, service_role;
 -- Restrictive AND policy: existing permissive staff policies cannot expose positive reviews.
 -- Existing conflict-review behavior is retained; no new permissive access is created.
 CREATE POLICY positive_review_privacy_v1 ON public.application_identity_reviews AS RESTRICTIVE FOR ALL TO authenticated

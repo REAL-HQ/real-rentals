@@ -416,7 +416,7 @@ SELECT 'public.swap_rental_vehicle_tx(uuid, uuid, uuid, uuid, timestamp with tim
 UNION ALL
 SELECT 'public.list_assignment_history_v1(uuid, uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.list_assignment_history_v1(uuid, uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.list_assignment_history_v1(uuid, uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
-SELECT 'public.extend_rental_tx(uuid, uuid, date, date, text)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.extend_rental_tx(uuid, uuid, date, date, text)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.extend_rental_tx(uuid, uuid, date, date, text)') IS NOT NULL) = ('absent' = 'present')) AS ok
+SELECT 'public.extend_rental_tx(uuid, uuid, date, date, text, uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.extend_rental_tx(uuid, uuid, date, date, text, uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.extend_rental_tx(uuid, uuid, date, date, text, uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'private.record_customer_number_seq' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (
       SELECT 1 FROM pg_catalog.pg_class c
