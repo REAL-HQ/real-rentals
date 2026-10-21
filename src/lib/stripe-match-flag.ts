@@ -1,4 +1,6 @@
-/** Live Stripe is read only when this variable is exactly the string "true". */
-export function stripeMatchReportEnabled(env: { STRIPE_MATCH_REPORT_ENABLED?: string } = process.env): boolean {
-  return env.STRIPE_MATCH_REPORT_ENABLED === "true";
-}
+/**
+ * Stripe Match is off until this constant is turned on in source.
+ * false returns disabled before the role check and before any application or Stripe read.
+ * There is no environment variable for this flag.
+ */
+export const STRIPE_MATCH_REPORT_ENABLED = false;
