@@ -47,6 +47,7 @@ import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
@@ -264,6 +265,16 @@ const PAYOUT_BREAKDOWN_TAB: TabDef = {
   description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
 };
 
+/** Shown only while the Stripe risk monitor is compiled on. Kept out of TABS so a dark build cannot list it. */
+const STRIPE_RISK_MONITOR_TAB: TabDef = {
+  id: "stripe_risk_monitor",
+  label: "Disputes & Failed Payments",
+  icon: ShieldAlert,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Open Disputes, Failed Payments And Past Due Subscriptions",
+};
+
 /** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
 const BILLING_HEALTH_TAB: TabDef = {
   id: "billing_health",
@@ -424,6 +435,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push(RENT_RECONCILIATION_TAB);
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
+  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -492,6 +504,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push({ ...OWNER_FINANCE_SNAPSHOT_TAB, href: "owner_finance_snapshot" });
+  if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
@@ -596,6 +609,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "owner_finance_snapshot") {
     if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "owner_finance_snapshot";
+  }
+  if (args.urlTab === "stripe_risk_monitor") {
+    if (!STRIPE_RISK_MONITOR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "stripe_risk_monitor";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";

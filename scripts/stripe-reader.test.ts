@@ -42,6 +42,7 @@ const READERS = [
   "src/lib/partner-statement-read.server.ts",
   "src/lib/deposit-ledger-stripe.server.ts",
   "src/lib/rent-reconciliation-stripe.server.ts",
+  "src/lib/stripe-risk-monitor-read.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
