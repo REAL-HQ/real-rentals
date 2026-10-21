@@ -2,6 +2,7 @@ import { type StripeEnv } from "./stripe.server";
 import { createReadOnlyStripe } from "./stripe-reader.server";
 import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
 import { aggregateCollections, collectionsWindow, readAllPages, type CollectionCharge, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
+import { chargeLinksFromMetadata } from "./payment-reporting";
 
 const idOf = (v: string | { id: string } | null | undefined) => typeof v === "string" ? v : v?.id;
 
@@ -93,10 +94,12 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     ]);
     // Two invoices for one charge is not a match. Leaving it blank refuses the dedupe rather than picking one.
     const invoiceId = invoiceIds.size === 1 ? [...invoiceIds][0]! : null;
+    const links = chargeLinksFromMetadata(charge.metadata);
     verifiedCharges.push({
       id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency,
       amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee,
       paymentIntentId, invoiceId,
+      paymentIds: links.paymentIds, rentalId: links.rentalId, sessionId: links.sessionId,
     });
   }
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {

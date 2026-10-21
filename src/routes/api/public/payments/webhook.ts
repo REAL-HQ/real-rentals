@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
+import { easternToday } from '@/lib/eastern-day';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
@@ -99,7 +100,7 @@ async function handleCheckoutCompleted(session: any, env: StripeEnv) {
 //    receipts/notifications only fire when a row actually changed.
 //  - DB write errors throw → 400 → Stripe retries, rather than being swallowed.
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => easternToday();
 
 function must<T extends { error: any }>(res: T): T {
   if (res.error && res.error.code !== '23505') throw new Error(res.error.message);

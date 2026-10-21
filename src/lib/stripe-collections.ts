@@ -1,5 +1,6 @@
 import { tierFromRoles, tierAllows } from "./roles";
 import { STRIPE_READER_MAX_PAGES, paginateStripeList } from "./stripe-reader";
+import { easternMidnightIso, nextCalendarDay, rangeMessage } from "./eastern-day";
 
 export const STRIPE_COLLECTIONS_ENABLED = true;
 export function assertCollectionsAccess(roles: string[]) {
@@ -36,6 +37,12 @@ export type CollectionCharge = {
   paymentIntentId?: string | null;
   /** Invoice id when exactly one verified invoice payment names this charge or its PaymentIntent. Absent when the link is ambiguous. */
   invoiceId?: string | null;
+  /** Row ids from charge metadata paymentIds. A multi-row collection stores the link here, not on the payment. */
+  paymentIds?: string[];
+  /** Rental id from charge metadata, when it is a uuid. */
+  rentalId?: string | null;
+  /** Checkout session id from charge metadata, when it is a cs_ token. */
+  sessionId?: string | null;
 }
 export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
@@ -116,18 +123,17 @@ export function collectionsRefreshState(input: { valid: boolean; fetching: boole
   };
 }
 /**
- * Local calendar days (YYYY-MM-DD, browser timezone) → the exact instants the
- * Collections endpoint takes: local midnight of `from` to local midnight after
- * `to`. Shared by the Collections section and the Revenue card so both send
- * identical requests (and share one cache entry) for the same period.
+ * Eastern calendar days (YYYY-MM-DD) → the instants the Collections endpoint
+ * takes: Eastern midnight of `from` to Eastern midnight after `to`. The
+ * webhook stamps paid_date on that same Eastern day, so a charge near midnight
+ * lands in the same range on both sides. Shared by Collections and Revenue.
  */
 export function collectionsRequestRange(from: string, to: string): { from: string; to: string } | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
-  const start = new Date(`${from}T00:00:00`), end = new Date(`${to}T00:00:00`);
-  end.setDate(end.getDate() + 1);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
-  if (end <= start || end.getTime() - start.getTime() > 366 * 86400000) return null;
-  return { from: start.toISOString(), to: end.toISOString() };
+  if (rangeMessage({ from, to })) return null;
+  const start = easternMidnightIso(from);
+  const end = easternMidnightIso(nextCalendarDay(to) ?? "");
+  if (!start || !end || end <= start) return null;
+  return { from: start, to: end };
 }
 
 /**

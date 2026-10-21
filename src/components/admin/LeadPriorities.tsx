@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
 import { Phone, MessageSquare, ArrowUpRight, CalendarDays, Flame } from "lucide-react";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
-import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
+import { overdueAge, type LeadPrioritiesResult, type PriorityLead } from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
 import type { HotProspect } from "@/lib/readiness";
@@ -14,6 +14,7 @@ import { ContactStatusCell } from "./ContactStatusCell";
 import { ModalShell, ModalHeader, ModalBody } from "./modal";
 
 const FOLLOW_UP_LIMIT = 3;
+const ALL_FOLLOW_UPS_PAGE = 25;
 
 export type HotLeadState = {
   state: "loading" | "ready" | "withheld" | "unavailable";
@@ -58,6 +59,8 @@ export default function LeadPriorities({ hot }: { hot: HotLeadState }) {
   const queryClient = useQueryClient();
   const [bucket, setBucket] = useState<"new" | "overdue" | null>(null);
   const [hotOpen, setHotOpen] = useState(false);
+  const [allOpen, setAllOpen] = useState(false);
+  const [allOffset, setAllOffset] = useState(0);
   const priorities = useQuery({
     queryKey: ["lead-priorities", bucket ?? "priority"],
     queryFn: async () => {
@@ -68,6 +71,16 @@ export default function LeadPriorities({ hot }: { hot: HotLeadState }) {
       return result;
     },
     // Contact saves and window focus both refetch. There is no realtime channel.
+    refetchOnWindowFocus: true,
+  });
+  const allLeads = useQuery({
+    queryKey: ["lead-priorities", "all", allOffset],
+    enabled: allOpen,
+    queryFn: async () => {
+      const result = await load({ data: { offset: allOffset, limit: ALL_FOLLOW_UPS_PAGE } });
+      if (!isLeadResult(result)) throw new Error("Lead priorities response unavailable");
+      return result;
+    },
     refetchOnWindowFocus: true,
   });
   const refresh = () => {
@@ -153,81 +166,71 @@ export default function LeadPriorities({ hot }: { hot: HotLeadState }) {
             ) : (
               <ul className="divide-y divide-border">
                 {result.rows.map((lead) => (
-                  <li key={lead.id} className="py-4" data-lead-priority={lead.bucket}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to="/admin"
-                        search={{ tab: "drivers", id: lead.id }}
-                        className="font-semibold hover:underline"
-                      >
-                        {lead.full_name || "Unnamed Applicant"}
-                      </Link>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${lead.priority === "Urgent" ? "bg-red-50 text-red-700" : lead.priority === "High" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}
-                      >
-                        {lead.priority}
-                      </span>
-                      <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} />
-                      {lead.contact_follow_up_on && (
-                        <span className="text-xs text-muted-foreground">
-                          Due {fmtDate(lead.contact_follow_up_on)}
-                          {lead.bucket === "overdue" &&
-                            ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm font-medium">{lead.reason}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{lead.action}</p>
-                    {lead.contact_status_note && (
-                      <p className="mt-2 break-words text-xs text-muted-foreground">
-                        Latest contact note: “{lead.contact_status_note.slice(0, 240)}
-                        {lead.contact_status_note.length > 240 ? "…" : ""}”
-                      </p>
-                    )}
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs font-medium text-primary">
-                      {lead.phone && (
-                        <a
-                          href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
-                          className="inline-flex items-center gap-1"
-                        >
-                          <Phone className="h-3.5 w-3.5" />
-                          Call
-                        </a>
-                      )}
-                      <button
-                        title="Open Messages, then choose Text. Sending permissions and consent are checked there."
-                        onClick={() =>
-                          window.dispatchEvent(
-                            new CustomEvent("open-messages", {
-                              detail: { applicationId: lead.id },
-                            }),
-                          )
-                        }
-                        className="inline-flex items-center gap-1"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        Text
-                      </button>
-                      <Link
-                        to="/admin"
-                        search={{ tab: "drivers", id: lead.id }}
-                        className="inline-flex items-center gap-1"
-                      >
-                        View Applicant
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                  </li>
+                  <FollowUpItem key={lead.id} lead={lead} today={result.today} onSaved={refresh} />
                 ))}
               </ul>
             )}
-            <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground">
-              {result.total
-                ? `Top ${result.rows.length} of ${result.total}`
-                : "0 applicants"}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+              <p className="text-sm text-muted-foreground">
+                {result.total
+                  ? `Top ${result.rows.length} of ${result.total}`
+                  : "0 applicants"}
+              </p>
+              <button type="button" className="text-sm font-medium text-primary" onClick={() => { setAllOffset(0); setAllOpen(true); }}>
+                View All Follow-ups
+              </button>
+            </div>
           </>
         )
+      )}
+      {allOpen && (
+        <ModalShell onClose={() => setAllOpen(false)} size="lg" label="All Follow-ups">
+          <ModalHeader
+            title="All Follow-ups"
+            subtitle="Every bucket, 25 at a time. Today and Information stay in this list."
+            onClose={() => setAllOpen(false)}
+          />
+          <ModalBody>
+            {allLeads.isLoading ? (
+              <p role="status" className="text-sm text-muted-foreground">Loading follow-ups…</p>
+            ) : allLeads.isError || !allLeads.data ? (
+              <p role="alert" className="text-sm text-red-700">Follow-ups could not be loaded.</p>
+            ) : allLeads.data.rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No follow-ups in this list.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {allLeads.data.rows.map((lead) => (
+                  <FollowUpItem key={lead.id} lead={lead} today={allLeads.data.today} onSaved={refresh} />
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {allLeads.data
+                  ? `${allLeads.data.total === 0 ? 0 : allOffset + 1}–${allOffset + allLeads.data.rows.length} of ${allLeads.data.total}`
+                  : " "}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-40"
+                  disabled={allOffset === 0 || allLeads.isFetching}
+                  onClick={() => setAllOffset((current) => Math.max(0, current - ALL_FOLLOW_UPS_PAGE))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-40"
+                  disabled={!allLeads.data?.nextOffset || allLeads.isFetching}
+                  onClick={() => allLeads.data?.nextOffset != null && setAllOffset(allLeads.data.nextOffset)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </ModalBody>
+        </ModalShell>
       )}
       {hotOpen && hot.state === "ready" && (
         <ModalShell onClose={() => setHotOpen(false)} size="lg" label="Hot Prospects">
@@ -278,6 +281,58 @@ export default function LeadPriorities({ hot }: { hot: HotLeadState }) {
         </ModalShell>
       )}
     </section>
+  );
+}
+
+function FollowUpItem({ lead, today, onSaved }: { lead: PriorityLead; today: string; onSaved: () => void }) {
+  return (
+    <li className="py-4" data-lead-priority={lead.bucket}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link to="/admin" search={{ tab: "drivers", id: lead.id }} className="font-semibold hover:underline">
+          {lead.full_name || "Unnamed Applicant"}
+        </Link>
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${lead.priority === "Urgent" ? "bg-red-50 text-red-700" : lead.priority === "High" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}
+        >
+          {lead.priority}
+        </span>
+        <ContactStatusCell applicationId={lead.id} row={lead} onSaved={onSaved} />
+        {lead.contact_follow_up_on && (
+          <span className="text-xs text-muted-foreground">
+            Due {fmtDate(lead.contact_follow_up_on)}
+            {lead.bucket === "overdue" && ` · ${overdueAge(lead.contact_follow_up_on, today)}`}
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-sm font-medium">{lead.reason}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{lead.action}</p>
+      {lead.contact_status_note && (
+        <p className="mt-2 break-words text-xs text-muted-foreground">
+          Latest contact note: “{lead.contact_status_note.slice(0, 240)}
+          {lead.contact_status_note.length > 240 ? "…" : ""}”
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-4 text-xs font-medium text-primary">
+        {lead.phone && (
+          <a href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`} className="inline-flex items-center gap-1">
+            <Phone className="h-3.5 w-3.5" />
+            Call
+          </a>
+        )}
+        <button
+          title="Open Messages, then choose Text. Sending permissions and consent are checked there."
+          onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: lead.id } }))}
+          className="inline-flex items-center gap-1"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          Text
+        </button>
+        <Link to="/admin" search={{ tab: "drivers", id: lead.id }} className="inline-flex items-center gap-1">
+          View Applicant
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    </li>
   );
 }
 

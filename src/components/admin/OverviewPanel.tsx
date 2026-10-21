@@ -1,4 +1,4 @@
-import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
+import { createRevenueBoundary, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
 import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
 import { compareReadiness, selectHotProspects, type ReadinessResult } from "@/lib/readiness";
-import { revenuePaymentsSearch } from "@/lib/payment-reporting";
+import { readEveryPage, revenuePaymentsSearch, summarizePayments, type RefundLink, type ReportingPayment } from "@/lib/payment-reporting";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
@@ -62,7 +62,6 @@ import { fmtDate } from "@/lib/date-format";
 import type React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
-import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
@@ -154,10 +153,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
-  const [revenue, setRevenue] = useState<number | null>(null);
-  const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
+  const [ledger, setLedger] = useState<{ payments: ReportingPayment[]; refundLinks: RefundLink[] | null; complete: boolean } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
-  const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const loadApplicants = useServerFn(getOverviewApplicants);
@@ -287,40 +284,41 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) { setLedger(null); setRevenueLoading(false); return; }
     let live = true;
     setRevenueLoading(true);
     (async () => {
-      const q = (r: DayRange) =>
+      const payments = await readEveryPage<ReportingPayment>((from, to) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
+          .select("id,amount,balance_due,refunded_amount,status,type,paid_date,refunded_at,payment_method,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id,rental_id,notes", { count: "exact" })
           .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", r.from)
-          .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
+      const links = await readEveryPage<RefundLink>((from, to) =>
+        supabase
+          .from("payment_refunds")
+          .select("stripe_charge_id,stripe_payment_intent_id,payment_ids", { count: "exact" })
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
       if (!live) return;
-      const current=paymentRevenue(cur), previous=paymentRevenue(prev);
-      setRevenue(current?.total ?? null);
-      setInternalNonStripe(current?.nonStripe ?? null);
-      setPriorRevenue(previous?.total ?? null);
+      setLedger({
+        payments: payments.rows,
+        refundLinks: links.complete ? links.rows : null,
+        complete: payments.complete && links.complete,
+      });
       setRevenueLoading(false);
-    })().catch(()=>{
-      if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+    })().catch(() => {
+      if (!live) return;
+      setLedger(null);
+      setRevenueLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections]);
-
-  const revenueDelta = useMemo(() => {
-    // No prior revenue is not a 100% rise; it is a comparison that cannot be
-    // made, and saying so is more honest than printing a number.
-    if (priorRevenue === null || revenue === null || priorRevenue === 0) return null;
-    return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
-  }, [revenue, priorRevenue]);
+  }, [canSeeCollections]);
 
   const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
@@ -399,16 +397,15 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         />
 
         <RevenueCard
-          amount={revenue}
-          delta={revenueDelta}
           loading={revenueLoading}
+          ledger={canSeeCollections ? ledger : null}
+          enabled={canSeeCollections}
           range={range}
           compare={compare}
           rangeKey={rangeKey}
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-          consolidated={canSeeCollections ? { internalNonStripe } : null}
         />
 
         <ActionCard
@@ -835,51 +832,64 @@ function ActionCard({
 /**
  * Revenue, for a range you choose.
  *
- * Not a link: the control here is the range, so the card is a panel rather
- * than a destination. The figure is money received in the range, excluding
- * deposits, against the equally long stretch immediately before it.
+ * The figure is Payments → All net collected for this range: the same
+ * summarizePayments dedupe, so an invoice-only subscription row is not added
+ * on top of the Stripe charge that already includes it.
  */
 function RevenueCard({
-  amount,
-  delta,
   loading,
+  ledger,
+  enabled,
   range,
   compare,
   rangeKey,
   onRangeKey,
   custom,
   onCustom,
-  consolidated,
 }: {
-  amount: number | null;
-  delta: number | null;
   loading: boolean;
+  ledger: { payments: ReportingPayment[]; refundLinks: RefundLink[] | null; complete: boolean } | null;
+  enabled: boolean;
   range: DayRange;
   compare: DayRange;
   rangeKey: RangeKey;
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
-  consolidated?: { internalNonStripe: number | null } | null;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   // Owner/Manager only (Coordinators never mount the request; server re-checks).
-  // Shares the Collections section's cache entry — no duplicate provider request.
+  // Shares the Payments Stripe cache entry — no duplicate provider request.
   const loadCollections = useServerFn(getStripeCollections);
-  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
-  const c = consolidated
-    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
-    : null;
-  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
-  const shownAmount = c ? c.amount : amount;
-  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
-  const coverageHint = coverage === "Unavailable"
-    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Open Payments and choose Stripe for the verified collections detail."
-    : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
-      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
+  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, enabled));
+  const summary = useMemo(() => {
+    if (!enabled || !ledger) return null;
+    const stripe = sq.isError
+      ? { status: "error" as const, collectionsComplete: false, totals: null, charges: [] }
+      : sq.data
+        ? {
+            status: "ready" as const,
+            collectionsComplete: sq.data.collectionsComplete,
+            totals: sq.data.totals,
+            charges: sq.data.verifiedCollections.charges,
+          }
+        : { status: "loading" as const, collectionsComplete: false, totals: null, charges: [] };
+    return summarizePayments({
+      payments: ledger.payments,
+      refundLinks: ledger.refundLinks,
+      stripe,
+      deposits: { rentals: [], payments: [] },
+      source: "all",
+      range,
+      truncated: !ledger.complete,
+    });
+  }, [enabled, ledger, sq.isError, sq.data, range]);
+  const shownLoading = enabled && (loading || !ledger || (sq.isFetching && !sq.data));
+  const shownAmount = summary?.netCollected.amount ?? null;
+  const coverage = summary?.coverage ?? "Unavailable";
+  const coverageHint = summary?.coverageReason
+    ?? "A required revenue source could not be verified for this period, so no consolidated total is shown. Open Payments and choose Stripe for the verified collections detail.";
   const goPayments = () => {
     if (open) return;
     navigate({ to: "/admin", search: revenuePaymentsSearch(range) });
@@ -924,21 +934,8 @@ function RevenueCard({
       </div>
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {c ? null : delta != null ? (
-          <>
-            <span className="mx-1 text-[#C7C7CC]">·</span>
-            <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
-              {delta >= 0 ? "+" : ""}
-              {delta}%
-            </span>
-            <span className="text-[#9A9AA3]"> vs prior</span>
-          </>
-        ) : (
-          <>
-            <span className="mx-1 text-[#C7C7CC]">·</span>
-            <span className="text-[#9A9AA3]">no prior revenue to compare</span>
-          </>
-        )}
+        <span className="mx-1 text-[#C7C7CC]">·</span>
+        <span className="text-[#9A9AA3]">same total as Payments, All</span>
       </div>
 
       {open && (

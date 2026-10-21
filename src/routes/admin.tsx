@@ -88,6 +88,7 @@ import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
+import { isRealDay } from "@/lib/eastern-day";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -221,7 +222,7 @@ export const Route = createFileRoute("/admin")({
     if (typeof raw.q === "number") out.q = String(raw.q);
     for (const k of ["q", "vstatus", "body", "partner", "sort", "view", "ready", "phase", "vehicle", "issue"] as const) if (str(raw[k])) out[k] = str(raw[k]);
     if (raw.page !== undefined && Number(raw.page) > 1) out.page = String(Math.floor(Number(raw.page)));
-    const day = (value: unknown) => (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined);
+    const day = (value: unknown) => (typeof value === "string" && isRealDay(value) ? value : undefined);
     if (day(raw.from)) out.from = day(raw.from);
     if (day(raw.to)) out.to = day(raw.to);
     if (raw.msg === 1 || raw.msg === true) out.msg = "inbox";

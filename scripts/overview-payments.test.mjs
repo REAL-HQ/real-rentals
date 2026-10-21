@@ -92,7 +92,14 @@ check(reporting.classifyPaymentSource({ payment_method: "ACH" }) === "other", "A
 check(reporting.classifyPaymentSource({ payment_method: "check" }) === "other", "check is Other");
 check(reporting.classifyPaymentSource({ payment_method: "money_order" }) === "other", "money order is Other");
 check(reporting.classifyPaymentSource({ payment_method: null }) === "other", "blank method is Other");
-check(reporting.classifyPaymentSource({ payment_method: "card" }) === "stripe", "card maps to Stripe");
+check(reporting.classifyPaymentSource({ payment_method: "card", stripe_payment_intent_id: "pi_9" }) === "stripe", "card with a Stripe id maps to Stripe");
+check(reporting.classifyPaymentSource({ payment_method: "card" }) === "other" && reporting.isManualCard({ payment_method: "card" }), "card without a Stripe id is Card (manual)");
+check(reporting.classifyPaymentSource({ payment_method: "Cash App Pay" }) === "cash_app", "Cash App Pay maps to Cash App");
+check(reporting.classifyPaymentSource({ payment_method: "Apple Pay", stripe_payment_intent_id: "pi_9" }) === "stripe", "Apple Pay with a Stripe id maps to Stripe");
+check(reporting.classifyPaymentSource({ payment_method: "Apple Pay" }) === "other" && reporting.isManualCard({ payment_method: "Apple Pay" }), "Apple Pay without a Stripe id is Card (manual)");
+check(reporting.classifyPaymentSource({ payment_method: "PayPal" }) === "other" && !reporting.isManualCard({ payment_method: "PayPal" }), "PayPal is Other");
+check(reporting.classifyPaymentSource({ payment_method: "Card (in person)" }) === "other" && reporting.isManualCard({ payment_method: "Card (in person)" }), "Card (in person) is Card (manual)");
+check(reporting.classifyPaymentSource({ payment_method: "Bank Transfer", stripe_invoice_id: "in_1" }) === "other", "Bank Transfer keeps its method when an invoice id is present");
 check(reporting.classifyPaymentSource({ payment_method: null, stripe_invoice_id: "in_9" }) === "stripe", "invoice id maps to Stripe");
 check(reporting.classifyPaymentSource({ payment_method: "Venmo", stripe_payment_intent_id: "pi_9" }) === "venmo", "named method wins over a Stripe id");
 check(reporting.SOURCE_FILTERS.join(",") === "all,stripe,venmo,cash_app,zelle,wire,cash,other", "source filters");
@@ -109,6 +116,24 @@ check(reporting.duplicatePaymentIds(
   [charge],
   links,
 ).join(",") === "p-pi,p-refund", "dedupe returns only the matching rows");
+check(reporting.paymentMatchesCharge({ id: "p-note", notes: "settled on ch_1" }, charge, []), "a charge id in notes matches");
+check(reporting.paymentMatchesCharge({ id: "bt", payment_method: "Bank Transfer", stripe_invoice_id: "in_1" }, charge, []), "a Bank Transfer invoice id still matches for dedupe");
+const multiCharge = { id: "ch_multi", paymentIntentId: "pi_multi", paymentIds: ["row-60", "row-40"], created: Date.parse("2026-10-10T16:00:00Z") / 1000 };
+check(reporting.paymentMatchesCharge({ id: "row-60", payment_method: null, amount: 60 }, multiCharge, []), "metadata paymentIds matches without comparing amounts");
+check(!reporting.paymentMatchesCharge({ id: "row-other", payment_method: null, amount: 200, paid_date: "2026-10-10" }, { id: "ch_x", paymentIntentId: "pi_x", created: Date.parse("2026-10-10T16:00:00Z") / 1000 }, []), "the same amount is not a match");
+const rentalDay = Date.parse("2026-10-12T03:30:00.000Z") / 1000;
+check(reporting.paymentMatchesCharge(
+  { id: "row-rent", payment_method: null, rental_id: "11111111-1111-4111-8111-111111111111", paid_date: "2026-10-11" },
+  { id: "ch_r", paymentIntentId: "pi_r", rentalId: "11111111-1111-4111-8111-111111111111", paymentIds: [], created: rentalDay },
+  [],
+), "a blank row matches rental and Eastern paid day when the charge names no payment ids");
+check(!reporting.paymentMatchesCharge(
+  { id: "row-cash", payment_method: "Cash", rental_id: "11111111-1111-4111-8111-111111111111", paid_date: "2026-10-11", amount: 60 },
+  { id: "ch_r", rentalId: "11111111-1111-4111-8111-111111111111", paymentIds: [], created: rentalDay },
+  [],
+), "a named cash payment on that rental day stays separate");
+const parsed = reporting.chargeLinksFromMetadata({ paymentIds: "not-a-uuid,11111111-1111-4111-8111-111111111111", rentalId: "also-bad" });
+check(parsed.paymentIds.join(",") === "11111111-1111-4111-8111-111111111111" && parsed.rentalId === null, "metadata keeps only uuid payment ids");
 
 const cash = summarize({
   source: "cash",
@@ -138,6 +163,79 @@ const stripeOnly = summarize({
   payments: [pay({ id: "p-pi", payment_method: "card", stripe_payment_intent_id: "pi_1", amount: 100, refunded_amount: 40, refunded_at: "2026-10-12" })],
 });
 check(stripeOnly.grossCollected.amount === 100 && stripeOnly.refunds.amount === -40 && stripeOnly.fees.amount === -3 && stripeOnly.netCollected.amount === 57, "Stripe filter uses verified gross, signed refunds, signed fees, and net");
+
+const multi = summarize({
+  payments: [
+    pay({ id: "row-60", amount: 60, payment_method: null, paid_date: "2026-10-10" }),
+    pay({ id: "row-40", amount: 40, payment_method: null, paid_date: "2026-10-10" }),
+  ],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 20000, refunds: 0, fees: 0, net: 20000 }],
+    charges: [multiCharge],
+  }),
+});
+check(multi.grossCollected.amount === 200 && multi.netCollected.amount === 200, "a $200 charge recorded as $60 + $40 counts once");
+check(multi.duplicateIds.slice().sort().join(",") === "row-40,row-60", "both multi-row payments are the duplicate");
+check(multi.unmatched.length === 0, "linked multi-row payments are not listed as unmatched");
+
+const unlinked = summarize({
+  payments: [
+    pay({ id: "row-60", amount: 60, payment_method: null, paid_date: "2026-10-10" }),
+    pay({ id: "row-40", amount: 40, payment_method: null, paid_date: "2026-10-10" }),
+  ],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 20000, refunds: 0, fees: 0, net: 20000 }],
+    charges: [{ id: "ch_multi", paymentIntentId: "pi_multi" }],
+  }),
+});
+check(unlinked.grossCollected.amount === 200 && unlinked.coverage === "Partial", "unlinked rows are left out and the total stays partial");
+check(unlinked.unmatched.map((row) => row.id).sort().join(",") === "row-40,row-60", "unlinked rows are listed");
+
+const invoiceOnly = summarize({
+  payments: [pay({ id: "inv", amount: 100, payment_method: null, stripe_invoice_id: "in_1", stripe_payment_intent_id: null, refunded_amount: 0 })],
+  stripe: readyStripe({ totals: [{ currency: "usd", gross: 10000, refunds: 0, fees: 300, net: 9700 }], charges: [{ id: "ch_1", paymentIntentId: null, invoiceId: "in_1" }] }),
+});
+check(invoiceOnly.duplicateIds.join(",") === "inv" && invoiceOnly.netCollected.amount === 97, "an invoice-only row is the same net as Payments All");
+
+const manualCard = summarize({
+  payments: [pay({ id: "card-m", amount: 80, payment_method: "Card", stripe_payment_intent_id: null })],
+  stripe: readyStripe({ totals: [{ currency: "usd", gross: 10000, refunds: 0, fees: 0, net: 10000 }], charges: [{ id: "ch_1", paymentIntentId: "pi_1" }] }),
+});
+check(manualCard.grossCollected.amount === 100 && manualCard.unmatched.some((row) => row.id === "card-m" && /Card \(manual\)/.test(row.reason)), "a manual card is not added on top of Stripe");
+
+const zeroRefund = summarize({
+  source: "stripe",
+  payments: [],
+  stripe: readyStripe({ totals: [{ currency: "usd", gross: 10000, refunds: 0, fees: 0, net: 10000 }], charges: [] }),
+});
+check(Object.is(zeroRefund.refunds.amount, 0), "zero refunds are $0.00, not -$0.00");
+
+const easternRefund = summarize({
+  source: "cash",
+  range: { from: "2026-10-11", to: "2026-10-11" },
+  payments: [pay({ paid_date: "2026-10-11", refunded_amount: 15, refunded_at: "2026-10-12T03:30:00.000Z" })],
+});
+check(easternRefund.refunds.amount === -15, "a refund at 03:30 UTC is the previous Eastern day");
+const nextEasternDay = summarize({
+  source: "cash",
+  range: { from: "2026-10-12", to: "2026-10-12" },
+  payments: [pay({ paid_date: "2026-10-11", refunded_amount: 15, refunded_at: "2026-10-12T03:30:00.000Z" })],
+});
+check(nextEasternDay.refunds.amount === 0 && !Object.is(nextEasternDay.refunds.amount, -0), "that refund is not placed on the UTC day");
+
+const impossible = summarize({ range: { from: "2026-13-45", to: "2026-13-45" }, source: "cash", payments: [pay()] });
+check(impossible.grossCollected.amount === null && /real calendar/.test(impossible.grossCollected.reason), "an impossible date does not total");
+const tooLong = summarize({ range: { from: "2024-01-01", to: "2025-01-01" }, source: "cash", payments: [pay()] });
+check(tooLong.grossCollected.amount === null && /366/.test(tooLong.grossCollected.reason), "a range over 366 days is unavailable");
+
+const cutOff = summarize({ truncated: true, payments: [pay({ amount: 500 })], stripe: readyStripe() });
+check(cutOff.grossCollected.amount === null && cutOff.netCollected.amount === null && cutOff.coverage === "Unavailable", "a truncated read does not total");
+const shortPage = await reporting.readEveryPage(async (from) => from === 0 ? { data: [1], error: null, count: 2 } : { data: [], error: null, count: 2 });
+check(shortPage.complete === false && shortPage.rows.length === 1, "a short page below the count is incomplete");
+const fullPage = await reporting.readEveryPage(async () => ({ data: [1, 2], error: null, count: 2 }));
+check(fullPage.complete === true && fullPage.rows.length === 2, "a page whose length equals the count is complete");
+const missingCount = await reporting.readEveryPage(async () => ({ data: [1], error: null, count: null }));
+check(missingCount.complete === false, "a missing count is incomplete");
 
 const missingLinks = summarize({
   refundLinks: null,
@@ -199,11 +297,18 @@ const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
 const leads = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
 const payments = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
 check(overview.includes("revenuePaymentsSearch(range)"), "the revenue card uses the date-range search");
+check(overview.includes("summarizePayments"), "overview revenue uses the payments dedupe");
+check(overview.includes("readEveryPage"), "overview pages the payment read");
+check(!overview.includes("paymentRevenue"), "overview no longer treats a missing payment intent as non-Stripe");
 check(overview.includes("selectHotProspects"), "overview uses the shared hot rule");
 check(!overview.includes("<StripeCollections"), "the Stripe Collections panel is gone from Overview");
 check(!overview.includes("Hot Prospects"), "the separate Hot Prospects section is gone from Overview");
 check(overview.includes("Billed vs Collected"), "the billed versus collected chart stays");
 check(leads.includes("hot.prospects.length") && leads.includes("hot.prospects.map"), "the hot count and the modal render one list");
+check(leads.includes("View All Follow-ups") && leads.includes("ALL_FOLLOW_UPS_PAGE = 25") && leads.includes('limit: ALL_FOLLOW_UPS_PAGE'), "all follow-ups opens the 25-row list");
+check(payments.includes("readEveryPage") && payments.includes("rangeMessage") && payments.includes('role="alert"'), "payments pages its reads and shows a range message");
+check(readFileSync("src/lib/eastern-day.ts", "utf8").includes("Choose a range of up to 366 days."), "a long range has a visible message");
+check(readFileSync("src/routes/admin.tsx", "utf8").includes("isRealDay"), "payments dates reject an impossible calendar day");
 check(leads.includes('label="Hot Prospects"') || leads.includes('label="Hot Prospects"') || leads.includes("Hot Prospects"), "the modal keeps the hot prospect cards");
 check(payments.includes("SOURCE_FILTERS") && payments.includes("<StripeCollections"), "Stripe detail lives on the Stripe filter");
 check(!overview.includes("Stripe Collected"), "there is no separate Stripe Collected line");

@@ -15,12 +15,14 @@ import {
   SOURCE_LABEL,
   SOURCE_MAPPING_GAPS,
   classifyPaymentSource,
+  readEveryPage,
   summarizePayments,
   type DepositRentalFact,
   type Metric,
   type RefundLink,
   type SourceFilter,
 } from "@/lib/payment-reporting";
+import { rangeMessage } from "@/lib/eastern-day";
 import {
   Select,
   SelectContent,
@@ -96,9 +98,10 @@ export function PaymentsPanel({
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [source, setSource] = useState<SourceFilter>("all");
   const [range, setRange] = useState<DayRange>(() => initialRange ?? resolveRange("last_30"));
-  const [refundLinks, setRefundLinks] = useState<RefundLink[]>([]);
+  const [refundLinks, setRefundLinks] = useState<RefundLink[] | null>([]);
   const [depositRentals, setDepositRentals] = useState<DepositRentalFact[] | null>(null);
   const [extras, setExtras] = useState<"loading" | "ready" | "failed">("loading");
+  const [readsComplete, setReadsComplete] = useState(true);
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
@@ -107,30 +110,40 @@ export function PaymentsPanel({
   const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("payments")
-      .select("*")
-      .then(({ data }) => setPayments(data || []));
+    let live = true;
     supabase
       .from("applications")
       .select("id,full_name,vehicle_id,weekly_rent")
-      .then(({ data }) => setDrivers((data as any) || []));
+      .then(({ data }) => { if (live) setDrivers((data as any) || []); });
     supabase
       .from("vehicles")
       .select("*")
-      .then(({ data }) => setVehicles((data as any) || []));
-    Promise.all([
-      supabase.from("payment_refunds").select("stripe_charge_id,stripe_payment_intent_id,payment_ids"),
-      supabase.from("rentals").select("id,deposit_amount,deposit_held,deposit_status"),
-    ]).then(([refunds, rentals]) => {
-      if (refunds.error || rentals.error || !refunds.data || !rentals.data) {
-        setExtras("failed");
-        return;
-      }
-      setRefundLinks(refunds.data);
-      setDepositRentals(rentals.data);
-      setExtras("ready");
-    }).catch(() => setExtras("failed"));
+      .then(({ data }) => { if (live) setVehicles((data as any) || []); });
+    (async () => {
+      const [paymentPage, refundPage, rentalPage] = await Promise.all([
+        readEveryPage<Payment>((from, to) =>
+          supabase.from("payments").select("*", { count: "exact" }).order("id", { ascending: true }).range(from, to),
+        ),
+        readEveryPage<RefundLink>((from, to) =>
+          supabase.from("payment_refunds").select("stripe_charge_id,stripe_payment_intent_id,payment_ids", { count: "exact" }).order("id", { ascending: true }).range(from, to),
+        ),
+        readEveryPage<DepositRentalFact>((from, to) =>
+          supabase.from("rentals").select("id,deposit_amount,deposit_held,deposit_status", { count: "exact" }).order("id", { ascending: true }).range(from, to),
+        ),
+      ]);
+      if (!live) return;
+      setPayments(paymentPage.rows);
+      setRefundLinks(refundPage.complete ? refundPage.rows : null);
+      setDepositRentals(rentalPage.complete ? rentalPage.rows : null);
+      setReadsComplete(paymentPage.complete && refundPage.complete && rentalPage.complete);
+      setExtras(paymentPage.rows.length || paymentPage.complete ? "ready" : "failed");
+    })().catch(() => {
+      if (!live) return;
+      setExtras("failed");
+      setReadsComplete(false);
+      setRefundLinks(null);
+    });
+    return () => { live = false; };
   }, []);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
@@ -161,7 +174,18 @@ export function PaymentsPanel({
   const sourced = source === "all" ? payments : payments.filter((p) => classifyPaymentSource(p) === source);
   const loadCollections = useServerFn(getStripeCollections);
   const stripeQuery = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, canSeeCollections && (source === "all" || source === "stripe")));
+  const rangeProblem = rangeMessage(range);
   const summary = useMemo(() => {
+    if (rangeProblem) {
+      return summarizePayments({
+        payments: [],
+        refundLinks: [],
+        stripe: { status: "hidden", collectionsComplete: false, totals: null, charges: [] },
+        deposits: null,
+        source,
+        range,
+      });
+    }
     if (extras === "loading") return null;
     const stripe = !canSeeCollections
       ? { status: "hidden" as const, collectionsComplete: false, totals: null, charges: [] }
@@ -182,8 +206,9 @@ export function PaymentsPanel({
       deposits: extras === "ready" && depositRentals ? { rentals: depositRentals, payments } : null,
       source,
       range,
+      truncated: !readsComplete || extras === "failed",
     });
-  }, [extras, canSeeCollections, stripeQuery.isError, stripeQuery.data, payments, refundLinks, depositRentals, source, range]);
+  }, [rangeProblem, extras, readsComplete, canSeeCollections, stripeQuery.isError, stripeQuery.data, payments, refundLinks, depositRentals, source, range]);
   const stripeTagged = sourced.filter((p) => p.stripe_payment_intent_id || p.stripe_invoice_id || p.stripe_subscription_id);
 
   const filtered = (
@@ -269,6 +294,10 @@ export function PaymentsPanel({
         </button>
       </div>
 
+      {rangeProblem && <p role="alert" className="mb-3 text-sm text-[#CC0000]">{rangeProblem}</p>}
+      {!readsComplete && extras !== "loading" && (
+        <p role="status" className="mb-3 text-sm text-[#CC0000]">The payment read stopped before the last row, so no total is shown.</p>
+      )}
       <PaymentSummaryBar
         summary={summary}
         range={range}
@@ -276,6 +305,19 @@ export function PaymentsPanel({
         source={source}
         duplicateCount={summary?.duplicateIds.length ?? 0}
       />
+      {summary && summary.unmatched.length > 0 && (
+        <section className="mb-4 rounded-2xl border border-[#EDEDF0] bg-white p-4 text-sm">
+          <h2 className="font-semibold">Unmatched Payments</h2>
+          <p className="mt-1 text-muted-foreground">These rows are not in the combined total. No amount was used to guess a match.</p>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+            {summary.unmatched.map((row) => (
+              <li key={row.id}>
+                {row.payment_method || "No method"} · {row.amount === null ? "Amount unavailable" : `$${row.amount.toLocaleString()}`} · {row.reason}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {source !== "all" && source !== "stripe" && (
         <section className="mb-4 rounded-2xl border border-[#EDEDF0] bg-white p-4 text-sm">
           <h2 className="font-semibold">Reconciliation</h2>
