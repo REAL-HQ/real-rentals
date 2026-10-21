@@ -49,6 +49,7 @@ import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
+import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 
 export type TabDef = {
   id: string;
@@ -175,6 +176,16 @@ const FLEET_CALENDAR_TAB: TabDef = {
   minTier: "manager",
   group: "FLEET",
   description: "The Week Ahead For Every Vehicle",
+};
+
+/** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const REVENUE_FORECAST_TAB: TabDef = {
+  id: "revenue_forecast",
+  label: "Revenue Forecast",
+  icon: TrendingUp,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Projected Rental Income For The Next 4 Weeks",
 };
 
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -349,6 +360,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -409,6 +421,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
@@ -489,6 +502,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "fleet_calendar") {
     if (!FLEET_CALENDAR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "fleet_calendar";
+  }
+  if (args.urlTab === "revenue_forecast") {
+    if (!REVENUE_FORECAST_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "revenue_forecast";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
