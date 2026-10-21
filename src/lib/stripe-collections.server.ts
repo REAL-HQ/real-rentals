@@ -1,4 +1,6 @@
-import { createStripeClient, type StripeEnv } from "./stripe.server";
+import { type StripeEnv } from "./stripe.server";
+import { createReadOnlyStripe } from "./stripe-reader.server";
+import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
 import { aggregateCollections, collectionsWindow, readAllPages, type CollectionCharge, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
 
 const idOf = (v: string | { id: string } | null | undefined) => typeof v === "string" ? v : v?.id;
@@ -6,14 +8,14 @@ const idOf = (v: string | { id: string } | null | undefined) => typeof v === "st
 /** GET/list/retrieve only. Invoices prove linkage, but never contribute money. */
 export async function loadStripeCollections(environment: StripeEnv, range: CollectionsRange): Promise<CollectionsReport> {
   const window = collectionsWindow(range);
-  const stripe = createStripeClient(environment);
+  const stripe = createReadOnlyStripe(environment);
   const [subscriptions, invoices, invoicePayments, charges, refunds] = await Promise.all([
-    readAllPages(cursor => stripe.subscriptions.list({ status: "all", limit: 100, starting_after: cursor, expand: ["data.customer"] })),
-    readAllPages(cursor => stripe.invoices.list({ limit: 100, starting_after: cursor })),
-    readAllPages(cursor => stripe.invoicePayments.list({ limit: 100, starting_after: cursor })),
+    readAllPages(cursor => stripe.subscriptions.list({ status: "all", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.customer"] })),
+    readAllPages(cursor => stripe.invoices.list({ limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor })),
+    readAllPages(cursor => stripe.invoicePayments.list({ limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor })),
     // Capture may occur after authorization; date cash by settlement below.
-    readAllPages(cursor => stripe.charges.list({ created: { lt: window.lt }, limit: 100, starting_after: cursor, expand: ["data.balance_transaction"] })),
-    readAllPages(cursor => stripe.refunds.list({ created: window, limit: 100, starting_after: cursor, expand: ["data.balance_transaction"] })),
+    readAllPages(cursor => stripe.charges.list({ created: { lt: window.lt }, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
+    readAllPages(cursor => stripe.refunds.list({ created: window, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
   ]);
   const subscriptionIndex = new Map(subscriptions.map(s => [s.id, s]));
   const invoiceIndex = new Map(invoices.map(i => [i.id, i]));
@@ -105,7 +107,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
   if (report.totals.some(t => t.fees === null)) warnings.push("Some Stripe fees are unavailable; net collections remain unknown.");
   let payouts: CollectionsReport["payouts"] = null;
   try {
-    const rows = await readAllPages(cursor => stripe.payouts.list({ arrival_date: window, status: "paid", limit: 100, starting_after: cursor }));
+    const rows = await readAllPages(cursor => stripe.payouts.list({ arrival_date: window, status: "paid", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor }));
     const sums = new Map<string, { currency: string; amount: number; count: number }>();
     for (const p of rows) {
       const b = sums.get(p.currency) || { currency: p.currency, amount: 0, count: 0 }; b.amount += p.amount; b.count++; sums.set(p.currency, b);

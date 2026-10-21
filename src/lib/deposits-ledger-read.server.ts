@@ -1,4 +1,5 @@
-import { createStripeClient } from "./stripe.server";
+import { STRIPE_READER_MAX_PAGES, paginateStripeList, stripeReadFailureReason } from "./stripe-reader";
+import { createReadOnlyStripe } from "./stripe-reader.server";
 import type { LedgerCharge, LedgerCustomer, LedgerRefund } from "./deposits-ledger";
 
 /**
@@ -25,7 +26,6 @@ export type ListOnlyStripeGateway = {
 };
 
 const PAGE = 100;
-const MAX_PAGES = 100;
 
 export async function readDepositsLedger(
   gateway: ListOnlyStripeGateway,
@@ -40,22 +40,17 @@ export async function readDepositsLedger(
     const charges = await pages(gateway.charges.list, { created }, options.signal, deadline, now, mapCharge);
     if (!refunds || !charges) return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
     return { ok: true, charges, refunds };
-  } catch {
-    return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
+  } catch (error) {
+    return { ok: false, reason: stripeReadFailureReason(error) };
   }
 }
 
 export function readLiveDepositsLedger(window: { gte: number; lt: number }, signal?: AbortSignal) {
-  return readDepositsLedger(createStripeClient("live"), window, { signal });
+  return readDepositsLedger(createReadOnlyStripe("live"), window, { signal });
 }
 
 function remaining(deadline: number, now: () => number): number {
   return Math.max(1, Math.min(10_000, deadline - now()));
-}
-function idOf(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) return value;
-  if (value && typeof value === "object" && "id" in value) return idOf((value as { id?: unknown }).id);
-  return null;
 }
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
@@ -75,24 +70,11 @@ async function pages<T, R, P extends Record<string, unknown>>(
   now: () => number,
   map: (row: T) => R | null,
 ): Promise<R[] | null> {
-  const rows: R[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    if (now() >= deadline) return null;
-    signal?.throwIfAborted();
-    const result = await list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) });
-    if (!Array.isArray(result.data) || typeof result.has_more !== "boolean") return null;
-    for (const row of result.data) {
-      const mapped = map(row);
-      if (!mapped) return null;
-      rows.push(mapped);
-    }
-    if (!result.has_more) return rows;
-    const next = idOf((result.data.at(-1) as { id?: unknown } | undefined)?.id);
-    if (!next || next === cursor) return null;
-    cursor = next;
-  }
-  return null;
+  const result = await paginateStripeList(
+    (cursor) => list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) }),
+    { label: `Stripe list ${Object.keys(filter).sort().join(",") || "page"}`, maxPages: STRIPE_READER_MAX_PAGES, signal, deadline, now, map, strict: true },
+  );
+  return result.ok ? result.rows : null;
 }
 
 function mapCustomer(row: RawCustomer): LedgerCustomer | null {

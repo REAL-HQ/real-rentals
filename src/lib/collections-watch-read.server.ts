@@ -1,4 +1,5 @@
-import { createStripeClient } from "./stripe.server";
+import { STRIPE_READER_MAX_PAGES, StripeTemporarilyUnavailable, paginateStripeList, stripeReadFailureReason } from "./stripe-reader";
+import { createReadOnlyStripe } from "./stripe-reader.server";
 import type { WatchCustomer, WatchFailedCharge, WatchOpenInvoice, WatchSubscription } from "./collections-watch";
 
 /**
@@ -36,7 +37,6 @@ export type ReadOnlyStripeGateway = {
 };
 
 const PAGE = 100;
-const MAX_PAGES = 100;
 
 export async function readCollectionsWatch(
   gateway: ReadOnlyStripeGateway,
@@ -65,7 +65,7 @@ export async function readCollectionsWatch(
       if (typeof customer !== "string") return customer;
       const cached = people.get(customer);
       if (cached) return cached;
-      if (now() >= deadline) return null;
+      if (now() >= deadline) throw new StripeTemporarilyUnavailable();
       options.signal?.throwIfAborted();
       const loaded = mapCustomer(await gateway.customers.retrieve(customer, {}, { timeout: remaining(deadline, now) }));
       if (!loaded) return null;
@@ -79,7 +79,7 @@ export async function readCollectionsWatch(
         sub.customer = loaded;
       }
       if (sub.invoiceId && !sub.invoiceLoaded) {
-        if (now() >= deadline) return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
+        if (now() >= deadline) throw new StripeTemporarilyUnavailable();
         options.signal?.throwIfAborted();
         const invoice = mapInvoice(await gateway.invoices.retrieve(sub.invoiceId, {}, { timeout: remaining(deadline, now) }), false);
         if (!invoice) return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
@@ -108,7 +108,7 @@ export async function readCollectionsWatch(
       const known = latestFailed.get(sub.customer.id);
       if (known) { sub.failureReason = known.failureReason; sub.failureAt = known.created; continue; }
       if (!sub.chargeId) continue;
-      if (now() >= deadline) return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
+      if (now() >= deadline) throw new StripeTemporarilyUnavailable();
       options.signal?.throwIfAborted();
       const charge = mapCharge(await gateway.charges.retrieve(sub.chargeId, {}, { timeout: remaining(deadline, now) }));
       if (!charge) return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
@@ -129,13 +129,13 @@ export async function readCollectionsWatch(
       failedCharges: failed.flatMap((charge) => charge.customer ? [{ id: charge.id, customer: charge.customer, amountCents: charge.amountCents, currency: charge.currency, created: charge.created, failureReason: charge.failureReason }] : []),
       openInvoices,
     };
-  } catch {
-    return { ok: false, reason: "Stripe evidence was incomplete or timed out" };
+  } catch (error) {
+    return { ok: false, reason: stripeReadFailureReason(error) };
   }
 }
 
 export function readLiveCollectionsWatch(window: { failedGte: number; dueGte: number; dueLt: number; now: number }, signal?: AbortSignal) {
-  return readCollectionsWatch(createStripeClient("live"), window, { signal });
+  return readCollectionsWatch(createReadOnlyStripe("live"), window, { signal });
 }
 
 type MappedSub = {
@@ -172,24 +172,11 @@ async function pages<T, R, P extends Record<string, unknown>>(
   now: () => number,
   map: (row: T) => R | null,
 ): Promise<R[] | null> {
-  const rows: R[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    if (now() >= deadline) return null;
-    signal?.throwIfAborted();
-    const result = await list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) });
-    if (!Array.isArray(result.data) || typeof result.has_more !== "boolean") return null;
-    for (const row of result.data) {
-      const mapped = map(row);
-      if (!mapped) return null;
-      rows.push(mapped);
-    }
-    if (!result.has_more) return rows;
-    const next = idOf((result.data.at(-1) as { id?: unknown } | undefined)?.id);
-    if (!next || next === cursor) return null;
-    cursor = next;
-  }
-  return null;
+  const result = await paginateStripeList(
+    (cursor) => list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) }),
+    { label: `Stripe list ${Object.keys(filter).sort().join(",") || "page"}`, maxPages: STRIPE_READER_MAX_PAGES, signal, deadline, now, map, strict: true },
+  );
+  return result.ok ? result.rows : null;
 }
 
 function mapCustomer(row: RawCustomer): WatchCustomer | null {

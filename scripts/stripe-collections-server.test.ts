@@ -5,10 +5,12 @@ const { client } = vi.hoisted(() => ({ client: {
 } }));
 vi.mock("../src/lib/stripe.server", () => ({ createStripeClient: () => client }));
 import { loadStripeCollections } from "../src/lib/stripe-collections.server";
+import { clearStripeReaderCache } from "../src/lib/stripe-reader.server";
 const range = { from: "2026-10-15T00:00:00Z", to: "2026-10-17T00:00:00Z" };
 const created = Date.parse("2026-10-15T12:00:00Z") / 1000;
 const page = (data: unknown[]) => ({ data, has_more: false });
 beforeEach(() => {
+  clearStripeReaderCache();
   vi.resetAllMocks();
   vi.spyOn(Date, "now").mockReturnValue(created * 1000);
   client.subscriptions.list.mockResolvedValue(page([{ id: "sub_test", customer: { id: "cus_test", name: "Synthetic Renter" }, currency: "usd", status: "active", cancel_at_period_end: false, items: { has_more: false, data: [{ current_period_end: created + 604800, quantity: 1, price: { currency: "usd", unit_amount: 35000, recurring: { usage_type: "licensed", interval: "week", interval_count: 1 } } }] } }]));
