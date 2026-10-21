@@ -18,7 +18,7 @@ const billingPlanSchema = z
     stripe: z
       .object({
         performed: z.literal(false),
-        subscriptionId: z.string().nullable(),
+        linked: z.boolean(),
         call: z.literal("stripe.subscriptions.update").nullable(),
         params: z
           .object({
@@ -33,7 +33,7 @@ const billingPlanSchema = z
   .strict()
   .superRefine((plan, ctx) => {
     const named = plan.stripe.call != null;
-    if (named !== (plan.stripe.params != null) || named !== (plan.stripe.subscriptionId != null)) {
+    if (named !== (plan.stripe.params != null) || named !== plan.stripe.linked) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Stripe plan shape mismatch" });
     }
     if (plan.stripe.performed !== false || plan.proration !== "none") {
@@ -89,7 +89,7 @@ function extendError(message: string): Error {
     return new Error("The new end date must be after the current end date.");
   }
   if (message.includes("end_before_today")) {
-    return new Error("The new end date must be today or later, Eastern Time.");
+    return new Error("The new end date must be after today, Eastern Time.");
   }
   return new Error(message);
 }
@@ -132,12 +132,28 @@ export const extendRental = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<ExtendRentalResult> => {
     if (!EXTEND_RENTAL_ENABLED) throw new Error(DISABLED);
     await requireManager(context.userId);
-    const { data: result, error } = await (context.supabase as any).rpc("extend_rental_tx", {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Proposed function. It is not in the generated Database types until it is installed.
+    const admin = supabaseAdmin as unknown as {
+      rpc: (
+        fn: "extend_rental_tx",
+        args: {
+          _operation_id: string;
+          _rental_id: string;
+          _expected_end: string;
+          _new_end: string;
+          _reason: string;
+          _actor_id: string;
+        },
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
+    const { data: result, error } = await admin.rpc("extend_rental_tx", {
       _operation_id: data.operationId,
       _rental_id: data.rentalId,
       _expected_end: data.expectedEnd,
       _new_end: data.newEnd,
       _reason: data.reason,
+      _actor_id: context.userId,
     });
     if (error) throw extendError(error.message);
     const parsed = extendResultSchema.parse(result);

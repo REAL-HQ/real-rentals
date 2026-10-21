@@ -109,9 +109,10 @@ function ExtendRentalDialog({
     ? (() => {
         const dayAfter = addCalendarDays(context.endDate, 1);
         const today = easternToday();
-        return dayAfter > today ? dayAfter : today;
+        const tomorrow = addCalendarDays(today, 1);
+        return dayAfter > today ? dayAfter : tomorrow;
       })()
-    : easternToday();
+    : addCalendarDays(easternToday(), 1);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();

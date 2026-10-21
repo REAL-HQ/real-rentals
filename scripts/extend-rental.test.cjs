@@ -106,6 +106,13 @@ test("proposed sql locks in order and does not call stripe", () => {
   assert.match(body, /'performed',false/);
   assert.match(body, /'proration','none'/);
   assert.match(body, /SET end_date=_new_end/);
+  assert.ok(body.indexOf("manager_required") < body.indexOf("PERFORM private.approval_lock()"));
+  assert.match(body, /public\.booking_vehicle_assignments/);
+  assert.equal(body.includes("subscriptionId"), false);
+  assert.match(body, /'linked',r\.stripe_subscription_id IS NOT NULL/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.extend_rental_tx\(uuid,uuid,date,date,text,uuid\) FROM PUBLIC, anon, authenticated/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.extend_rental_tx\(uuid,uuid,date,date,text,uuid\) TO service_role/);
+  assert.equal(server.includes("subscriptionId"), false);
   assert.equal(fs.existsSync(path.join(root, "supabase/migrations/extend-rental-v1.sql")), false);
   assert.equal(sql.slice(sql.indexOf("CREATE TABLE")).includes("ALTER OWNER"), false);
 });
@@ -149,6 +156,15 @@ test("preview cost, weeks, and billing effect match the sql formula", () => {
     today: "2026-10-21",
   });
   assert.equal(open.ok, false);
+  const todayEnd = preview.extensionPreview({
+    currentEnd: "2026-10-20",
+    newEnd: "2026-10-21",
+    weeklyRate: 350,
+    nextPaymentDue: null,
+    today: "2026-10-21",
+  });
+  assert.equal(todayEnd.ok, false);
+  assert.equal(todayEnd.error, "The new end date must be after today, Eastern Time.");
 });
 
 function loadServer(extendEnabled) {
@@ -156,6 +172,10 @@ function loadServer(extendEnabled) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   });
   assert.equal((built.diagnostics || []).filter((d) => d.category === ts.DiagnosticCategory.Error).length, 0);
+  const outputText = built.outputText.replace(
+    /await import\((["']@\/integrations\/supabase\/client\.server["'])\)/g,
+    "require($1)",
+  );
   const calls = [];
   let response = { data: null, error: null };
   let rentalRow = null;
@@ -181,10 +201,20 @@ function loadServer(extendEnabled) {
       if (name === "@/lib/extend-rental") {
         return { EXTEND_RENTAL_ENABLED: extendEnabled, BILLING_EFFECTS: preview.BILLING_EFFECTS };
       }
+      if (name === "@/integrations/supabase/client.server") {
+        return {
+          supabaseAdmin: {
+            rpc: async (...args) => {
+              calls.push(["rpc", ...args]);
+              return response;
+            },
+          },
+        };
+      }
       throw new Error("Unexpected dependency: " + name);
     },
   };
-  vm.runInNewContext(built.outputText, sandbox);
+  vm.runInNewContext(outputText, sandbox);
   return {
     calls,
     api: sandbox.exports,
@@ -242,7 +272,7 @@ function plan(overrides = {}) {
       proration: "none",
       stripe: {
         performed: false,
-        subscriptionId: "sub_test",
+        linked: true,
         call: "stripe.subscriptions.update",
         params: { cancel_at: 1794000000, proration_behavior: "none" },
       },
@@ -263,18 +293,25 @@ function psql(dir, sqlText) {
   );
 }
 
+function pgTool(name) {
+  if (process.env.PG_BIN) return path.join(process.env.PG_BIN, name);
+  const initdb = execFileSync("bash", ["-lc", "command -v initdb"], { encoding: "utf8" }).trim();
+  if (!initdb) throw new Error("initdb not on PATH; set PG_BIN");
+  return path.join(path.dirname(initdb), name);
+}
+
 function startDatabase() {
   const dir = "/tmp/extend-rental-pg";
   fs.rmSync(dir, { recursive: true, force: true });
-  execFileSync("/usr/lib/postgresql/16/bin/initdb", ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${PORT} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/createdb", ["-h", dir, "-p", PORT, DB], { stdio: "ignore" });
+  execFileSync(pgTool("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+  execFileSync(pgTool("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${PORT} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+  execFileSync(pgTool("createdb"), ["-h", dir, "-p", PORT, DB], { stdio: "ignore" });
   return dir;
 }
 
 function stopDatabase(dir) {
   try {
-    execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    execFileSync(pgTool("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
   } catch { /* already stopped */ }
 }
 
@@ -366,6 +403,14 @@ INSERT INTO public.rentals
   NULL, false, 0, DATE '2026-10-28', NULL);
 INSERT INTO public.user_roles VALUES ('${ACTOR}', 'admin');
 INSERT INTO public.payments (rental_id, amount, status) VALUES ('${RENTAL}', 100, 'paid');
+CREATE TABLE public.booking_vehicle_assignments (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ rental_id uuid,
+ vehicle_id uuid,
+ assignment_start timestamptz NOT NULL);
+CREATE TABLE private.assignment_closures (
+ assignment_id uuid PRIMARY KEY,
+ assignment_end timestamptz NOT NULL);
 
 CREATE FUNCTION public.guard_rental_lifecycle() RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
@@ -391,7 +436,16 @@ CREATE TRIGGER guard_rental_lifecycle BEFORE INSERT OR UPDATE OR DELETE ON publi
 `;
 
 function call(op, rental, expected, next) {
-  return `public.extend_rental_tx('${op}', '${rental}', DATE '${expected}', DATE '${next}', 'Driver asked to keep the car')`;
+  return `public.extend_rental_tx('${op}', '${rental}', DATE '${expected}', DATE '${next}', 'Driver asked to keep the car', '${ACTOR}')`;
+}
+
+function easternToday() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function expectError(dir, statement, code) {
@@ -429,14 +483,17 @@ function transactionTests(dir) {
   psql(dir, `
     DO $$ BEGIN
       IF round(100::numeric * 1 / 7, 2) <> 14.29 THEN RAISE EXCEPTION 'cost formula drifted'; END IF;
-      IF has_function_privilege('authenticated', 'public.extend_rental_tx(uuid,uuid,date,date,text)', 'EXECUTE') IS NOT TRUE THEN
-        RAISE EXCEPTION 'authenticated cannot execute';
+      IF has_function_privilege('service_role', 'public.extend_rental_tx(uuid,uuid,date,date,text,uuid)', 'EXECUTE') IS NOT TRUE THEN
+        RAISE EXCEPTION 'service role cannot execute';
       END IF;
-      IF has_function_privilege('anon', 'public.extend_rental_tx(uuid,uuid,date,date,text)', 'EXECUTE') THEN
+      IF has_function_privilege('authenticated', 'public.extend_rental_tx(uuid,uuid,date,date,text,uuid)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'authenticated can execute';
+      END IF;
+      IF has_function_privilege('anon', 'public.extend_rental_tx(uuid,uuid,date,date,text,uuid)', 'EXECUTE') THEN
         RAISE EXCEPTION 'anon can execute';
       END IF;
-      IF has_function_privilege('service_role', 'public.extend_rental_tx(uuid,uuid,date,date,text)', 'EXECUTE') THEN
-        RAISE EXCEPTION 'service role can execute';
+      IF has_function_privilege('public', 'public.extend_rental_tx(uuid,uuid,date,date,text,uuid)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'public can execute';
       END IF;
       IF position('app.rental_tx' IN (SELECT prosrc FROM pg_proc WHERE proname='extend_rental_tx')) > 0 THEN
         RAISE EXCEPTION 'function sets the lifecycle bypass';
@@ -469,6 +526,34 @@ function transactionTests(dir) {
     `);
     expectError(dir, `PERFORM ${call(OP, RENTAL, "2026-10-25", "2026-11-08")};`, "vehicle_conflict_booking");
     psql(dir, `DELETE FROM public.rentals WHERE id='${SAME_DAY}'`);
+    unchanged(dir);
+  });
+
+  test("an assignment on the vehicle conflicts, and this rental's own assignment does not", () => {
+    psql(dir, `
+      INSERT INTO public.booking_vehicle_assignments (rental_id, vehicle_id, assignment_start)
+      VALUES ('${CONFLICT}', '${VEHICLE}', '2026-10-20 16:00:00+00');
+    `);
+    expectError(dir, `PERFORM ${call(OP, RENTAL, "2026-10-25", "2026-11-08")};`, "vehicle_conflict_booking");
+    psql(dir, `DELETE FROM public.booking_vehicle_assignments`);
+    psql(dir, `
+      INSERT INTO public.booking_vehicle_assignments (id, rental_id, vehicle_id, assignment_start)
+      VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '${CONFLICT}', '${VEHICLE}', '2026-10-01 16:00:00+00');
+      INSERT INTO private.assignment_closures (assignment_id, assignment_end)
+      VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-10-28 16:00:00+00');
+    `);
+    expectError(dir, `PERFORM ${call(OP, RENTAL, "2026-10-25", "2026-11-08")};`, "vehicle_conflict_booking");
+    psql(dir, `DELETE FROM private.assignment_closures; DELETE FROM public.booking_vehicle_assignments;`);
+    psql(dir, `
+      INSERT INTO public.booking_vehicle_assignments (id, rental_id, vehicle_id, assignment_start)
+      VALUES
+       ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc', '${RENTAL}', '${VEHICLE}', '2026-10-01 16:00:00+00'),
+       ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '${CONFLICT}', '${VEHICLE}', '2026-10-01 16:00:00+00');
+      INSERT INTO private.assignment_closures (assignment_id, assignment_end)
+      VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-10-25 20:00:00-04');
+    `);
+    psql(dir, `BEGIN; SELECT ${call(OP, RENTAL, "2026-10-25", "2026-11-08")}; ROLLBACK;`);
+    psql(dir, `DELETE FROM private.assignment_closures; DELETE FROM public.booking_vehicle_assignments;`);
     unchanged(dir);
   });
 
@@ -538,6 +623,9 @@ function transactionTests(dir) {
     assert.equal(parsed.billingPlan.proration, "none");
     assert.deepEqual(parsed.billingPlan.includedCharges, ["2026-10-27", "2026-11-03"]);
     assert.equal(parsed.billingPlan.stripe.performed, false);
+    assert.equal(parsed.billingPlan.stripe.linked, true);
+    assert.equal(Object.hasOwn(parsed.billingPlan.stripe, "subscriptionId"), false);
+    assert.equal(JSON.stringify(parsed).includes("sub_"), false);
     assert.equal(parsed.billingPlan.stripe.call, "stripe.subscriptions.update");
     assert.equal(parsed.billingPlan.stripe.params.proration_behavior, "none");
     assert.equal(parsed.billingPlan.stripe.params.cancel_at, cancelAt);
@@ -560,6 +648,15 @@ function transactionTests(dir) {
         END IF;
         IF (SELECT count(*) FROM public.payments) <> 1 OR (SELECT amount FROM public.payments) <> 100 THEN
           RAISE EXCEPTION 'payments changed';
+        END IF;
+        IF position('sub_' IN (SELECT metadata::text FROM public.audit_log WHERE action='rental.extended')) > 0 THEN
+          RAISE EXCEPTION 'audit stored a subscription id';
+        END IF;
+        IF position('sub_' IN (SELECT result::text FROM private.extend_operations)) > 0 THEN
+          RAISE EXCEPTION 'result stored a subscription id';
+        END IF;
+        IF (SELECT result->'billingPlan'->'stripe'->>'linked' FROM private.extend_operations) IS DISTINCT FROM 'true' THEN
+          RAISE EXCEPTION 'subscription link boolean missing';
         END IF;
         IF (SELECT count(*) FROM public.audit_log WHERE action='rental.extended') <> 1 THEN
           RAISE EXCEPTION 'audit was not one row';
@@ -591,8 +688,11 @@ function transactionTests(dir) {
   test("open-ended and past ends are rejected, and a rental with no subscription logs no stripe call", () => {
     expectError(dir, `PERFORM ${call(OP_NOSUB, RENTAL_OPEN, "2026-10-25", "2026-11-08")};`, "end_date_required");
     expectError(dir, `PERFORM ${call(OP_NOSUB, RENTAL_PAST, "2026-10-01", "2026-10-15")};`, "end_before_today");
+    expectError(dir, `PERFORM ${call(OP_NOSUB, RENTAL_PAST, "2026-10-01", easternToday())};`, "end_before_today");
     const quiet = JSON.parse(psql(dir, `SELECT ${call(OP_NOSUB, RENTAL_NOSUB, "2026-10-25", "2026-11-01")}::text`).trim());
     assert.equal(quiet.billingPlan.stripe.performed, false);
+    assert.equal(quiet.billingPlan.stripe.linked, false);
+    assert.equal(JSON.stringify(quiet).includes("sub_"), false);
     assert.equal(quiet.billingPlan.stripe.call, null);
     assert.equal(quiet.billingPlan.stripe.params, null);
     assert.equal(quiet.billingPlan.proration, "none");
@@ -654,10 +754,13 @@ function transactionTests(dir) {
   boxOn.setResponse({ data: plan(), error: null });
   const saved = await boxOn.api.extendRental({ data: extendData, context: boxOn.context });
   assert.equal(saved.billingPlan.stripe.performed, false);
+  assert.equal(saved.billingPlan.stripe.linked, true);
+  assert.equal(JSON.stringify(saved).includes("sub_"), false);
   assert.equal(boxOn.calls.length, 1);
   assert.equal(boxOn.calls[0][0], "rpc");
   assert.equal(boxOn.calls[0][1], "extend_rental_tx");
   assert.equal(boxOn.calls[0][2]._reason, "Driver asked to keep the car");
+  assert.equal(boxOn.calls[0][2]._actor_id, boxOn.context.userId);
   assert.equal(boxOn.calls.some((call) => call[0] === "from"), false);
   boxOn.setResponse({ data: plan({ billingPlan: { ...plan().billingPlan, stripe: { ...plan().billingPlan.stripe, performed: true } } }), error: null });
   await assert.rejects(boxOn.api.extendRental({ data: extendData, context: boxOn.context }));
@@ -665,6 +768,10 @@ function transactionTests(dir) {
     data: plan({ billingPlan: { ...plan().billingPlan, proration: "create_prorations" } }),
     error: null,
   });
+  await assert.rejects(boxOn.api.extendRental({ data: extendData, context: boxOn.context }));
+  const leaked = plan();
+  leaked.billingPlan.stripe.subscriptionId = "sub_test";
+  boxOn.setResponse({ data: leaked, error: null });
   await assert.rejects(boxOn.api.extendRental({ data: extendData, context: boxOn.context }));
   boxOn.setResponse({ data: null, error: { message: "vehicle_conflict_booking" } });
   await assert.rejects(

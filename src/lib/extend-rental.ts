@@ -120,8 +120,8 @@ export function extensionPreview(input: {
     return { ok: false, error: "Enter a New End Date." };
   }
   const today = input.today ?? easternToday();
-  if (input.newEnd < today) {
-    return { ok: false, error: "The new end date must be today or later, Eastern Time." };
+  if (input.newEnd <= today) {
+    return { ok: false, error: "The new end date must be after today, Eastern Time." };
   }
   if (input.newEnd <= input.currentEnd) {
     return { ok: false, error: "The new end date must be after the current end date." };

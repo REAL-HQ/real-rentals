@@ -8,6 +8,13 @@
 -- order after step 19 is safe. This file does not create those objects and
 -- does not weaken their grants.
 --
+-- Execute is service_role only. The handler calls with supabaseAdmin after
+-- requireManager and passes the actor id. This function checks that actor is
+-- a manager before lock 1. A null approval_actor() is the service-role
+-- session and does not replace that id. M2 packet step 26 (extend.sql) must
+-- be updated to this text before it is installed. This file does not edit
+-- proposed/m2-packet.
+--
 -- Lock order, same prefix as activation, closeout, and swap:
 --   1. private.approval_lock()                 advisory (82116,42001)
 --   2. pg_try_advisory_xact_lock(710026,2)     lifecycle; fail 40001, no wait
@@ -28,14 +35,20 @@
 -- guard_rental_lifecycle stays in force and still refuses a status change.
 -- No payment, deposit, weekly rate, next_payment_due, autopay, or vehicle
 -- status write. No Stripe call. billingPlan.stripe.performed is false and
--- proration is none. The logged call, when a subscription id is on the rental,
--- is stripe.subscriptions.update with cancel_at and proration_behavior none.
--- That call is data. This function does not execute it.
+-- proration is none. When a subscription is linked, the logged call is
+-- stripe.subscriptions.update with cancel_at and proration_behavior none.
+-- The plan stores that link as a boolean. The raw subscription id is not
+-- returned and is not written to audit_log. That call is data. This function
+-- does not execute it.
 --
--- End dates are inclusive, matching rental_at_time. An open-ended rental
+-- End dates are inclusive, matching rental_at_time. The new end must be
+-- strictly after today in Eastern Time. An open-ended rental
 -- (end_date null) is rejected. A second active rental on the vehicle cannot
 -- exist (rentals_one_active_per_vehicle_idx); the next booking is any other
--- non-terminal rental whose dates meet the extension. Waitlist conflict is an
+-- non-terminal rental whose dates meet the extension. An assignment on this
+-- vehicle in booking_vehicle_assignments counts the same way: open, or closed
+-- after the current end, and starting on or before the new end. This rental's
+-- own assignment is not a conflict. Waitlist conflict is an
 -- application on this vehicle (applications.vehicle_id; public.waitlist has
 -- no vehicle). A hold or waitlist_signed_up_at with no dates fails closed.
 -- A bare approved application with no date, hold, or signup is not a conflict.
@@ -53,7 +66,7 @@ CREATE TRIGGER extend_operations_immutable BEFORE UPDATE OR DELETE OR TRUNCATE O
  FOR EACH STATEMENT EXECUTE FUNCTION private.record_immutable();
 
 CREATE FUNCTION public.extend_rental_tx(
- _operation_id uuid, _rental_id uuid, _expected_end date, _new_end date, _reason text)
+ _operation_id uuid, _rental_id uuid, _expected_end date, _new_end date, _reason text, _actor_id uuid)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE
  actor uuid; actor_after uuid; app_id uuid; reason text; req jsonb;
@@ -63,7 +76,11 @@ DECLARE
  plan jsonb; result jsonb; today date;
 BEGIN
  IF current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'read_committed_required'; END IF;
- actor:=private.approval_actor();
+ -- Manager read before lock 1. The FOR SHARE recheck stays at step 5.
+ IF _actor_id IS NULL OR NOT EXISTS (
+  SELECT 1 FROM public.user_roles WHERE user_id=_actor_id AND role::text IN ('admin','team')
+ ) THEN RAISE EXCEPTION 'manager_required' USING ERRCODE='42501'; END IF;
+ actor:=_actor_id;
  IF _operation_id IS NULL OR _rental_id IS NULL OR _expected_end IS NULL OR _new_end IS NULL
   OR length(btrim(coalesce(_reason,'')))<5 OR length(btrim(_reason))>500
  THEN RAISE EXCEPTION 'invalid_extend_request'; END IF;
@@ -84,7 +101,7 @@ BEGIN
  IF r.application_id IS DISTINCT FROM app_id THEN
   RAISE EXCEPTION 'extend_contention_retry_whole_transaction' USING ERRCODE='40001'; END IF;
  actor_after:=private.approval_actor();
- IF actor_after IS DISTINCT FROM actor THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
+ IF actor_after IS NOT NULL AND actor_after IS DISTINCT FROM actor THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  PERFORM 1 FROM public.user_roles WHERE user_id=actor AND role::text IN ('admin','team') FOR SHARE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'manager_required' USING ERRCODE='42501'; END IF;
  req:=jsonb_build_object('rental',_rental_id,'expected_end',_expected_end,'new_end',_new_end,
@@ -101,7 +118,7 @@ BEGIN
  IF r.end_date IS DISTINCT FROM _expected_end THEN RAISE EXCEPTION 'stale_end'; END IF;
  IF r.weekly_rate IS NULL OR r.weekly_rate<=0 THEN RAISE EXCEPTION 'no_weekly_rate'; END IF;
  today:=(statement_timestamp() AT TIME ZONE 'America/New_York')::date;
- IF _new_end<today THEN RAISE EXCEPTION 'end_before_today'; END IF;
+ IF _new_end<=today THEN RAISE EXCEPTION 'end_before_today'; END IF;
  IF _new_end<=r.end_date THEN RAISE EXCEPTION 'end_not_extended'; END IF;
  IF EXISTS (
   SELECT 1 FROM public.rentals o
@@ -109,6 +126,13 @@ BEGIN
    AND o.status NOT IN ('closed','ended','completed','returned','finished','cancelled','canceled','void','voided')
    AND o.start_date<=_new_end
    AND (o.end_date IS NULL OR o.end_date>r.end_date)
+ ) THEN RAISE EXCEPTION 'vehicle_conflict_booking'; END IF;
+ IF EXISTS (
+  SELECT 1 FROM public.booking_vehicle_assignments s
+  LEFT JOIN private.assignment_closures c ON c.assignment_id=s.id
+  WHERE s.vehicle_id=r.vehicle_id AND s.rental_id IS DISTINCT FROM r.id
+   AND (s.assignment_start AT TIME ZONE 'America/New_York')::date<=_new_end
+   AND (c.assignment_id IS NULL OR (c.assignment_end AT TIME ZONE 'America/New_York')::date>r.end_date)
  ) THEN RAISE EXCEPTION 'vehicle_conflict_booking'; END IF;
  IF EXISTS (
   SELECT 1 FROM public.applications a
@@ -145,7 +169,7 @@ BEGIN
   'proration','none',
   'stripe',jsonb_build_object(
    'performed',false,
-   'subscriptionId',r.stripe_subscription_id,
+   'linked',r.stripe_subscription_id IS NOT NULL,
    'call',CASE WHEN r.stripe_subscription_id IS NULL THEN NULL::text ELSE 'stripe.subscriptions.update' END,
    'params',CASE WHEN r.stripe_subscription_id IS NULL THEN NULL::jsonb ELSE jsonb_build_object(
     'cancel_at',cancel_unix,'proration_behavior','none') END
@@ -170,5 +194,5 @@ BEGIN
 EXCEPTION WHEN lock_not_available THEN
  RAISE EXCEPTION 'extend_contention_retry_whole_transaction' USING ERRCODE='40001';
 END $$;
-REVOKE ALL ON FUNCTION public.extend_rental_tx(uuid,uuid,date,date,text) FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.extend_rental_tx(uuid,uuid,date,date,text) TO authenticated;
+REVOKE ALL ON FUNCTION public.extend_rental_tx(uuid,uuid,date,date,text,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.extend_rental_tx(uuid,uuid,date,date,text,uuid) TO service_role;
