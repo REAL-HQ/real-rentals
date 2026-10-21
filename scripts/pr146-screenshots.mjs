@@ -403,82 +403,65 @@ async function assertEastern(page) {
   console.log("browser clock", seen.zone, clock);
 }
 
-async function assertPhoneToolbar(page, viewport) {
-  if (viewport.width >= 700) return;
-  const box = await page.locator(".admin-sticky-bar").boundingBox();
-  if (!box || box.y < 0 || box.y + 24 > viewport.height) {
-    throw new Error(`phone toolbar is outside the viewport (y=${box?.y ?? "missing"})`);
-  }
-  const text = await page.locator(".admin-sticky-bar").innerText();
-  for (const label of ["All", "Stripe", "Export CSV"]) {
-    if (!text.includes(label)) throw new Error(`phone toolbar is missing ${label}`);
-  }
-  const exportBox = await page.getByRole("button", { name: "Export CSV" }).boundingBox();
-  if (!exportBox || exportBox.y < 0 || exportBox.y + exportBox.height > viewport.height || exportBox.x < 0 || exportBox.x + 40 > viewport.width) {
-    throw new Error(`Export CSV is outside the phone viewport (${JSON.stringify(exportBox)})`);
-  }
-}
-
-async function scrollBelowChrome(page, locator) {
-  await locator.evaluate((el) => {
-    const headerRaw = getComputedStyle(document.documentElement).getPropertyValue("--admin-sticky-h");
-    const headerH = Number.parseFloat(headerRaw) || document.querySelector("header")?.offsetHeight || 0;
-    const bar = document.querySelector(".admin-sticky-bar");
-    const barH = bar ? bar.getBoundingClientRect().height : 0;
-    const top = window.scrollY + el.getBoundingClientRect().top - headerH - barH - 8;
-    window.scrollTo(0, Math.max(0, top));
-  });
-  await page.waitForTimeout(150);
-}
-
 /**
- * Screenshot aid only. Below 768px the live stylesheet keeps this row
- * non-sticky and sideways-scrolling, which hides Export CSV on a 390px phone.
- * Inline styles here do not change the app.
+ * On a phone the toolbar is one sideways-scrolling row and it is not sticky.
+ * Measure the fixed header's bottom with getBoundingClientRect and scroll so
+ * the row's top sits on that edge. Slide the row when Export CSV should be in view.
  */
-async function pinPhoneToolbar(page) {
-  await page.locator(".admin-sticky-bar").evaluate((el) => {
-    const set = (node, prop, value) => node.style.setProperty(prop, value, "important");
-    set(el, "position", "sticky");
-    set(el, "top", "var(--admin-sticky-h, 0px)");
-    set(el, "z-index", "15");
-    set(el, "background", "#fafafb");
-    set(el, "flex-wrap", "wrap");
-    set(el, "overflow", "visible");
-    set(el, "width", "100%");
-    set(el, "max-width", "100%");
-    set(el, "min-width", "0");
-    for (const child of el.children) {
-      set(child, "flex-shrink", "1");
-      set(child, "max-width", "100%");
-      set(child, "min-width", "0");
-      if (child.classList.contains("flex")) {
-        set(child, "flex-wrap", "wrap");
-        set(child, "overflow", "visible");
-        set(child, "width", "100%");
-      }
-    }
-    el.scrollLeft = 0;
-  });
-}
-
-/** On a phone, keep the whole filter row on screen. Do not slide it sideways to reveal Export CSV. */
-async function framePayments(page, viewport) {
+async function framePayments(page, viewport, { showExport = false } = {}) {
   if (viewport.width < 700) {
-    await pinPhoneToolbar(page);
-    await page.locator(".admin-sticky-bar").evaluate((el) => {
-      const headerRaw = getComputedStyle(document.documentElement).getPropertyValue("--admin-sticky-h");
-      const headerH = Number.parseFloat(headerRaw) || document.querySelector("header")?.offsetHeight || 0;
-      // Measure the row in normal flow. A stuck sticky row reports the viewport
-      // position, which would leave the next section hidden underneath it.
-      el.style.setProperty("position", "static", "important");
-      const top = window.scrollY + el.getBoundingClientRect().top - headerH;
-      window.scrollTo(0, Math.max(0, top));
-      el.style.setProperty("position", "sticky", "important");
-      el.scrollLeft = 0;
-    });
+    const placed = await page.locator(".admin-sticky-bar").evaluate((el, revealExport) => {
+      el.removeAttribute("style");
+      for (const child of el.children) child.removeAttribute("style");
+      const header = document.querySelector("header");
+      const align = () => {
+        const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+        const delta = el.getBoundingClientRect().top - headerBottom;
+        if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+      };
+      align();
+      align();
+      const button = [...el.querySelectorAll("button")].find((node) => (node.textContent || "").includes("Export CSV"));
+      const outstanding = [...el.querySelectorAll("div")].find((node) => (node.textContent || "").trim().startsWith("Outstanding:"));
+      if (revealExport && button) {
+        const barBox = el.getBoundingClientRect();
+        const buttonBox = button.getBoundingClientRect();
+        el.scrollLeft += buttonBox.right - barBox.right + 8;
+        if (outstanding) {
+          const outBox = outstanding.getBoundingClientRect();
+          if (outBox.left < barBox.left + 4) el.scrollLeft -= barBox.left + 4 - outBox.left;
+        }
+      } else {
+        el.scrollLeft = 0;
+      }
+      const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+      const bar = el.getBoundingClientRect();
+      const boxOf = (node) => {
+        if (!node) return null;
+        const r = node.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      };
+      return {
+        headerBottom,
+        toolbarTop: bar.top,
+        toolbarBottom: bar.bottom,
+        toolbarHeight: bar.height,
+        barLeft: bar.left,
+        barRight: bar.right,
+        scrollLeft: el.scrollLeft,
+        export: boxOf(button),
+        outstanding: boxOf(outstanding),
+      };
+    }, showExport);
+    console.log("framePayments", viewport.width, showExport ? "export" : "start", JSON.stringify(placed));
+    if (placed.toolbarTop < placed.headerBottom - 1) {
+      throw new Error(`toolbar top ${placed.toolbarTop} is under the header bottom ${placed.headerBottom}`);
+    }
+    const inside = (box) => box && box.left >= placed.barLeft - 1 && box.right <= placed.barRight + 1 && box.top >= placed.headerBottom - 1 && box.bottom <= viewport.height;
+    if (showExport && (!inside(placed.export) || !inside(placed.outstanding))) {
+      throw new Error(`Outstanding or Export CSV is outside the phone toolbar (${JSON.stringify(placed)})`);
+    }
     await page.waitForTimeout(150);
-    await assertPhoneToolbar(page, viewport);
     return;
   }
   await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
@@ -509,7 +492,10 @@ async function prepare(viewport) {
 
 let failed = 0;
 try {
-  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  const viewports = process.env.SHOT_PHONE_ONLY
+    ? [{ width: 390, height: 844 }]
+    : [{ width: 1280, height: 900 }, { width: 390, height: 844 }];
+  for (const viewport of viewports) {
     const label = widthName(viewport);
     const { ctx, page, errors } = await prepare(viewport);
     const priorities = page.getByRole("region", { name: "Lead Priorities" });
@@ -540,34 +526,54 @@ try {
     await page.getByRole("button", { name: "Export CSV" }).waitFor({ timeout: 30000 });
     await page.getByRole("heading", { name: "Unmatched Payments" }).waitFor({ timeout: 15000 });
     await page.getByText("Partial").first().waitFor();
-    await framePayments(page, viewport);
+    await framePayments(page, viewport, { showExport: viewport.width < 700 });
     await shot(page, `${label}-payments-all`);
-    if (viewport.width < 700) await pinPhoneToolbar(page);
-    await scrollBelowChrome(page, page.getByRole("heading", { name: "Unmatched Payments" }));
-    await assertPhoneToolbar(page, viewport);
+    await page.getByRole("heading", { name: "Unmatched Payments" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(200);
     await shot(page, `${label}-unmatched`);
-    await framePayments(page, viewport);
+    await framePayments(page, viewport, { showExport: viewport.width < 700 });
     await shotOf(page.locator(".admin-sticky-bar"), `${label}-export-csv`);
 
     await page.getByRole("button", { name: "Stripe", exact: true }).click();
     await page.getByRole("region", { name: "Stripe Collections" }).waitFor({ timeout: 15000 });
-    await page.getByText("3:30 PM").first().waitFor({ timeout: 15000 });
+    const clockText = normalizeClock(await page.getByText("Last Successful").innerText());
+    console.log("stripe clock", label, clockText);
+    if (!clockText.includes("3:30 PM")) throw new Error(`stripe clock is not Eastern afternoon: ${clockText}`);
+    await framePayments(page, viewport, { showExport: viewport.width < 700 });
     if (viewport.width < 700) {
-      await pinPhoneToolbar(page);
-      await scrollBelowChrome(page, page.getByText("Last Successful:").first());
+      // The Eastern clock sits just past one phone screen once the single-row
+      // toolbar is below the header. Pin that row at the measured header bottom
+      // (no wrap, no CSS variable) and scroll only far enough to bring the clock in.
+      await page.locator(".admin-sticky-bar").evaluate((el) => {
+        const header = document.querySelector("header");
+        const headerBottom = header ? header.getBoundingClientRect().bottom : 0;
+        el.style.setProperty("position", "sticky");
+        el.style.setProperty("top", `${headerBottom}px`);
+        el.style.setProperty("z-index", "15");
+        el.style.setProperty("background", "#fafafb");
+      });
+      const clock = page.getByText("3:30 PM").first();
+      const before = await clock.boundingBox();
+      if (before && before.y + before.height > viewport.height - 8) {
+        await page.evaluate((overflow) => window.scrollBy(0, overflow), before.y + before.height - (viewport.height - 8));
+      }
     }
-    else await framePayments(page, viewport);
-    await assertPhoneToolbar(page, viewport);
     const clockBox = await page.getByText("3:30 PM").first().boundingBox();
-    if (!clockBox || clockBox.y < 0 || clockBox.y + clockBox.height > viewport.height) {
-      throw new Error(`Eastern clock is outside the viewport (${JSON.stringify(clockBox)})`);
+    const barBox = await page.locator(".admin-sticky-bar").boundingBox();
+    const headerBottom = await page.locator("header").evaluate((el) => el.getBoundingClientRect().bottom);
+    console.log("stripe clock box", label, JSON.stringify({ clockBox, barBox, headerBottom }));
+    if (!clockBox || clockBox.y < headerBottom || clockBox.y + clockBox.height > viewport.height) {
+      throw new Error(`Eastern clock is outside the phone viewport (${JSON.stringify(clockBox)})`);
+    }
+    if (viewport.width < 700 && (!barBox || barBox.y < headerBottom - 1)) {
+      throw new Error(`toolbar moved under the header (${JSON.stringify({ barBox, headerBottom })})`);
     }
     await shot(page, `${label}-payments-stripe`);
 
     await page.getByRole("button", { name: "Venmo", exact: true }).click();
     await page.getByRole("heading", { name: "Reconciliation" }).waitFor();
     await page.getByText("Priya Shah").first().waitFor();
-    await framePayments(page, viewport);
+    await framePayments(page, viewport, { showExport: viewport.width < 700 });
     await shot(page, `${label}-payments-venmo`);
 
     if (errors.length) {
