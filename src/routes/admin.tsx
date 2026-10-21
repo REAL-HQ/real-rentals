@@ -47,6 +47,7 @@ import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
+import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
@@ -801,6 +802,7 @@ function Admin() {
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
+            {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
