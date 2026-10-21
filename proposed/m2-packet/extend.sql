@@ -31,7 +31,8 @@
 -- Retry the whole operation with the same operation id only after rollback.
 --
 -- The function is installer-owned SECURITY DEFINER. Do not ALTER OWNER to
--- rr_record_executor: the step-9 column grants do not include rentals.end_date.
+-- rr_record_executor: HOSTED-INSTALL step 15 (proposed/m2-packet/11.sql)
+-- grants SELECT of rentals.end_date and does not grant UPDATE of it.
 -- It updates only rentals.end_date. It does not set app.rental_tx, so
 -- guard_rental_lifecycle stays in force and still refuses a status change.
 -- No payment, deposit, weekly rate, next_payment_due, autopay, or vehicle
