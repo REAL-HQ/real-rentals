@@ -55,6 +55,7 @@ import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -811,6 +812,7 @@ function Admin() {
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
             {tab === "stripe_match" && <StripeMatchPanel />}
+            {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
