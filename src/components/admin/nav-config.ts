@@ -27,6 +27,7 @@ import {
   PieChart,
   LayoutGrid,
   ScrollText,
+  Scale,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -35,6 +36,7 @@ import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag"
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
+import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 
 export type TabDef = {
   id: string;
@@ -183,11 +185,30 @@ const PARTNER_STATEMENT_TAB: TabDef = {
   description: "Per-Partner Revenue, Expenses And Share For A Period",
 };
 
+/** Shown only while Monthly Owner P&L is compiled on. Kept out of TABS so a dark build cannot list it. */
+const OWNER_PNL_TAB: TabDef = {
+  id: "owner_pnl",
+  label: "Monthly Owner P&L",
+  icon: Scale,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "One Month Of Revenue, Refunds, Expenses And Net",
+};
+
 function withPartnerStatement<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "partners");
   const entry = href ? { ...PARTNER_STATEMENT_TAB, href } : PARTNER_STATEMENT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+function withOwnerPnl<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!OWNER_PNL_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...OWNER_PNL_TAB, href } : OWNER_PNL_TAB;
   next.splice(at + 1, 0, entry as T);
   return next;
 }
@@ -206,10 +227,10 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
-  if (!extra.length) return withPartnerStatement(next, tier);
+  if (!extra.length) return withOwnerPnl(withPartnerStatement(next, tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withPartnerStatement(next, tier);
+  return withOwnerPnl(withPartnerStatement(next, tier), tier);
 }
 
 /**
@@ -254,10 +275,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
-  if (!extra.length) return withPartnerStatement(entries, tier, "partner_statement");
+  if (!extra.length) return withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl");
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withPartnerStatement(entries, tier, "partner_statement");
+  return withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */

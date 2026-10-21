@@ -64,6 +64,8 @@ import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 import { PartnerStatementPanel } from "@/components/admin/PartnerStatementPanel";
 import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
+import { OwnerPnlPanel } from "@/components/admin/OwnerPnlPanel";
+import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -326,6 +328,10 @@ function Admin() {
     if (urlTab === "partner_statement") {
       if (!PARTNER_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "partner_statement";
+    }
+    if (urlTab === "owner_pnl") {
+      if (!OWNER_PNL_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "owner_pnl";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -845,6 +851,7 @@ function Admin() {
               <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
             )}
             {PARTNER_STATEMENT_ENABLED && tab === "partner_statement" && <PartnerStatementPanel />}
+            {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
