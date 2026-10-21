@@ -2,10 +2,14 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert/strict");
-const { execFileSync, spawn } = require("child_process");
+const { execFileSync } = require("child_process");
+const net = require("net");
 const { createRequire } = require("module");
 
+const { pgProgram, makeDataDir } = require("./pg-local.cjs");
+
 const root = path.resolve(__dirname, "..");
+const PACKET = "08e3da485482e090017026bfeee375a6df3329d5";
 const deps = createRequire(path.resolve(root, "package.json"));
 const ts = deps("typescript");
 const z = deps("zod");
@@ -63,10 +67,13 @@ test("server checks the flag before reads, the send, and the evidence rpc", () =
   assert.match(sendHandler, /vehicleId: vehicles\.rentalVehicleId/);
   assert.ok(sendHandler.indexOf('import("@/lib/agreements.functions")') < sendHandler.indexOf('import("@/integrations/supabase/client.server")'));
   assert.ok(linkHandler.indexOf("if (!SWAP_ENABLED)") < linkHandler.indexOf("requireManager"));
-  assert.ok(linkHandler.indexOf("requireManager") < linkHandler.indexOf("supabaseAdmin"));
-  assert.ok(linkHandler.indexOf("supabaseAdmin") < linkHandler.indexOf('.rpc("link_replacement_agreement_v1"'));
-  assert.match(linkHandler, /_actor: context\.userId/);
-  assert.equal(linkHandler.includes("context.supabase"), false);
+  assert.ok(linkHandler.indexOf("requireManager") < linkHandler.indexOf("context.supabase"));
+  assert.match(linkHandler, /\.rpc\("link_replacement_agreement_checked"/);
+  assert.match(linkHandler, /_rental_id: data\.rentalId/);
+  assert.match(linkHandler, /_agreement_id: data\.agreementId/);
+  assert.equal(linkHandler.includes("_actor"), false);
+  assert.equal(linkHandler.includes("supabaseAdmin"), false);
+  assert.equal(linkHandler.includes("link_replacement_agreement_v1"), false);
   assert.match(server, /proposed\/m2-packet\/19b\.sql/);
   assert.match(server, /requireManager/);
   assert.doesNotMatch(server, /from ["']@\/lib\/esign\.server["']/);
@@ -297,6 +304,164 @@ function loadAgreementsModule(swapEnabled) {
   return load(path.join(root, "src/lib/agreements.functions"));
 }
 
+function packetSql(name) {
+  try {
+    execFileSync("git", ["cat-file", "-e", `${PACKET}^{commit}`], { cwd: root, stdio: "ignore" });
+  } catch {
+    execFileSync("git", ["fetch", "origin", "cursor/m2-packet-grants-ba3d"], { cwd: root, stdio: "inherit" });
+  }
+  return execFileSync("git", ["show", `${PACKET}:proposed/m2-packet/${name}`], { cwd: root, encoding: "utf8" });
+}
+
+function reservePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+function evidencePsql(dir, port, sqlText) {
+  return execFileSync(
+    pgProgram("psql"),
+    ["-h", dir, "-p", String(port), "-d", "evidence", "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
+    { input: sqlText, encoding: "utf8" },
+  );
+}
+
+function expectSqlError(dir, port, sqlText, pattern) {
+  try {
+    evidencePsql(dir, port, sqlText);
+  } catch (error) {
+    const text = `${error.stderr || ""}\n${error.stdout || ""}\n${error.message || ""}`;
+    assert.match(text, pattern);
+    return;
+  }
+  throw new Error(`expected SQL error matching ${pattern}`);
+}
+
+async function checkedEvidenceDatabase() {
+  const sql19b = packetSql("19b.sql");
+  assert.match(sql19b, /CREATE FUNCTION public\.link_replacement_agreement_checked\(_rental_id uuid, _agreement_id uuid\)/);
+  assert.match(sql19b, /GRANT EXECUTE ON FUNCTION public\.link_replacement_agreement_checked\(uuid,uuid\) TO authenticated;/);
+  assert.match(sql19b, /GRANT EXECUTE ON FUNCTION public\.link_replacement_agreement_v1\(uuid,uuid\) TO rr_record_executor;/);
+  assert.doesNotMatch(sql19b, /_actor uuid/);
+  const port = await reservePort();
+  const dir = makeDataDir("agreement-evidence-pg-");
+  try {
+    execFileSync(pgProgram("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+    execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${port} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+    execFileSync(pgProgram("createdb"), ["-h", dir, "-p", String(port), "evidence"], { stdio: "ignore" });
+    evidencePsql(dir, port, `
+      CREATE EXTENSION IF NOT EXISTS pgcrypto;
+      CREATE SCHEMA IF NOT EXISTS private;
+      CREATE ROLE rr_record_executor NOLOGIN NOSUPERUSER NOBYPASSRLS;
+      CREATE ROLE anon NOLOGIN;
+      CREATE ROLE authenticated NOLOGIN;
+      CREATE ROLE service_role NOLOGIN;
+      CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
+      BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
+      CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;
+      CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;
+      CREATE TABLE public.applications (id uuid PRIMARY KEY, user_id uuid, deleted_at timestamptz);
+      CREATE TABLE public.vehicles (id uuid PRIMARY KEY);
+      CREATE TABLE public.rentals (
+        id uuid PRIMARY KEY, application_id uuid REFERENCES public.applications(id),
+        vehicle_id uuid REFERENCES public.vehicles(id), status text);
+      CREATE TABLE public.documents (id uuid PRIMARY KEY);
+      CREATE TABLE public.agreements (
+        id uuid PRIMARY KEY, application_id uuid, vehicle_id uuid, status text, sha256 text,
+        document_id uuid, completed_document_id uuid, signed_at timestamptz, archive_status text);
+      CREATE TABLE public.user_roles (user_id uuid, role text);
+      CREATE TABLE public.application_identity_reviews (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid);
+      CREATE TABLE public.audit_log (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), actor_user_id uuid, actor_role text, action text,
+        entity_type text, entity_id text, summary text, metadata jsonb);
+      INSERT INTO public.applications VALUES ('${APP}', '${DRIVER}', NULL);
+      INSERT INTO public.vehicles VALUES ('${OLD}'), ('${NEW}');
+      INSERT INTO public.rentals VALUES ('${RENTAL}', '${APP}', '${OLD}', 'active');
+      INSERT INTO public.documents VALUES ('${DOC}');
+      INSERT INTO public.agreements VALUES
+        ('${AGREEMENT}', '${APP}', '${NEW}', 'signed', '${HASH}', '${DOC}', '${DOC}', '2026-10-19 12:00:00+00', 'archived');
+      INSERT INTO public.user_roles VALUES ('${ACTOR}', 'admin'), ('${COORD}', 'coordinator');
+    `);
+    evidencePsql(dir, port, sql19b);
+    const grants = evidencePsql(dir, port, `
+      SELECT has_function_privilege('authenticated', 'public.link_replacement_agreement_checked(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('anon', 'public.link_replacement_agreement_checked(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('service_role', 'public.link_replacement_agreement_checked(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('public', 'public.link_replacement_agreement_checked(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('authenticated', 'public.link_replacement_agreement_v1(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('rr_record_executor', 'public.link_replacement_agreement_v1(uuid,uuid)', 'EXECUTE')
+    `).trim();
+    assert.equal(grants, "true false false false false true");
+    const def = evidencePsql(dir, port, `SELECT pg_get_functiondef('public.link_replacement_agreement_checked(uuid,uuid)'::regprocedure)`);
+    const signature = def.slice(0, def.indexOf("AS $function$"));
+    assert.match(signature, /_rental_id uuid, _agreement_id uuid/);
+    assert.doesNotMatch(signature, /_actor/);
+    assert.match(def, /private\.approval_actor\(\)/);
+    assert.match(def, /link_replacement_agreement_v1/);
+    expectSqlError(
+      dir,
+      port,
+      `BEGIN; SET LOCAL ROLE anon; SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
+      /permission denied/i,
+    );
+    expectSqlError(
+      dir,
+      port,
+      `BEGIN; SET LOCAL ROLE service_role; SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
+      /permission denied/i,
+    );
+    expectSqlError(
+      dir,
+      port,
+      `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_v1('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
+      /permission denied/i,
+    );
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${COORD}'::uuid $$;`);
+    expectSqlError(
+      dir,
+      port,
+      `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
+      /manager_required/,
+    );
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;`);
+    const linked = JSON.parse(evidencePsql(dir, port, `
+      BEGIN;
+      SET LOCAL ROLE authenticated;
+      SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}')::text;
+      COMMIT;
+    `).trim());
+    assert.equal(linked.contract, "agreement-evidence-v1");
+    assert.equal(linked.rentalId, RENTAL);
+    assert.equal(linked.agreementId, AGREEMENT);
+    assert.equal(linked.vehicleId, NEW);
+    assert.equal(linked.recovered, false);
+    assert.equal(linked.signerUserId, DRIVER);
+    const recovered = JSON.parse(evidencePsql(dir, port, `
+      BEGIN;
+      SET LOCAL ROLE authenticated;
+      SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}')::text;
+      COMMIT;
+    `).trim());
+    assert.equal(recovered.recovered, true);
+    assert.equal(recovered.evidenceId, linked.evidenceId);
+    const audits = evidencePsql(dir, port, `SELECT count(*) FROM public.audit_log WHERE action='rental.agreement_evidence_linked'`).trim();
+    assert.equal(audits, "1");
+    results.push("real 19b checked function links as the authenticated manager");
+    console.log("PASS real 19b checked function links as the authenticated manager");
+  } finally {
+    try {
+      execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    } catch { /* already stopped */ }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function agreementAdmin(rentalVehicleId) {
   const inserts = [];
   const oldVehicle = {
@@ -427,13 +592,13 @@ function agreementAdmin(rentalVehicleId) {
   });
   assert.equal(linked.evidenceId, evidence.evidenceId);
   assert.equal(linked.recovered, false);
-  const rpc = match.calls.filter((c) => c[0] === "admin-rpc");
+  const rpc = match.calls.filter((c) => c[0] === "user-rpc");
   assert.equal(rpc.length, 1);
-  assert.equal(match.calls.some((c) => c[0] === "user-rpc"), false);
-  assert.equal(rpc[0][1], "link_replacement_agreement_v1");
+  assert.equal(match.calls.some((c) => c[0] === "admin-rpc"), false);
+  assert.equal(rpc[0][1], "link_replacement_agreement_checked");
   assert.equal(rpc[0][2]._rental_id, RENTAL);
   assert.equal(rpc[0][2]._agreement_id, AGREEMENT);
-  assert.equal(rpc[0][2]._actor, ACTOR);
+  assert.equal("_actor" in rpc[0][2], false);
   assert.equal("_sha256" in rpc[0][2], false);
   results.push("matching vehicles use the existing send and the evidence rpc");
   console.log("PASS matching vehicles use the existing send and the evidence rpc");
@@ -463,6 +628,7 @@ function agreementAdmin(rentalVehicleId) {
   results.push("override names the rental vehicle and the default path names the application vehicle");
   console.log("PASS override names the rental vehicle and the default path names the application vehicle");
 
+  await checkedEvidenceDatabase();
   console.log(JSON.stringify({ pass: results.length, fail: 0 }));
 })().catch((error) => {
   console.error(error);

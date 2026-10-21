@@ -3,10 +3,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 
-// Replacement evidence is proposed/m2-packet/19b.sql on PR #190.
-// That function is granted to rr_record_executor only. authenticated cannot
-// call it. This server uses the service role and passes the manager id.
-// Do not copy 19b into this branch.
+// Replacement evidence is proposed/m2-packet/19b.sql on PR #190
+// (08e3da485482e090017026bfeee375a6df3329d5). The manager path is
+// link_replacement_agreement_checked(uuid, uuid): authenticated only, no
+// _actor argument. The actor is private.approval_actor() on the caller JWT.
+// This server calls that function with the manager's JWT client.
+// link_replacement_agreement_v1 stays executor-only. Do not copy 19b here.
 
 const DISABLED = "Replacement agreement is disabled pending installation and acceptance";
 
@@ -144,7 +146,7 @@ export const sendReplacementAgreement = createServerFn({ method: "POST" })
       .parse(sent);
   });
 
-/** Manager check, then the service role. The client supplies no hash. */
+/** Manager check, then the checked RPC on this manager's JWT client. The client supplies no hash and no actor. */
 export const linkReplacementAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => linkInput.parse(input))
@@ -152,11 +154,17 @@ export const linkReplacementAgreement = createServerFn({ method: "POST" })
     if (!SWAP_ENABLED) throw new Error(DISABLED);
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: result, error } = await (supabaseAdmin as any).rpc("link_replacement_agreement_v1", {
+    // The generated Database type does not list this proposed function yet.
+    // The call still uses the manager JWT client from requireSupabaseAuth.
+    const db = context.supabase as unknown as {
+      rpc: (
+        fn: "link_replacement_agreement_checked",
+        args: { _rental_id: string; _agreement_id: string },
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
+    const { data: result, error } = await db.rpc("link_replacement_agreement_checked", {
       _rental_id: data.rentalId,
       _agreement_id: data.agreementId,
-      _actor: context.userId,
     });
     if (error) throw new Error(error.message);
     const parsed = evidenceResult.parse(result);

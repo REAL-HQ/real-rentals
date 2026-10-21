@@ -66,7 +66,13 @@ export function BookingVehicleHistory({
   return (
     <div data-testid="vehicle-timeline">
       <div className="flex items-center justify-between gap-2">
-        {failed ? (
+        {!SWAP_ENABLED ? (
+          entries.length === 0 ? (
+            <p className="text-[13px] text-[#55555E]">No vehicle changes recorded.</p>
+          ) : (
+            <span />
+          )
+        ) : failed ? (
           <p className="text-[13px] text-[#55555E]">Assignment history could not be loaded.</p>
         ) : ready === false ? (
           <p className="text-[13px] text-[#55555E]">Assignment History is not installed yet.</p>
