@@ -2,9 +2,10 @@
 -- License and agreement hashes are extensions.digest of the byte strings below.
 -- No sha256 hex literal is written in this file.
 -- (a) and (b) insert the confirmDocumentUpload column list with no content_sha256.
--- The sha is applied afterwards by the same assignment the flag-on upload path
--- makes: documents.content_sha256 and storage.objects.metadata.sha256, both
--- from the digest of those bytes.
+-- The sha is applied afterwards the way the flag-on client records it:
+-- documents.content_sha256, and storage.objects.user_metadata.sha256.
+-- metadata is system data and is left without a sha. Both values are the
+-- digest of those bytes.
 BEGIN;
 
 INSERT INTO auth.users (id, email, email_confirmed_at)
@@ -154,25 +155,29 @@ EXCEPTION WHEN OTHERS THEN
  RAISE NOTICE 'RESULT c authenticated pass %', SQLERRM;
 END $$;
 
--- Flag-on upload path: hash the stored bytes, write both places. No hex literal.
+-- Flag-on upload path: hash the stored bytes and record them the way the
+-- client does. No hex literal. metadata stays free of sha256.
 UPDATE public.documents d
 SET content_sha256 = encode(extensions.digest(b.bytes, 'sha256'), 'hex')
 FROM upload_bytes b
 WHERE d.id = b.doc AND b.slot IN ('front','back');
-INSERT INTO storage.objects (bucket_id, name, metadata)
-SELECT 'driver-docs', b.path, jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex'))
+INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata)
+SELECT 'driver-docs', b.path,
+ jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex')),
+ jsonb_build_object('mimetype', 'image/jpeg', 'size', octet_length(b.bytes))
 FROM upload_bytes b WHERE b.slot IN ('front','back');
 UPDATE public.documents
 SET review_status='verified', reviewed_by='11111111-1111-4111-8111-111111111111', reviewed_at='2026-10-20 12:00:00+00'
 WHERE id IN ('55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666');
 
 DO $$
-DECLARE front text; back text; obj text;
+DECLARE front text; back text; obj text; sys text;
 BEGIN
  SELECT content_sha256 INTO front FROM public.documents WHERE id='55555555-5555-4555-8555-555555555555';
  SELECT content_sha256 INTO back FROM public.documents WHERE id='66666666-6666-4666-8666-666666666666';
- SELECT metadata->>'sha256' INTO obj FROM storage.objects
+ SELECT user_metadata->>'sha256', metadata->>'sha256' INTO obj, sys FROM storage.objects
   WHERE bucket_id='driver-docs' AND name='44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
+ IF sys IS NOT NULL THEN RAISE EXCEPTION 'sha was seeded into metadata'; END IF;
  IF front !~ '^[0-9a-f]{64}$' OR back !~ '^[0-9a-f]{64}$' OR front = back OR front IS DISTINCT FROM obj THEN
   RAISE EXCEPTION 'sha recording mismatch front % back % object %', front, back, obj;
  END IF;
@@ -197,10 +202,11 @@ BEGIN
   'completed-v1/cccccccc-cccc-4ccc-8ccc-cccccccccccc/' || sha || '.pdf',
   sha, true
  );
- INSERT INTO storage.objects (bucket_id, name, metadata) VALUES (
+ INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata) VALUES (
   'rental-agreements',
   'completed-v1/cccccccc-cccc-4ccc-8ccc-cccccccccccc/' || sha || '.pdf',
-  jsonb_build_object('sha256', sha)
+  jsonb_build_object('sha256', sha),
+  jsonb_build_object('mimetype', 'application/pdf')
  );
  INSERT INTO public.agreements (
   id, application_id, vehicle_id, title, body, status, signed_at, document_id, completed_document_id,
@@ -239,7 +245,7 @@ END $$;
 ROLLBACK TO SAVEPOINT esign_paths;
 
 -- The missing production write: the first insert is already immutable-v1, in
--- rental-agreements, and the object metadata sha is the digest of the bytes.
+-- rental-agreements, and the object user_metadata sha is the digest of the bytes.
 -- Step 9 cannot do this after eSign finalizes the row.
 INSERT INTO public.documents (
  id, driver_id, kind, category, storage_bucket, storage_path, content_sha256, is_current
@@ -252,10 +258,11 @@ SELECT
  encode(extensions.digest(b.bytes, 'sha256'), 'hex'),
  true
 FROM upload_bytes b WHERE b.slot='agreement';
-INSERT INTO storage.objects (bucket_id, name, metadata)
+INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata)
 SELECT 'rental-agreements',
  'immutable-v1/99999999-9999-4999-8999-999999999999/' || encode(extensions.digest(b.bytes, 'sha256'), 'hex') || '.pdf',
- jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex'))
+ jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex')),
+ jsonb_build_object('mimetype', 'application/pdf', 'size', octet_length(b.bytes))
 FROM upload_bytes b WHERE b.slot='agreement';
 INSERT INTO public.agreements (
  id, application_id, vehicle_id, title, body, status, signed_at, document_id, completed_document_id,

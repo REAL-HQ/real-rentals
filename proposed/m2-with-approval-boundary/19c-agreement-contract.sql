@@ -41,11 +41,12 @@ BEGIN
   OR doc.storage_path IS DISTINCT FROM ('immutable-v1/'||doc.id::text||'/'||ag.sha256||'.pdf')
  THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
  -- The object must be in the rental-agreements bucket, at that path, and its
- -- metadata sha must be the agreement sha. A path with no hash, or a hash in
- -- another bucket, is not the archived file.
+ -- user_metadata sha must be the agreement sha. supabase-js stores the upload
+ -- metadata option there. The metadata column is system data and is not a
+ -- fallback. A path with no hash, or a hash in another bucket, is not the file.
  IF (SELECT count(*) FROM storage.objects o
      WHERE o.bucket_id='rental-agreements' AND o.name=doc.storage_path
-       AND lower(btrim(coalesce(o.metadata->>'sha256', o.metadata->>'content_sha256')))=ag.sha256)<>1
+       AND lower(btrim(coalesce(o.user_metadata->>'sha256', o.user_metadata->>'content_sha256')))=ag.sha256)<>1
  THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
  RETURN ag.id;
 EXCEPTION WHEN lock_not_available THEN

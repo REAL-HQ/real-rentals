@@ -69,11 +69,10 @@ REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "vault" FROM "rr_evidence_issuer";
 -- above removes that grant and leaves step 0's USAGE for rr_approval_executor
 -- and step 3's CREATE for rr_record_executor. DROP OWNED BY removes any
 -- remaining grants, so DROP ROLE does not write pg_shdepend.
--- Steps 9 and 14 rewrote column and function ACLs in place. That left
--- shared-dependency rows for rr_evidence_issuer after the privileges
--- themselves were gone. Granting each one and revoking it clears the row
--- through the privilege commands. The revoke is in this same transaction,
--- so the committed privileges match the pre-step catalog.
+-- Rollbacks 9 and 14 revoke rr_evidence_issuer through privilege commands.
+-- This pair grants each privilege and revokes it in the same transaction, so
+-- a leftover shared-dependency row cannot block DROP ROLE, and the committed
+-- privileges match the pre-step catalog.
 GRANT USAGE ON SCHEMA public TO rr_evidence_issuer;
 REVOKE USAGE ON SCHEMA public FROM rr_evidence_issuer;
 GRANT EXECUTE ON FUNCTION private.approval_actor(), private.approval_lock() TO rr_evidence_issuer;

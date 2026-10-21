@@ -141,9 +141,12 @@ DROP FUNCTION IF EXISTS "private"."record_identity_reader_v2"(app uuid);
 -- relations added by this step
 -- row level security flags
 -- owners
--- privileges captured on the pre-step catalog
-UPDATE pg_catalog.pg_proc p SET proacl = $acl${postgres=X/postgres,rr_approval_executor=X/postgres}$acl$::aclitem[] FROM pg_catalog.pg_namespace n WHERE n.oid = p.pronamespace AND n.nspname = 'private' AND p.proname = 'license_snapshot_v1' AND pg_get_function_identity_arguments(p.oid) = 'app uuid';
-UPDATE pg_catalog.pg_proc p SET proacl = $acl${postgres=X/postgres,rr_approval_executor=X/postgres}$acl$::aclitem[] FROM pg_catalog.pg_namespace n WHERE n.oid = p.pronamespace AND n.nspname = 'private' AND p.proname = 'validate_license_v1' AND pg_get_function_identity_arguments(p.oid) = 'app uuid';
+-- Privileges step 7 granted on the license functions, removed with REVOKE.
+-- record_identity_reader_v2 is dropped above, so its execute grant goes with it.
+-- Step 11 re-grants these two functions to rr_record_executor, and that
+-- rollback leaves the step 7 grant in place. Both roles lose it here, which
+-- restores execute for postgres and rr_approval_executor.
+REVOKE EXECUTE ON FUNCTION private.license_snapshot_v1(uuid), private.validate_license_v1(uuid) FROM rr_evidence_issuer, rr_record_executor;
 -- comments
 -- role memberships added by this step
 -- roles added by this step

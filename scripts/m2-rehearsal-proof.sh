@@ -48,6 +48,28 @@ rollback_to() {
   echo "MATCH $file" | tee -a "$LOG"
 }
 
+echo "CATALOG WRITE GUARD" | tee -a "$LOG"
+guard_hits="$(
+  find "$ROOT/proposed" -type f -print0 |
+    xargs -0 perl -ne '
+      s/--.*$//;
+      next if /^\s*$/;
+      if (/\b(?:UPDATE|DELETE\s+FROM|INSERT\s+INTO)\s+(?:pg_catalog\.)?pg_[a-z0-9_]+\b/i
+          || /\b(?:nspacl|attacl|proacl|relacl)\s*=/) {
+        print "$ARGV:$.:$_";
+      }
+    '
+)"
+if [[ -n "$guard_hits" ]]; then
+  echo "catalog write guard: FAIL" | tee -a "$LOG"
+  echo "$guard_hits" | tee -a "$LOG"
+  exit 1
+fi
+echo "catalog write guard: clean" | tee -a "$LOG"
+
+echo "STORAGE USER METADATA" | tee -a "$LOG"
+psqlq -c "ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS user_metadata jsonb;" >>"$LOG" 2>&1
+
 echo "BASELINE" | tee -a "$LOG"
 snap baseline
 

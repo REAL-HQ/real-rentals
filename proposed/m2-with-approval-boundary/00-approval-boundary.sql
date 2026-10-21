@@ -24,12 +24,15 @@ BEGIN;
 -- accepts only bucket, path, sha256, and a non-empty version taken from the object
 -- that is actually stored for the document. This catalog's storage.objects has no
 -- version column (Supabase's provider column is used when present). metadata.version,
--- then metadata.eTag, then the object id are the version token. The object must
--- carry the same sha256 the document row claims. A missing, ambiguous, or
--- mismatched object still raises approval_storage_version_unverified.
+-- then metadata.eTag, then the object id are the version token. supabase-js stores
+-- the upload metadata option in user_metadata (storage migration 0025). The metadata
+-- column is system data (size, mimetype, cacheControl, eTag) and is not a sha
+-- fallback: a sha written only there is not the object the client stored. The
+-- object must carry the same sha256 the document row claims. A missing, ambiguous,
+-- or mismatched object still raises approval_storage_version_unverified.
 CREATE FUNCTION private.approval_object_version(_document uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE doc public.documents%ROWTYPE; obj_id uuid; obj_bucket text; obj_name text; obj_meta jsonb;
+DECLARE doc public.documents%ROWTYPE; obj_id uuid; obj_bucket text; obj_name text; obj_meta jsonb; obj_user jsonb;
  n integer; ver text; sha text; has_version boolean;
 BEGIN
  SELECT * INTO doc FROM public.documents WHERE id=_document;
@@ -39,9 +42,9 @@ BEGIN
  END IF;
  SELECT count(*) INTO n FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path;
  IF n<>1 THEN RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501'; END IF;
- SELECT o.id, o.bucket_id, o.name, o.metadata INTO obj_id, obj_bucket, obj_name, obj_meta
+ SELECT o.id, o.bucket_id, o.name, o.metadata, o.user_metadata INTO obj_id, obj_bucket, obj_name, obj_meta, obj_user
   FROM storage.objects o WHERE o.bucket_id=doc.storage_bucket AND o.name=doc.storage_path FOR SHARE;
- sha:=nullif(lower(btrim(coalesce(obj_meta->>'sha256', obj_meta->>'content_sha256'))),'');
+ sha:=nullif(lower(btrim(coalesce(obj_user->>'sha256', obj_user->>'content_sha256'))),'');
  IF sha IS NULL OR sha IS DISTINCT FROM doc.content_sha256
   OR obj_bucket IS DISTINCT FROM doc.storage_bucket OR obj_name IS DISTINCT FROM doc.storage_path THEN
   RAISE EXCEPTION 'approval_storage_version_unverified' USING ERRCODE='42501';

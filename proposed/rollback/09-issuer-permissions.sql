@@ -64,39 +64,17 @@ DROP FUNCTION IF EXISTS "private"."record_issuer_scope_v2"(app uuid);
 -- relations added by this step
 -- row level security flags
 -- owners
--- privileges captured on the pre-step catalog
-UPDATE pg_catalog.pg_namespace SET nspacl = $acl${pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,rr_record_executor=C/pg_database_owner}$acl$::aclitem[] WHERE nspname = 'public';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'application_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'body';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'body_sha256';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'completed_document_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'document_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'merge_data';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'sha256';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'signed_at';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'status';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'vehicle_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'agreements' AND a.attname = 'voided_at';
-UPDATE pg_catalog.pg_attribute a SET attacl = $acl${authenticated=w/postgres}$acl$::aclitem[] FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'applications' AND a.attname = 'id';
-UPDATE pg_catalog.pg_attribute a SET attacl = $acl${authenticated=w/postgres}$acl$::aclitem[] FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'applications' AND a.attname = 'user_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'category';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'content_sha256';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'driver_id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'id';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'integrity_v1';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'is_current';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'review_status';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'reviewed_at';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'reviewed_by';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'storage_bucket';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'storage_path';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'documents' AND a.attname = 'superseded_by';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'user_roles' AND a.attname = 'role';
-UPDATE pg_catalog.pg_attribute a SET attacl = NULL FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE a.attrelid = c.oid AND n.nspname = 'public' AND c.relname = 'user_roles' AND a.attname = 'user_id';
-UPDATE pg_catalog.pg_proc p SET proacl = $acl${postgres=X/postgres}$acl$::aclitem[] FROM pg_catalog.pg_namespace n WHERE n.oid = p.pronamespace AND n.nspname = 'private' AND p.proname = 'approval_actor' AND pg_get_function_identity_arguments(p.oid) = '';
-UPDATE pg_catalog.pg_proc p SET proacl = $acl${postgres=X/postgres}$acl$::aclitem[] FROM pg_catalog.pg_namespace n WHERE n.oid = p.pronamespace AND n.nspname = 'private' AND p.proname = 'approval_lock' AND pg_get_function_identity_arguments(p.oid) = '';
-UPDATE pg_catalog.pg_proc p SET proacl = $acl${postgres=X/postgres}$acl$::aclitem[] FROM pg_catalog.pg_namespace n WHERE n.oid = p.pronamespace AND n.nspname = 'private' AND p.proname = 'record_session_v1' AND pg_get_function_identity_arguments(p.oid) = '';
+-- Privileges step 9 granted to rr_evidence_issuer, removed with REVOKE.
+-- USAGE on private stays: step 5 already granted it, and step 9 grants it again.
+-- Execute on bind_document_integrity_v1 stays: step 6 already granted it, and
+-- step 9 grants it again. record_issuer_scope_v2 is dropped above. Other
+-- roles' grants stay because these revokes name rr_evidence_issuer.
+REVOKE USAGE ON SCHEMA public FROM rr_evidence_issuer;
+REVOKE EXECUTE ON FUNCTION private.approval_actor(), private.approval_lock(), private.record_session_v1() FROM rr_evidence_issuer;
+REVOKE SELECT (id, driver_id, storage_bucket, storage_path, content_sha256, integrity_v1, category, is_current, superseded_by, review_status, reviewed_by, reviewed_at), UPDATE (content_sha256, storage_path, integrity_v1) ON TABLE public.documents FROM rr_evidence_issuer;
+REVOKE SELECT (id, user_id), UPDATE (id) ON TABLE public.applications FROM rr_evidence_issuer;
+REVOKE SELECT (id, status, voided_at, signed_at, document_id, completed_document_id, application_id, vehicle_id, sha256, body_sha256, body, merge_data), UPDATE (id) ON TABLE public.agreements FROM rr_evidence_issuer;
+REVOKE SELECT (user_id, role), UPDATE (user_id) ON TABLE public.user_roles FROM rr_evidence_issuer;
 -- comments
 -- role memberships added by this step
 -- roles added by this step

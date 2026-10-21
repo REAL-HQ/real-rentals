@@ -306,10 +306,10 @@ Packet files are applied with `psql -v ON_ERROR_STOP=1 -1 -f`. They have no tran
 
 | File | SHA-256 |
 | --- | --- |
-| `00-approval-boundary.sql` | `6d556e77c2a1f709ec2bb7c2c0d0fdf028515e76f59ef6f75e3ddbaa262746c2` |
+| `00-approval-boundary.sql` | `8b3abf8aea2a95a0f91cd5439e54326945a675bcfef508be0b04acc28b2b6355` |
 | `06b-approval-identity-check.sql` | `48a97ec52eff7ccab70684ca40f3147dca83bc53d32970ee35061914c3e113c6` |
 | `10b-approval-executor-writes.sql` | `53003c593a65bc6bfa9cdf6166d2fd30929ca7ff37081ddce2c4d09d2d5b1251` |
-| `19c-agreement-contract.sql` | `68973314709860b19a7f93bbc44142164159baf4529e593e74cb98318cacddde` |
+| `19c-agreement-contract.sql` | `938c5de9eda4c70897221ead5ddcc5cd235745664ea47825f5ce41c201579e42` |
 
 `approval-boundary.local.sql` is unchanged: `90e1ca62274aa59df8c48de8953827e61523cf11a2c82e7be2f6e6ce780d5deb`.
 
@@ -317,14 +317,14 @@ Packet files are applied with `psql -v ON_ERROR_STOP=1 -1 -f`. They have no tran
 
 `scripts/m2-functional-proof.sql`, one transaction, then `ROLLBACK`. No 64-hex literal is in that file. License and agreement hashes are `encode(extensions.digest(bytes, 'sha256'), 'hex')` of `m2-license-front-v1`, `m2-license-back-v1`, `m2-signed-agreement-v1`, and `signed terms`. `scripts/m2-content-sha.test.ts` checks that `contentSha256Hex` returns the same digests. Front is `66cd8986298ba1265463727de09dbc11f65fc4a17d9726222218b63c56793f0c`. Back is `577ba23d2c2bcdccc259d9b91c0261232ca4c26e4e9bc528484dd8378a3dd240`. The flag stayed false.
 
-(a) and (b) insert the `confirmDocumentUpload` column list with no `content_sha256`. The hash step then writes `documents.content_sha256` and `storage.objects.metadata.sha256` from that digest. The agreement used for (d) is an initial insert at `immutable-v1/<doc>/<digest>.pdf` in `rental-agreements`, with the object metadata sha equal to the same digest. A `completed-v1` agreement is refused with `agreement_contract_unverified`, and updating its path to `immutable-v1` raises `finalized_archive_immutable`.
+(a) and (b) insert the `confirmDocumentUpload` column list with no `content_sha256`. The hash step then writes `documents.content_sha256` and `storage.objects.user_metadata.sha256` from that digest. `metadata` is system data (`mimetype`, `size`) and has no sha. supabase-js stores the upload `metadata` option in `user_metadata` (storage migration 0025), so `approval_object_version` and step 19c read `user_metadata` and do not fall back to `metadata`. The agreement used for (d) is an initial insert at `immutable-v1/<doc>/<digest>.pdf` in `rental-agreements`, with the object `user_metadata` sha equal to the same digest. A `completed-v1` agreement is refused with `agreement_contract_unverified`, and updating its path to `immutable-v1` raises `finalized_archive_immutable`.
 
 | Check | Result |
 | --- | --- |
 | (a) Driver license upload | Pass. `service_role` insert of `license_front`, no `content_sha256`. Row `55555555-5555-4555-8555-555555555555`. Version became 1. |
 | (b) Service-role upload | Pass. Same shape for `license_back`. Row `66666666-6666-4666-8666-666666666666`. Version became 2. |
 | (c) Version tamper | Pass. `postgres` and `service_role` raised `evidence_version_managed`. `authenticated` was `permission denied for table applications`. |
-| (d) `record_existing_rental_tx` | Pass. `status = recorded`, rental `3ca98aee-91a8-499c-8063-9747c1bfe0c3`, `active`, weekly rate 250.00. Agreement `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` is `signed` / `archived`, `rental_id` is that rental, and the document path is `immutable-v1` in `rental-agreements`. Review `bdf73f02-f64f-4c20-be74-9defb038d22d` is `approval_identity` / `resolved` / `verified`, with `approval_evidence` set and `positive_evidence_v1` null. |
+| (d) `record_existing_rental_tx` | Pass. `status = recorded`, rental `d7da0621-ced4-443b-9497-0e49009b656b`, `active`, weekly rate 250.00. Agreement `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` is `signed` / `archived`, `rental_id` is that rental, and the document path is `immutable-v1` in `rental-agreements`. The object sha is in `user_metadata`, and `metadata` has no sha. Review `ce6497c0-be81-4586-9407-6503fc7d4ad0` is `approval_identity` / `resolved` / `verified`, with `approval_evidence` set and `positive_evidence_v1` null. |
 | (e) Step 6 check | Pass. The installed check is 06b. The unmodified step 6 text rejects `resolution = 'verified'` on `kind = 'approval_identity'`. |
 
 An authenticated manager insert of an `insurance` document succeeded and left the evidence version at 2. The functional proof did not use `session_replication_role = replica`.
@@ -369,9 +369,9 @@ Rollback 00 drops `private.approval_operations` and the columns `application_ide
 
 Rollback 01 no longer deletes from `pg_shdepend`. `DROP OWNED BY` plus `DROP ROLE` removes `rr_approval_executor`. Rollback 10 revokes the schema, function, and column privileges step 10 added, and it leaves the step 6 execute grants and the step 0 `USAGE` on `private`.
 
-Rollbacks 03, 05, and 11 no longer assign `nspacl`, `attacl`, or `proacl`, and they do not delete from `pg_shdepend`. Rollback 03 revokes `rr_record_executor` and drops the role. `REVOKE ALL` removes step 3's `CREATE` on `private` and `public` and leaves step 0's `USAGE` for `rr_approval_executor`. Rollback 11 revokes only the `USAGE`, function, and column privileges step 11 granted to `rr_record_executor`. It leaves step 3's `CREATE`, step 7's execute grants on `license_snapshot_v1` and `validate_license_v1`, and the column grants from steps 6, 9, 10, and 10b, including `rr_approval_executor` `UPDATE` on `applications.status`. Rollback 05 revokes `rr_evidence_issuer`. Steps 9 and 14 still rewrite ACLs in place, which leaves shared-dependency rows after the privilege itself is gone. Rollback 05 grants each of those privileges and revokes it in the same transaction, which clears the row. The committed privileges match the pre-step dump.
+Rollbacks 03, 05, 07, 09, 11, and 14 use `REVOKE` and `GRANT` only. They do not assign `nspacl`, `attacl`, `proacl`, or `relacl`, and they do not `UPDATE`, `DELETE`, or `INSERT` `pg_catalog` tables. Rollback 03 revokes `rr_record_executor` and drops the role. `REVOKE ALL` removes step 3's `CREATE` on `private` and `public` and leaves step 0's `USAGE` for `rr_approval_executor`. Rollback 11 revokes only the `USAGE`, function, and column privileges step 11 granted to `rr_record_executor`. It leaves step 3's `CREATE`, step 7's execute grants on `license_snapshot_v1` and `validate_license_v1`, and the column grants from steps 6, 9, 10, and 10b, including `rr_approval_executor` `UPDATE` on `applications.status`. Rollback 07 revokes execute on `license_snapshot_v1` and `validate_license_v1` from `rr_evidence_issuer` and `rr_record_executor`. `record_identity_reader_v2` is dropped with the function. Rollback 09 revokes the privileges step 9 granted to `rr_evidence_issuer`. It leaves step 5's `USAGE` on `private` and step 6's execute grant on `bind_document_integrity_v1`. Rollback 14 revokes the column selects step 14 granted to `rr_evidence_issuer` and leaves the earlier grants for `rr_approval_executor`, `rr_record_executor`, `anon`, and `authenticated`. Rollback 05 still grants each leftover privilege and revokes it in the same transaction, so a shared-dependency row cannot block `DROP ROLE`. The committed privileges match the pre-step dump.
 
-Rollbacks 07, 09, and 14 still assign `proacl` or `attacl`. A fresh local run of `scripts/m2-rehearsal-proof.sh` matched every per-step privilege dump, including 03 against the post-step-2 dump, 05 against the post-step-4 dump, and 11 against the post-step-10b dump. Final counts were 0 `rr_%` roles, 0 applications, and 0 approval functions.
+`scripts/m2-rehearsal-proof.sh` starts with a catalog-write guard over `proposed/`. A fresh local run matched every per-step privilege dump, including 07 against the post-step-06b dump, 09 against the post-step-8 dump, and 14 against the post-step-13 dump. Final counts were 0 `rr_%` roles, 0 applications, and 0 approval functions. The local `storage.objects` table had no `user_metadata` column; the proof adds the column storage migration 0025 adds, before the baseline dump, so every comparison includes it.
 
 ## Step 0 install and rollback
 
