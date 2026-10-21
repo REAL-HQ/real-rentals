@@ -1,3 +1,4 @@
+import type { OwnerFeeRead } from "./owner-pnl-fees";
 import { decimalSourceCents } from "./unified-finance-live-mapping";
 import { validFinanceDate } from "./unified-finance";
 
@@ -17,9 +18,14 @@ import { validFinanceDate } from "./unified-finance";
  * are one cost. Company share is the maintenance cost, and total cost is
  * used when the share is blank. A share that disagrees with the linked
  * expense is a note; the expense is counted once. Refunds are
- * payment_refunds rows. A refund of a deposit is excluded. Net is income
- * minus those refunds minus expenses.
- * Charge lists come from readLivePartnerCharges. This module does not call Stripe.
+ * payment_refunds rows. A refund of a deposit is excluded. Stripe
+ * processing fees and refund fees are a company cost for the same Eastern
+ * Time month. Net is income minus those refunds minus expenses minus that
+ * cost. Vehicle nets do not include fees. An omitted fee read is a complete
+ * zero so callers that have not loaded fees keep their previous net. A
+ * failed or truncated fee read leaves fees unset and the net Partial.
+ * Charge lists come from readLivePartnerCharges. Fee totals come from the
+ * caller. This module does not call Stripe.
  */
 
 export type OwnerCharge = {
@@ -130,11 +136,13 @@ export type OwnerPnlMonth = {
   depositRefundsExcludedCents: number | null;
   refundsCents: number | null;
   expenseCents: number | null;
+  feesCents: number | null;
   expenses: OwnerExpenseGroup[];
   netCents: number | null;
   revenueComplete: boolean;
   expensesComplete: boolean;
   refundsComplete: boolean;
+  feesComplete: boolean;
   conflictingCharges: number;
   sources: OwnerSourceLine[];
   vehicles: OwnerVehicleRow[];
@@ -149,6 +157,7 @@ export type OwnerPnlChange = {
   depositRefundsExcludedCents: number | null;
   refundsCents: number | null;
   expenseCents: number | null;
+  feesCents: number | null;
   netCents: number | null;
 };
 export type OwnerPnlReport = {
@@ -383,7 +392,7 @@ function delta(current: number | null, previous: number | null): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; charges: OwnerCharge[] }): OwnerPnlMonth | null {
+export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; charges: OwnerCharge[]; fees?: OwnerFeeRead }): OwnerPnlMonth | null {
   const window = monthWindow(input.month);
   if (!window) return null;
   const inWindow = (date: string) => date >= window.from && date < window.to;
@@ -600,7 +609,12 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
   const expenseCents = expensesComplete ? sum(expenseValues) : null;
   const revenueCents = revenueComplete ? revenue : null;
   const refundsCents = refundsComplete ? refunds : null;
-  const net = revenueCents !== null && refundsCents !== null && expenseCents !== null ? revenueCents - refundsCents - expenseCents : null;
+  const feeRead = input.fees;
+  const feesComplete = feeRead ? feeRead.ok && Number.isSafeInteger(feeRead.feesCents) : true;
+  const feesCents = feesComplete ? (feeRead && feeRead.ok ? feeRead.feesCents : 0) : null;
+  const net = revenueCents !== null && refundsCents !== null && expenseCents !== null && feesCents !== null
+    ? revenueCents - refundsCents - expenseCents - feesCents
+    : null;
   const expenses = expensesComplete
     ? [...categories.entries()].map(([category, cents]) => ({ category, label: categoryLabel(category), cents })).sort((a, b) => a.label.localeCompare(b.label) || a.category.localeCompare(b.category))
     : [];
@@ -619,7 +633,7 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
         : null;
     }).filter((row): row is OwnerVehicleRow => row !== null).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
     : [];
-  const coverage: OwnerCoverage = !revenueComplete ? "unavailable" : unmatched.length || undatedPayments ? "partial" : "complete";
+  const coverage: OwnerCoverage = !revenueComplete ? "unavailable" : !feesComplete || unmatched.length || undatedPayments ? "partial" : "complete";
   return {
     month: window.month,
     from: window.from,
@@ -631,11 +645,13 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
     depositRefundsExcludedCents: refundsComplete ? depositRefunds : null,
     refundsCents,
     expenseCents,
+    feesCents,
     expenses,
     netCents: net !== null && Number.isSafeInteger(net) ? net : null,
     revenueComplete,
     expensesComplete,
     refundsComplete,
+    feesComplete,
     conflictingCharges: conflicting,
     sources,
     vehicles,
@@ -645,11 +661,17 @@ export function buildOwnerPnlMonth(input: OwnerPnlDirectory & { month: string; c
   };
 }
 
-export function buildOwnerPnl(input: OwnerPnlDirectory & { month: string; currentCharges: OwnerCharge[]; previousCharges: OwnerCharge[] }): OwnerPnlReport | null {
+export function buildOwnerPnl(input: OwnerPnlDirectory & {
+  month: string;
+  currentCharges: OwnerCharge[];
+  previousCharges: OwnerCharge[];
+  currentFees?: OwnerFeeRead;
+  previousFees?: OwnerFeeRead;
+}): OwnerPnlReport | null {
   const previous = previousMonth(input.month);
   if (!previous) return null;
-  const current = buildOwnerPnlMonth({ ...input, month: input.month, charges: input.currentCharges });
-  const prior = buildOwnerPnlMonth({ ...input, month: previous, charges: input.previousCharges });
+  const current = buildOwnerPnlMonth({ ...input, month: input.month, charges: input.currentCharges, fees: input.currentFees });
+  const prior = buildOwnerPnlMonth({ ...input, month: previous, charges: input.previousCharges, fees: input.previousFees });
   if (!current || !prior) return null;
   return {
     current,
@@ -661,9 +683,19 @@ export function buildOwnerPnl(input: OwnerPnlDirectory & { month: string; curren
       depositRefundsExcludedCents: delta(current.depositRefundsExcludedCents, prior.depositRefundsExcludedCents),
       refundsCents: delta(current.refundsCents, prior.refundsCents),
       expenseCents: delta(current.expenseCents, prior.expenseCents),
+      feesCents: delta(current.feesCents, prior.feesCents),
       netCents: delta(current.netCents, prior.netCents),
     },
   };
+}
+
+function feeCsv(month: OwnerPnlMonth): string {
+  return month.feesComplete ? centsText(month.feesCents) : "Unavailable";
+}
+
+function netCsv(month: OwnerPnlMonth): string {
+  if (!month.feesComplete && month.revenueComplete && month.expensesComplete && month.refundsComplete) return "Partial";
+  return centsText(month.netCents);
 }
 
 function centsText(cents: number | null): string {
@@ -701,7 +733,8 @@ export function ownerPnlCsv(report: OwnerPnlReport): string {
     ["Deposit Refunds Excluded", centsText(report.current.depositRefundsExcludedCents), centsText(report.previous.depositRefundsExcludedCents), centsText(report.change.depositRefundsExcludedCents)],
     ["Refunds", centsText(report.current.refundsCents), centsText(report.previous.refundsCents), centsText(report.change.refundsCents)],
     ["Expenses", centsText(report.current.expenseCents), centsText(report.previous.expenseCents), centsText(report.change.expenseCents)],
-    ["Net", centsText(report.current.netCents), centsText(report.previous.netCents), centsText(report.change.netCents)],
+    ["Fees", feeCsv(report.current), feeCsv(report.previous), centsText(report.change.feesCents)],
+    ["Net", netCsv(report.current), netCsv(report.previous), centsText(report.change.netCents)],
     ["Coverage", report.current.coverage, report.previous.coverage, ""],
     [],
     ["Source", "This Month", "Previous Month"],

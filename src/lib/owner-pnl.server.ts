@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { tierAllows, type StaffTier } from "./roles";
+import type { OwnerFeeRead } from "./owner-pnl-fees";
 import {
   buildOwnerPnl,
   currentEtMonth,
@@ -13,8 +14,9 @@ import {
 
 /**
  * Owners only. The flag is checked before the role and before any table or
- * Stripe read. Charges come from the caller (readLivePartnerCharges). This
- * file does not import Stripe.
+ * Stripe read. Charges come from the caller (readLivePartnerCharges). Fees
+ * come from the caller (readLiveOwnerPnlFees) after both charge reads
+ * succeed. A failed fee read stays on the report. This file does not import Stripe.
  */
 
 /** Same bounds the accountant export uses. A full page on the last pass is a cap, not a complete read. */
@@ -35,6 +37,7 @@ export async function runOwnerPnl(input: {
   now?: Date;
   load: () => Promise<OwnerPnlDirectory | null>;
   readCharges: (window: { gte: number; lt: number }) => Promise<{ ok: true; charges: OwnerCharge[] } | { ok: false; reason: string }>;
+  readFees: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>;
 }): Promise<OwnerPnlResponse> {
   if (!input.enabled) return { status: "disabled", report: null };
   if (!input.userId || !tierAllows(input.tier, "owner")) throw new Error("Forbidden");
@@ -51,11 +54,15 @@ export async function runOwnerPnl(input: {
   if (!currentCharges.ok) return { status: "unavailable", reason: currentCharges.reason, report: null };
   const previousCharges = await input.readCharges({ gte: previous.gte, lt: previous.lt });
   if (!previousCharges.ok) return { status: "unavailable", reason: previousCharges.reason, report: null };
+  const currentFees = await settleFees(input.readFees, { gte: current.gte, lt: current.lt });
+  const previousFees = await settleFees(input.readFees, { gte: previous.gte, lt: previous.lt });
   const report = buildOwnerPnl({
     ...directory,
     month: input.month,
     currentCharges: currentCharges.charges,
     previousCharges: previousCharges.charges,
+    currentFees,
+    previousFees,
   });
   return report ? { status: "ready", report } : { status: "unavailable", reason: "The month could not be dated", report: null };
 }
@@ -126,6 +133,19 @@ export async function loadOwnerPnlDirectory(
       id: row.id, amount: row.amount, status: row.status, createdAt: row.created_at, paymentIds: row.payment_ids ?? [],
     })),
   };
+}
+
+async function settleFees(
+  read: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>,
+  window: { gte: number; lt: number },
+): Promise<OwnerFeeRead> {
+  try {
+    const result = await read(window);
+    if (result?.ok === true && Number.isSafeInteger(result.feesCents)) return { ok: true, feesCents: result.feesCents };
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
 }
 
 async function readStable<T extends { id: string }>(

@@ -21,6 +21,19 @@ function money(cents: number | null): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function feeCell(month: OwnerPnlReport["current"]): string {
+  return month.feesComplete ? money(month.feesCents) : "Unavailable";
+}
+
+function netIsPartial(month: OwnerPnlReport["current"]): boolean {
+  return !month.feesComplete && month.revenueComplete && month.expensesComplete && month.refundsComplete;
+}
+
+function netCell(month: OwnerPnlReport["current"]): string {
+  if (netIsPartial(month)) return "Partial";
+  return money(month.netCents);
+}
+
 function monthTitle(month: string): string {
   const [year, mon] = month.split("-").map(Number);
   if (!year || !mon) return month;
@@ -75,10 +88,11 @@ export function OwnerPnlPanel() {
 
   const report = response?.status === "ready" ? response.report : null;
   const lines = report ? [
-    ["Revenue", report.current.revenueCents, report.previous.revenueCents, report.change.revenueCents],
-    ["Refunds", report.current.refundsCents, report.previous.refundsCents, report.change.refundsCents],
-    ["Expenses", report.current.expenseCents, report.previous.expenseCents, report.change.expenseCents],
-    ["Net", report.current.netCents, report.previous.netCents, report.change.netCents],
+    ["Revenue", money(report.current.revenueCents), money(report.previous.revenueCents), money(report.change.revenueCents)],
+    ["Refunds", money(report.current.refundsCents), money(report.previous.refundsCents), money(report.change.refundsCents)],
+    ["Expenses", money(report.current.expenseCents), money(report.previous.expenseCents), money(report.change.expenseCents)],
+    ["Fees", feeCell(report.current), feeCell(report.previous), money(report.change.feesCents)],
+    ["Net", netCell(report.current), netCell(report.previous), money(report.change.netCents)],
   ] as const : [];
 
   return (
@@ -88,7 +102,7 @@ export function OwnerPnlPanel() {
         <div>
           <h2 className="text-lg font-semibold">Monthly Owner P&L</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net.
+            Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net. Stripe fees stay on the company net.
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
@@ -141,8 +155,11 @@ export function OwnerPnlPanel() {
           {(report.current.conflictingCharges > 0 || report.previous.conflictingCharges > 0) && (
             <p className="text-sm text-[#D03020]">Some charges named more than one vehicle and stayed unattributed.</p>
           )}
-          {(report.current.coverage === "partial" || report.previous.coverage === "partial") && (
+          {(report.current.unmatched.length > 0 || report.previous.unmatched.length > 0) && (
             <p className="text-sm text-[#D03020]">Partial Coverage. A recorded Stripe payment has no Payment Intent, charge, invoice, or payment reference, so it is excluded.</p>
+          )}
+          {(netIsPartial(report.current) || netIsPartial(report.previous)) && (
+            <p className="text-sm text-[#D03020]">Stripe fees are Unavailable, so the net is Partial.</p>
           )}
           <AdminTableScroll className="rounded-xl border border-border">
             <table className="w-full text-sm">
@@ -158,9 +175,9 @@ export function OwnerPnlPanel() {
                 {lines.map(([label, current, previous, change]) => (
                   <tr key={label} className="border-t border-border">
                     <td className="px-4 py-3 font-medium">{label}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(current)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(previous)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(change)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{current}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{previous}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{change}</td>
                   </tr>
                 ))}
               </tbody>
@@ -199,7 +216,7 @@ export function OwnerPnlPanel() {
           )}
           <div>
             <h3 className="text-base font-semibold">By Vehicle</h3>
-            <p className="text-sm text-muted-foreground mt-0.5">Income, refunds, and expenses for this month. A vehicle net is income minus refunds minus expenses.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Income, refunds, and expenses for this month. A vehicle net is income minus refunds minus expenses. Stripe fees stay on the company net.</p>
           </div>
           {report.current.vehicles.length === 0 ? (
             <p className="text-sm text-muted-foreground">No vehicle totals in this month.</p>
