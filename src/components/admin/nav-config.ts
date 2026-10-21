@@ -25,12 +25,14 @@ import {
   Upload,
   Landmark,
   PieChart,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 
 export type TabDef = {
   id: string;
@@ -122,6 +124,23 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while Fleet Availability is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FLEET_AVAILABILITY_TAB: TabDef = {
+  id: "fleet_availability",
+  label: "Fleet Availability",
+  icon: LayoutGrid,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Which Cars Are Available, Rented, In Shop, Or Not Rentable",
+};
+
+function spliceAfter<T extends { id: string }>(entries: T[], afterId: string, item: T): T[] {
+  const next = [...entries];
+  const at = next.findIndex((entry) => entry.id === afterId);
+  next.splice(at === -1 ? next.length : at + 1, 0, item);
+  return next;
+}
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -153,7 +172,10 @@ const INCIDENT_BOARD_TAB: TabDef = {
 };
 
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  const next = TABS.filter((t) => tierAllows(tier, t.minTier));
+  let next = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
+  }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
     const at = next.findIndex((t) => t.id === "incidents");
     const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
@@ -196,9 +218,12 @@ export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
 
 /** Rail entries: a workspace shows if any of its tabs is allowed; it links to the first allowed tab. */
 export function railEntries(tier: StaffTier | null): (TabDef & { href: string })[] {
-  const entries = TABS.filter((t) => t.group)
+  let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
+  }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
     const at = entries.findIndex((t) => t.id === "incidents");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");

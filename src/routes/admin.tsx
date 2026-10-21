@@ -60,6 +60,8 @@ import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
+import { FleetAvailability } from "@/components/admin/FleetAvailability";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -314,6 +316,10 @@ function Admin() {
     if (urlTab === "incident_board") {
       if (!INCIDENT_BOARD_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
       return "incident_board";
+    }
+    if (urlTab === "fleet_availability") {
+      if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
+      return "fleet_availability";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -829,6 +835,9 @@ function Admin() {
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
+            {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
+              <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
+            )}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
