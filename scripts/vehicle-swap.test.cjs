@@ -43,6 +43,8 @@ test("swap form is mounted only while the flag is on", () => {
 test("history is read-only and booking and vehicle pages pass ids", () => {
   assert.match(ui, /listAssignmentHistory/);
   assert.match(ui, /No vehicle changes recorded\./);
+  assert.match(ui, /Assignment History is not installed yet\./);
+  assert.match(ui, /setReady\(result\.ready\)/);
   assert.match(booking, /rentalId=\{b\.id\}/);
   assert.match(booking, /showSwap=\{b\.phase === "active"\}/);
   assert.match(profile, /vehicleId=\{v\.id\}/);
@@ -62,9 +64,13 @@ test("history is read-only and booking and vehicle pages pass ids", () => {
 });
 
 test("server checks the flag before the swap rpc", () => {
-  const flag = server.indexOf("if (!SWAP_ENABLED)");
-  const rpc = server.indexOf('.rpc("swap_rental_vehicle_tx"');
-  assert.ok(flag !== -1 && rpc !== -1 && flag < rpc);
+  const swapStart = server.indexOf("export const swapRentalVehicle");
+  const historyStart = server.indexOf("export const listAssignmentHistory");
+  const swapBody = server.slice(swapStart, historyStart);
+  const flag = swapBody.indexOf("if (!SWAP_ENABLED)");
+  const role = swapBody.indexOf("requireManager");
+  const rpc = swapBody.indexOf('.rpc("swap_rental_vehicle_tx"');
+  assert.ok(flag !== -1 && role !== -1 && rpc !== -1 && flag < role && role < rpc);
   assert.match(server, /requireManager/);
   assert.match(server, /list_assignment_history_v1/);
   assert.match(server, /PGRST202\|PGRST205/);
@@ -99,7 +105,17 @@ test("proposed sql documents the lock order and does not bill", () => {
   assert.match(sql, /status='maintenance'/);
   assert.match(sql, /outgoing_available_refused/);
   assert.equal(body.includes("record_agreement_evidence"), false);
+  const gateStart = sql.indexOf("CREATE FUNCTION private.swap_agreement_evidence");
+  const gateEnd = sql.indexOf("REVOKE ALL ON FUNCTION private.swap_agreement_evidence");
+  const gate = sql.slice(gateStart, gateEnd);
+  assert.match(gate, /FROM private\.agreement_evidence WHERE agreement_id=_agreement FOR SHARE NOWAIT/);
+  assert.match(gate, /ag\.sha256 IS DISTINCT FROM ev\.sha256/);
+  assert.doesNotMatch(gate, /UPDATE\s+public\.agreements/i);
+  assert.doesNotMatch(gate, /UPDATE\s+public\.documents/i);
   assert.equal(fs.existsSync(path.join(root, "supabase/migrations/vehicle-swap-v1.sql")), false);
+  assert.match(sql, /step after M2/);
+  assert.match(sql, /m2-packet\/20\.sql/);
+  assert.match(sql, /after M2 steps 19b and 19c/);
 });
 
 function loadServer(swapEnabled) {
@@ -196,6 +212,7 @@ const ASSIGNMENT = "77777777-7777-4777-8777-777777777777";
 const RECORD = "88888888-8888-4888-8888-888888888888";
 const AGREEMENT = "99999999-9999-4999-8999-999999999999";
 const DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const BARE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const STALE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
@@ -309,7 +326,23 @@ INSERT INTO public.rentals VALUES
 INSERT INTO public.user_roles VALUES ('${ACTOR}', 'admin');
 INSERT INTO public.documents VALUES ('${DOC}');
 INSERT INTO public.agreements VALUES
- ('${AGREEMENT}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00');
+ ('${AGREEMENT}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00'),
+ ('${BARE}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00');
+CREATE TABLE private.agreement_evidence (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ agreement_id uuid NOT NULL UNIQUE,
+ rental_id uuid NOT NULL,
+ application_id uuid NOT NULL,
+ vehicle_id uuid NOT NULL,
+ document_id uuid NOT NULL,
+ sha256 text NOT NULL,
+ signed_at timestamptz NOT NULL,
+ signer_user_id uuid NOT NULL,
+ actor_id uuid NOT NULL,
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp());
+INSERT INTO private.agreement_evidence
+ (agreement_id, rental_id, application_id, vehicle_id, document_id, sha256, signed_at, signer_user_id, actor_id)
+ VALUES ('${AGREEMENT}', '${RENTAL}', '${APP}', '${NEW}', '${DOC}', repeat('ab', 32), '2026-10-19 12:00:00+00', '${DRIVER}', '${ACTOR}');
 INSERT INTO public.payments (rental_id, amount, status) VALUES ('${RENTAL}', 100, 'paid');
 INSERT INTO private.record_operations VALUES
  ('${RECORD}', '${ACTOR}', '${APP}', '{}'::jsonb, '${RENTAL}', 1, 1);
@@ -318,9 +351,9 @@ INSERT INTO public.booking_vehicle_assignments
  VALUES ('${ASSIGNMENT}', '${RENTAL}', '${OLD}', '2026-10-01 12:00:00+00', 10000, 'original', '${ACTOR}', '${RECORD}');
 `;
 
-const call = (op, expected) => `public.swap_rental_vehicle_tx(
+const call = (op, expected, agreement = AGREEMENT) => `public.swap_rental_vehicle_tx(
  '${op}', '${RENTAL}', '${expected}', '${NEW}',
- '2026-10-20 15:00:00+00', 12000, 8000, 'Damage from the road', '${AGREEMENT}')`;
+ '2026-10-20 15:00:00+00', 12000, 8000, 'Damage from the road', '${agreement}')`;
 
 function transactionTests(dir) {
   psql(dir, fixture);
@@ -390,6 +423,22 @@ function transactionTests(dir) {
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM private.swap_operations) THEN RAISE EXCEPTION 'contention wrote an operation'; END IF;
         IF (SELECT status FROM public.vehicles WHERE id='${OLD}') <> 'rented' THEN RAISE EXCEPTION 'contention changed status'; END IF;
+      END $$;
+    `);
+  });
+  test("an agreement without recorded evidence is refused", () => {
+    psql(dir, `
+      DO $$ BEGIN
+        PERFORM ${call(OP, ASSIGNMENT, BARE)};
+        RAISE EXCEPTION 'bare agreement was accepted';
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%agreement_evidence_required%' THEN RAISE; END IF;
+      END $$;
+      DO $$ BEGIN
+        IF (SELECT vehicle_id FROM public.rentals WHERE id='${RENTAL}') <> '${OLD}' THEN
+          RAISE EXCEPTION 'rental pointer moved';
+        END IF;
+        IF EXISTS (SELECT 1 FROM private.swap_operations) THEN RAISE EXCEPTION 'bare agreement wrote an operation'; END IF;
       END $$;
     `);
   });

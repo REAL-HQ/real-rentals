@@ -32,9 +32,9 @@ export const swapRentalVehicle = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => swapInput.parse(d))
   .handler(async ({ data, context }) => {
+    if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
     const { data: result, error } = await (context.supabase as any).rpc("swap_rental_vehicle_tx", {
       _operation_id: data.operationId,
       _rental_id: data.rentalId,
