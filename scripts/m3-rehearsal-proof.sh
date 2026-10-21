@@ -1,22 +1,50 @@
 #!/bin/bash
 # Local M3 install, verify, and schema-dump rollback.
-# Talks only to postgresql://postgres@127.0.0.1:55442/m2.
+# Clones postgresql://postgres@127.0.0.1:55442/m2 into m3_rehearsal,
+# proves the packet there, and drops m3_rehearsal. It does not write m2
+# and it does not connect to a hosted database.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PGURL="${M3_DATABASE_URL:-postgresql://postgres@127.0.0.1:55442/m2?sslmode=disable}"
+ADMIN="postgresql://postgres@127.0.0.1:55442/postgres?sslmode=disable"
 DUMPS="${M3_DUMP_DIR:-/tmp/m3-dumps}"
 LOG="${M3_PROOF_LOG:-/tmp/m3-proof-run.log}"
+BUN="${BUN:-$(command -v bun || true)}"
+if [[ -z "$BUN" && -x "$HOME/.bun/bin/bun" ]]; then
+  BUN="$HOME/.bun/bin/bun"
+fi
 mkdir -p "$DUMPS"
 : > "$LOG"
+OWN_SCRATCH=0
+PGURL="${M3_DATABASE_URL:-}"
 
-case "$PGURL" in
-  *127.0.0.1*|*localhost*|*\[::1\]*) ;;
+case "${PGURL:-local}" in
+  local|*127.0.0.1*|*localhost*|*\[::1\]*) ;;
   *) echo "refusing non-local database" | tee -a "$LOG"; exit 1 ;;
 esac
 if [[ "$PGURL" == *supabase.co* || "$PGURL" == *amazonaws.com* ]]; then
   echo "refusing hosted database" | tee -a "$LOG"
   exit 1
+fi
+db="${PGURL##*/}"
+db="${db%%\?*}"
+if [[ "$db" == "m2" ]]; then
+  echo "refusing to write the shared m2 database" | tee -a "$LOG"
+  exit 1
+fi
+
+if [[ -z "$PGURL" ]]; then
+  OWN_SCRATCH=1
+  PGURL="postgresql://postgres@127.0.0.1:55442/m3_rehearsal?sslmode=disable"
+  busy="$(psql "$ADMIN" -At -c "SELECT count(*) FROM pg_stat_activity WHERE datname = 'm2'")"
+  if [[ "$busy" != "0" ]]; then
+    echo "refusing to clone m2 while other sessions are connected" | tee -a "$LOG"
+    exit 1
+  fi
+  psql "$ADMIN" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'm3_rehearsal' AND pid <> pg_backend_pid();" >>"$LOG" 2>&1 || true
+  psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS m3_rehearsal;" >>"$LOG" 2>&1
+  psql "$ADMIN" -v ON_ERROR_STOP=1 -c "CREATE DATABASE m3_rehearsal TEMPLATE m2;" >>"$LOG" 2>&1
+  echo "scratch database m3_rehearsal cloned from local m2" | tee -a "$LOG"
 fi
 
 psqlq() { psql "$PGURL" -v ON_ERROR_STOP=1 "$@"; }
@@ -25,6 +53,11 @@ cleanup() {
   psql "$PGURL" -v ON_ERROR_STOP=1 -c "DELETE FROM public.waitlist WHERE email ILIKE 'm3-proof-%@example.test';" >>"$LOG" 2>&1 || true
   psql "$PGURL" -v ON_ERROR_STOP=1 -f "$ROOT/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql" >>"$LOG" 2>&1 || true
   psql "$PGURL" -v ON_ERROR_STOP=1 -f "$ROOT/proposed/m3-rollback/01-tnc-approval-expiry.sql" >>"$LOG" 2>&1 || true
+  if [[ "$OWN_SCRATCH" == 1 ]]; then
+    psql "$ADMIN" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'm3_rehearsal' AND pid <> pg_backend_pid();" >>"$LOG" 2>&1 || true
+    psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS m3_rehearsal;" >>"$LOG" 2>&1 || true
+    echo "dropped scratch database m3_rehearsal" | tee -a "$LOG"
+  fi
 }
 trap cleanup EXIT
 
@@ -51,18 +84,14 @@ acl_snapshot() {
 }
 
 require_preflight() {
-  local out bad count
-  out="$(psqlq -At -F $'\t' <<EOF
-BEGIN READ ONLY;
-$(cat "$ROOT/proposed/m3/preflight.sql")
-COMMIT;
-EOF
-)"
-  printf '%s\n' "$out" | tee -a "$LOG"
-  count="$(printf '%s\n' "$out" | awk -F '\t' 'NF == 4 { c++ } END { print c+0 }')"
-  bad="$(printf '%s\n' "$out" | awk -F '\t' 'NF == 4 && $4 != "t" { c++ } END { print c+0 }')"
-  echo "preflight rows=$count bad=$bad" | tee -a "$LOG"
-  if [[ "$count" != "17" || "$bad" != "0" ]]; then
+  local text
+  if [[ -z "$BUN" ]]; then
+    echo "bun is required for the read-only preflight" | tee -a "$LOG"
+    exit 1
+  fi
+  text="$("$BUN" "$ROOT/scripts/m3-hosted-preflight.ts" --url "$PGURL")"
+  printf '%s\n' "$text" | tee -a "$LOG"
+  if ! printf '%s\n' "$text" | grep -q 'checklist stops=0 checks=18'; then
     echo "preflight failed" | tee -a "$LOG"
     exit 1
   fi

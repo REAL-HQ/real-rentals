@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { assertSelectOnly as guardSelect } from "./select-only.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file) => readFileSync(resolve(root, file), "utf8");
@@ -32,19 +33,11 @@ function table(text) {
   return rows;
 }
 
-function statements(text) {
-  return strip(text)
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
 function assertSelectOnly(file, text) {
-  const body = statements(text);
-  if (body.length !== 1) throw new Error(`${file} has ${body.length} statements`);
-  if (!/^select\b/i.test(body[0])) throw new Error(`${file} does not start with SELECT`);
-  if (/\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|merge|call|do|comment|vacuum|begin|commit|rollback|execute|into)\b/i.test(body[0])) {
-    throw new Error(`${file} is not a pure SELECT`);
+  try {
+    guardSelect(text);
+  } catch (error) {
+    throw new Error(`${file}: ${error instanceof Error ? error.message : error}`);
   }
 }
 
