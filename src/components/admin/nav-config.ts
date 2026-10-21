@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { VEHICLE_EXPENSES_ENABLED } from "@/lib/vehicle-expenses-flag";
 
 export type TabDef = {
   id: string;
@@ -102,6 +103,16 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while the per-vehicle expense line is compiled on. Kept out of TABS so a dark build cannot list it. */
+const VEHICLE_EXPENSES_TAB: TabDef = {
+  id: "vehicle_expenses",
+  label: "Vehicle Expenses",
+  icon: Wallet,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Categorized Costs Per Vehicle",
+};
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -114,10 +125,13 @@ const FINANCE_TAB: TabDef = {
 
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const finance = UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager");
+  const vehicleExpenses = VEHICLE_EXPENSES_ENABLED && tierAllows(tier, "manager");
+  if (!finance && !vehicleExpenses) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
+  if (finance) next.splice(at + 1, 0, FINANCE_TAB);
+  if (vehicleExpenses) next.splice(at + 1, 0, VEHICLE_EXPENSES_TAB);
   return next;
 }
 
@@ -151,9 +165,16 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  const finance = UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager");
+  const vehicleExpenses = VEHICLE_EXPENSES_ENABLED && tierAllows(tier, "manager");
+  if (finance) {
+    const at = entries.findIndex((t) => t.id === "expenses");
+    entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  }
+  if (vehicleExpenses) {
+    const at = entries.findIndex((t) => t.id === "expenses");
+    entries.splice(at + 1, 0, { ...VEHICLE_EXPENSES_TAB, href: "vehicle_expenses" });
+  }
   return entries;
 }
 
