@@ -63,6 +63,8 @@ import { PayoutBreakdownPanel } from "@/components/admin/PayoutBreakdownPanel";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
+import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -356,6 +358,10 @@ function Admin() {
     if (urlTab === "billing_health") {
       if (!BILLING_HEALTH_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "billing_health";
+    }
+    if (urlTab === "funnel") {
+      if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "funnel";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -880,6 +886,7 @@ function Admin() {
             {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
+            {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

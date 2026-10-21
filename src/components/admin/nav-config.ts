@@ -30,6 +30,7 @@ import {
   Scale,
   FileSpreadsheet,
   HeartPulse,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -43,6 +44,7 @@ import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 
 export type TabDef = {
   id: string;
@@ -181,6 +183,16 @@ const BILLING_HEALTH_TAB: TabDef = {
   description: "Active Rentals Compared With Stripe Subscriptions",
 };
 
+/** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FUNNEL_TAB: TabDef = {
+  id: "funnel",
+  label: "Applicant Funnel",
+  icon: BarChart3,
+  minTier: "manager",
+  group: "PEOPLE",
+  description: "Application Counts And Conversion For An Eastern Time Range",
+};
+
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
@@ -279,7 +291,20 @@ function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | nul
 }
 
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  let next = TABS.filter((t) => tierAllows(tier, t.minTier));
+  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (!APPLICANT_FUNNEL_ENABLED || !tierAllows(tier, "manager")) return withFinance(tabs, tier);
+  return withFinance(insertFunnel(tabs), tier);
+}
+
+function insertFunnel(tabs: TabDef[]): TabDef[] {
+  const next = [...tabs];
+  const at = next.findIndex((tab) => tab.id === "drivers");
+  next.splice(at + 1, 0, FUNNEL_TAB);
+  return next;
+}
+
+function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
+  let next = tabs;
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
@@ -337,6 +362,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     const at = entries.findIndex((t) => t.id === "incidents");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
     entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
+  }
+  if (APPLICANT_FUNNEL_ENABLED && tierAllows(tier, "manager")) {
+    const drivers = entries.findIndex((t) => t.id === "drivers");
+    entries.splice(drivers + 1, 0, { ...FUNNEL_TAB, href: "funnel" });
   }
   const extra: (TabDef & { href: string })[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
