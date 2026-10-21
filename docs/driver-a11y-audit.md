@@ -25,7 +25,7 @@ axe violation rules are counted per page (the same rule on two pages counts twic
 
 The 16 nodes that remain are color contrast. This pass does not recolor the comparison table, the fleet category chips, or the footer band.
 
-Manual tap targets under 44px: 27 on `/`, 17 on `/fleet`, 9 on `/apply`, 3 on `/portal` before. After: 0, 0, 4, 0. The four left on `/apply` are inline legal links inside sentences.
+Manual tap targets under 44px: 27 on `/`, 17 on `/fleet`, 9 on `/apply`, 3 on `/portal` before. After: 0, 0, 0, 0.
 
 Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizontal overflow: none before or after (`scrollWidth` 390). No keyboard trap on any of the four pages.
 
@@ -64,7 +64,7 @@ Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizont
 - Fleet Make trigger (`h-9`, 36px) and the Available Now Only checkbox (13px)
 - Apply name, email, and phone fields (38px), the SMS consent checkbox (16px), and the help phone link (38px tall)
 
-**Inline legal links left as they are.** On `/apply`, “Terms” and “Privacy Policy” sit inside the submission sentence and the SMS disclosure. They are still under 44px (four links). Padding them would break the sentence. WCAG 2.5.8 treats inline text links as an exception.
+**Inline legal links.** On `/apply`, “Terms” and “Privacy Policy” sit inside the submission sentence and the SMS disclosure (four links). Each link keeps `display: inline` and gains 10px of padding above, 19px below, and 8px on each side. The horizontal padding is cancelled by a matching negative margin, and `box-decoration-break: clone` gives every wrapped line its own padding. Measured at 390px, the words, the line break (“Privacy” / “Policy”), and the line spacing match the unpadded sentence. Each line’s border box is at least 44px, and the boxes clear the Continue button.
 
 **Focus indicator.** Tab order on all four pages walks the page and returns to the start. Nothing trapped focus. Several fields use `outline-none` and show focus by changing the border color (`focus:border-real-red`). That is a visible indicator, not a missing one. Not changed.
 
@@ -80,4 +80,4 @@ Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizont
 
 ## What this change does not do
 
-No queries, validation, submission, auth, or copy changes. Contrast colors above stay as they are until a separate design approval. The inline Terms and Privacy links stay inline.
+No queries, validation, submission, auth, or copy changes. Contrast colors above stay as they are until a separate design approval. The Terms and Privacy words stay inside their sentences.

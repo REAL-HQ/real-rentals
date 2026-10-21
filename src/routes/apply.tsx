@@ -218,8 +218,8 @@ function ContactStep({
           </button>
           <p className="mt-3 text-center text-[11px] text-muted-foreground">
             By submitting, you agree to our{" "}
-            <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
-            <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+            <Link to="/terms" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Terms</Link> and{" "}
+            <Link to="/privacy" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Privacy Policy</Link>.
           </p>
         </div>
         )}
