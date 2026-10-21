@@ -300,7 +300,11 @@ const browser = await chromium.launch({
 const leaked = [];
 
 async function open(viewport) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 1,
+    timezoneId: "America/New_York",
+  });
   await ctx.route("**/*", (route) => {
     const url = route.request().url();
     const origin = new URL(url).origin;
@@ -380,10 +384,24 @@ async function shotOf(locator, name) {
 
 const widthName = (viewport) => (viewport.width === 1280 ? "desktop-1280" : "phone-390");
 
-/** On a phone the sticky bar is taller than the viewport. Scrolling Export CSV into view hides the source chips. */
-async function framePayments(page, viewport) {
+/** On a phone the toolbar is one sideways-scrolling row. Place it under the sticky header, and optionally scroll that row until Export CSV is in view. */
+async function framePayments(page, viewport, { showExport = false } = {}) {
   if (viewport.width < 700) {
-    await page.locator(".admin-sticky-bar").evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.locator(".admin-sticky-bar").evaluate((el, revealExport) => {
+      const headerRaw = getComputedStyle(document.documentElement).getPropertyValue("--admin-sticky-h");
+      const headerH = Number.parseFloat(headerRaw) || document.querySelector("header")?.offsetHeight || 0;
+      const top = window.scrollY + el.getBoundingClientRect().top - headerH;
+      window.scrollTo(0, Math.max(0, top));
+      if (!revealExport) {
+        el.scrollLeft = 0;
+        return;
+      }
+      const button = [...el.querySelectorAll("button")].find((node) => (node.textContent || "").includes("Export CSV"));
+      if (!button) return;
+      const barBox = el.getBoundingClientRect();
+      const buttonBox = button.getBoundingClientRect();
+      el.scrollLeft += buttonBox.right - barBox.right + 8;
+    }, showExport);
     await page.waitForTimeout(150);
     return;
   }
@@ -450,6 +468,7 @@ try {
     await page.getByRole("heading", { name: "Unmatched Payments" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(200);
     await shot(page, `${label}-unmatched`);
+    await framePayments(page, viewport, { showExport: true });
     await shotOf(page.locator(".admin-sticky-bar"), `${label}-export-csv`);
 
     await page.getByRole("button", { name: "Stripe", exact: true }).click();

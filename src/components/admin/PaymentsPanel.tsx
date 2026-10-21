@@ -227,8 +227,10 @@ export function PaymentsPanel({
   const filtered = visiblePayments(sourced, paymentView);
 
   // Same balances as the Outstanding Balances card: source filter only.
-  // A balance due before this range still counts.
-  const totalDue = recordedOutstandingTotal(sourced);
+  // A balance due before this range still counts. A truncated read, or a
+  // missing or negative balance, is Unavailable — the same cases as the card.
+  const outstandingAmount =
+    !readsComplete || extras === "failed" ? null : recordedOutstandingTotal(sourced);
 
   function downloadPaymentsCsv() {
     if (rangeMessage(range)) return;
@@ -306,7 +308,9 @@ export function PaymentsPanel({
         </Select>
         <div className="text-sm text-muted-foreground">
           Outstanding:{" "}
-          <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+          <span className="font-semibold text-foreground">
+            {outstandingAmount === null ? "Unavailable" : `$${outstandingAmount.toLocaleString()}`}
+          </span>
         </div>
         <button
           type="button"

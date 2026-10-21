@@ -230,7 +230,7 @@ const tooLong = summarize({ range: { from: "2024-01-01", to: "2025-01-01" }, sou
 check(tooLong.grossCollected.amount === null && /366/.test(tooLong.grossCollected.reason), "a range over 366 days is unavailable");
 
 const cutOff = summarize({ truncated: true, payments: [pay({ amount: 500 })], stripe: readyStripe() });
-check(cutOff.grossCollected.amount === null && cutOff.netCollected.amount === null && cutOff.coverage === "Unavailable", "a truncated read does not total");
+check(cutOff.grossCollected.amount === null && cutOff.netCollected.amount === null && cutOff.outstanding.amount === null && cutOff.coverage === "Unavailable", "a truncated read does not total");
 const shortPage = await reporting.readEveryPage(async (from) => from === 0 ? { data: [1], error: null, count: 2 } : { data: [], error: null, count: 2 });
 check(shortPage.complete === false && shortPage.rows.length === 1, "a short page below the count is incomplete");
 const fullPage = await reporting.readEveryPage(async () => ({ data: [1, 2], error: null, count: 2 }));
@@ -497,6 +497,31 @@ check(
   "outstanding keeps an overdue balance due before the range",
 );
 check(
+  reporting.recordedOutstandingTotal([
+    pay({ status: "overdue", amount: null, balance_due: null, payment_method: "Cash", paid_date: null }),
+  ]) === null,
+  "a missing balance makes the toolbar outstanding unavailable",
+);
+check(
+  reporting.recordedOutstandingTotal([
+    pay({ status: "overdue", amount: 20, balance_due: -1, payment_method: "Cash", paid_date: null }),
+  ]) === null,
+  "a negative balance makes the toolbar outstanding unavailable",
+);
+check(
+  reporting.recordedOutstandingTotal([
+    overdueInRange,
+    pay({ status: "overdue", amount: 20, balance_due: -1, payment_method: "Cash", paid_date: null }),
+  ]) === null,
+  "one negative balance withholds the whole outstanding total",
+);
+check(
+  reporting.recordedOutstandingTotal([
+    pay({ status: "overdue", amount: 20, balance_due: null, payment_method: "Cash", paid_date: null }),
+  ]) === 20,
+  "a null balance due uses the amount, matching the outstanding card",
+);
+check(
   summarize({ source: "cash", range: october, payments: [overdueBeforeRange, overdueInRange] }).outstanding.amount === 40,
   "the outstanding card keeps that same overdue balance",
 );
@@ -526,6 +551,11 @@ check(
   "the csv link is appended, clicked, then removed after a short timeout",
 );
 check(payments.includes("easternToday()") && !payments.includes('paid_date: s === "paid" ? new Date()'), "marking a row paid stamps the Eastern day");
+check(
+  payments.includes('!readsComplete || extras === "failed" ? null : recordedOutstandingTotal(sourced)')
+    && payments.includes('outstandingAmount === null ? "Unavailable"'),
+  "the top bar shows Unavailable when the read stopped or the balance cannot be totaled",
+);
 check(overview.includes("loadReportingPayments") && payments.includes("loadReportingPayments"), "overview and payments load the same payment rows for deposit detection");
 check(leads.includes("hot.prospects.length") && leads.includes("hot.prospects.map"), "the hot count and the modal render one list");
 check(leads.includes("View All Follow-ups") && leads.includes("ALL_FOLLOW_UPS_PAGE = 25") && leads.includes('limit: ALL_FOLLOW_UPS_PAGE'), "all follow-ups opens the 25-row list");

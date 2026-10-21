@@ -468,12 +468,24 @@ type OutstandingRow = { status?: string | null; balance_due?: number | null; amo
 
 /**
  * Owed on the source filter only. The date range does not apply: an overdue
- * balance due before the window stays here, matching the Outstanding Balances card.
+ * balance due before the window stays here. A missing or negative balance
+ * withholds the total, matching the Outstanding Balances card.
  */
-export function recordedOutstandingTotal(rows: readonly OutstandingRow[]): number {
-  return rows
-    .filter((row) => OUTSTANDING_STATUSES.includes(row.status as (typeof OUTSTANDING_STATUSES)[number]))
-    .reduce((sum, row) => sum + (row.balance_due == null ? Number(row.amount || 0) : Number(row.balance_due)), 0);
+function outstandingMetric(rows: readonly OutstandingRow[]): Metric {
+  let total = 0;
+  for (const row of rows) {
+    if (!OUTSTANDING_STATUSES.includes(row.status as (typeof OUTSTANDING_STATUSES)[number])) continue;
+    const balance = row.balance_due === null ? dollars(row.amount) : dollars(row.balance_due);
+    if (balance === null || balance < 0) return unavailable("A balance is missing, so outstanding balances are not shown.");
+    const next = add(total, balance);
+    if (next === null) return unavailable("Outstanding balances could not be added.");
+    total = next;
+  }
+  return known(total);
+}
+
+export function recordedOutstandingTotal(rows: readonly OutstandingRow[]): number | null {
+  return outstandingMetric(rows).amount;
 }
 
 export type PaymentView = {
@@ -701,19 +713,12 @@ function depositsHeld(source: SourceFilter, deposits: { rentals: DepositRentalFa
 }
 
 function outstandingOf(rows: ReportingPayment[], source: SourceFilter): Metric {
-  let total = 0;
-  for (const row of rows) {
-    if (!OUTSTANDING_STATUSES.includes(row.status as (typeof OUTSTANDING_STATUSES)[number])) continue;
-    const balance = row.balance_due === null ? dollars(row.amount) : dollars(row.balance_due);
-    if (balance === null || balance < 0) return unavailable("A balance is missing, so outstanding balances are not shown.");
-    const next = add(total, balance);
-    if (next === null) return unavailable("Outstanding balances could not be added.");
-    total = next;
-  }
+  const metric = outstandingMetric(rows);
+  if (metric.amount === null) return metric;
   const note = source === "stripe"
     ? "Recorded balances on Stripe-linked payments. Upcoming Stripe invoices are in Stripe Collections, not in this figure. Not limited to the date range."
     : "Current recorded balances. Not limited to the date range.";
-  return known(total, note);
+  return known(metric.amount, note);
 }
 
 /**
