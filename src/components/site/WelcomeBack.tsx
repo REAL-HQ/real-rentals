@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { requestApplicationLink } from "@/lib/applications.functions";
+import { secureLinkBody, secureLinkHeading, secureLinkKind } from "@/lib/secure-link-copy";
 
 /**
  * Persistent "check your email" / recovery panel shared by every public entry
@@ -15,12 +16,16 @@ export function WelcomeBack({
   email,
   dark = false,
   expired = false,
+  missing = false,
   initial,
   onBack,
 }: {
   email?: string;
   dark?: boolean;
+  /** A token was presented and could not be opened. */
   expired?: boolean;
+  /** /thank-you was opened with no token at all. */
+  missing?: boolean;
   /** Result of the form submission that led here, if any. */
   initial?: { status: LinkStatus; retryAfterSeconds: number };
   /** Return to the form (e.g. to fix a typo). */
@@ -54,15 +59,12 @@ export function WelcomeBack({
 
   const mins = Math.floor(wait / 60);
   const secs = String(wait % 60).padStart(2, "0");
+  const kind = secureLinkKind(expired, missing);
 
   return (
-    <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`}>
-      <h2 className="text-xl font-semibold">{expired ? "Get A New Secure Link" : "Check Your Email To Continue"}</h2>
-      <p className={`mt-2 text-sm leading-relaxed ${muted}`}>
-        {expired
-          ? "This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link."
-          : "For your security, we continue applications through a secure link sent to the email on the application."}
-      </p>
+    <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link={kind}>
+      <h2 className="text-xl font-semibold">{secureLinkHeading(kind)}</h2>
+      <p className={`mt-2 text-sm leading-relaxed ${muted}`}>{secureLinkBody(kind)}</p>
       {state === "sent" && (
         <p className={`mt-3 text-sm leading-relaxed ${muted}`}>
           We've sent a secure link to the email on the application. It works once and expires in 30 minutes. It can
