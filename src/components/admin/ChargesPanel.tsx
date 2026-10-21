@@ -17,6 +17,8 @@ import {
   type ImportOutcome,
 } from "@/lib/charges.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { TOLLS_UNBILLED_ENABLED } from "@/lib/tolls-unbilled-flag";
+import { UnbilledTollsSection } from "./UnbilledTollsSection";
 
 type VehicleLite = {
   id: string;
@@ -148,6 +150,8 @@ export function ChargesPanel() {
           </button>
         </div>
       </div>
+
+      {TOLLS_UNBILLED_ENABLED ? <UnbilledTollsSection /> : null}
 
       <div className="flex flex-wrap gap-1.5">
         {STATUS_FILTERS.map((f) => (
