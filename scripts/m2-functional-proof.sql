@@ -724,6 +724,185 @@ EXCEPTION WHEN OTHERS THEN
  RAISE;
 END $$;
 
+-- Replacement car, signed archive, and agreement evidence. Seeded as the
+-- table owner. The authenticated swap call does not write these rows.
+-- Mileage stays null, so the swap writes no odometer reading.
+RESET SESSION AUTHORIZATION;
+DO $$
+DECLARE
+ app uuid := '44444444-4444-4444-8444-444444444444';
+ rep uuid := 'abababab-abab-4aba-8aba-abababababab';
+ doc uuid := 'edededed-eded-4ede-8ede-edededededed';
+ agr uuid := 'bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc';
+ rid uuid; assign uuid; sha text; rate numeric; sub text; autopay boolean;
+ bytes bytea := convert_to('m2-swap-agreement-v1','UTF8');
+BEGIN
+ SELECT id, weekly_rate, stripe_subscription_id, autopay_active
+  INTO rid, rate, sub, autopay
+  FROM public.rentals WHERE application_id=app AND status='active';
+ IF rid IS NULL THEN RAISE EXCEPTION 'swap fixture rental missing'; END IF;
+ SELECT a.id INTO assign
+  FROM public.booking_vehicle_assignments a
+  LEFT JOIN private.assignment_closures c ON c.assignment_id=a.id
+  WHERE a.rental_id=rid AND c.assignment_id IS NULL;
+ IF assign IS NULL THEN RAISE EXCEPTION 'swap fixture assignment missing'; END IF;
+ sha := encode(extensions.digest(bytes, 'sha256'), 'hex');
+ INSERT INTO public.vehicles (id, year, make, model, vin, weekly_rate, status)
+ VALUES (rep, 2021, 'Toyota', 'Camry', '2HGBH41JXMN109186', 275, 'available');
+ INSERT INTO public.documents (
+  id, driver_id, kind, category, storage_bucket, storage_path, content_sha256, is_current
+ ) VALUES (
+  doc, app, 'rental_agreement', 'rental_agreement', 'rental-agreements',
+  'immutable-v1/' || doc::text || '/' || sha || '.pdf', sha, false
+ );
+ INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version) VALUES (
+  'rental-agreements',
+  'immutable-v1/' || doc::text || '/' || sha || '.pdf',
+  jsonb_build_object('sha256', sha),
+  jsonb_build_object('mimetype', 'application/pdf', 'size', octet_length(bytes)),
+  'v1'
+ );
+ INSERT INTO public.agreements (
+  id, application_id, vehicle_id, title, body, status, signed_at, document_id, completed_document_id,
+  archive_status, sha256, body_sha256, merge_data, company_signer_name
+ ) VALUES (
+  agr, app, rep, 'Replacement Vehicle Agreement', 'swap terms', 'signed',
+  '2026-10-14 15:00:00+00', doc, doc, 'archived', sha,
+  encode(extensions.digest(convert_to('swap terms','UTF8'), 'sha256'), 'hex'),
+  jsonb_build_object('record_rental_terms_v1', jsonb_build_object(
+   'effectiveAt','2026-10-15T16:00:00+00','weeklyCents',27500,'currency','usd')),
+  'REAL RENTALS'
+ );
+ INSERT INTO private.agreement_evidence (
+  agreement_id, rental_id, application_id, vehicle_id, document_id, sha256,
+  signed_at, signer_user_id, actor_id
+ ) VALUES (
+  agr, rid, app, rep, doc, sha, '2026-10-14 15:00:00+00',
+  '22222222-2222-4222-8222-222222222222',
+  '11111111-1111-4111-8111-111111111111'
+ );
+ PERFORM set_config('m2.swap_rental', rid::text, true);
+ PERFORM set_config('m2.swap_assignment', assign::text, true);
+ PERFORM set_config('m2.swap_agreement', agr::text, true);
+ PERFORM set_config('m2.swap_vehicle', rep::text, true);
+ PERFORM set_config('m2.swap_rate', rate::text, true);
+ PERFORM set_config('m2.swap_sub', coalesce(sub, ''), true);
+ PERFORM set_config('m2.swap_autopay', coalesce(autopay::text, ''), true);
+END $$;
+
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+
+DO $$
+DECLARE result jsonb;
+BEGIN
+ result := public.swap_rental_vehicle_tx(
+  'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
+  current_setting('m2.swap_rental')::uuid,
+  current_setting('m2.swap_assignment')::uuid,
+  current_setting('m2.swap_vehicle')::uuid,
+  '2026-10-15 16:00:00+00',
+  NULL, NULL,
+  'ready replacement car',
+  current_setting('m2.swap_agreement')::uuid);
+ IF result->>'contract' IS DISTINCT FROM 'vehicle-swap-v1'
+  OR result->>'recovered' IS DISTINCT FROM 'false'
+  OR result->>'outgoingStatus' IS DISTINCT FROM 'maintenance'
+  OR result->>'billing' IS DISTINCT FROM 'unchanged'
+  OR result->>'rentalId' IS DISTINCT FROM current_setting('m2.swap_rental')
+ THEN RAISE EXCEPTION 'swap result %', result; END IF;
+ PERFORM set_config('m2.swap_result', result::text, true);
+ RAISE NOTICE 'RESULT swap pass %', result->>'replacementAssignmentId';
+END $$;
+
+RESET SESSION AUTHORIZATION;
+DO $$
+DECLARE result jsonb := current_setting('m2.swap_result')::jsonb;
+ rid uuid := current_setting('m2.swap_rental')::uuid;
+ rep uuid := current_setting('m2.swap_vehicle')::uuid;
+ oldv uuid := '77777777-7777-4777-8777-777777777777';
+ rate numeric; sub text; autopay text; closures int; replacements int; audits int;
+BEGIN
+ SELECT weekly_rate, stripe_subscription_id, coalesce(autopay_active::text, '')
+  INTO rate, sub, autopay
+  FROM public.rentals WHERE id=rid;
+ IF (SELECT vehicle_id FROM public.rentals WHERE id=rid) IS DISTINCT FROM rep THEN
+  RAISE EXCEPTION 'rental pointer did not move'; END IF;
+ IF (SELECT status FROM public.rentals WHERE id=rid) IS DISTINCT FROM 'active' THEN
+  RAISE EXCEPTION 'swap closed the rental'; END IF;
+ IF rate IS DISTINCT FROM current_setting('m2.swap_rate')::numeric
+  OR coalesce(sub, '') IS DISTINCT FROM current_setting('m2.swap_sub')
+  OR autopay IS DISTINCT FROM current_setting('m2.swap_autopay') THEN
+  RAISE EXCEPTION 'billing changed rate % sub % autopay %', rate, sub, autopay; END IF;
+ IF (SELECT status FROM public.vehicles WHERE id=oldv) IS DISTINCT FROM 'maintenance' THEN
+  RAISE EXCEPTION 'outgoing car was not held'; END IF;
+ IF (SELECT status FROM public.vehicles WHERE id=rep) IS DISTINCT FROM 'rented' THEN
+  RAISE EXCEPTION 'replacement was not marked rented'; END IF;
+ SELECT count(*) INTO closures FROM private.assignment_closures c
+  JOIN public.booking_vehicle_assignments a ON a.id=c.assignment_id
+  WHERE a.rental_id=rid;
+ SELECT count(*) INTO replacements FROM public.booking_vehicle_assignments
+  WHERE rental_id=rid AND assignment_kind='replacement';
+ SELECT count(*) INTO audits FROM public.audit_log
+  WHERE action='rental.vehicle_swapped' AND entity_id=rid::text;
+ IF closures<>1 OR replacements<>1 OR audits<>1 THEN
+  RAISE EXCEPTION 'swap history closures % replacements % audits %', closures, replacements, audits; END IF;
+ IF (SELECT id FROM public.booking_vehicle_assignments
+     WHERE rental_id=rid AND assignment_kind='replacement')::text
+    IS DISTINCT FROM result->>'replacementAssignmentId' THEN
+  RAISE EXCEPTION 'replacement assignment id mismatch'; END IF;
+END $$;
+
+-- Same operation id and the same arguments. Recovery returns before another write.
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+
+DO $$
+DECLARE result jsonb; first jsonb := current_setting('m2.swap_result')::jsonb;
+BEGIN
+ result := public.swap_rental_vehicle_tx(
+  'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
+  current_setting('m2.swap_rental')::uuid,
+  current_setting('m2.swap_assignment')::uuid,
+  current_setting('m2.swap_vehicle')::uuid,
+  '2026-10-15 16:00:00+00',
+  NULL, NULL,
+  'ready replacement car',
+  current_setting('m2.swap_agreement')::uuid);
+ IF result->>'recovered' IS DISTINCT FROM 'true'
+  OR result->>'contract' IS DISTINCT FROM 'vehicle-swap-v1'
+  OR result->>'swapNumber' IS DISTINCT FROM first->>'swapNumber'
+  OR result->>'replacementAssignmentId' IS DISTINCT FROM first->>'replacementAssignmentId'
+  OR result->>'closedAssignmentId' IS DISTINCT FROM first->>'closedAssignmentId'
+ THEN RAISE EXCEPTION 'swap replay %', result; END IF;
+ RAISE NOTICE 'RESULT swap replay recovered %', result->>'recovered';
+END $$;
+
+RESET SESSION AUTHORIZATION;
+DO $$
+DECLARE rid uuid := current_setting('m2.swap_rental')::uuid; closures int; replacements int; audits int;
+BEGIN
+ SELECT count(*) INTO closures FROM private.assignment_closures c
+  JOIN public.booking_vehicle_assignments a ON a.id=c.assignment_id WHERE a.rental_id=rid;
+ SELECT count(*) INTO replacements FROM public.booking_vehicle_assignments
+  WHERE rental_id=rid AND assignment_kind='replacement';
+ SELECT count(*) INTO audits FROM public.audit_log
+  WHERE action='rental.vehicle_swapped' AND entity_id=rid::text;
+ IF closures<>1 OR replacements<>1 OR audits<>1 THEN
+  RAISE EXCEPTION 'swap replay wrote again closures % replacements % audits %', closures, replacements, audits;
+ END IF;
+END $$;
+
 -- Real service_role call, the PostgREST shape: session_user authenticator,
 -- role service_role. No stub of approval_actor. extend_rental_tx must accept
 -- a manager id and reject a non-manager before taking the approval lock.

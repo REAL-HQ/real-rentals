@@ -39,6 +39,17 @@
 -- Does not set app.rental_tx. No charge, invoice, deposit, or subscription write.
 -- Swap step 20 reads this table from private.swap_agreement_evidence.
 -- This file does not replace that function.
+--
+-- Re-applying this file after step 19c would replace the four-argument
+-- record_agreement_evidence with the deny-all stub below, then fail when
+-- the table already exists. The guard runs first and refuses, so that
+-- replace does not start.
+
+DO $$ BEGIN
+ IF to_regclass('private.agreement_evidence') IS NOT NULL THEN
+  RAISE EXCEPTION 'agreement_evidence_already_installed';
+ END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION private.record_agreement_evidence(uuid,uuid,timestamptz,numeric) RETURNS uuid
  LANGUAGE plpgsql SET search_path='' AS $$

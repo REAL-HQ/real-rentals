@@ -139,6 +139,27 @@ if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
   exit 1
 fi
 psqlq -f "$ROOT/scripts/m2-functional-proof.sql" | tee -a "$LOG"
+
+echo "19b REAPPLY GUARD" | tee -a "$LOG"
+set +e
+psqlq -1 -f "$ROOT/proposed/m2-packet/19b.sql" >>"$LOG" 2>&1
+reapply_status=$?
+set -e
+if [[ "$reapply_status" -eq 0 ]]; then
+  echo "19b reapply committed after agreement_evidence existed" | tee -a "$LOG"
+  exit 1
+fi
+if ! grep -q 'agreement_evidence_already_installed' "$LOG"; then
+  echo "19b reapply failed for a different reason" | tee -a "$LOG"
+  exit 1
+fi
+still_definer="$(psqlq -At -c "SELECT prosecdef FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='private' AND p.proname='record_agreement_evidence' AND p.pronargs=4;")"
+if [[ "$still_definer" != "t" ]]; then
+  echo "19b reapply replaced the 19c evidence function: $still_definer" | tee -a "$LOG"
+  exit 1
+fi
+echo "19b reapply guard pass" | tee -a "$LOG"
+
 bun "$ROOT/scripts/m2-content-sha.test.ts" | tee -a "$LOG"
 bun "$ROOT/scripts/m2-approve-fallback.test.ts" | tee -a "$LOG"
 

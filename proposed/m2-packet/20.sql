@@ -27,7 +27,28 @@
 -- decision. The replacement is marked rented only after the rental pointer
 -- moves, while that car is still available, so a safe-release guard can see
 -- an available car. There is no status argument. No payment, invoice,
--- deposit, weekly rate, or subscription write.
+-- deposit, weekly rate, or subscription write. The rental read does not
+-- select weekly_rate, stripe_subscription_id, or autopay_active. Those
+-- columns are not granted to rr_record_executor, and this swap does not
+-- use them, so no billing column grant is added.
+--
+-- Executor policies hide a vehicle unless record.vehicle_id is that row,
+-- and hide the application and rental unless record.application_id is the
+-- rental's application. The application id is read from
+-- private.record_operations, which this role owns, before either setting
+-- is used. record.vehicle_id is set to the vehicle about to be locked or
+-- read, lower uuid first, so two swaps still cannot deadlock.
+--
+-- Two grants, and only these. EXECUTE on
+-- public.vehicle_rental_ready_missing(uuid): that function is security
+-- definer and reads year, make, model, VIN, and weekly rate as its owner.
+-- UPDATE (id) on public.application_identity_reviews: FOR SHARE needs a
+-- lock privilege, and SELECT on that table is already granted. The swap
+-- does not update a review row.
+--
+-- guard_rental_lifecycle refuses an active rental's vehicle_id change
+-- unless app.rental_tx is on. swap_project_vehicle_v1 turns that on for
+-- the pointer update only, then turns it off before the status writes.
 --
 -- Historical intervals are not accepted. effective_at must fall after the
 -- single open assignment. Past multi-vehicle intake is not represented by
@@ -100,9 +121,15 @@ CREATE FUNCTION private.swap_project_vehicle_v1(
 BEGIN
  IF current_setting('swap.operation_id', true) IS DISTINCT FROM _operation::text THEN
   RAISE EXCEPTION 'swap_projection_context_required' USING ERRCODE='42501'; END IF;
+ -- On only for this pointer. The lifecycle guard refuses the change otherwise.
+ PERFORM pg_catalog.set_config('app.rental_tx', 'on', true);
  UPDATE public.rentals SET vehicle_id=_new_vehicle
   WHERE id=_rental AND status='active' AND vehicle_id=_old_vehicle;
- IF NOT FOUND THEN RAISE EXCEPTION 'rental_projection_rejected' USING ERRCODE='42501'; END IF;
+ IF NOT FOUND THEN
+  PERFORM pg_catalog.set_config('app.rental_tx', 'off', true);
+  RAISE EXCEPTION 'rental_projection_rejected' USING ERRCODE='42501';
+ END IF;
+ PERFORM pg_catalog.set_config('app.rental_tx', 'off', true);
  -- Pointer first, while the replacement is still available. Then rented.
  -- Then the outgoing car. Never available.
  UPDATE public.vehicles SET status='rented' WHERE id=_new_vehicle AND status='available';
@@ -155,23 +182,37 @@ BEGIN
  -- 1 then 2. Same keys as activation and closeout. No unbounded wait.
  PERFORM private.approval_lock();
  IF NOT pg_try_advisory_xact_lock(710026,2) THEN RAISE EXCEPTION 'swap_contention' USING ERRCODE='40001'; END IF;
- SELECT application_id, vehicle_id INTO app_id, old_vehicle FROM public.rentals WHERE id=_rental_id;
+ -- Owned by this role, so the row is visible before the record settings exist.
+ SELECT application_id INTO app_id FROM private.record_operations WHERE rental_id=_rental_id;
  IF app_id IS NULL THEN RAISE EXCEPTION 'rental_not_found'; END IF;
- -- 3 application, 4 rental.
+ PERFORM pg_catalog.set_config('record.application_id', app_id::text, true);
+ -- 3 application, 4 rental. Billing columns are not read.
  PERFORM 1 FROM public.applications WHERE id=app_id FOR UPDATE NOWAIT;
- SELECT id, application_id, vehicle_id, driver_id, status, start_date, weekly_rate, stripe_subscription_id, autopay_active
+ IF NOT FOUND THEN RAISE EXCEPTION 'rental_not_found'; END IF;
+ SELECT id, application_id, vehicle_id, driver_id, status, start_date
   INTO r FROM public.rentals WHERE id=_rental_id FOR UPDATE NOWAIT;
- IF NOT FOUND OR r.application_id IS DISTINCT FROM app_id OR r.vehicle_id IS DISTINCT FROM old_vehicle THEN
+ IF NOT FOUND OR r.application_id IS DISTINCT FROM app_id OR r.vehicle_id IS NULL THEN
   RAISE EXCEPTION 'rental_not_found'; END IF;
+ old_vehicle:=r.vehicle_id;
  new_vehicle:=_replacement_vehicle_id;
- -- 5 both vehicles, uuid order. A replay may already point at the replacement,
- -- so the same-vehicle rejection waits until after operation recovery.
+ -- 5 both vehicles, uuid order. One setting cannot show both rows, so it
+ -- changes immediately before each lock. A hidden row is not a lock.
+ -- A replay may already point at the replacement, so the same-vehicle
+ -- rejection waits until after operation recovery.
  IF old_vehicle<new_vehicle THEN
+  PERFORM pg_catalog.set_config('record.vehicle_id', old_vehicle::text, true);
   PERFORM 1 FROM public.vehicles WHERE id=old_vehicle FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'vehicle_not_found'; END IF;
+  PERFORM pg_catalog.set_config('record.vehicle_id', new_vehicle::text, true);
   PERFORM 1 FROM public.vehicles WHERE id=new_vehicle FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'vehicle_unavailable'; END IF;
  ELSE
+  PERFORM pg_catalog.set_config('record.vehicle_id', new_vehicle::text, true);
   PERFORM 1 FROM public.vehicles WHERE id=new_vehicle FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'vehicle_unavailable'; END IF;
+  PERFORM pg_catalog.set_config('record.vehicle_id', old_vehicle::text, true);
   PERFORM 1 FROM public.vehicles WHERE id=old_vehicle FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'vehicle_not_found'; END IF;
  END IF;
  actor_after:=private.approval_actor();
  IF actor_after IS DISTINCT FROM actor THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
@@ -197,6 +238,7 @@ BEGIN
  IF _effective_at<=a.assignment_start THEN RAISE EXCEPTION 'invalid_effective_time'; END IF;
  IF r.start_date IS NOT NULL AND (_effective_at AT TIME ZONE 'America/New_York')::date<r.start_date THEN
   RAISE EXCEPTION 'invalid_effective_time'; END IF;
+ PERFORM pg_catalog.set_config('record.vehicle_id', new_vehicle::text, true);
  IF NOT EXISTS (SELECT 1 FROM public.vehicles WHERE id=new_vehicle AND archived_at IS NULL AND status='available') THEN
   RAISE EXCEPTION 'vehicle_unavailable'; END IF;
  IF EXISTS (SELECT 1 FROM public.rentals WHERE id<>_rental_id AND vehicle_id=new_vehicle AND status='active')
@@ -209,9 +251,11 @@ BEGIN
   RAISE EXCEPTION 'vehicle_not_ready'; END IF;
  IF _return_mileage IS NOT NULL AND a.pickup_mileage IS NOT NULL AND _return_mileage<a.pickup_mileage THEN
   RAISE EXCEPTION 'return_below_pickup'; END IF;
+ PERFORM pg_catalog.set_config('record.vehicle_id', old_vehicle::text, true);
  SELECT max(mileage) INTO hist FROM public.odometer_readings WHERE vehicle_id=old_vehicle AND status='valid';
  IF _return_mileage IS NOT NULL AND hist IS NOT NULL AND _return_mileage+500<hist THEN RAISE EXCEPTION 'return_below_history'; END IF;
  hist:=NULL;
+ PERFORM pg_catalog.set_config('record.vehicle_id', new_vehicle::text, true);
  SELECT max(mileage) INTO hist FROM public.odometer_readings WHERE vehicle_id=new_vehicle AND status='valid';
  IF _pickup_mileage IS NOT NULL AND hist IS NOT NULL AND _pickup_mileage+500<hist THEN RAISE EXCEPTION 'pickup_below_history'; END IF;
  -- 6 agreement evidence, 7 identity rows and the open assignment. No historical rewrite.
@@ -246,6 +290,10 @@ REVOKE ALL ON FUNCTION public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timesta
  FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid)
  TO authenticated;
+-- The ready function reads the profile columns as its owner. Call only.
+GRANT EXECUTE ON FUNCTION public.vehicle_rental_ready_missing(uuid) TO rr_record_executor;
+-- Lock privilege for FOR SHARE. The swap does not update a review.
+GRANT UPDATE (id) ON TABLE public.application_identity_reviews TO rr_record_executor;
 
 -- Staff read of append-only assignment rows. Missing on today's database; the
 -- caller treats "function does not exist" as an empty history. Direct table

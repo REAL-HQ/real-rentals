@@ -30,6 +30,8 @@ DROP SEQUENCE IF EXISTS "private"."swap_number_seq" CASCADE;
 -- row level security flags
 -- owners
 -- privileges captured on the pre-step catalog
+REVOKE UPDATE (id) ON TABLE public.application_identity_reviews FROM rr_record_executor;
+REVOKE EXECUTE ON FUNCTION public.vehicle_rental_ready_missing(uuid) FROM rr_record_executor;
 -- comments
 -- role memberships added by this step
 -- roles added by this step
