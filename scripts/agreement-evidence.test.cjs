@@ -9,7 +9,7 @@ const { createRequire } = require("module");
 const { pgProgram, makeDataDir } = require("./pg-local.cjs");
 
 const root = path.resolve(__dirname, "..");
-const PACKET = "526b91aeb3b4d6247f6759c868db5857a57084df";
+const PACKET = "04a761ef0395a87ef8e9da45f2300d3479829ca0";
 const deps = createRequire(path.resolve(root, "package.json"));
 const ts = deps("typescript");
 const z = deps("zod");
@@ -365,8 +365,8 @@ async function checkedEvidenceDatabase() {
       CREATE ROLE service_role NOLOGIN;
       CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
       BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-      CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;
-      CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN PERFORM 1; END $$;
+      CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$ SELECT '${ACTOR}'::uuid $$;
+      CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SET search_path='' AS $$ BEGIN PERFORM 1; END $$;
       REVOKE ALL ON FUNCTION private.approval_actor(),private.approval_lock() FROM PUBLIC,anon,authenticated,service_role;
       CREATE TABLE public.applications (id uuid PRIMARY KEY, user_id uuid, deleted_at timestamptz);
       CREATE TABLE public.vehicles (id uuid PRIMARY KEY);
@@ -424,14 +424,14 @@ async function checkedEvidenceDatabase() {
       `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_v1('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
       /permission denied/i,
     );
-    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${COORD}'::uuid $$;`);
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$ SELECT '${COORD}'::uuid $$;`);
     expectSqlError(
       dir,
       port,
       `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
       /manager_required/,
     );
-    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;`);
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$ SELECT '${ACTOR}'::uuid $$;`);
     const linked = JSON.parse(evidencePsql(dir, port, `
       BEGIN;
       SET LOCAL ROLE authenticated;

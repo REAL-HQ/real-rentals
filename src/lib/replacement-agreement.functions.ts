@@ -4,7 +4,7 @@ import { z } from "zod";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 
 // Replacement evidence is proposed/m2-packet/19b.sql on PR #190
-// (526b91aeb3b4d6247f6759c868db5857a57084df, HOSTED-INSTALL step 24).
+// (04a761ef0395a87ef8e9da45f2300d3479829ca0, HOSTED-INSTALL step 24).
 // The agreement contract is
 // proposed/m2-with-approval-boundary/19c-agreement-contract.sql
 // (HOSTED-INSTALL step 25). The swap SQL is proposed/m2-packet/20.sql

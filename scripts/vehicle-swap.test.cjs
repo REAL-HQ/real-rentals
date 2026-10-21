@@ -20,7 +20,7 @@ function test(name, fn) {
   console.log("PASS", name);
 }
 
-const PACKET = "526b91aeb3b4d6247f6759c868db5857a57084df";
+const PACKET = "04a761ef0395a87ef8e9da45f2300d3479829ca0";
 
 function packetSql(name) {
   try {
@@ -138,17 +138,20 @@ test("proposed sql documents the lock order and does not bill", () => {
 });
 
 test("the local swap file is a pointer and the packet grants stay on 20.sql", () => {
+  const canonical = execFileSync("git", ["show", `${PACKET}:proposed/vehicle-swap-v1.sql`], { cwd: root, encoding: "utf8" });
+  assert.equal(pointer, canonical);
+  const agreement = fs.readFileSync(path.join(root, "src/lib/replacement-agreement.functions.ts"), "utf8");
+  assert.match(agreement, new RegExp(PACKET));
+  assert.match(agreement, /after the agreement contract/);
+  assert.match(agreement, /proposed\/m2-with-approval-boundary\/19c-agreement-contract\.sql/);
+  assert.match(agreement, /HOSTED-INSTALL step 26/);
   assert.doesNotMatch(pointer, /CREATE\s+(OR REPLACE\s+)?FUNCTION/i);
   assert.doesNotMatch(pointer, /CREATE\s+TABLE/i);
-  assert.match(pointer, /pointer, not a source/);
-  assert.match(pointer, /after the agreement contract/);
   assert.match(pointer, /proposed\/m2-packet\/20\.sql/);
-  assert.match(pointer, /proposed\/m2-with-approval-boundary\/19c-agreement-contract\.sql/);
   assert.match(pointer, /HOSTED-INSTALL step 26/);
-  assert.match(pointer, /526b91aeb3b4d6247f6759c868db5857a57084df/);
   assert.doesNotMatch(pointer, /step 25[^\n]*20\.sql/);
   assert.doesNotMatch(pointer, /20\.sql[^\n]*step 25/);
-  assert.match(pointer, /guard_rental_lifecycle/);
+  assert.match(sql, /guard_rental_lifecycle/);
   assert.match(
     sql,
     /REVOKE ALL ON FUNCTION public\.swap_rental_vehicle_tx\(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid\)\s+FROM PUBLIC, anon, service_role;/,
@@ -295,8 +298,8 @@ $$;
 
 CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;
-CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN PERFORM 1; END $$;
+CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$ SELECT '${ACTOR}'::uuid $$;
+CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SET search_path='' AS $$ BEGIN PERFORM 1; END $$;
 REVOKE ALL ON FUNCTION private.approval_actor(),private.approval_lock() FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION public.vehicle_rental_ready_missing(uuid) RETURNS text[] LANGUAGE sql AS $$ SELECT '{}'::text[] $$;
 
