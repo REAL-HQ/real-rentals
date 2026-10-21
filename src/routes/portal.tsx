@@ -88,6 +88,9 @@ import { DRIVER_RECEIPTS_ENABLED } from "@/lib/driver-receipts";
 import { getDriverReceipts } from "@/lib/driver-receipts.functions";
 import { DriverHelpLink } from "@/components/portal/DriverHelp";
 import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
+import { MyCarCard } from "@/components/portal/MyCarCard";
+import { MY_CAR_CARD_ENABLED } from "@/lib/my-car-card";
+import { getMyCar } from "@/lib/my-car-card.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -1573,6 +1576,17 @@ function PreRentalPanel({
   );
 }
 
+function MyCarGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getMyCar);
+  return (
+    <MyCarCard
+      read={() => read()}
+      onPayments={() => onNavigate("payments")}
+      onDocuments={() => onNavigate("documents")}
+    />
+  );
+}
+
 function NextStepsSection() {
   const fetchSteps = usePortalRead(getMyNextSteps);
   const previewId = usePreviewDriver();
@@ -1637,6 +1651,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      {MY_CAR_CARD_ENABLED ? <MyCarGate onNavigate={onNavigate} /> : null}
       <div className="rounded-2xl border border-[#D03020] bg-[#D03020]/5 p-5" data-testid="roadside-dashboard">
         <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
         <p className="mt-1 text-sm text-[#111114]">
