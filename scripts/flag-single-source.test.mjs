@@ -29,6 +29,10 @@
 //
 // LIVE_TRUE_FLAGS may be literal `true`. On 7e3e6eb (release/rc2-dark-features)
 // the only `*_ENABLED = true` under src/ is STRIPE_COLLECTIONS_ENABLED.
+// LIVE_ENV_GATED_FLAGS is the second allowlist: live env-gated, owner-controlled.
+// Those two names read process.env and may already be sending alerts. Any other
+// *_ENABLED name whose initializer is not literal false still fails, including
+// a new flag that reads the environment.
 //
 // Hidden boolean gates that are not named *_ENABLED (for example
 // `filtersOn = false as boolean`) are not declarations and are not a failure.
@@ -44,9 +48,13 @@ import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-// Live in source on 7e3e6eb and on this branch. Env-backed flags are not
-// literal true, so they are not listed and the value check fails them.
+// Live in source on 7e3e6eb and on this branch. Literal `true` only.
 const LIVE_TRUE_FLAGS = new Set(["STRIPE_COLLECTIONS_ENABLED"]);
+
+// LIVE env-gated, owner-controlled. driver-issue-alert.server.ts reads
+// process.env for these two. They may be on in production and sending alerts.
+// Do not add a name here to silence a new env-gated flag.
+const LIVE_ENV_GATED_FLAGS = new Set(["DRIVER_ISSUE_ALERTS_ENABLED", "ROADSIDE_SMS_ALERTS_ENABLED"]);
 
 const ROOTS = ["src"];
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
@@ -92,6 +100,7 @@ export function productionSites(sites) {
 /**
  * Production declarations whose initializer is not literal `false` or
  * `false as boolean`. LIVE_TRUE_FLAGS may be literal `true`.
+ * LIVE_ENV_GATED_FLAGS may be a non-literal env read. Any other name fails.
  * Non-empty means the scanner exits 1.
  */
 export function initializerFailures(byName) {
@@ -100,6 +109,7 @@ export function initializerFailures(byName) {
     for (const site of productionSites(sites)) {
       if (site.initializer === "false" || site.initializer === "false as boolean") continue;
       if (LIVE_TRUE_FLAGS.has(name) && site.initializer === "true") continue;
+      if (LIVE_ENV_GATED_FLAGS.has(name) && site.initializer === "non-literal") continue;
       failures.push([name, site]);
     }
   }
@@ -550,6 +560,14 @@ function selfTest() {
       { label: "assignment false", source: "globalThis.OK_ASSIGN_ENABLED = false;\n" },
       { label: "live true allowlist", source: "export const STRIPE_COLLECTIONS_ENABLED = true;\n" },
       {
+        label: "live env-gated allowlist",
+        source: [
+          'export const DRIVER_ISSUE_ALERTS_ENABLED = process.env.DRIVER_ISSUE_ALERTS_ENABLED === "true";',
+          'export const ROADSIDE_SMS_ALERTS_ENABLED = process.env.ROADSIDE_SMS_ALERTS_ENABLED === "true";',
+          "",
+        ].join("\n"),
+      },
+      {
         label: "type signature is not a declaration",
         source: [
           "export const SHAPE_ENABLED = false;",
@@ -569,6 +587,17 @@ function selfTest() {
       assert.equal(ran.status, 0, `${item.label} should exit 0\n${ran.stderr}`);
       cleanExits.push(`${item.label} exit ${ran.status}`);
     }
+    assert.deepEqual(
+      [...LIVE_ENV_GATED_FLAGS].sort(),
+      ["DRIVER_ISSUE_ALERTS_ENABLED", "ROADSIDE_SMS_ALERTS_ENABLED"],
+      "the env allowlist is exactly the two live alert flags",
+    );
+    const liveEnvButTrue = join(root, "live-env-true");
+    mkdirSync(liveEnvButTrue);
+    writeFileSync(liveEnvButTrue + "/true.ts", "export const DRIVER_ISSUE_ALERTS_ENABLED = true;\n");
+    assert.equal(initializerFailures(collectFlagDeclarations(liveEnvButTrue)).length, 1, "an env-gated name set to literal true is not on the live-true allowlist");
+    assert.equal(scannerExit(liveEnvButTrue).status, 1);
+
     const liveButBound = join(root, "live-bound");
     mkdirSync(liveButBound);
     writeFileSync(liveButBound + "/bound.ts", "const { STRIPE_COLLECTIONS_ENABLED } = {};\n");
