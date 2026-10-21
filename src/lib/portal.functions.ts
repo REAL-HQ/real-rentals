@@ -414,7 +414,8 @@ export const createDriverIssue = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) return { error: error.message };
-    // Staff email only. The driver still gets { ok: true } and the same portal list.
+    // Staff notice only after the row exists. Email and roadside SMS stay inside
+    // driver-issue-alert.server and both default off. The driver still gets { ok: true }.
     // Isolated from the dashboard deposit fields (PR #62 edits those, not this insert).
     void import("@/lib/driver-issue-alert.server")
       .then(({ notifyManagersOfDriverIssue }) =>
