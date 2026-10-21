@@ -1,6 +1,11 @@
 /**
- * Flags off: paper UI and handlers refuse, and the live deletion path is the
- * revenue-publication source. No database connection.
+ * Flags off: paper UI and handlers refuse, and paper does not edit the live
+ * deletion or archive path. No database connection.
+ *
+ * Those files are compared to PR #62 (ed17ccd5), the RC2 base for this path,
+ * not to revenue-publication. #62 already changed driver-deletion.server.ts
+ * and esign.server.ts, so a diff against the old revenue branch reported
+ * those gated edits as paper failures.
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -47,15 +52,18 @@ const untouched = [
   "src/components/admin/RecentlyDeletedDialog.tsx",
   "src/lib/esign.server.ts",
 ];
+// RC2 base for the live deletion and archive path: PR #62, already merged here.
+const rc2Base = "ed17ccd5c573d4f66e8ab2db6a9b843fd63ed3bd";
+const drifted = [];
 for (const file of untouched) {
-  let same = true;
   try {
-    execFileSync("git", ["diff", "--exit-code", "origin/codex/revenue-publication", "--", file], { stdio: "ignore" });
+    execFileSync("git", ["diff", "--exit-code", rc2Base, "--", file], { stdio: "ignore" });
   } catch {
-    same = false;
+    drifted.push(file);
   }
-  ok(same, `${file} matches revenue-publication`);
 }
+ok(drifted.length === 0, "Paper did not change these files relative to the RC2 base");
+for (const file of drifted) console.log(`       ${file}`);
 
 const sql = readFileSync("proposed/paper-agreements-v1.sql", "utf8");
 ok(sql.includes("private.is_manager()"), "proposed SQL gates registration on private.is_manager()");
