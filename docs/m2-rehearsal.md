@@ -199,6 +199,26 @@ The excluded file cannot be applied unchanged in either order:
 
 Step 6 replaces `application_identity_reviews_resolution_check` after step 0. The check that remains is the step 6 `positive_license_v1` check. The boundary's `approval_identity` check does not survive. A verified `approval_identity` row does not satisfy the step 6 check, and a verified `positive_license_v1` row does not satisfy the boundary check. This rehearsal does not merge those checks.
 
+## Resolution value `approval_identity`
+
+No packet function, and no code under `src`, inserts or updates `resolution = 'approval_identity'`. That string is not a resolution. Step 6 does not remove a resolution value any of those writers use, so no extra step is required.
+
+`approval_identity` is a `kind`. The only writer is step 0's `verify_approval_identity`, which inserts `kind = 'approval_identity'` and `resolution = 'verified'`. It is not in the packet files and not in `src`. `record_existing_rental_tx` does not write this column. After step 7 it still calls `approval_validate`, which only reads a row with that kind and `resolution = 'verified'`.
+
+Writers that do exist, and what step 6's check allows:
+
+| Writer | Values | Step 6 check |
+| --- | --- | --- |
+| `src/lib/applications.functions.ts` | `kind = 'phone_match_email_differs'`, resolution left null | Allowed |
+| `src/lib/identity-review.functions.ts` and `resolve_application_identity_review` | `same_person`, `different_person`, or `dismissed` | Allowed |
+| Step 6 `private.verify_license_v1` | `kind = 'positive_license_v1'`, `resolution = 'verified'`, `positive_evidence_v1` set | Allowed |
+
+Local proof after steps 1, 0, and 2 through 6, with user triggers disabled so only the check was under test, then rolled back. Schema-only dump matched the production-matching baseline.
+
+- The open-review insert, the `same_person` update, and the `positive_license_v1` / `verified` insert each succeeded.
+- `resolution = 'approval_identity'` failed: `new row for relation "application_identity_reviews" violates check constraint "application_identity_reviews_resolution_check"`.
+- `kind = 'approval_identity'` with `resolution = 'verified'` failed the same check. That is the step 0 insert shape. Nothing in the packet or `src` performs it.
+
 `approval-privileges.local.sql` stays excluded.
 
 ## Step 0 install and rollback
