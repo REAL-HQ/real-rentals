@@ -80,6 +80,9 @@ import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimel
 import { PickupChecklistCard } from "@/components/portal/PickupChecklistCard";
 import { PORTAL_PICKUP_CHECKLIST_ENABLED } from "@/lib/portal-pickup-checklist";
 import { getPortalPickupChecklist } from "@/lib/portal-pickup-checklist.functions";
+import { PortalNotices } from "@/components/portal/PortalNotices";
+import { PORTAL_NOTICES_ENABLED } from "@/lib/portal-notices";
+import { getPortalNotices } from "@/lib/portal-notices.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -342,10 +345,16 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
 
   return (
     <div className="space-y-6">
+      {PORTAL_NOTICES_ENABLED ? <PortalNoticesGate onNavigate={onNavigate} /> : null}
       {RENTER_PAYMENT_BANNER_ENABLED === true ? <RenterPaymentBannerGate /> : null}
       {body}
     </div>
   );
+}
+
+function PortalNoticesGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getPortalNotices);
+  return <PortalNotices onNavigate={onNavigate} read={() => read()} />;
 }
 
 function RenterPaymentBannerGate() {
