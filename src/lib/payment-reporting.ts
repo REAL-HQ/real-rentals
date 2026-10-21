@@ -29,6 +29,14 @@
  * payments has no stripe_charge_id column. Charge identity reaches a payment
  * through payment_refunds, charge metadata, notes, or when one of the two
  * stored ids is the charge id itself.
+ *
+ * Refundable deposits are not revenue. A recorded payment whose type is
+ * deposit, and a Stripe charge identified as a deposit, are left out of
+ * gross, refunds, and net. Held deposits stay in Deposits held. A Stripe
+ * charge is a deposit when its metadata reason is deposit, or when every
+ * paymentIds entry is present and every one of those rows is a deposit. A
+ * missing id is not guessed. A charge that mixes a deposit with rent is
+ * not split and stays in revenue.
  */
 
 import { rangeMessage, reportingDay } from "@/lib/eastern-day";
@@ -178,8 +186,28 @@ export type ChargeRef = {
   paymentIds?: readonly string[] | null;
   rentalId?: string | null;
   sessionId?: string | null;
-  /** Unix seconds of capture, used only for the rental-and-Eastern-day link. */
+  /** Unix seconds of capture, used for the rental-and-Eastern-day link and deposit exclusion. */
   created?: number | null;
+  /** Short metadata reason token. "deposit" marks a refundable deposit charge. */
+  reason?: string | null;
+  /** Cents, on a verified Stripe charge. */
+  amount?: number | null;
+  paid?: boolean | null;
+  captured?: boolean | null;
+  status?: string | null;
+  currency?: string | null;
+  /** Cents. Null when the balance transaction did not supply a fee. */
+  fee?: number | null;
+};
+
+export type StripeRefundRef = {
+  id?: string;
+  chargeId: string;
+  created: number;
+  currency: string;
+  amount: number;
+  status: string | null;
+  fee: number | null;
 };
 export type PaymentRef = {
   id: string;
@@ -193,11 +221,12 @@ export type PaymentRef = {
 
 const STRIPE_TOKEN = /\b(?:pi|ch|cs|in)_[A-Za-z0-9]+\b/g;
 
-/** paymentIds and rentalId as the collection webhook writes them. Non-uuids are dropped. */
-export function chargeLinksFromMetadata(metadata: { paymentIds?: string | null; rentalId?: string | null; sessionId?: string | null; checkout_session_id?: string | null } | null | undefined): {
+/** paymentIds, rentalId, and a short reason token as the collection webhook writes them. Non-uuids are dropped. */
+export function chargeLinksFromMetadata(metadata: { paymentIds?: string | null; rentalId?: string | null; sessionId?: string | null; checkout_session_id?: string | null; reason?: string | null } | null | undefined): {
   paymentIds: string[];
   rentalId: string | null;
   sessionId: string | null;
+  reason: string | null;
 } {
   const paymentIds = String(metadata?.paymentIds ?? "")
     .split(",")
@@ -205,10 +234,12 @@ export function chargeLinksFromMetadata(metadata: { paymentIds?: string | null; 
     .filter((part) => UUID.test(part));
   const rental = metadata?.rentalId?.trim() ?? "";
   const session = metadata?.sessionId?.trim() || metadata?.checkout_session_id?.trim() || "";
+  const reason = normalizePaymentMethod(metadata?.reason);
   return {
     paymentIds,
     rentalId: UUID.test(rental) ? rental : null,
     sessionId: /^cs_[A-Za-z0-9]+$/.test(session) ? session : null,
+    reason: /^[a-z0-9_]{1,40}$/.test(reason) ? reason : null,
   };
 }
 export type RefundLink = {
@@ -307,6 +338,11 @@ export type StripeSlice = {
   collectionsComplete: boolean;
   totals: StripeTotals[] | null;
   charges: ChargeRef[];
+  /**
+   * Refund rows from the same verified report as `charges`. Undefined means
+   * they were not loaded. An empty array means the report had none.
+   */
+  refunds?: readonly StripeRefundRef[] | null;
 };
 
 export type DepositRentalFact = {
@@ -390,7 +426,71 @@ export function revenuePaymentsSearch(range: DayWindow): { tab: "payments"; from
   return { tab: "payments", from: range.from, to: range.to };
 }
 
-type StripeMoney = { gross: number; refunds: number; fees: number | null; net: number | null; reason: string | null };
+/** A refundable deposit. The renter's money, not revenue. */
+export function isDepositPayment(row: { type?: string | null }): boolean {
+  return (row.type ?? "").trim().toLowerCase() === "deposit";
+}
+
+/** The revenue definition shared by the Overview tile and the 84-day trend. */
+export function isRevenuePayment(row: { type?: string | null }): boolean {
+  return !isDepositPayment(row);
+}
+
+/**
+ * A Stripe charge that is a deposit. Reason wins. Otherwise every named
+ * payment id must be loaded and every one of those rows must be a deposit.
+ * A missing id, or a mix of deposit and rent, is not a deposit charge.
+ */
+export function isDepositCharge(
+  charge: { reason?: string | null; paymentIds?: readonly string[] | null },
+  payments: readonly { id: string; type?: string | null }[],
+): boolean {
+  if ((charge.reason ?? "").trim().toLowerCase() === "deposit") return true;
+  const ids = (charge.paymentIds ?? []).map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) return false;
+  const byId = new Map(payments.map((payment) => [payment.id, payment]));
+  if (ids.some((id) => !byId.has(id))) return false;
+  return ids.every((id) => isDepositPayment(byId.get(id)!));
+}
+
+/** Paid date when it exists, otherwise the due date. A row with neither is outside every range. */
+export function rowInReportRange(
+  row: { paid_date?: string | null; due_date?: string | null },
+  range: DayWindow | null,
+): boolean {
+  if (!range || rangeMessage(range)) return false;
+  const day = reportingDay(row.paid_date) ?? reportingDay(row.due_date);
+  if (!day) return false;
+  return day >= range.from && day <= range.to;
+}
+
+export const PAYMENT_CSV_COLUMNS = ["Driver", "Vehicle", "Type", "Amount", "Due", "Status", "Method", "Late Fees", "Balance"] as const;
+
+function csvField(value: string): string {
+  const numeric = /^-?\d+(\.\d+)?$/.test(value);
+  const safe = !numeric && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+/** Header plus one row per visible payment. Amounts are the strings the table shows. */
+export function paymentsCsv(rows: readonly (readonly string[])[]): string {
+  return [PAYMENT_CSV_COLUMNS, ...rows].map((line) => line.map((cell) => csvField(String(cell ?? ""))).join(",")).join("\n");
+}
+
+export function paymentsExportFilename(source: string, range: DayWindow): string {
+  return `payments-${source}-${range.from}-${range.to}.csv`;
+}
+
+const DEPOSIT_NOTE = "Refundable deposits are not revenue. They stay in Deposits held.";
+
+type StripeMoney = {
+  gross: number;
+  refunds: number;
+  fees: number | null;
+  net: number | null;
+  reason: string | null;
+  depositsExcluded?: boolean;
+};
 
 function stripeMoney(stripe: StripeSlice): StripeMoney | { reason: string } {
   if (stripe.status === "loading") return { reason: "Verified Stripe collections are still loading." };
@@ -409,6 +509,106 @@ function stripeMoney(stripe: StripeSlice): StripeMoney | { reason: string } {
   const fees = feesKnown ? fromCents(stripe.totals.reduce((sum, row) => sum + (row.fees ?? 0), 0)) : null;
   const net = fees === null ? null : dollars(gross - refunds - fees);
   return { gross, refunds, fees, net, reason: null };
+}
+
+function chargeDay(created: number | null | undefined): string | null {
+  if (typeof created !== "number" || !Number.isFinite(created)) return null;
+  return reportingDay(new Date(created * 1000).toISOString());
+}
+
+/**
+ * Stripe totals already include every succeeded charge in the report window.
+ * Remove deposit charges whose Eastern capture day is inside `range`, and
+ * remove succeeded refunds of deposit charges whose Eastern refund day is
+ * inside `range` (the charge itself may be older). Out-of-window charges
+ * stay, because they are not in this window's gross.
+ */
+function adjustStripeForDeposits(
+  money: StripeMoney,
+  stripe: StripeSlice,
+  payments: readonly ReportingPayment[],
+  range: DayWindow | null,
+): StripeMoney | { reason: string } {
+  const depositCharges = [...new Map(
+    stripe.charges.filter((charge) => isDepositCharge(charge, payments)).map((charge) => [charge.id, charge]),
+  ).values()];
+  if (depositCharges.length === 0) return money;
+  if (stripe.refunds == null) {
+    return { reason: "Stripe deposit refunds were not loaded, so revenue is not shown." };
+  }
+
+  const inside = (created: number | null | undefined): boolean | null => {
+    const day = chargeDay(created);
+    if (!day) return null;
+    return inRange(day, range);
+  };
+
+  const grossCharges: ChargeRef[] = [];
+  let feesUnknown = false;
+  for (const charge of depositCharges) {
+    const placed = inside(charge.created);
+    if (placed === null) return { reason: "A Stripe deposit charge has no capture date, so revenue is not shown." };
+    if (!placed) continue;
+    const amount = charge.amount;
+    const currency = charge.currency;
+    const status = charge.status;
+    const paid = charge.paid;
+    const captured = charge.captured;
+    const shapeKnown = typeof amount === "number"
+      && typeof currency === "string"
+      && typeof status === "string"
+      && typeof paid === "boolean"
+      && typeof captured === "boolean";
+    if (!shapeKnown) return { reason: "A Stripe deposit charge in this range could not be measured, so revenue is not shown." };
+    const counted = paid
+      && captured
+      && status === "succeeded"
+      && currency.toLowerCase() === "usd"
+      && Number.isSafeInteger(amount)
+      && amount > 0;
+    if (!counted) continue;
+    if (!Number.isSafeInteger(charge.fee)) feesUnknown = true;
+    grossCharges.push(charge);
+  }
+
+  const depositIds = new Set(depositCharges.map((charge) => charge.id));
+  const seenRefunds = new Set<string>();
+  let refundCents = 0;
+  let refundFeeCents = 0;
+  for (const refund of stripe.refunds) {
+    if (!depositIds.has(refund.chargeId)) continue;
+    const key = refund.id ?? `${refund.chargeId}:${refund.created}:${refund.amount}`;
+    if (seenRefunds.has(key)) continue;
+    seenRefunds.add(key);
+    const placed = inside(refund.created);
+    if (placed === null) return { reason: "A Stripe deposit refund has no date, so revenue is not shown." };
+    if (!placed || refund.status !== "succeeded") continue;
+    if (refund.currency.toLowerCase() !== "usd" || !Number.isSafeInteger(refund.amount) || refund.amount < 0) {
+      return { reason: "A Stripe deposit refund could not be read, so revenue is not shown." };
+    }
+    refundCents += refund.amount;
+    if (!Number.isSafeInteger(refund.fee)) feesUnknown = true;
+    else refundFeeCents += refund.fee ?? 0;
+  }
+
+  if (grossCharges.length === 0 && refundCents === 0) return money;
+
+  let grossCents = 0;
+  let feeCents = 0;
+  for (const charge of grossCharges) {
+    grossCents += charge.amount ?? 0;
+    if (Number.isSafeInteger(charge.fee)) feeCents += charge.fee ?? 0;
+  }
+  const gross = fromCents(Math.round(money.gross * 100) - grossCents);
+  const refunds = fromCents(Math.round(money.refunds * 100) - refundCents);
+  if (gross === null || refunds === null || gross < 0 || refunds < 0) {
+    return { reason: "Stripe deposit charges could not be removed from the collected total." };
+  }
+  const fees = money.fees === null || feesUnknown
+    ? null
+    : fromCents(Math.round(money.fees * 100) - feeCents - refundFeeCents);
+  const net = fees === null ? null : dollars(gross - refunds - fees);
+  return { gross, refunds, fees, net, reason: null, depositsExcluded: true };
 }
 
 function depositHeld(rental: DepositRentalFact): boolean {
@@ -514,13 +714,19 @@ export function summarizePayments(input: {
   }
   const rows = input.payments.filter((payment) => input.source === "all" || classifyPaymentSource(payment) === input.source);
   const stripeIncluded = input.source === "all" || input.source === "stripe";
-  const stripe = stripeIncluded ? stripeMoney(input.stripe) : null;
+  let stripe = stripeIncluded ? stripeMoney(input.stripe) : null;
+  if (stripe && "gross" in stripe) stripe = adjustStripeForDeposits(stripe, input.stripe, input.payments, input.range);
   const charges = stripe && "gross" in stripe ? input.stripe.charges : [];
   const linksUnknown = stripeIncluded && charges.length > 0 && input.refundLinks === null;
   const duplicateIds = linksUnknown ? [] : duplicatePaymentIds(rows, charges, input.refundLinks ?? []);
   const duplicated = new Set(duplicateIds);
   const unmatched: UnmatchedRow[] = [];
+  const recordedDepositInRange = rows.some((payment) => {
+    if (!isDepositPayment(payment) || !COLLECTED.has(payment.status ?? "")) return false;
+    return inRange(dayOf(payment.paid_date), input.range);
+  });
   const collected = rows.filter((payment) => {
+    if (isDepositPayment(payment)) return false;
     if (!COLLECTED.has(payment.status ?? "") || duplicated.has(payment.id)) return false;
     if (!stripeIncluded) return true;
     const reason = withheldReason(payment);
@@ -576,7 +782,10 @@ export function summarizePayments(input: {
         }
         grossAmount = next;
       }
-      if (grossMetric.amount !== null) grossMetric = known(grossAmount);
+      if (grossMetric.amount !== null) {
+        const excluded = recordedDepositInRange || (stripe && "gross" in stripe && stripe.depositsExcluded === true);
+        grossMetric = known(grossAmount, excluded ? DEPOSIT_NOTE : null);
+      }
     }
     const refundRows = collected.filter((payment) => {
       const refunded = dollars(payment.refunded_amount);
@@ -620,13 +829,15 @@ export function summarizePayments(input: {
       const stripeNet = stripe ? dollars(stripeGross - stripeRefunds - (stripeFees ?? 0)) : 0;
       const internalNet = internalGross === null || internalRefunds === null ? null : dollars(internalGross + internalRefunds);
       const net = stripeNet === null || internalNet === null ? null : add(stripeNet, internalNet);
+      const excluded = recordedDepositInRange || (stripe && "gross" in stripe && stripe.depositsExcluded === true);
+      const netNote = stripe && collected.length > 0
+        ? "Stripe net is after processor fees. Recorded payments have no fee column, so their net is the amount minus refunds only."
+        : stripe
+          ? "Verified Stripe net after refunds and fees."
+          : "Recorded amount minus refunds. Processing fees are not stored for this method.";
       netMetric = net === null
         ? unavailable("Net collected could not be added.")
-        : known(net, stripe && collected.length > 0
-          ? "Stripe net is after processor fees. Recorded payments have no fee column, so their net is the amount minus refunds only."
-          : stripe
-            ? "Verified Stripe net after refunds and fees."
-            : "Recorded amount minus refunds. Processing fees are not stored for this method.");
+        : known(net, excluded ? `${DEPOSIT_NOTE} ${netNote}` : netNote);
     }
     let feesMetric: Metric;
     if (!stripeIncluded) {

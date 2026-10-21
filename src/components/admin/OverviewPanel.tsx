@@ -29,7 +29,7 @@ import {
 } from "recharts";
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
 import { compareReadiness, selectHotProspects, type ReadinessResult } from "@/lib/readiness";
-import { readEveryPage, revenuePaymentsSearch, summarizePayments, type RefundLink, type ReportingPayment } from "@/lib/payment-reporting";
+import { isRevenuePayment, readEveryPage, revenuePaymentsSearch, summarizePayments, type RefundLink, type ReportingPayment } from "@/lib/payment-reporting";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
@@ -68,17 +68,6 @@ import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
-
-/**
- * What counts as revenue.
- *
- * The same rule vehicle_pl() uses: money actually received, excluding
- * deposits. A deposit is the renter's money held against damage — it is on the
- * balance sheet, not the income statement, and counting it made a good week
- * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
- */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
 
 /**
  * What counts as collections.
@@ -202,11 +191,10 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
-          .select("net_collected, paid_date")
+          .select("net_collected, paid_date, type")
           .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        supabase.from("payments").select("amount, due_date, type").gte("due_date", d84),
         supabase
           .from("rentals")
           .select("end_date")
@@ -251,13 +239,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         });
       }
       for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
+        if (!isRevenuePayment(p) || !p.paid_date) continue;
         const w = bucketStart(new Date(p.paid_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
       }
       for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
+        if (!isRevenuePayment(p) || !p.due_date) continue;
         const w = bucketStart(new Date(p.due_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
@@ -635,7 +623,9 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       {/* Billed vs Collected stays on Overview. Payments lists charges and one
           outstanding total; it does not show this 12-week billed-versus-collected
           trend, the collection rate, or the worst week. Weekly Cash Flow is
-          Stripe cash against expenses, not invoices against collections. */}
+          Stripe cash against expenses, not invoices against collections.
+          Both series skip deposit rows, the same isRevenuePayment exclusion
+          as the Revenue tile. */}
       {(() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
@@ -873,6 +863,7 @@ function RevenueCard({
             collectionsComplete: sq.data.collectionsComplete,
             totals: sq.data.totals,
             charges: sq.data.verifiedCollections.charges,
+            refunds: sq.data.verifiedCollections.refunds,
           }
         : { status: "loading" as const, collectionsComplete: false, totals: null, charges: [] };
     return summarizePayments({

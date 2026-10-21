@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 
 const bundled = await build({
-  entryPoints: ["src/lib/payment-reporting.ts", "src/lib/readiness.ts"],
+  entryPoints: ["src/lib/payment-reporting.ts", "src/lib/readiness.ts", "src/lib/eastern-day.ts"],
   bundle: true,
   write: false,
   platform: "node",
@@ -13,6 +13,7 @@ const bundled = await build({
 const file = (name) => bundled.outputFiles.find((item) => item.path.endsWith(name)).text;
 const reporting = await import("data:text/javascript;base64," + Buffer.from(file("payment-reporting.js")).toString("base64"));
 const readiness = await import("data:text/javascript;base64," + Buffer.from(file("readiness.js")).toString("base64"));
+const eastern = await import("data:text/javascript;base64," + Buffer.from(file("eastern-day.js")).toString("base64"));
 
 let checks = 0;
 const check = (value, message) => {
@@ -290,6 +291,157 @@ const heldKnown = summarize({
 });
 check(heldKnown.depositsHeld.amount === 150, "held deposits use the paid net, and applied deposits stay out");
 
+const cashAndDeposit = summarize({
+  source: "cash",
+  payments: [
+    pay({ id: "rent", amount: 100 }),
+    pay({ id: "dep", amount: 200, type: "deposit", refunded_amount: 25, refunded_at: "2026-10-12" }),
+  ],
+});
+check(cashAndDeposit.grossCollected.amount === 100 && cashAndDeposit.netCollected.amount === 100 && cashAndDeposit.refunds.amount === 0, "a recorded deposit and its refund are not revenue");
+
+const heldRevenue = summarize({
+  payments: [
+    pay({ id: "rent", amount: 100, payment_method: "Cash" }),
+    pay({ id: "dep", amount: 200, type: "deposit", payment_method: "Cash" }),
+  ],
+  stripe: readyStripe({ totals: [{ currency: "usd", gross: 0, refunds: 0, fees: 0, net: 0 }], charges: [], refunds: [] }),
+  deposits: {
+    rentals: [{ id: "r-held", deposit_amount: 200, deposit_held: true, deposit_status: "held" }],
+    payments: [{ id: "dep", rental_id: "r-held", type: "deposit", status: "paid", net_collected: 200 }],
+  },
+});
+check(heldRevenue.grossCollected.amount === 100 && heldRevenue.netCollected.amount === 100, "all revenue excludes the recorded deposit");
+check(heldRevenue.depositsHeld.amount === 200, "the recorded deposit stays in deposits held");
+
+const captured = Date.parse("2026-10-10T16:00:00Z") / 1000;
+const counted = (over) => ({
+  amount: 10000,
+  paid: true,
+  captured: true,
+  status: "succeeded",
+  currency: "usd",
+  fee: 0,
+  created: captured,
+  ...over,
+});
+const stripeDeposit = summarize({
+  source: "stripe",
+  payments: [],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 15000, refunds: 2000, fees: 450, net: 12550 }],
+    charges: [
+      counted({ id: "ch_rent", amount: 10000, fee: 300, reason: "rent" }),
+      counted({ id: "ch_dep", amount: 5000, fee: 200, reason: "deposit" }),
+    ],
+    refunds: [{ chargeId: "ch_dep", created: captured, currency: "usd", amount: 2000, status: "succeeded", fee: -50 }],
+  }),
+});
+check(stripeDeposit.grossCollected.amount === 100 && stripeDeposit.refunds.amount === 0 && stripeDeposit.fees.amount === -3 && stripeDeposit.netCollected.amount === 97, "a Stripe deposit charge, its fee, and its refund are not revenue");
+
+const byIds = summarize({
+  source: "stripe",
+  payments: [pay({ id: "dep-row", type: "deposit", amount: 50, payment_method: "card", stripe_payment_intent_id: "pi_dep" })],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 15000, refunds: 0, fees: 500, net: 14500 }],
+    charges: [
+      counted({ id: "ch_rent", amount: 10000, fee: 300, reason: "rent" }),
+      counted({ id: "ch_dep", paymentIntentId: "pi_dep", paymentIds: ["dep-row"], amount: 5000, fee: 200 }),
+    ],
+    refunds: [],
+  }),
+});
+check(byIds.grossCollected.amount === 100 && byIds.fees.amount === -3 && byIds.netCollected.amount === 97, "a charge whose payment ids are all deposits is not revenue");
+
+const missingId = summarize({
+  source: "stripe",
+  payments: [pay({ id: "dep-row", type: "deposit", amount: 50 })],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 5000, refunds: 0, fees: 0, net: 5000 }],
+    charges: [counted({ id: "ch_miss", paymentIds: ["dep-row", "missing-row"], amount: 5000 })],
+    refunds: [],
+  }),
+});
+check(missingId.grossCollected.amount === 50, "a charge with a missing payment id is not treated as a deposit");
+
+const sameAmount = summarize({
+  source: "stripe",
+  payments: [],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 5000, refunds: 0, fees: 0, net: 5000 }],
+    charges: [counted({ id: "ch_amt", amount: 5000 })],
+    refunds: [],
+  }),
+});
+check(sameAmount.grossCollected.amount === 50, "a charge is not a deposit just because of its amount");
+
+const mixed = summarize({
+  source: "stripe",
+  payments: [
+    pay({ id: "rent-row", type: "rent", amount: 60, payment_method: null }),
+    pay({ id: "dep-row", type: "deposit", amount: 40, payment_method: null }),
+  ],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 10000, refunds: 0, fees: 0, net: 10000 }],
+    charges: [counted({ id: "ch_mix", paymentIds: ["rent-row", "dep-row"], amount: 10000, reason: "rent" })],
+    refunds: [],
+  }),
+});
+check(mixed.grossCollected.amount === 100, "a charge that mixes rent and a deposit stays in revenue");
+
+const older = Date.parse("2026-09-01T16:00:00Z") / 1000;
+const olderDeposit = summarize({
+  source: "stripe",
+  range: { from: "2026-10-01", to: "2026-10-31" },
+  payments: [],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 10000, refunds: 2000, fees: 250, net: 7750 }],
+    charges: [
+      counted({ id: "ch_rent", amount: 10000, fee: 300, reason: "rent" }),
+      counted({ id: "ch_old", amount: 5000, fee: 200, reason: "deposit", created: older }),
+    ],
+    refunds: [{ chargeId: "ch_old", created: captured, currency: "usd", amount: 2000, status: "succeeded", fee: -50 }],
+  }),
+});
+check(olderDeposit.grossCollected.amount === 100 && olderDeposit.refunds.amount === 0 && olderDeposit.netCollected.amount === 97, "an older deposit charge stays out of this window, and its in-window refund comes out");
+
+const noRefundList = summarize({
+  source: "stripe",
+  payments: [],
+  stripe: readyStripe({
+    totals: [{ currency: "usd", gross: 15000, refunds: 0, fees: 500, net: 14500 }],
+    charges: [counted({ id: "ch_dep", amount: 5000, fee: 200, reason: "deposit" })],
+  }),
+});
+check(noRefundList.grossCollected.amount === null && /refunds were not loaded/.test(noRefundList.grossCollected.reason), "a deposit charge is not removed until its refunds are known");
+check(!reporting.isRevenuePayment({ type: "deposit" }) && !reporting.isRevenuePayment({ type: " Deposit " }) && reporting.isRevenuePayment({ type: "toll" }), "revenue excludes a deposit and keeps a toll");
+check(reporting.chargeLinksFromMetadata({ reason: "Deposit" }).reason === "deposit", "metadata reason deposit is kept");
+check(reporting.chargeLinksFromMetadata({ reason: "x".repeat(50) }).reason === null, "a long reason is not a token");
+
+const RealDateTimeFormat = Intl.DateTimeFormat;
+try {
+  Intl.DateTimeFormat = function DateTimeFormat() { throw new Error("no tz"); };
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => { logged.push(args.map(String).join(" ")); };
+  let thrown = false;
+  let day = "";
+  try { day = eastern.easternToday(new Date("2026-10-21T15:00:00.000Z")); } catch { thrown = true; }
+  console.error = originalError;
+  check(!thrown && day === "2026-10-21", "easternToday falls back to the UTC date when the lookup throws");
+  check(logged.some((line) => /UTC date/.test(line)), "the UTC fallback is logged");
+} finally {
+  Intl.DateTimeFormat = RealDateTimeFormat;
+}
+
+check(!reporting.rowInReportRange({ paid_date: "2026-09-01", due_date: "2026-09-01" }, { from: "2026-10-01", to: "2026-10-31" }), "a row outside the range is omitted from the export");
+check(reporting.rowInReportRange({ paid_date: null, due_date: "2026-10-10" }, { from: "2026-10-01", to: "2026-10-31" }), "a visible row with a due date in range is exported");
+check(!reporting.rowInReportRange({ paid_date: null, due_date: null }, { from: "2026-10-01", to: "2026-10-31" }), "a row with neither date is omitted");
+const csv = reporting.paymentsCsv([['Ada "A"', "Car, 1", "rent", "$100", "2026-10-10", "Paid", "Cash", "$0", "$0"]]);
+check(csv.startsWith("Driver,Vehicle,Type,Amount,Due,Status,Method,Late Fees,Balance"), "the csv header matches the payments table");
+check(csv.includes('"Ada ""A"""') && csv.includes('"Car, 1"'), "the csv escapes quotes and commas");
+check(reporting.paymentsExportFilename("cash", { from: "2026-10-01", to: "2026-10-31" }) === "payments-cash-2026-10-01-2026-10-31.csv", "the csv name carries the source and range");
+
 const search = reporting.revenuePaymentsSearch({ from: "2026-10-01", to: "2026-10-18" });
 check(search.tab === "payments" && search.from === "2026-10-01" && search.to === "2026-10-18", "revenue search carries the date range");
 
@@ -304,6 +456,9 @@ check(overview.includes("selectHotProspects"), "overview uses the shared hot rul
 check(!overview.includes("<StripeCollections"), "the Stripe Collections panel is gone from Overview");
 check(!overview.includes("Hot Prospects"), "the separate Hot Prospects section is gone from Overview");
 check(overview.includes("Billed vs Collected"), "the billed versus collected chart stays");
+check(overview.includes("isRevenuePayment") && overview.includes('select("net_collected, paid_date, type")') && overview.includes('select("amount, due_date, type")'), "the 84-day trend uses the same deposit exclusion as the tile");
+check(!overview.includes("REVENUE_TYPES"), "the trend keeps tolls, damage, and fees that the tile counts");
+check(payments.includes("Export CSV") && payments.includes("paymentsCsv") && payments.includes("rowInReportRange"), "payments exports the visible rows for the selected source and range");
 check(leads.includes("hot.prospects.length") && leads.includes("hot.prospects.map"), "the hot count and the modal render one list");
 check(leads.includes("View All Follow-ups") && leads.includes("ALL_FOLLOW_UPS_PAGE = 25") && leads.includes('limit: ALL_FOLLOW_UPS_PAGE'), "all follow-ups opens the 25-row list");
 check(payments.includes("readEveryPage") && payments.includes("rangeMessage") && payments.includes('role="alert"'), "payments pages its reads and shows a range message");

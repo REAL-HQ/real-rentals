@@ -15,7 +15,10 @@ import {
   SOURCE_LABEL,
   SOURCE_MAPPING_GAPS,
   classifyPaymentSource,
+  paymentsCsv,
+  paymentsExportFilename,
   readEveryPage,
+  rowInReportRange,
   summarizePayments,
   type DepositRentalFact,
   type Metric,
@@ -197,6 +200,7 @@ export function PaymentsPanel({
               collectionsComplete: stripeQuery.data.collectionsComplete,
               totals: stripeQuery.data.totals,
               charges: stripeQuery.data.verifiedCollections.charges,
+              refunds: stripeQuery.data.verifiedCollections.refunds,
             }
           : { status: "loading" as const, collectionsComplete: false, totals: null, charges: [] };
     return summarizePayments({
@@ -232,6 +236,33 @@ export function PaymentsPanel({
   const totalDue = filtered
     .filter((p) => OWED.has(p.status as string))
     .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
+
+  function downloadPaymentsCsv() {
+    if (rangeMessage(range)) return;
+    const lines = filtered.filter((p) => rowInReportRange(p, range)).map((p) => {
+      const d = p.driver_id ? driverMap[p.driver_id] : null;
+      const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
+      const lateFees = Number(p.late_fees || 0);
+      return [
+        d?.full_name || (p.driver_id ? "Unnamed driver" : "—"),
+        v ? `${v.year} ${v.make} ${v.model}` : "—",
+        (p.type ?? "").replace(/_/g, " "),
+        `$${Number(p.amount).toLocaleString()}`,
+        fmtDate(p.due_date),
+        STATUS_LABEL[p.status] ?? (p.status ?? "").replace(/_/g, " "),
+        p.payment_method || "—",
+        `$${lateFees.toLocaleString()}`,
+        `$${Number(p.balance_due).toLocaleString()}`,
+      ];
+    });
+    const blob = new Blob([paymentsCsv(lines)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = paymentsExportFilename(source, range);
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div>
@@ -281,8 +312,16 @@ export function PaymentsPanel({
           <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
         </div>
         <button
+          type="button"
+          onClick={downloadPaymentsCsv}
+          disabled={!!rangeProblem}
+          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+        >
+          Export CSV
+        </button>
+        <button
           onClick={() => setShowManual(true)}
-          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium"
+          className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium"
         >
           Manual Payments
         </button>

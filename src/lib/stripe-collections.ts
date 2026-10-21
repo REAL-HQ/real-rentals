@@ -43,6 +43,8 @@ export type CollectionCharge = {
   rentalId?: string | null;
   /** Checkout session id from charge metadata, when it is a cs_ token. */
   sessionId?: string | null;
+  /** Short metadata reason token, such as rent or deposit. Absent when it is not a token. */
+  reason?: string | null;
 }
 export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
@@ -146,21 +148,4 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
   if (report.totals.length === 0) return formatStripeAmount(0, "usd");
   if (report.totals.some(t => t.net === null || !Number.isFinite(t.net))) return "—";
   return report.totals.map(t => formatStripeAmount(t.net, t.currency)).join(" · ");
-}
-
-/**
- * The Revenue card's single figure: verified Stripe net (after refunds and
- * fees) plus internal net_collected from rows NOT tied to a Stripe payment
- * (those are already inside the Stripe figure — never counted twice).
- * Returns null whenever Stripe cannot be established (never zero). Coverage
- * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
- */
-export function consolidatedRevenue(input: { internalNonStripe: number | null; report: CollectionsReport | null | undefined }):
-  { amount: number | null; coverage: "Partial" | "Unavailable" } {
-  if(input.internalNonStripe === null || !Number.isFinite(input.internalNonStripe)) return { amount: null, coverage: "Unavailable" };
-  const r = input.report;
-  if (!r || !r.collectionsComplete || !r.totals) return { amount: null, coverage: "Unavailable" };
-  if (r.totals.some(t => t.currency.toLowerCase() !== "usd" || t.net === null || !Number.isFinite(t.net))) return { amount: null, coverage: "Unavailable" };
-  const stripeNet = r.totals.reduce((s, t) => s + (t.net as number), 0) / 100;
-  return { amount: Math.round((stripeNet + input.internalNonStripe) * 100) / 100, coverage: "Partial" };
 }

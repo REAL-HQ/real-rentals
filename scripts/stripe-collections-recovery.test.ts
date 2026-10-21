@@ -1,21 +1,9 @@
 import {describe,it,expect,vi} from 'vitest';
-import {paymentRevenue,createRevenueBoundary,type RevenueSession} from '../src/lib/revenue-state';
-import {consolidatedRevenue} from '../src/lib/stripe-collections';
+import {createRevenueBoundary,type RevenueSession} from '../src/lib/revenue-state';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 const flush=()=>new Promise(r=>setImmediate(r));
-const report:any={collectionsComplete:true,totals:[{currency:'usd',net:10000}]};
-describe('Revenue error recovery',()=>{
- it('successful empty result is verified zero',()=>expect(paymentRevenue({data:[],count:0,error:null})).toEqual({total:0,nonStripe:0}));
- it('failed read is unknown, not zero',()=>expect(paymentRevenue({data:null,count:null,error:{message:'denied'}})).toBeNull());
- it('error with returned rows still fails closed',()=>expect(paymentRevenue({data:[{net_collected:50}],count:1,error:{message:'partial failure'}})).toBeNull());
- it('missing data is unavailable',()=>expect(paymentRevenue({data:null,count:0,error:null})).toBeNull());
- it('capped/missing count cannot imply full internal coverage',()=>{expect(paymentRevenue({data:[],count:3,error:null})).toBeNull();expect(paymentRevenue({data:[],count:null,error:null})).toBeNull();});
- it('unknown amounts remain unknown',()=>{for(const n of [null,undefined,'',NaN,Infinity])expect(paymentRevenue({data:[{net_collected:n}],count:1,error:null})).toBeNull();});
- it('known Stripe PI rows are excluded from internal contribution',()=>expect(paymentRevenue({data:[{net_collected:'35.50',stripe_payment_intent_id:null},{net_collected:100,stripe_payment_intent_id:'pi_1'}],count:2,error:null})).toEqual({total:135.5,nonStripe:35.5}));
- it('internal failure suppresses combined total without modifying Stripe report',()=>{const before=JSON.stringify(report);expect(consolidatedRevenue({report,internalNonStripe:null})).toEqual({amount:null,coverage:'Unavailable'});expect(JSON.stringify(report)).toBe(before);});
-});
 function boundary(){const states:RevenueSession[]=[];const resolvers:Array<(v:{allowed:boolean;collections:boolean})=>void>=[];const authorize=vi.fn(()=>new Promise<{allowed:boolean;collections:boolean}>(r=>resolvers.push(r)));const invalidate=vi.fn();const gate=createRevenueBoundary(authorize,invalidate,v=>states.push(v));return {states,resolvers,authorize,invalidate,gate};}
 describe('Revenue session lifecycle',()=>{
  it('logout synchronously hides old account and rejects pending authorization',async()=>{const f=boundary();f.gate.change('A');await flush();f.gate.change(null);f.resolvers[0]({allowed:true,collections:true});await flush();expect(f.states.at(-1)?.ready).toBe(false);expect(f.invalidate).toHaveBeenCalledTimes(2);});

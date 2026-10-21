@@ -99,7 +99,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency,
       amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee,
       paymentIntentId, invoiceId,
-      paymentIds: links.paymentIds, rentalId: links.rentalId, sessionId: links.sessionId,
+      paymentIds: links.paymentIds, rentalId: links.rentalId, sessionId: links.sessionId, reason: links.reason,
     });
   }
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {

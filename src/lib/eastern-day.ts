@@ -27,10 +27,26 @@ export function easternCalendarDay(instant: Date): string | null {
   return iso && isRealDay(iso) ? iso : null;
 }
 
+function utcDay(now: Date): string {
+  const instant = Number.isNaN(now.getTime()) ? new Date() : now;
+  return instant.toISOString().slice(0, 10);
+}
+
+/**
+ * Eastern calendar day for a paid_date stamp. A failed time-zone lookup must
+ * not abort the write: the charge is already paid, so the stamp falls back to
+ * the UTC date and the failure is logged.
+ */
 export function easternToday(now = new Date()): string {
-  const day = easternCalendarDay(now);
-  if (!day) throw new Error("Eastern date unavailable");
-  return day;
+  try {
+    const day = easternCalendarDay(now);
+    if (day) return day;
+    console.error("Eastern date lookup failed; using the UTC date.");
+    return utcDay(now);
+  } catch (error) {
+    console.error("Eastern date lookup failed; using the UTC date.", error);
+    return utcDay(now);
+  }
 }
 
 /** Date-only values stay as written. Timestamps become the Eastern calendar day. */
