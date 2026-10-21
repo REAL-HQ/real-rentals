@@ -5,6 +5,9 @@ import { Wrench } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { listMaintenanceLog } from "@/lib/maintenance-log.functions";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
+import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import { listMaintenanceDueSchedule } from "@/lib/maintenance-due-schedule.functions";
+import type { NextServiceRow } from "@/lib/maintenance-due-schedule";
 import { reminderBadges, type LogAttention, type LogItem, type VehicleLog } from "@/lib/maintenance-log";
 import { fmtDate } from "@/lib/date-format";
 import { displayVehicleWord } from "@/lib/display-normalize";
@@ -190,4 +193,75 @@ function MaintenanceLogSections({ vehicle, inspectionInstalled }: { vehicle: Veh
       </div>
     </SectionCard>
   );
+}
+
+export function MaintenanceDueSchedule({ vehicleId }: { vehicleId: string }) {
+  if (!MAINTENANCE_DUE_ENABLED) return null;
+  return <MaintenanceDueScheduleLive vehicleId={vehicleId} />;
+}
+
+function MaintenanceDueScheduleLive({ vehicleId }: { vehicleId: string }) {
+  const load = useServerFn(listMaintenanceDueSchedule);
+  const result = useQuery({
+    queryKey: ["maintenance-due-schedule", vehicleId],
+    queryFn: () => load({ data: { vehicleId } }),
+  });
+
+  if (result.isError) {
+    return (
+      <SectionCard title="Next Service" icon={<Wrench className="h-4 w-4" />}>
+        <p className="text-sm text-[#D03020]">Could Not Load Next Service</p>
+      </SectionCard>
+    );
+  }
+  if (result.isLoading || !result.data) {
+    return (
+      <SectionCard title="Next Service" icon={<Wrench className="h-4 w-4" />}>
+        <p className="text-sm text-[#55555E]">Loading Next Service</p>
+      </SectionCard>
+    );
+  }
+  return <NextServiceTable rows={result.data.rows} truncated={result.data.truncated} />;
+}
+
+function NextServiceTable({ rows, truncated }: { rows: NextServiceRow[]; truncated: boolean }) {
+  return (
+    <SectionCard title="Next Service" icon={<Wrench className="h-4 w-4" />}>
+      {truncated ? <p className="mb-2 text-[12px] text-[#55555E]">Next Service Is Capped</p> : null}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-[13px]">
+          <thead className="border-b border-[#EDEDF0] text-[12px] text-[#55555E]">
+            <tr>
+              <th className="px-2 py-2 font-medium">Item</th>
+              <th className="px-2 py-2 font-medium">Last Service</th>
+              <th className="px-2 py-2 font-medium">Next Date</th>
+              <th className="px-2 py-2 font-medium">Next Mileage</th>
+              <th className="px-2 py-2 font-medium">Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.item} className="border-b border-[#EDEDF0] last:border-b-0" data-state={row.state}>
+                <td className="px-2 py-2 text-[#111114]">{row.item}</td>
+                <td className="px-2 py-2 text-[#55555E]">{lastServiceText(row)}</td>
+                <td className="px-2 py-2 text-[#55555E]">{row.nextOn ? day(row.nextOn) : "Unknown"}</td>
+                <td className="px-2 py-2 text-[#55555E]">{row.nextMiles == null ? "Unknown" : miles(row.nextMiles)}</td>
+                <td className="px-2 py-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_CLASS[row.state]}`}>{row.flag}</span>
+                  <span className="ml-2 text-[#55555E]">{row.reason}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
+
+function lastServiceText(row: NextServiceRow): string {
+  const when = row.lastOn ? day(row.lastOn) : null;
+  const reading = row.lastMiles == null ? null : miles(row.lastMiles);
+  if (!when && !reading) return "Unknown";
+  return [when, reading].filter(Boolean).join(" · ");
 }

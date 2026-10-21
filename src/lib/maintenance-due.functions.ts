@@ -30,9 +30,9 @@ async function eachPage(load: (from: number, to: number) => PromiseLike<{ data: 
 export const listMaintenanceDue = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ today: string; rows: VehicleDueRow[] }> => {
+    if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const sb = supabaseAdmin;
     const [vehicles, expenses] = await Promise.all([
