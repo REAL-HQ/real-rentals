@@ -1,4 +1,5 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert/strict");
@@ -90,7 +91,7 @@ test("proposed sql locks in order and does not call stripe", () => {
     "pg_try_advisory_xact_lock(710026,2)",
     "FROM public.applications WHERE id=app_id FOR UPDATE NOWAIT",
     "FROM public.rentals WHERE id=_rental_id FOR UPDATE NOWAIT",
-    "private.approval_actor()",
+    "FROM public.user_roles WHERE user_id=actor AND role::text IN ('admin','team') FOR SHARE NOWAIT",
     "FROM private.extend_operations WHERE operation_id=_operation_id",
     "rental_not_active",
   ]) {
@@ -107,6 +108,8 @@ test("proposed sql locks in order and does not call stripe", () => {
   assert.match(body, /'proration','none'/);
   assert.match(body, /SET end_date=_new_end/);
   assert.ok(body.indexOf("manager_required") < body.indexOf("PERFORM private.approval_lock()"));
+  assert.equal(body.includes("private.approval_actor()"), false);
+  assert.equal(body.includes("actor_after"), false);
   assert.match(body, /public\.booking_vehicle_assignments/);
   assert.equal(body.includes("subscriptionId"), false);
   assert.match(body, /'linked',r\.stripe_subscription_id IS NOT NULL/);
@@ -301,18 +304,24 @@ function pgTool(name) {
 }
 
 function startDatabase() {
-  const dir = "/tmp/extend-rental-pg";
-  fs.rmSync(dir, { recursive: true, force: true });
-  execFileSync(pgTool("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
-  execFileSync(pgTool("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${PORT} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
-  execFileSync(pgTool("createdb"), ["-h", dir, "-p", PORT, DB], { stdio: "ignore" });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "extend-rental-pg-"));
+  try {
+    execFileSync(pgTool("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+    execFileSync(pgTool("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${PORT} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+    execFileSync(pgTool("createdb"), ["-h", dir, "-p", PORT, DB], { stdio: "ignore" });
+  } catch (error) {
+    stopDatabase(dir);
+    throw error;
+  }
   return dir;
 }
 
 function stopDatabase(dir) {
+  if (!dir) return;
   try {
     execFileSync(pgTool("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
   } catch { /* already stopped */ }
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 const ACTOR = "11111111-1111-4111-8111-111111111111";
@@ -353,8 +362,45 @@ CREATE ROLE authenticated NOLOGIN;
 CREATE ROLE service_role NOLOGIN;
 CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;
 CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;
+-- Real M2 packet functions from cf71e104 proposed/m2-packet/01.sql.
+-- approval_actor calls approval_provider_actor, which refuses service_role.
+CREATE ROLE rr_approval_executor NOLOGIN NOSUPERUSER NOBYPASSRLS;
+CREATE FUNCTION private.approval_provider_actor() RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
+DECLARE claims jsonb; actor uuid; sid uuid; gateway boolean; issuer boolean;
+BEGIN
+ gateway := session_user='authenticator' AND current_setting('role',true)='authenticated';
+ issuer := session_user='rr_evidence_transport' AND current_setting('role',true) IN ('rr_evidence_issuer','rr_approval_executor');
+ IF NOT gateway AND NOT issuer THEN RAISE EXCEPTION 'trusted_authentication_context_required' USING ERRCODE='42501'; END IF;
+ IF issuer AND NOT pg_has_role(session_user,current_setting('role',true),'MEMBER') THEN RAISE EXCEPTION 'trusted_authentication_context_required' USING ERRCODE='42501'; END IF;
+ BEGIN
+  claims:=nullif(current_setting('request.jwt.claims',true),'')::jsonb;
+  actor:=(claims->>'sub')::uuid; sid:=(claims->>'session_id')::uuid;
+ EXCEPTION WHEN invalid_text_representation THEN RAISE EXCEPTION 'authenticated_session_required' USING ERRCODE='42501'; END;
+ IF actor IS NULL OR sid IS NULL OR claims->>'role' IS DISTINCT FROM 'authenticated' THEN RAISE EXCEPTION 'authenticated_session_required' USING ERRCODE='42501'; END IF;
+ IF gateway THEN
+  IF jsonb_typeof(claims->'exp') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'authenticated_session_required' USING ERRCODE='42501'; END IF;
+  IF (claims->>'exp')::numeric<=extract(epoch FROM clock_timestamp()) THEN RAISE EXCEPTION 'session_expired' USING ERRCODE='42501'; END IF;
+ END IF;
+ PERFORM 1 FROM auth.sessions WHERE id=sid AND user_id=actor
+  AND (not_after IS NULL OR not_after>clock_timestamp()) FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'session_unavailable' USING ERRCODE='42501'; END IF;
+ PERFORM 1 FROM public.user_roles WHERE user_id=actor AND role IN ('admin','team') FOR SHARE NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'manager_required' USING ERRCODE='42501'; END IF;
+ RETURN actor;
+END $$;
+REVOKE ALL ON FUNCTION private.approval_provider_actor() FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.approval_provider_actor() TO rr_approval_executor;
+CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
+DECLARE actor uuid;
+BEGIN
+ actor:=private.approval_provider_actor();
+ IF actor IS NULL OR NOT EXISTS(SELECT 1 FROM public.user_roles WHERE user_id=actor AND role IN ('admin','team')) THEN
+ RAISE EXCEPTION 'approval_manager_required' USING ERRCODE='42501'; END IF;
+ RETURN actor;
+END $$;
+REVOKE ALL ON FUNCTION private.approval_actor() FROM PUBLIC,anon,authenticated,service_role;
 
 CREATE TABLE public.vehicles (id uuid PRIMARY KEY, status text);
 CREATE TABLE public.applications (
@@ -498,8 +544,22 @@ function transactionTests(dir) {
       IF position('app.rental_tx' IN (SELECT prosrc FROM pg_proc WHERE proname='extend_rental_tx')) > 0 THEN
         RAISE EXCEPTION 'function sets the lifecycle bypass';
       END IF;
+      IF position('approval_actor' IN (SELECT prosrc FROM pg_proc WHERE proname='extend_rental_tx')) > 0 THEN
+        RAISE EXCEPTION 'extend still calls approval_actor';
+      END IF;
     END $$;
   `);
+
+  test("the real approval_actor refuses service_role, and extend does not call it", () => {
+    expectError(dir, "PERFORM private.approval_actor();", "trusted_authentication_context_required");
+    psql(dir, `
+      BEGIN;
+      SET LOCAL ROLE service_role;
+      SELECT ${call(OP, RENTAL, "2026-10-25", "2026-11-08")};
+      ROLLBACK;
+    `);
+    unchanged(dir);
+  });
 
   test("a manager role is required and a stale end writes nothing", () => {
     psql(dir, `DELETE FROM public.user_roles WHERE user_id='${ACTOR}'`);
@@ -736,6 +796,7 @@ function transactionTests(dir) {
   });
 }
 
+let dataDir;
 (async () => {
   const boxOff = loadServer(false);
   await assert.rejects(
@@ -799,15 +860,16 @@ function transactionTests(dir) {
   results.push("context read is the rentals row");
   console.log("PASS context read is the rentals row");
 
-  const dir = startDatabase();
+  dataDir = startDatabase();
   try {
-    transactionTests(dir);
+    transactionTests(dataDir);
   } finally {
-    stopDatabase(dir);
+    stopDatabase(dataDir);
+    dataDir = null;
   }
   console.log(JSON.stringify({ pass: results.length, fail: 0 }));
 })().catch((error) => {
   console.error(error);
-  try { stopDatabase("/tmp/extend-rental-pg"); } catch { /* already stopped */ }
+  try { stopDatabase(dataDir); } catch { /* already stopped */ }
   process.exit(1);
 });

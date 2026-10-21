@@ -2,25 +2,26 @@
 --
 -- Install after the Record Rental packet (after step 19: the 17 cutover files,
 -- then subscription-coordination-v1.sql, then the corrected
--- signed-archive-protection-v1.sql). Needs private.approval_lock and
--- private.approval_actor from step 1, and private.record_immutable from step 3.
+-- signed-archive-protection-v1.sql). Needs private.approval_lock from step 1
+-- and private.record_immutable from step 3. It does not call private.approval_actor.
 -- Independent of proposed/vehicle-swap-v1.sql. If both are approved, either
 -- order after step 19 is safe. This file does not create those objects and
 -- does not weaken their grants.
 --
 -- Execute is service_role only. The handler calls with supabaseAdmin after
 -- requireManager and passes the actor id. This function checks that actor is
--- a manager before lock 1. A null approval_actor() is the service-role
--- session and does not replace that id. M2 packet step 26 (extend.sql) must
--- be updated to this text before it is installed. This file does not edit
--- proposed/m2-packet.
+-- a manager before lock 1, and rechecks user_roles FOR SHARE after the rental
+-- lock. It does not call private.approval_actor(): the real M2 function
+-- (cf71e104) raises trusted_authentication_context_required under service_role.
+-- M2 packet step 26 (extend.sql) must be updated to this text before it is
+-- installed. This file does not edit proposed/m2-packet.
 --
 -- Lock order, same prefix as activation, closeout, and swap:
 --   1. private.approval_lock()                 advisory (82116,42001)
 --   2. pg_try_advisory_xact_lock(710026,2)     lifecycle; fail 40001, no wait
 --   3. applications FOR UPDATE NOWAIT          only when the rental has one
 --   4. rentals FOR UPDATE NOWAIT
---   5. recheck private.approval_actor() and user_roles FOR SHARE NOWAIT
+--   5. user_roles FOR SHARE NOWAIT             recheck the same actor
 -- Recovery of a committed operation is next, then eligibility. The vehicle
 -- row is not locked. The lifecycle advisory serializes this with activation,
 -- closeout, and swap. That does not certify deadlock freedom against every
@@ -69,7 +70,7 @@ CREATE FUNCTION public.extend_rental_tx(
  _operation_id uuid, _rental_id uuid, _expected_end date, _new_end date, _reason text, _actor_id uuid)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE
- actor uuid; actor_after uuid; app_id uuid; reason text; req jsonb;
+ actor uuid; app_id uuid; reason text; req jsonb;
  r public.rentals%ROWTYPE; op private.extend_operations%ROWTYPE;
  extra_days integer; cost numeric; effect text; charges jsonb := '[]'::jsonb;
  cursor date; steps integer := 0; cancel_at timestamptz; cancel_unix bigint;
@@ -100,8 +101,6 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'rental_not_found'; END IF;
  IF r.application_id IS DISTINCT FROM app_id THEN
   RAISE EXCEPTION 'extend_contention_retry_whole_transaction' USING ERRCODE='40001'; END IF;
- actor_after:=private.approval_actor();
- IF actor_after IS NOT NULL AND actor_after IS DISTINCT FROM actor THEN RAISE EXCEPTION 'actor_changed' USING ERRCODE='42501'; END IF;
  PERFORM 1 FROM public.user_roles WHERE user_id=actor AND role::text IN ('admin','team') FOR SHARE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'manager_required' USING ERRCODE='42501'; END IF;
  req:=jsonb_build_object('rental',_rental_id,'expected_end',_expected_end,'new_end',_new_end,
