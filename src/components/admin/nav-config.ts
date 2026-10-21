@@ -54,6 +54,7 @@ import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
+import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 
 export type TabDef = {
   id: string;
@@ -170,6 +171,16 @@ const TODAYS_OPS_TAB: TabDef = {
   minTier: "manager",
   group: "HOME",
   description: "Pickups, Returns, Payments And Open Issues For Today",
+};
+
+/** Shown only while Rent Payment Reconciliation is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RENT_RECONCILIATION_TAB: TabDef = {
+  id: "rent_reconciliation",
+  label: "Rent Reconciliation",
+  icon: Scale,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Rent Payments Compared With Stripe For One Eastern Time Week",
 };
 
 /** Shown only while Vehicle Turnaround is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -400,6 +411,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push(AGING_TAB);
   if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push(DEPOSIT_TAB);
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
+  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push(RENT_RECONCILIATION_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -466,6 +478,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push({ ...AGING_TAB, href: "receivables_aging" });
   if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
   if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
+  if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
@@ -562,6 +575,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "vehicle_turnaround") {
     if (!VEHICLE_TURNAROUND_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "vehicle_turnaround";
+  }
+  if (args.urlTab === "rent_reconciliation") {
+    if (!RENT_RECONCILIATION_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "rent_reconciliation";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
