@@ -12,9 +12,8 @@ type DocRow = { lead_id?: string | null; category?: string | null; review_status
 
 /**
  * The required-document name a vault row counts as, or null when it does not
- * count. Current and not rejected. The Drivers list, the Waitlist, and the
- * application document gaps all use this so a row cannot be "2/4" in one
- * place and missing in another.
+ * count. Current and not rejected. requiredDocCounts is the caller that turns
+ * this name into the x/4 number on the Drivers list and the Waitlist.
  */
 export function canonicalRequiredDoc(row: {
   category?: string | null;

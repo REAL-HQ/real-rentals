@@ -67,6 +67,7 @@ describe("document review aging", () => {
     assert.match(load, /\.range\(from, to\)/);
     assert.match(load, /canonicalRequiredDoc/);
     assert.match(load, /const ID_BATCH = 100/);
+    assert.match(load, /\.is\("deleted_at", null\)/);
     assert.doesNotMatch(load, /\.in\("category"/);
     assert.doesNotMatch(load, /\.limit\(/);
     assert.doesNotMatch(load, /storage_path|bucket/);
@@ -133,6 +134,7 @@ describe("document review aging", () => {
     assert.equal(easternWaitingDays("2026-11-01T03:30:00.000Z", "2026-11-02"), 2);
     assert.equal(easternWaitingDays("2026-11-01T04:00:00.000Z", "2026-11-02"), 1);
     assert.equal(easternWaitingDays("2026-03-08T05:00:00.000Z", "2026-02-30"), null);
+    assert.equal(easternWaitingDays("2026-03-10T05:00:00.000Z", "2026-03-09"), null);
     assert.equal(waitingDayLabel(null), "Unknown");
     assert.equal(waitingDayLabel(1), "1 Day");
     assert.equal(waitingDayLabel(-1), "-1 Day");
@@ -151,6 +153,7 @@ describe("document review aging", () => {
         doc({ id: "proof", category: "proof_of_address", created_at: "2026-01-01T00:00:00.000Z" }),
         doc({ id: "ins-old", category: "insurance", created_at: "2026-03-06T05:00:00.000Z" }),
         doc({ id: "ins-new", driver_id: "missing", category: "insurance_card", created_at: "2026-03-08T05:00:00.000Z" }),
+        doc({ id: "future", created_at: "2026-03-10T05:00:00.000Z" }),
         doc({ id: "null-current", category: "license_back", is_current: null, created_at: "2026-03-07T05:00:00.000Z" }),
       ],
       applications: [
@@ -168,15 +171,19 @@ describe("document review aging", () => {
     const front = result.categories.find((category) => category.key === "license_front");
     assert.deepEqual(
       front?.rows.map((row) => row.id),
-      ["front-old", "front-new", "front-blank"],
+      ["front-old", "front-new", "front-blank", "future"],
     );
     assert.equal(front?.rows[0]?.days, 2);
     assert.equal(front?.rows[2]?.name, "Unnamed Applicant");
     assert.equal(front?.oldestDays, 2);
     const insurance = result.categories[0];
     assert.equal(insurance?.oldestDays, 3);
+    assert.equal(insurance?.rows.length, 1);
     assert.equal(insurance?.rows[0]?.name, "Ada Lovelace");
-    assert.equal(insurance?.rows[1]?.name, "Unnamed Applicant");
+    const future = front?.rows.find((row) => row.id === "future");
+    assert.equal(future?.days, null);
+    assert.equal(waitingDayLabel(future?.days ?? null), "Unknown");
+    assert.equal(result.categories.some((category) => category.rows.some((row) => row.id === "ins-new")), false);
     assert.equal(result.categories.some((category) => category.rows.some((row) => row.id === "verified")), false);
     assert.equal(result.categories.some((category) => category.rows.some((row) => row.id === "rejected")), false);
     assert.equal(result.categories.some((category) => category.rows.some((row) => row.id === "superseded")), false);
@@ -216,6 +223,9 @@ describe("document review aging pages", () => {
           eq() {
             return query;
           },
+          is() {
+            return query;
+          },
           not() {
             return query;
           },
@@ -245,6 +255,10 @@ describe("document review aging pages", () => {
           },
           eq(field: string, value: unknown) {
             filters.push((row) => row[field] === value);
+            return query;
+          },
+          is(field: string, value: unknown) {
+            filters.push((row) => (value === null ? row[field] == null : row[field] === value));
             return query;
           },
           not(field: string, op: string, value: unknown) {
@@ -442,6 +456,48 @@ describe("document review aging pages", () => {
     assert.equal(result.categories[0]?.count, 101);
     assert.equal(result.categories[0]?.rows.some((row) => row.id === "doc-100"), true);
     assert.equal(result.categories[0]?.rows.some((row) => row.id === "verified" || row.id === "old" || row.id === "trip"), false);
+  });
+
+  it("drops uploads whose applicant was soft-deleted", async () => {
+    const result = await loadDocumentReviewAging(
+      tableAdmin({
+        documents: [
+          {
+            id: "live-doc",
+            driver_id: "ada",
+            category: "license_front",
+            is_current: true,
+            review_status: "uploaded",
+            created_at: "2026-03-08T05:00:00.000Z",
+          },
+          {
+            id: "deleted-doc",
+            driver_id: "gone",
+            category: "license_front",
+            is_current: true,
+            review_status: "uploaded",
+            created_at: "2026-03-01T05:00:00.000Z",
+          },
+        ],
+        applications: [
+          { id: "ada", full_name: "Ada Lovelace", deleted_at: null },
+          { id: "gone", full_name: "Gone Driver", deleted_at: "2026-03-02T00:00:00.000Z" },
+        ],
+      }),
+      "2026-03-09",
+    );
+    assert.equal(result.failed, false);
+    assert.equal(result.truncated, false);
+    assert.equal(result.categories.length, 1);
+    assert.equal(result.categories[0]?.count, 1);
+    assert.equal(result.categories[0]?.rows[0]?.id, "live-doc");
+    assert.equal(result.categories[0]?.rows[0]?.name, "Ada Lovelace");
+    assert.equal(
+      result.categories.some((category) =>
+        category.rows.some((row) => row.id === "deleted-doc" || row.name === "Gone Driver" || row.name === "Unnamed Applicant"),
+      ),
+      false,
+    );
   });
 });
 

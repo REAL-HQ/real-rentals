@@ -55,6 +55,8 @@ export function easternWaitingDays(createdAt: string | null | undefined, today: 
   const start = dayIndex(uploaded);
   const end = dayIndex(today);
   if (start == null || end == null) return null;
+  // A future upload is not a wait. Unknown, not a negative day.
+  if (end < start) return null;
   return end - start;
 }
 
@@ -91,12 +93,15 @@ export function buildDocumentReviewAging(input: {
   const grouped = new Map<string, Array<DocumentReviewRow & { createdAt: string }>>();
   for (const doc of input.documents) {
     if (!doc || typeof doc.id !== "string" || doc.id.length === 0) continue;
+    // Soft-deleted applicants are absent from the live set. Do not list them
+    // as Unnamed Applicant or count the upload.
+    if (typeof doc.driver_id !== "string" || !names.has(doc.driver_id)) continue;
     const key = awaitingReviewCategory(doc);
     if (!key) continue;
     const createdAt = doc.created_at ?? "";
     const row: DocumentReviewRow & { createdAt: string } = {
       id: doc.id,
-      name: typeof doc.driver_id === "string" ? (names.get(doc.driver_id) ?? "Unnamed Applicant") : "Unnamed Applicant",
+      name: names.get(doc.driver_id) ?? "Unnamed Applicant",
       days: easternWaitingDays(doc.created_at, input.today),
       createdAt,
     };

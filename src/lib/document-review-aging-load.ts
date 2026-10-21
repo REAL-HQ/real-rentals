@@ -124,6 +124,7 @@ export async function loadDocumentReviewAging(
             .from("applications")
             .select(APPLICATION_COLUMNS, { count: "exact" })
             .in("id", chunk)
+            .is("deleted_at", null)
             .order("id", { ascending: true })
             .range(from, to),
         );
