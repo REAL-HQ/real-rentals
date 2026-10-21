@@ -1,0 +1,29 @@
+-- PROPOSED. NOT INSTALLED. Not a migration.
+-- Do not copy this file into supabase/migrations.
+-- Do not run this against a hosted database.
+--
+-- Vehicle Compliance reads dates that already exist:
+--   vehicles.registration_expires_on
+--   vehicles.insurance_expires_on
+--   vehicles.plate_expires_on
+--   documents.expires_at for current registration, insurance, inspection,
+--   and emissions paperwork (direct vehicle_id or document_vehicle_links)
+--
+-- Inspection expiry has no installed column. The inspections table is a
+-- pickup and return checklist, not a state-inspection date. Two earlier
+-- proposals already name the same fact, and neither is installed:
+--   proposed/maintenance-due-v1.sql    public.maintenance_due_v1.inspection_due_on
+--   proposed/maintenance-log-v1.sql    public.maintenance_log_v1.inspection_due_on
+-- This file does not create a third table or column. Until one of those
+-- relations exists, the Compliance column shows Inspection as Unknown.
+-- Apply at most one of the two proposals. Applying both stores the date twice.
+--
+-- Rollback, only if maintenance_due_v1 was installed from its proposal:
+-- BEGIN;
+-- DROP TABLE IF EXISTS public.maintenance_due_v1;
+-- COMMIT;
+--
+-- Rollback, only if maintenance_log_v1 was installed from its proposal:
+-- BEGIN;
+-- DROP TABLE IF EXISTS public.maintenance_log_v1;
+-- COMMIT;

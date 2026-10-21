@@ -73,12 +73,26 @@ export const listVehicles = createServerFn({ method: "POST" })
         ready: z.string().max(20).optional().default("all"),
         page: z.number().int().min(1).max(100000).optional().default(1),
         pageSize: z.number().int().min(1).max(100).optional().default(VEHICLE_LIST_PAGE_SIZE),
+        /** Set only by the Compliance filter. Omitted, the list is unchanged. */
+        ids: z.array(z.string().uuid()).max(2000).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<VehicleListResult> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (data.ids && data.ids.length === 0) {
+      const options = await filterOptions(supabaseAdmin);
+      return {
+        rows: [],
+        total: 0,
+        page: data.page,
+        pageSize: data.pageSize,
+        ...options,
+        readinessCounts: { listing_ready: 0, rental_ready: 0, not_ready: 0 },
+        readinessPartial: false,
+      };
+    }
     const sort = (VEHICLE_SORTS as readonly string[]).includes(data.sort) ? data.sort : "unit";
 
     const ready = isReadinessFilter(data.ready) ? data.ready : "all";
@@ -91,9 +105,11 @@ export const listVehicles = createServerFn({ method: "POST" })
         eq: (c: string, v: unknown) => Filters;
         neq: (c: string, v: unknown) => Filters;
         is: (c: string, v: unknown) => Filters;
+        in: (c: string, v: readonly string[]) => Filters;
         or: (e: string) => Filters;
       };
       let x = q as unknown as Filters;
+      if (data.ids?.length) x = x.in("id", data.ids);
       // Archived vehicles leave the normal fleet view; the Archived filter shows them.
       if (data.status !== "all") x = x.eq("status", data.status);
       else x = x.neq("status", "archived");
