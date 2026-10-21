@@ -6,6 +6,8 @@ import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
 import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { readWaitlistClaim } from "@/lib/waitlist.functions";
+import { WAITLIST_CLAIM_ENABLED, applySearchKeys, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +32,8 @@ export const Route = createFileRoute("/apply")({
      * Carried so the landing URL records which category converted.
      */
     vehicle_type?: string;
+    /** Waitlist claim. Kept only while WAITLIST_CLAIM_ENABLED is on. Not a resume token. */
+    claim?: string;
   } => {
     // Only keep params that actually have a value so the URL never ends up
     // as /apply?t=&city=&pickup=&vehicle=
@@ -38,7 +42,7 @@ export const Route = createFileRoute("/apply")({
       return str ? str : undefined;
     };
     const out: Record<string, string> = {};
-    for (const key of ["t", "city", "pickup", "vehicle", "vehicle_type"] as const) {
+    for (const key of applySearchKeys(WAITLIST_CLAIM_ENABLED)) {
       const value = pick(s[key]);
       if (value) out[key] = value;
     }
@@ -70,10 +74,36 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
 };
 
 function ApplyPage() {
-  const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = Route.useSearch();
+  const search = Route.useSearch();
+  const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = search;
   // allowStashed: false — /apply starts a new application. A token stashed by
   // the previous person on a shared or kiosk device must not open their form.
   const token = useResumeToken(t, { allowStashed: false });
+  const readClaim = useServerFn(readWaitlistClaim);
+  const claimToken = WAITLIST_CLAIM_ENABLED ? search.claim : undefined;
+  const [claimPrefill, setClaimPrefill] = useState<WaitlistClaimPrefill | null>(null);
+  const [claimNote, setClaimNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!WAITLIST_CLAIM_ENABLED || !claimToken) return;
+    let live = true;
+    readClaim({ data: { token: claimToken } })
+      .then((res) => {
+        if (!live) return;
+        if (res.ok) {
+          setClaimPrefill(res.prefill);
+          setClaimNote(null);
+        } else {
+          setClaimNote("error" in res && res.error ? res.error : "This link is not valid.");
+        }
+      })
+      .catch(() => {
+        if (live) setClaimNote("This link is not valid.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [claimToken, readClaim]);
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -89,6 +119,8 @@ function ApplyPage() {
             preCity={preCity ?? ""}
             prePickup={prePickup ?? ""}
             preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
+            claimPrefill={WAITLIST_CLAIM_ENABLED ? claimPrefill : null}
+            claimNote={WAITLIST_CLAIM_ENABLED ? claimNote : null}
           />
         </main>
       )}
@@ -100,11 +132,15 @@ function ContactStep({
   preCity,
   prePickup,
   preVehicleSize,
+  claimPrefill,
+  claimNote,
 }: {
   preCity: string;
   prePickup: string;
   /** Carried from a catalog card. The applicant can still change it in Part 1. */
   preVehicleSize: "Sedan" | "SUV" | "XL" | null;
+  claimPrefill: WaitlistClaimPrefill | null;
+  claimNote: string | null;
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
@@ -117,6 +153,7 @@ function ContactStep({
 
   useEffect(() => {
     if (!preCity) return;
+    if (WAITLIST_CLAIM_ENABLED && claimPrefill?.market_id) return;
     supabase
       .from("sites")
       .select("market_id, markets(name, state)")
@@ -128,7 +165,24 @@ function ContactStep({
         const m = data.markets as { name: string; state: string | null } | null;
         setMarket({ id: data.market_id, name: m?.name ?? preCity, state: m?.state ?? null });
       });
-  }, [preCity]);
+  }, [preCity, claimPrefill]);
+
+  useEffect(() => {
+    if (!WAITLIST_CLAIM_ENABLED || !claimPrefill) return;
+    setForm((prev) => ({
+      ...prev,
+      full_name: claimPrefill.full_name,
+      email: claimPrefill.email,
+      phone: claimPrefill.phone ?? "",
+    }));
+    if (claimPrefill.market_id) {
+      setMarket({
+        id: claimPrefill.market_id,
+        name: claimPrefill.city ?? preCity,
+        state: claimPrefill.state,
+      });
+    }
+  }, [claimPrefill, preCity]);
 
   // Attribution captured in __root; read here at submit time.
 
@@ -163,7 +217,7 @@ function ContactStep({
           market_id: market?.id ?? null,
           city: market?.name ?? preCity ?? null,
           state: market?.state ?? null,
-          pickup_date: prePickup || null,
+          pickup_date: (WAITLIST_CLAIM_ENABLED && claimPrefill?.pickup_date) || prePickup || null,
           vehicle_size: preVehicleSize,
           source: "homepage",
           ...getAttribution(),
@@ -189,6 +243,7 @@ function ContactStep({
     <FadeUp>
       <div className="max-w-xl mx-auto">
         <ProgressBar current="your_info" source="homepage" />
+        {claimNote && <p role="alert" className="mb-4 text-sm text-real-red">{claimNote}</p>}
         <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>

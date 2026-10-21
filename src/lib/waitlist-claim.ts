@@ -1,0 +1,240 @@
+/**
+ * Dark gate for a real waitlist claim link and for Coming Soon signups
+ * that go through joinWaitlist.
+ *
+ * false: the opening email is the current /apply link, a failed send still
+ * marks the row Notified, and Coming Soon still inserts from the browser.
+ * true: the email carries a claim link, Notified is written only after the
+ * send succeeds, and Coming Soon calls joinWaitlist.
+ *
+ * No environment variable can open it. Activation is changing this constant
+ * and rebuilding. Leave it false until an owner does that.
+ *
+ * Typed as boolean so the enabled branch stays visible to the type checker.
+ */
+export const WAITLIST_CLAIM_ENABLED: boolean = false;
+
+/** Fourteen days. Not an application resume token. */
+export const WAITLIST_CLAIM_TTL_SECONDS = 14 * 24 * 60 * 60;
+
+const APPLY_SEARCH_KEYS = ["t", "city", "pickup", "vehicle", "vehicle_type"] as const;
+
+/** Search keys /apply keeps. `claim` is recognized only while the flag is on. */
+export function applySearchKeys(enabled: boolean): readonly string[] {
+  if (!enabled) return APPLY_SEARCH_KEYS;
+  return [...APPLY_SEARCH_KEYS, "claim"];
+}
+
+export function shouldMarkNotified(enabled: boolean, sendOk: boolean): boolean {
+  // Off: mark every attempt, including a failed send. On: only a successful send.
+  return enabled ? sendOk : true;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const OPENING_SUBJECT = "A car just opened up — you're next";
+
+export function openingEmail(input: {
+  enabled: boolean;
+  fullName: string | null;
+  city: string | null;
+  href: string;
+  companyPhone: string;
+}): { subject: string; html: string } {
+  const first = escapeHtml(String(input.fullName ?? "").split(" ")[0]);
+  const where = input.city ? ` in ${escapeHtml(input.city)}` : "";
+  const phone = escapeHtml(input.companyPhone);
+  const href = input.href;
+  // The disabled copy is the email notifyWaitlistTop sends today, including
+  // its whitespace. The enabled copy does not say an application already
+  // exists and does not say the person stays at the top of the list.
+  const html = input.enabled
+    ? `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
+          <p style="font-size:15px;line-height:1.6">Hi ${first},</p>
+          <p style="font-size:15px;line-height:1.6">Good news — a car just became available${where}. This link opens a new application with the name, email, and phone from your waitlist spot. It does not hold the car.</p>
+          <p style="margin:28px 0">
+            <a href="${href}" style="background:#D03020;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">Claim it — finish your application</a>
+          </p>
+          <p style="font-size:13px;line-height:1.6;color:#666">This link is only for this email and it expires in 14 days.</p>
+          <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${phone}</p>
+        </div>`
+    : `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
+          <p style="font-size:15px;line-height:1.6">Hi ${first},</p>
+          <p style="font-size:15px;line-height:1.6">Good news — a car just became available${where}. You were at the top of the waitlist, so it's yours to claim before we offer it to anyone else.</p>
+          <p style="margin:28px 0">
+            <a href="${href}" style="background:#D03020;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">Claim it — finish your application</a>
+          </p>
+          <p style="font-size:13px;line-height:1.6;color:#666">This link takes you straight into the application you started. If the car has already been claimed, you stay at the top of the list for the next one.</p>
+          <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${phone}</p>
+        </div>`;
+  return { subject: OPENING_SUBJECT, html };
+}
+
+type OpeningRow = { id: string; full_name?: string | null; email: string; city?: string | null };
+
+/**
+ * Sends one opening email per row. The caller supplies send and markNotified,
+ * so tests never touch a mail provider. claimUrl is not called while the
+ * flag is off.
+ */
+export async function deliverOpeningEmails<T extends OpeningRow>(args: {
+  enabled: boolean;
+  rows: readonly T[];
+  origin: string;
+  companyPhone: string;
+  claimUrl: (row: T) => Promise<string | null>;
+  send: (message: { to: string; subject: string; html: string }) => Promise<{ ok: boolean }>;
+  markNotified: (id: string) => Promise<void>;
+}): Promise<{ sent: number }> {
+  let sent = 0;
+  for (const row of args.rows) {
+    let href = `${args.origin}/apply`;
+    if (args.enabled) {
+      const claim = await args.claimUrl(row);
+      // No secret, no link: do not send and do not mark Notified.
+      if (!claim) continue;
+      href = claim;
+    }
+    const message = openingEmail({
+      enabled: args.enabled,
+      fullName: row.full_name ?? null,
+      city: row.city ?? null,
+      href,
+      companyPhone: args.companyPhone,
+    });
+    const res = await args.send({ to: row.email, subject: message.subject, html: message.html });
+    if (res.ok) sent += 1;
+    if (shouldMarkNotified(args.enabled, res.ok)) await args.markNotified(row.id);
+  }
+  return { sent };
+}
+
+export type ComingSoonFields = {
+  market_id: string | null;
+  full_name: string;
+  email: string;
+  phone: string;
+  driver_status: string;
+  city: string;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  gclid: string | null;
+};
+
+export type ComingSoonInsert = {
+  market_id: string | null;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  driver_status: string;
+  source: "homepage_waitlist";
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  gclid: string | null;
+};
+
+export type ComingSoonJoin = {
+  full_name: string;
+  email: string;
+  phone: string;
+  market_id: string | null;
+  city: string;
+  source: "homepage_waitlist";
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  gclid: string | null;
+};
+
+/** Coming Soon payload. Off matches the browser insert. On is a joinWaitlist input. */
+export function comingSoonSignup(enabled: boolean, fields: ComingSoonFields):
+  | { mode: "insert"; row: ComingSoonInsert }
+  | { mode: "join"; input: ComingSoonJoin } {
+  if (!enabled) {
+    return {
+      mode: "insert",
+      row: {
+        market_id: fields.market_id,
+        full_name: fields.full_name,
+        email: fields.email,
+        phone: fields.phone || null,
+        driver_status: fields.driver_status,
+        source: "homepage_waitlist",
+        utm_source: fields.utm_source,
+        utm_medium: fields.utm_medium,
+        utm_campaign: fields.utm_campaign,
+        utm_term: fields.utm_term,
+        utm_content: fields.utm_content,
+        gclid: fields.gclid,
+      },
+    };
+  }
+  return {
+    mode: "join",
+    input: {
+      full_name: fields.full_name,
+      email: fields.email,
+      phone: fields.phone,
+      market_id: fields.market_id,
+      city: fields.city,
+      source: "homepage_waitlist",
+      utm_source: fields.utm_source,
+      utm_medium: fields.utm_medium,
+      utm_campaign: fields.utm_campaign,
+      utm_term: fields.utm_term,
+      utm_content: fields.utm_content,
+      gclid: fields.gclid,
+    },
+  };
+}
+
+export type WaitlistClaimPrefill = {
+  full_name: string;
+  email: string;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  pickup_date: string | null;
+  market_id: string | null;
+};
+
+type ClaimRow = WaitlistClaimPrefill & { status: string };
+
+/** What a verified claim may show. Promoted rows do not start another application. */
+export function claimPrefillFromRow(row: ClaimRow | null):
+  | { ok: true; prefill: WaitlistClaimPrefill }
+  | { ok: false; error: string } {
+  if (!row || (row.status !== "waiting" && row.status !== "notified" && row.status !== "promoted")) {
+    return { ok: false, error: "This link is not valid." };
+  }
+  if (row.status === "promoted") {
+    return { ok: false, error: "This waitlist spot already has an application." };
+  }
+  return {
+    ok: true,
+    prefill: {
+      full_name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      city: row.city,
+      state: row.state,
+      pickup_date: row.pickup_date,
+      market_id: row.market_id,
+    },
+  };
+}

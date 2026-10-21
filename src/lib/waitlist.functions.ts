@@ -356,29 +356,26 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 
     const { sendEmail } = await import("@/lib/email.server");
     const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display;
-    let sent = 0;
-    for (const r of rows as any[]) {
-      const res = await sendEmail({
-        to: r.email,
-        subject: "A car just opened up — you're next",
-        html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
-          <p style="font-size:15px;line-height:1.6">Hi ${escapeHtml(String(r.full_name ?? "").split(" ")[0])},</p>
-          <p style="font-size:15px;line-height:1.6">Good news — a car just became available${r.city ? ` in ${escapeHtml(r.city)}` : ""}. You were at the top of the waitlist, so it's yours to claim before we offer it to anyone else.</p>
-          <p style="margin:28px 0">
-            <a href="${siteOrigin()}/apply" style="background:#D03020;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">Claim it — finish your application</a>
-          </p>
-          <p style="font-size:13px;line-height:1.6;color:#666">This link takes you straight into the application you started. If the car has already been claimed, you stay at the top of the list for the next one.</p>
-          <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${escapeHtml(companyPhone)}</p>
-        </div>`,
-      });
-      if (res.ok) sent += 1;
-      // Mark regardless: the offer went out. A failed send is retried by
-      // re-running this action, but only against rows still marked waiting.
-      await supabaseAdmin
-        .from("waitlist")
-        .update({ status: "notified", notified_at: new Date().toISOString() })
-        .eq("id", r.id);
-    }
+    const { WAITLIST_CLAIM_ENABLED, deliverOpeningEmails } = await import("@/lib/waitlist-claim");
+    // Flag off: the email is still the bare /apply link, and a failed send
+    // still marks Notified. claimUrl is not called on that path.
+    const { sent } = await deliverOpeningEmails({
+      enabled: WAITLIST_CLAIM_ENABLED,
+      rows: rows as { id: string; full_name: string | null; email: string; city: string | null }[],
+      origin: siteOrigin(),
+      companyPhone,
+      claimUrl: async (row) => {
+        const { waitlistClaimUrl } = await import("@/lib/waitlist-claim.server");
+        return waitlistClaimUrl(row.id, { origin: siteOrigin() });
+      },
+      send: (message) => sendEmail(message),
+      markNotified: async (id) => {
+        await supabaseAdmin
+          .from("waitlist")
+          .update({ status: "notified", notified_at: new Date().toISOString() })
+          .eq("id", id);
+      },
+    });
 
     await logAudit(actor, {
       action: "waitlist.notified",
@@ -389,6 +386,32 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
     });
 
     return { ok: true as const, notified: sent };
+  });
+
+/**
+ * Opens a claim link into a prefill. With the flag off this returns
+ * immediately and does not read the waitlist. It never promotes, never
+ * writes, and never issues an application resume token.
+ */
+export const readWaitlistClaim = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(300) }).parse(d))
+  .handler(async ({ data }) => {
+    const { WAITLIST_CLAIM_ENABLED, claimPrefillFromRow } = await import("@/lib/waitlist-claim");
+    if (!WAITLIST_CLAIM_ENABLED) return { ok: false as const };
+
+    const { verifyWaitlistClaim } = await import("@/lib/waitlist-claim.server");
+    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+    const parsed = await verifyWaitlistClaim(data.token, secret);
+    if (!parsed) return { ok: false as const, error: "This link is not valid." };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("waitlist")
+      .select("full_name,email,phone,city,state,pickup_date,market_id,status")
+      .eq("id", parsed.entryId)
+      .maybeSingle();
+    if (error || !row) return { ok: false as const, error: "This link is not valid." };
+    return claimPrefillFromRow(row);
   });
 
 export const promoteToApplicant = createServerFn({ method: "POST" })
