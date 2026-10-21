@@ -1,3 +1,4 @@
+// Run: bun test scripts/driver-doc-expiry.test.ts
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -6,7 +7,9 @@ import { supabaseAdmin } from "./fake-supabase.src.mjs";
 import {
   DRIVER_DOC_EXPIRY_ENABLED,
   DRIVER_DOC_EXPIRY_ROW_CAP,
+  DRIVER_DOC_EXPIRY_SEPARATE_TNC,
   documentListStatus,
+  documentRowIndex,
 } from "../src/lib/driver-doc-expiry";
 import { loadDriverDocExpiry } from "../src/lib/driver-doc-expiry-load";
 import {
@@ -14,6 +17,8 @@ import {
   documentDateStatus,
   documentExpiryStatus,
   easternCalendarDay,
+  parseCalendarDay,
+  separateDocumentLabel,
   type ReadinessApplication,
 } from "../src/lib/driver-readiness-facts";
 
@@ -35,7 +40,11 @@ describe("driver document expiry", () => {
   it("declares the flag once, hard false, with no env", () => {
     const src = read("src/lib/driver-doc-expiry.ts");
     assert.equal(src.match(/export const DRIVER_DOC_EXPIRY_ENABLED: boolean = false/g)?.length, 1);
+    assert.equal(src.match(/export const DRIVER_DOC_EXPIRY_SEPARATE_TNC: boolean = false/g)?.length, 1);
     assert.equal(DRIVER_DOC_EXPIRY_ENABLED, false);
+    assert.equal(DRIVER_DOC_EXPIRY_SEPARATE_TNC, false);
+    assert.doesNotMatch(src, /\.find\(/);
+    assert.match(src, /index\.get\(id\)/);
     assert.equal(read("src/lib/driver-doc-expiry.functions.ts").includes("DRIVER_DOC_EXPIRY_ENABLED"), false);
     assert.equal(read("src/lib/driver-doc-expiry-load.ts").includes("DRIVER_DOC_EXPIRY_ENABLED"), false);
     assert.doesNotMatch(src, /process\.env/);
@@ -60,6 +69,8 @@ describe("driver document expiry", () => {
     assert.doesNotMatch(fn, /tnc_uber_approval_expires_on|tnc_lyft_approval_expires_on|pickup_date|documents\.expires_at/);
     const load = read("src/lib/driver-doc-expiry-load.ts");
     assert.match(load, /documentExpiryStatus/);
+    assert.match(load, /separateDocumentLabel/);
+    assert.match(load, /tncTracked: false/);
     assert.match(load, /driver-readiness-facts/);
     assert.match(load, /license_expiration/);
     assert.match(load, /insurance_expires_on/);
@@ -87,18 +98,28 @@ describe("driver document expiry", () => {
     assert.match(panel, /<DriverDocExpiryHeader \/>/);
     assert.match(panel, /<DriverDocExpiryCell/);
     assert.match(panel, /<DriverDocExpiryNotice/);
+    const rowIndex = panel.indexOf("documentRowIndex(docExpiry)");
+    const filtered = panel.indexOf("documentListStatus(docExpiry, a.id, docRowsById)");
+    assert.ok(rowIndex !== -1 && filtered !== -1 && rowIndex < filtered);
+    assert.equal(panel.match(/documentListStatus\(/g)?.length, 3);
+    assert.equal(panel.match(/documentListStatus\(docExpiry, [a-z]+\.id, docRowsById\)/g)?.length, 3);
+    assert.match(panel, /tncTracked=\{docExpiry\?\.tncTracked === true\}/);
     assert.match(panel, /docFilter === "all"/);
     assert.match(panel, /colSpan=\{DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive \? 11 : 10\}/);
     assert.doesNotMatch(ui, /uppercase|lowercase|capitalize/);
     assert.doesNotMatch(read("src/components/admin/nav-config.ts"), /doc-expiry|Documents/);
     assert.doesNotMatch(read("src/routes/admin.tsx"), /DriverDocExpiry|driver-doc-expiry/);
     assert.match(ui, /Expired/);
-    assert.match(ui, /Expires in 30 Days/);
+    assert.match(ui, /Expires In 30 Days/);
+    assert.doesNotMatch(ui, /Expires in 30 Days/);
     assert.match(ui, /Unknown/);
     assert.match(ui, /Not In This Read/);
     assert.match(ui, /Could Not Load Document Expiry/);
     assert.match(ui, /Showing The First \{meta\.cap\} Drivers\. The Rest Were Not Read\./);
-    assert.match(ui, /TNC Approval Dates Are Not In The Schema/);
+    assert.match(ui, /TNC Approval Date Not Tracked/);
+    assert.match(ui, /DRIVER_DOC_EXPIRY_SEPARATE_TNC === true && separateLabel/);
+    assert.match(ui, /DRIVER_DOC_EXPIRY_SEPARATE_TNC === true && tncTracked !== true/);
+    assert.match(ui, /value="ok"/);
     const failed = ui.indexOf("Could Not Load Document Expiry");
     const capped = ui.indexOf("Showing The First");
     assert.ok(failed !== -1 && capped !== -1 && failed < capped);
@@ -116,6 +137,14 @@ describe("driver document expiry", () => {
     assert.equal(
       documentExpiryStatus(dates({ license_expiration: "2027-06-01", insurance_expires_on: "2027-06-01" }), today, null),
       "unknown",
+    );
+    assert.equal(
+      separateDocumentLabel(dates({ license_expiration: "2027-06-01", insurance_expires_on: "2027-06-01" }), today, null),
+      "OK · TNC Unknown",
+    );
+    assert.equal(
+      separateDocumentLabel(dates({ license_expiration: "2026-10-01", insurance_expires_on: "2027-06-01" }), today, null),
+      "Expired · TNC Unknown",
     );
     assert.equal(
       documentExpiryStatus(dates({ license_expiration: "2027-06-01", insurance_expires_on: "2027-06-01" }), today, "2027-06-01"),
@@ -154,6 +183,8 @@ describe("driver document expiry", () => {
     assert.equal(documentDateStatus("2026-12-01", "2026-11-01"), "expiring");
     assert.equal(documentDateStatus("2026-12-02", "2026-11-01"), "ok");
     assert.equal(documentDateStatus("not-a-date", "2026-11-01"), "unknown");
+    assert.equal(parseCalendarDay("2026-02-30"), null);
+    assert.equal(documentDateStatus("2026-02-30", "2026-01-01"), "unknown");
     assert.equal(documentDateStatus("2026-02-31", "2026-11-01"), "unknown");
   });
 });
@@ -197,12 +228,17 @@ describe("driver document expiry read", () => {
     reset({ applications });
     const capped = await loadDriverDocExpiry(admin, today);
     assert.equal(capped.failed, false);
+    assert.equal(capped.tncTracked, false);
     assert.equal(capped.truncated, true);
     assert.equal(capped.drivers.length, DRIVER_DOC_EXPIRY_ROW_CAP);
     assert.equal(capped.drivers[0]?.id, "app-1000");
     assert.equal(capped.drivers[0]?.status, "expired");
     assert.equal(capped.drivers.some((driver) => driver.id === "app-0000"), false);
     assert.equal(capped.drivers.some((driver) => driver.id === "gone" || driver.id === "dupe"), false);
+    const cappedIndex = documentRowIndex(capped);
+    assert.equal(cappedIndex.get("app-1000")?.status, "expired");
+    assert.equal(documentListStatus(capped, "app-0000", cappedIndex), "unread");
+    assert.equal(documentListStatus(capped, "app-1000", cappedIndex), "expired");
     assert.equal(documentListStatus(capped, "app-0000"), "unread");
     assert.equal(documentListStatus(capped, "app-1000"), "expired");
     assert.notEqual(documentListStatus(capped, "app-0000"), "ok");
@@ -262,6 +298,10 @@ describe("driver document expiry read", () => {
         ["blank", "unknown"],
       ],
     );
+    assert.equal(classified.tncTracked, false);
+    assert.equal(classified.drivers[0]?.separateLabel, "Expired · TNC Unknown");
+    assert.equal(classified.drivers[1]?.separateLabel, "Expires In 30 Days · TNC Unknown");
+    assert.equal(classified.drivers[2]?.separateLabel, "Unknown · TNC Unknown");
     assert.equal(documentListStatus(classified, "missing"), "unknown");
 
     const out = ".doc-expiry-build";

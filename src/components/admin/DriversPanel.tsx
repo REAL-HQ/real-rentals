@@ -16,6 +16,7 @@ import {
   DRIVER_DOC_EXPIRY_ENABLED,
   DRIVER_DOC_EXPIRY_ROW_CAP,
   documentListStatus,
+  documentRowIndex,
   type DriverDocExpiryResult,
 } from "@/lib/driver-doc-expiry";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
@@ -652,6 +653,8 @@ setDocCounts(requiredDocCounts(rows));
     [drivers, screenings, docRows],
   );
 
+  const docRowsById = useMemo(() => documentRowIndex(docExpiry), [docExpiry]);
+
   // Group by primary_application_id (falls back to id). Primary row = the one
   // whose id === groupKey; others render as collapsed history.
   const grouped = useMemo(() => {
@@ -668,7 +671,7 @@ setDocCounts(requiredDocCounts(rows));
       // readContactStatus already answers New for a row that has no value, so
       // filtering by New finds the leads nobody has worked yet.
       .filter((a) => contactFilter === "all" || readContactStatus(a).state.status === contactFilter)
-      .filter((a) => DRIVER_DOC_EXPIRY_ENABLED !== true || docFilter === "all" || documentListStatus(docExpiry, a.id) === docFilter)
+      .filter((a) => DRIVER_DOC_EXPIRY_ENABLED !== true || docFilter === "all" || documentListStatus(docExpiry, a.id, docRowsById) === docFilter)
       .filter((a) => {
       if (!q) return true;
       const hay =
@@ -692,7 +695,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters]);
 
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   function applySaved(id: string, patch: Partial<Application>) {
@@ -918,6 +921,7 @@ setDocCounts(requiredDocCounts(rows));
             value={docFilter}
             onChange={setDocFilter}
             counts={expiryCounts}
+            tncTracked={docExpiry?.tncTracked === true}
           />
         ) : null}
         {isOwner && (
@@ -1117,7 +1121,10 @@ setDocCounts(requiredDocCounts(rows));
                     </td>
                     {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <DriverDocExpiryCell status={documentListStatus(docExpiry, a.id)} />
+                        <DriverDocExpiryCell
+                          status={documentListStatus(docExpiry, a.id, docRowsById)}
+                          separateLabel={docRowsById.get(a.id)?.separateLabel ?? null}
+                        />
                       </td>
                     ) : null}
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
@@ -1199,7 +1206,10 @@ setDocCounts(requiredDocCounts(rows));
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                           <td className="px-4 py-2">
-                            <DriverDocExpiryCell status={documentListStatus(docExpiry, h.id)} />
+                            <DriverDocExpiryCell
+                              status={documentListStatus(docExpiry, h.id, docRowsById)}
+                              separateLabel={docRowsById.get(h.id)?.separateLabel ?? null}
+                            />
                           </td>
                         ) : null}
                         <td className="px-4 py-2 capitalize">{h.status}</td>

@@ -2,6 +2,7 @@ import { readCounted } from "./count-paged-read";
 import {
   documentExpiryStatus,
   easternCalendarDay,
+  separateDocumentLabel,
   type ReadinessApplication,
 } from "./driver-readiness-facts";
 import { DRIVER_DOC_EXPIRY_ROW_CAP, type DriverDocExpiryResult } from "./driver-doc-expiry";
@@ -43,17 +44,15 @@ export async function loadDriverDocExpiry(
   const drivers = applications.rows.flatMap((row) => {
     const app = row as unknown as Pick<ReadinessApplication, "id" | "license_expiration" | "insurance_expires_on">;
     if (typeof app.id !== "string" || app.id.length === 0) return [];
+    const dates = {
+      license_expiration: app.license_expiration ?? null,
+      insurance_expires_on: app.insurance_expires_on ?? null,
+    };
     return [
       {
         id: app.id,
-        status: documentExpiryStatus(
-          {
-            license_expiration: app.license_expiration ?? null,
-            insurance_expires_on: app.insurance_expires_on ?? null,
-          },
-          today,
-          null,
-        ),
+        status: documentExpiryStatus(dates, today, null),
+        separateLabel: separateDocumentLabel(dates, today, null),
       },
     ];
   });
@@ -61,6 +60,7 @@ export async function loadDriverDocExpiry(
     failed: false,
     truncated: applications.truncated,
     cap: DRIVER_DOC_EXPIRY_ROW_CAP,
+    tncTracked: false,
     drivers,
   };
 }

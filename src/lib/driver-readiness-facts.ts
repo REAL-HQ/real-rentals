@@ -465,3 +465,43 @@ export function documentExpiryStatus(
   if (dates.every((item) => item === "ok")) return "ok";
   return "unknown";
 }
+
+const DOC_EXPIRY_STATUS_LABEL: Record<DocExpiryStatus, string> = {
+  expired: "Expired",
+  expiring: "Expires In 30 Days",
+  ok: "OK",
+  unknown: "Unknown",
+};
+
+/** Licence and personal insurance only. A missing TNC date does not pull this to Unknown. */
+export function licenceInsuranceStatus(
+  application: Pick<ReadinessApplication, "license_expiration" | "insurance_expires_on">,
+  today: string,
+): DocExpiryStatus {
+  const dates = [
+    documentDateStatus(application.license_expiration, today),
+    documentDateStatus(application.insurance_expires_on, today),
+  ];
+  if (dates.includes("expired")) return "expired";
+  if (dates.includes("expiring")) return "expiring";
+  if (dates.every((item) => item === "ok")) return "ok";
+  return "unknown";
+}
+
+/**
+ * Alternative cell text. Licence and insurance stand on their own, and TNC
+ * is named beside them until a real approval date is stored. The column
+ * shows this only when the owner opts into the separate display.
+ */
+export function separateDocumentLabel(
+  application: Pick<ReadinessApplication, "license_expiration" | "insurance_expires_on">,
+  today: string,
+  tncOn: string | null,
+): string {
+  const word = DOC_EXPIRY_STATUS_LABEL[licenceInsuranceStatus(application, today)];
+  const tnc = documentDateStatus(tncOn, today);
+  if (tncOn == null || tnc === "unknown") return `${word} · TNC Unknown`;
+  if (tnc === "expired") return `${word} · TNC Expired`;
+  if (tnc === "expiring") return `${word} · TNC Expires In 30 Days`;
+  return word;
+}
