@@ -6,6 +6,7 @@ import { getLeadPriorities } from "@/lib/lead-priorities.functions";
 import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { LeadResponseReport } from "./LeadResponseReport";
 
 export default function LeadPriorities() {
   const load = useServerFn(getLeadPriorities);
@@ -69,6 +70,7 @@ export default function LeadPriorities() {
           Refresh
         </button>
       </div>
+      <LeadResponseReport />
       {loading ? (
         <p role="status" className="py-6 text-sm text-muted-foreground">
           Loading lead priorities…
