@@ -32,6 +32,7 @@ import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as PortalRoadsideRouteImport } from './routes/portal_.roadside'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
@@ -160,6 +161,11 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/fleet/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalRoadsideRoute = PortalRoadsideRouteImport.update({
+  id: '/portal_/roadside',
+  path: '/portal/roadside',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignTokenRoute = SignTokenRouteImport.update({
   id: '/sign/$token',
   path: '/sign/$token',
@@ -250,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
@@ -287,6 +294,7 @@ export interface FileRoutesByTo {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
@@ -325,6 +333,7 @@ export interface FileRoutesById {
   '/thank-you': typeof ThankYouRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/portal_/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/portal/roadside'
     | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/automations'
@@ -401,6 +411,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/portal/roadside'
     | '/sign/$token'
     | '/fleet'
     | '/api/public/cron/automations'
@@ -438,6 +449,7 @@ export interface FileRouteTypes {
     | '/thank-you'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/portal_/roadside'
     | '/sign/$token'
     | '/fleet/'
     | '/api/public/cron/automations'
@@ -476,6 +488,7 @@ export interface RootRouteChildren {
   ThankYouRoute: typeof ThankYouRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
+  PortalRoadsideRoute: typeof PortalRoadsideRoute
   SignTokenRoute: typeof SignTokenRoute
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
@@ -654,6 +667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal_/roadside': {
+      id: '/portal_/roadside'
+      path: '/portal/roadside'
+      fullPath: '/portal/roadside'
+      preLoaderRoute: typeof PortalRoadsideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sign/$token': {
       id: '/sign/$token'
       path: '/sign/$token'
@@ -764,6 +784,7 @@ const rootRouteChildren: RootRouteChildren = {
   ThankYouRoute: ThankYouRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
+  PortalRoadsideRoute: PortalRoadsideRoute,
   SignTokenRoute: SignTokenRoute,
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
