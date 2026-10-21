@@ -213,6 +213,7 @@ export const saveIncident = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       id = row.id as string;
     }
+    if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "incident_logged", applicationId, rentalId, fresh: !data.id })).catch((e) => console.error("[renter-lifecycle] incident_logged", e));
 
     if (data.markVehicleDown) {
       await supabaseAdmin
