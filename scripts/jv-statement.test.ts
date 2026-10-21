@@ -600,6 +600,8 @@ describe("partner statement worked example", () => {
     });
     expect(october?.expensesComplete).toBe(true);
     expect(october?.expenseCents).toBe(0);
+    expect(october?.notes.join(" ")).toContain("September 2026");
+    expect(september?.notes.join(" ")).not.toContain("September 2026");
     expect(september?.expensesComplete).toBe(true);
     expect(september?.companyExpenseCents).toBe(2000);
     expect(september?.partnerExpenseCents).toBe(1000);
@@ -786,6 +788,44 @@ describe("partner statement worked example", () => {
     expect(statement?.incomeComplete).toBe(false);
     expect(statement?.refundsComplete).toBe(false);
     expect(statement?.coverage).toBe("unavailable");
+  });
+
+  it("withholds a Stripe charge matched only by subscription id while the revenue base is unset", () => {
+    expect(PARTNER_REVENUE_BASE).toBeNull();
+    const { directory } = worked();
+    const window = periodWindow("this_month", NOW);
+    if (!window) throw new Error("period");
+    directory.expenses = [];
+    directory.maintenance = [];
+    directory.payments = [];
+    directory.refunds = [];
+    directory.rentals = [
+      { id: "r1", vehicleId: VEHICLE, customerId: "cus_1", subscriptionId: "sub_1" },
+    ];
+    const statement = buildJvStatement({
+      ...directory,
+      vehicleId: VEHICLE,
+      period: "this_month",
+      now: NOW,
+      charges: [
+        {
+          id: "ch_sub",
+          customerId: "cus_1",
+          paymentIntentId: null,
+          invoiceId: null,
+          subscriptionId: "sub_1",
+          amountCents: 8000,
+          currency: "usd",
+          succeeded: true,
+          created: window.gte + 100,
+          paymentIds: [],
+        },
+      ],
+    });
+    expect(statement?.incomeComplete).toBe(false);
+    expect(statement?.incomeCents).toBeNull();
+    expect(statement?.partnerIncomeCents).toBeNull();
+    expect(statement?.notes.join(" ")).toContain("matched only by subscription id");
   });
 
   it("withholds a customer-only Stripe charge while the revenue base is unset", () => {

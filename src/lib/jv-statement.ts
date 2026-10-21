@@ -202,6 +202,8 @@ const REVENUE_BASE_NOTE =
   "Partner revenue base is not chosen. Rent only, as on partner earnings, and all revenue types (late fee, toll, damage, fee, and other) are both open. This vehicle has one of those types in the period, or its date cannot be placed, so income and the split are withheld.";
 const CUSTOMER_ONLY_NOTE =
   "Partner revenue base is not chosen. A Stripe charge is tied only to the customer, not to a rent payment, so income and the split are withheld.";
+const SUBSCRIPTION_ONLY_NOTE =
+  "Partner revenue base is not chosen. A Stripe charge matched only by subscription id was withheld, so income and the split are withheld.";
 
 function acceptedRevenueTypes(): ReadonlySet<string> {
   if (PARTNER_REVENUE_BASE === "rent") return new Set(["rent"]);
@@ -427,6 +429,27 @@ function calendarDay(value: string | null | undefined): { date: string | null; i
   return { date: null, invalid: true };
 }
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+function monthName(iso: string): string {
+  const [year, month] = iso.split("-");
+  const name = MONTHS[Number(month) - 1];
+  return name ? `${name} ${year}` : iso;
+}
+
 function placed(candidates: (string | null | undefined)[]): {
   date: string | null;
   invalid: boolean;
@@ -463,7 +486,7 @@ function hasAuthoritativeReference(payment: JvPayment, charges: JvCharge[]): boo
 }
 
 type ChargeDecision =
-  | { kind: "vehicle"; vehicleId: string; basis: "rent" | "non_rent" | "customer" }
+  | { kind: "vehicle"; vehicleId: string; basis: "rent" | "non_rent" | "customer" | "subscription" }
   | { kind: "deposit"; vehicleId: string | null }
   | { kind: "unattributed"; conflict: boolean };
 
@@ -529,7 +552,12 @@ function decideCharge(
     return {
       kind: "vehicle",
       vehicleId,
-      basis: paymentHits.length > 0 ? revenueBasis(paymentHits) : "rent",
+      basis:
+        paymentHits.length > 0
+          ? revenueBasis(paymentHits)
+          : PARTNER_REVENUE_BASE === null
+            ? "subscription"
+            : "rent",
     };
   }
   const customerHits = charge.customerId
@@ -680,6 +708,12 @@ export function buildJvStatement(
             `More than one expense is linked to ${name}. Those amounts were not added on top of the service, and the split was withheld.`,
           );
           continue;
+        }
+        const elsewhere = vehicleLinks[0]?.place.date;
+        if (inside && elsewhere) {
+          notes.push(
+            `The linked expense for ${name} is in ${monthName(elsewhere)}. It is counted in that period, not this one.`,
+          );
         }
         continue;
       }
@@ -853,7 +887,13 @@ export function buildJvStatement(
     }
     if (PARTNER_REVENUE_BASE === null && decision.basis !== "rent") {
       incomeComplete = false;
-      notes.push(decision.basis === "customer" ? CUSTOMER_ONLY_NOTE : REVENUE_BASE_NOTE);
+      notes.push(
+        decision.basis === "customer"
+          ? CUSTOMER_ONLY_NOTE
+          : decision.basis === "subscription"
+            ? SUBSCRIPTION_ONLY_NOTE
+            : REVENUE_BASE_NOTE,
+      );
       continue;
     }
     addIncome(charge.amountCents, "stripe");
