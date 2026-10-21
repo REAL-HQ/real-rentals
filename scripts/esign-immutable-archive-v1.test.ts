@@ -110,6 +110,10 @@ type Faults = {
   loseToConcurrent?: boolean;
   /** The next N agreement reads still look pending. */
   staleAgreementReads?: number;
+  /** Claim lookups by document id. The agreement's own read is unchanged. */
+  agreementLookup?: "error" | "many";
+  /** The is_current=false update fails and does not change the row. */
+  retireUpdateError?: boolean;
 };
 
 function match(row: Record<string, unknown>, filters: Filter[]): boolean {
@@ -175,6 +179,9 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
         return Promise.resolve({ data: many ? { ...agreement } : null, error: null });
       }
       if (op === "update" && table === "documents") {
+        if (payload?.is_current === false && faults.retireUpdateError) {
+          return Promise.resolve({ data: null, error: { message: "is_current update failed" } });
+        }
         const hits = [...docs.values()].filter((row) => match(row, filters));
         if (!hits.length) return Promise.resolve({ data: null, error: { message: "missing document" } });
         for (const row of hits) Object.assign(row, payload);
@@ -185,6 +192,13 @@ function openArchive(seed: Record<string, unknown>, faults: Faults = {}) {
         return Promise.resolve({ data: null, error: null });
       }
       if (op === "select" && table === "agreements") {
+        const claimLookup = filters.some((f) => f.col === "document_id" || f.col === "completed_document_id");
+        if (claimLookup && faults.agreementLookup === "error") {
+          return Promise.resolve({ data: null, error: { message: "agreements read failed" } });
+        }
+        if (claimLookup && faults.agreementLookup === "many") {
+          return Promise.resolve({ data: [{ id: "claim-1" }, { id: "claim-2" }], error: null });
+        }
         if ((faults.staleAgreementReads ?? 0) > 0) {
           faults.staleAgreementReads = (faults.staleAgreementReads ?? 0) - 1;
           const stale = { ...agreement, archive_status: "pending", document_id: null, sha256: null, completed_document_id: null };
@@ -477,6 +491,30 @@ const orphan = changed.docs.get("ffffffff-ffff-4fff-8fff-ffffffffffff");
 ok(orphan?.is_current === false, "the earlier admin-only orphan is marked not current");
 ok(changed.docs.size === 2, "the earlier orphan is kept");
 ok(!changed.calls.some((c) => c.op === "delete") && !changed.calls.some((c) => c.op === "remove"), "a changed PDF does not delete the earlier row or object");
+
+function orphanSeed() {
+  return {
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    driver_id: agreement.application_id,
+    storage_bucket: "rental-agreements",
+    storage_path: "immutable-v1/ffffffff-ffff-4fff-8fff-ffffffffffff/old.pdf",
+    visibility: ["admin"],
+    is_current: true,
+    content_sha256: "11".repeat(32),
+  };
+}
+const readError = openArchive({ ...agreement, body: "First PDF body" }, { agreementLookup: "error" });
+readError.docs.set(orphanSeed().id, orphanSeed());
+ok(await archiveImmutableV1(readError.admin, { ...agreement, body: "Second PDF body" }, null) === true, "an agreements read error still archives the new file");
+ok(readError.docs.get(orphanSeed().id)?.is_current === true, "an agreements read error does not retire the orphan");
+const manyClaims = openArchive({ ...agreement, body: "First PDF body" }, { agreementLookup: "many" });
+manyClaims.docs.set(orphanSeed().id, orphanSeed());
+ok(await archiveImmutableV1(manyClaims.admin, { ...agreement, body: "Second PDF body" }, null) === true, "more than one agreement row still archives the new file");
+ok(manyClaims.docs.get(orphanSeed().id)?.is_current === true, "more than one agreement row does not retire the orphan");
+const updateFailed = openArchive({ ...agreement, body: "First PDF body" }, { retireUpdateError: true });
+updateFailed.docs.set(orphanSeed().id, orphanSeed());
+ok(await archiveImmutableV1(updateFailed.admin, { ...agreement, body: "Second PDF body" }, null) === true, "a failed is_current update still archives the new file");
+ok(updateFailed.docs.get(orphanSeed().id)?.is_current === true, "a failed is_current update leaves the orphan current");
 ok(writer.includes("SET is_current = false") && !/\bDELETE\s+FROM\b/.test(writer), "the staff cleanup marks unclaimed immutable rows not current and does not delete");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall immutable archive checks pass");

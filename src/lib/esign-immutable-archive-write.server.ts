@@ -50,6 +50,16 @@ async function revealToDriver(admin: any, documentId: string): Promise<void> {
  *     WHERE a.document_id = d.id OR a.completed_document_id = d.id
  *   );
  */
+/** error, one claim, or more than one row: do not retire. Only a clean empty read is unclaimed. */
+function agreementClaimState(result: { data?: unknown; error?: unknown } | null | undefined): "error" | "none" | "claimed" {
+  if (!result || result.error) return "error";
+  if (Array.isArray(result.data)) {
+    if (result.data.length > 1) return "claimed";
+    return result.data.length === 1 ? "claimed" : "none";
+  }
+  return result.data ? "claimed" : "none";
+}
+
 async function retireUnclaimedImmutableOrphans(admin: any, applicationId: string, documentId: string): Promise<void> {
   const listed = await admin
     .from("documents")
@@ -64,10 +74,14 @@ async function retireUnclaimedImmutableOrphans(admin: any, applicationId: string
     const visibility = Array.isArray(row.visibility) ? row.visibility : [];
     if (visibility.length !== 1 || visibility[0] !== "admin") continue;
     const claimed = await admin.from("agreements").select("id").eq("document_id", row.id).maybeSingle();
-    if (claimed?.data) continue;
+    if (agreementClaimState(claimed) !== "none") continue;
     const completed = await admin.from("agreements").select("id").eq("completed_document_id", row.id).maybeSingle();
-    if (completed?.data) continue;
-    await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+    if (agreementClaimState(completed) !== "none") continue;
+    const retired = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+    if (retired?.error) {
+      console.error("[esign] could not mark an unclaimed immutable row not current", row.id, retired.error.message ?? retired.error);
+      continue;
+    }
   }
 }
 
