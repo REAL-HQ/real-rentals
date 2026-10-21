@@ -212,7 +212,7 @@ function Index() {
                     <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-real-red/10 text-real-red transition-colors">
                       <s.I className="w-7 h-7" strokeWidth={1.75} />
                     </div>
-                    <div aria-hidden="true" className="text-5xl font-bold text-foreground/5 group-hover:text-real-red/20 transition-colors leading-none">{s.n}</div>
+                    <div aria-hidden="true" className="text-5xl font-bold text-[#949494] group-hover:text-real-red/20 transition-colors leading-none">{s.n}</div>
                   </div>
                   <div className="mt-6 text-real-red text-[11px] font-semibold tracking-[0.2em]">STEP {s.n}</div>
                   <div className="mt-2 text-xl font-semibold">{s.t}</div>

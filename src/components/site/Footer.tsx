@@ -59,7 +59,7 @@ export function Footer() {
         <div className="container-real py-14 md:py-20 flex flex-col items-center gap-8 text-center">
           <div>
             <div className="text-3xl md:text-5xl font-semibold leading-tight">Need A Vehicle To Start Driving This Week?</div>
-            <div className="mt-3 text-base md:text-lg text-white/90">Get A Quote In Minutes. Get Approved Fast. Start Earning.</div>
+            <div className="mt-3 text-base md:text-lg text-white">Get A Quote In Minutes. Get Approved Fast. Start Earning.</div>
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 shrink-0">
             <Link

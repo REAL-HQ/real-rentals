@@ -23,7 +23,7 @@ axe violation rules are counted per page (the same rule on two pages counts twic
 | `/portal` | 3 | 3 | 0 | 0 |
 | **Total** | **9** | **26** | **2** | **16** |
 
-The 16 nodes that remain are color contrast. This pass does not recolor the comparison table, the fleet category chips, or the footer band.
+The 16 nodes that remained after the label and tap-target pass were color contrast. The owner-review section records the shade used for each.
 
 Manual tap targets under 44px: 27 on `/`, 17 on `/fleet`, 9 on `/apply`, 3 on `/portal` before. After: 0, 0, 0, 0.
 
@@ -43,13 +43,13 @@ Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizont
 
 **Comparison table could not be scrolled from the keyboard.** The home comparison is a horizontal scroller with no focusable control inside it. Fixed with `tabIndex={0}`, `role="region"`, and `aria-label="Compare Rental Options"`, plus a visible focus outline. The table still scrolls sideways on a phone. That scroll is inside the region, not a page overflow.
 
-**Decorative step numbers fail contrast (deferred).** Home steps 01–04 are `#f3f3f3` on white, ratio 1.1:1. They repeat the “STEP 01” text already next to them. `aria-hidden` is set so a screen reader does not announce them twice. axe still measures the painted color, so these four nodes remain. Raising the contrast would make the watermark read as real text. Left for a design pass.
+**Decorative step numbers fail contrast.** The shade in the owner-review table replaces this color. Home steps 01–04 were `#f3f3f3` on white, ratio 1.1:1. They repeat the “STEP 01” text already next to them. `aria-hidden` stays set so a screen reader does not announce them twice. axe still measures the painted color.
 
-**Comparison “yes” cells fail contrast (deferred).** Positive cells use green `#00a63e` on yellow `#fef9c2`, ratio 2.99:1 (needs 4.5:1). Seven cells on `/`. Recoloring the table is a design change, not part of this polish.
+**Comparison “yes” cells fail contrast.** The shade in the owner-review table replaces this green. Positive cells were green `#00a63e` on yellow `#fef9c2`, ratio 2.99:1 (needs 4.5:1). Seven cells on `/`. The yellow background is unchanged.
 
-**Fleet category taglines fail contrast (deferred).** “Great MPG · Uber & Lyft” and the two sibling lines are 10px white at 90% opacity on `#d03020`, ratio 4.36:1 (needs 4.5:1).
+**Fleet category taglines fail contrast.** The owner-review table sets the selected tagline to solid white. “Great MPG · Uber & Lyft” and the two sibling lines are 10px white at 90% opacity on `#d03020`, ratio 4.36:1 (needs 4.5:1).
 
-**Footer band subtitle fails contrast (deferred).** “Get A Quote In Minutes…” is `text-white/90` on the red band, ratio 4.36:1. It is on `/` and `/fleet`.
+**Footer band subtitle fails contrast.** The owner-review table sets this line to solid white. “Get A Quote In Minutes…” is `text-white/90` on the red band, ratio 4.36:1. It is on `/` and `/fleet`.
 
 ### Moderate
 
@@ -80,4 +80,17 @@ Unlabeled inputs: 0 before and after. Images missing alt: 0. Page-level horizont
 
 ## What this change does not do
 
-No queries, validation, submission, auth, or copy changes. Contrast colors above stay as they are until a separate design approval. The Terms and Privacy words stay inside their sentences.
+No queries, validation, submission, auth, or copy changes. The Terms and Privacy words stay inside their sentences.
+
+## Owner review: contrast shades
+
+The 16 color-contrast nodes are recolored here, and nowhere else. Each new shade is the nearest step on the existing brand ramp that reaches WCAG AA (4.5:1, or 3:1 for the 48px bold step numbers). Brand red `#D03020` is unchanged. Dolmar decides whether these shades ship.
+
+| Spot | Nodes | Old | New | Ratio |
+| --- | ---: | --- | --- | --- |
+| Home step numbers (48px bold on white) | 4 | `#F3F3F3` | `#949494` | 3.03:1 |
+| Comparison cells (15px on `#FEF9C2`) | 7 | `#00A63E` | `#008347` | 4.51:1 |
+| Footer subtitle on `#D03020` (`/` and `/fleet`) | 2 | `#FAEAE9` | `#FFFFFF` | 5.09:1 |
+| Selected fleet chip taglines on `#D03020` | 3 | `#FAEAE9` | `#FFFFFF` | 5.09:1 |
+
+`#949494` is the lightest neutral gray that clears 3:1 on white. The brand caption `#888888` also clears it (3.54:1) and is darker. `#008347` is `oklch(0.534 0.14 155)`, the same hue and chroma as `--success` (`#00884B`, 4.23:1 on the yellow cell, short of 4.5:1), one step darker. The footer and the selected taglines were white at 90% opacity; solid white is the same brand text on the same red. Unselected chip taglines stay at 90% opacity.
