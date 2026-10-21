@@ -426,6 +426,85 @@ ok(
 );
 ok(heldMatches(closedPending), "Incident Costs matches the amount held from the refund when a damage payment is pending");
 
+const unrelatedDamage = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 50, balance_due: 50, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-unrelated" }]),
+  }),
+);
+ok(figure(unrelatedDamage, "incident-costs").value === "$200.00", "an unrelated damage charge does not change Incident Costs");
+ok(figure(unrelatedDamage, "charges").value === "$50.00", "the unrelated damage charge stays on outstanding charges");
+ok(figure(unrelatedDamage, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT), "an unmatched damage charge still warns of a possible double count");
+ok(
+  figure(unrelatedDamage, "proposed-refund").value === "$250.00" && figure(unrelatedDamage, "balance-due").value === "$0.00",
+  "a closed $200 incident plus an unrelated pending $50 damage charge refunds $250",
+);
+
+const matchedAndExtra = buildCloseoutPreview(
+  input({
+    payments: loaded([
+      { status: "pending", amount: 50, balance_due: 50, type: "damage", due_date: "2026-10-21" },
+      { status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" },
+    ]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-split" }]),
+  }),
+);
+ok(figure(matchedAndExtra, "charges").value === "$250.00", "both damage payments stay visible when one matches the incident");
+ok(figure(matchedAndExtra, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT), "a matching damage payment keeps the double-count warning");
+ok(
+  figure(matchedAndExtra, "proposed-refund").value === "$250.00" && figure(matchedAndExtra, "balance-due").value === "$0.00",
+  "the $200 damage payment matches the closed incident once, and the extra $50 is still subtracted",
+);
+
+const twoMatches = buildCloseoutPreview(
+  input({
+    payments: loaded([
+      { status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" },
+      { status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" },
+    ]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-once" }]),
+  }),
+);
+ok(
+  figure(twoMatches, "proposed-refund").value === "$100.00" && figure(twoMatches, "balance-due").value === "$0.00",
+  "one closed incident matches at most one damage payment",
+);
+
+const largerDamage = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 450, balance_due: 450, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-larger" }]),
+  }),
+);
+ok(figure(largerDamage, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT), "a larger damage charge still warns of a possible double count");
+ok(
+  figure(largerDamage, "proposed-refund").value === "$0.00" && figure(largerDamage, "balance-due").value === "$150.00",
+  "a closed $200 incident plus a pending $450 damage charge is a $150 balance due",
+);
+
+const unreadableDamage = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: null, balance_due: null, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-unreadable" }]),
+  }),
+);
+ok(
+  figure(unreadableDamage, "proposed-refund").value === "No Proposal" && figure(unreadableDamage, "balance-due").value === "No Proposal",
+  "a damage row with no readable balance blocks the proposal",
+);
+ok(figure(unreadableDamage, "incident-costs").explanation.includes(POSSIBLE_DOUBLE_COUNT), "the unreadable damage row still warns on Incident Costs");
+
+const undatedDamage = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: null }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-undated" }]),
+  }),
+);
+ok(
+  figure(undatedDamage, "proposed-refund").value === "No Proposal" && figure(undatedDamage, "balance-due").value === "No Proposal",
+  "a damage row with no due date blocks the proposal even when the amount matches",
+);
+
 const closedPaid = buildCloseoutPreview(
   input({
     payments: loaded([{ status: "paid", amount: 200, balance_due: 0, type: "damage", due_date: "2026-10-18" }]),

@@ -353,7 +353,7 @@ function incidentFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
   const closedNote =
     closedCents != null && closedCents > 0 ? `${money(fromCents(closedCents))} ${CLOSED_INCIDENT_HOLD}.` : "";
   const doubleNote = double
-    ? `${POSSIBLE_DOUBLE_COUNT}. A damage payment on this rental is not linked to the closed incident, so the proposal does not subtract both.`
+    ? `${POSSIBLE_DOUBLE_COUNT}. A damage payment is left out of the refund only when its amount matches one closed incident already held.`
     : "";
   const explanation =
     costCents == null
@@ -540,16 +540,26 @@ function billingFigure(input: CloseoutPreviewInput): CloseoutFigure {
   };
 }
 
-/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. A deposit row is the deposit itself and is not subtracted from the refund. When skipDamage is set, an unlinked damage payment is left out so it is not subtracted on top of a closed incident. */
-function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string, skipDamage = false): number | null {
+/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. A deposit row is the deposit itself and is not subtracted from the refund. A damage payment is left out only after its due date and balance are readable, and only when its original amount matches one unused closed-incident hold. */
+function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string, closedHolds: number[] = []): number | null {
+  const holds = [...closedHolds];
   let total = 0;
   for (const row of payments) {
     if (isTerminalPayment(row.status) || isDepositPayment(row)) continue;
-    if (skipDamage && countsAsDamagePayment(row)) continue;
     const due = calendarDay(row.due_date);
     if (!due) return null;
     if (due > day) continue;
     if (paymentUnreadable(row)) return null;
+    if (countsAsDamagePayment(row)) {
+      const original = finite(row.amount);
+      if (original != null) {
+        const index = holds.indexOf(cents(original));
+        if (index !== -1) {
+          holds.splice(index, 1);
+          continue;
+        }
+      }
+    }
     total += cents(owedOn(row));
   }
   return total;
@@ -579,7 +589,7 @@ function openChargeCents(rows: TollRow[], kind: "toll" | "ticket"): number | nul
 function uncoveredDriverCents(
   incidents: IncidentRow[],
   deductions: DeductionRow[],
-): { total: number; closedUncovered: number } | null {
+): { total: number; closedUncovered: number; closedHolds: number[] } | null {
   const covered = new Map<string, number>();
   for (const row of deductions) {
     if (!row.incident_id) continue;
@@ -589,14 +599,18 @@ function uncoveredDriverCents(
   }
   let total = 0;
   let closedUncovered = 0;
+  const closedHolds: number[] = [];
   for (const row of incidents) {
     const amount = finite(row.driver_responsible_amount);
     if (amount == null || amount < 0) return null;
     const uncovered = Math.max(0, cents(amount) - (covered.get(row.id) ?? 0));
     total += uncovered;
-    if (!isOpenIncident(row.status)) closedUncovered += uncovered;
+    if (!isOpenIncident(row.status)) {
+      closedUncovered += uncovered;
+      if (uncovered > 0) closedHolds.push(uncovered);
+    }
   }
-  return { total, closedUncovered };
+  return { total, closedUncovered, closedHolds };
 }
 
 function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
@@ -641,7 +655,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
             };
     }
   }
-  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day, excluding deposit rows; open tolls and tickets that are not already a payment and are not disputed; incidents.driver_responsible_amount for open incidents and for closed incidents, after a linked deduction. A damage payment beside a closed incident is not subtracted again`;
+  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day, excluding deposit rows; open tolls and tickets that are not already a payment and are not disputed; incidents.driver_responsible_amount for open incidents and for closed incidents, after a linked deduction. A damage payment is left out only when its original amount matches one closed incident hold`;
   const canPropose = held === true && !settled && amount != null && deductionCents != null;
   const noProposal = (why: string): [CloseoutFigure, CloseoutFigure] => [
     {
@@ -681,7 +695,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
     const driver = incidents && rows ? uncoveredDriverCents(incidents, rows) : null;
     const driverCents = driver ? driver.total : null;
     const double = !!(driver && driver.closedUncovered > 0 && payments?.some(countsAsDamagePayment));
-    const paymentCents = day && payments ? paymentBalanceThroughReturnDay(payments, day, double) : null;
+    const paymentCents = day && payments ? paymentBalanceThroughReturnDay(payments, day, double && driver ? driver.closedHolds : []) : null;
     const tollCents = tolls ? openChargeCents(tolls, "toll") : null;
     const ticketCents = tolls ? openChargeCents(tolls, "ticket") : null;
     const why = !day
@@ -710,7 +724,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
           ? ` ${money(fromCents(driver.closedUncovered))} ${CLOSED_INCIDENT_HOLD}.`
           : "";
       const doubleNote = double
-        ? ` ${POSSIBLE_DOUBLE_COUNT}. A damage payment on this rental is not linked to the closed incident, so it is not subtracted again.`
+        ? ` ${POSSIBLE_DOUBLE_COUNT}. A damage payment is left out of the refund only when its amount matches one closed incident already held.`
         : "";
       const settledAgainst =
         "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day (deposit rows excluded), open tolls and tickets that are not already a payment and are not disputed, and driver responsibility on open incidents and on closed incidents." +
