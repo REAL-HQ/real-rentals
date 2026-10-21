@@ -1901,7 +1901,12 @@ function DriverDetail({
         <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
               <TabsContent value="overview" className="mt-0 space-y-5">
                 {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
-                  <ApplicationQuickReview applicationId={driver.id} documents={vaultDocs} />
+                  <ApplicationQuickReview
+                    applicationId={driver.id}
+                    documents={vaultDocs}
+                    onRefreshDocuments={refreshVault}
+                    onOpenDocuments={() => setTab("documents")}
+                  />
                 ) : null}
                 <LifecycleRail
                   stages={lifecycle}

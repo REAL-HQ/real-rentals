@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { documentExpiryTone } from "../src/lib/document-expiry";
+import { quickReviewDocumentLink, vaultSignedUrlState } from "../src/lib/vault-signed-url";
 import {
   APPLICATION_QUICK_REVIEW_ENABLED,
   assertApplicationQuickReviewEnabled,
@@ -210,6 +211,35 @@ describe("application quick review", () => {
   });
 });
 
+function signedUrl(expSeconds: number): string {
+  const payload = Buffer.from(JSON.stringify({ exp: expSeconds })).toString("base64url");
+  return `https://example.supabase.co/storage/v1/object/sign/driver-docs/a.jpg?token=hdr.${payload}.sig`;
+}
+
+describe("vault signed url", () => {
+  it("treats a token exp in the past as expired and a future exp as usable", () => {
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    assert.equal(vaultSignedUrlState(signedUrl(Math.floor(now / 1000) - 5), now), "expired");
+    assert.equal(vaultSignedUrlState(signedUrl(Math.floor(now / 1000) + 60), now), "usable");
+    assert.equal(vaultSignedUrlState("https://example.supabase.co/object/sign/a.jpg?token=opaque", now), "unknown");
+    assert.equal(vaultSignedUrlState(null, now), "unknown");
+  });
+
+  it("refreshes an expired link once, then asks Documents instead of opening it", () => {
+    const now = Date.parse("2026-10-21T12:00:00Z");
+    const expired = signedUrl(Math.floor(now / 1000) - 5);
+    const live = signedUrl(Math.floor(now / 1000) + 60);
+    assert.equal(quickReviewDocumentLink({ url: live, refreshState: "idle", now }).href, live);
+    assert.equal(quickReviewDocumentLink({ url: expired, refreshState: "idle", now }).shouldRefresh, true);
+    assert.equal(quickReviewDocumentLink({ url: expired, refreshState: "idle", now }).showExpired, false);
+    const after = quickReviewDocumentLink({ url: expired, refreshState: "done", now });
+    assert.equal(after.href, null);
+    assert.equal(after.showExpired, true);
+    assert.equal(after.shouldRefresh, false);
+    assert.equal(quickReviewDocumentLink({ url: null, refreshState: "done", now }).showExpired, false);
+  });
+});
+
 describe("application quick review flag", () => {
   it("is off and the guard refuses", () => {
     assert.equal(APPLICATION_QUICK_REVIEW_ENABLED, false);
@@ -230,7 +260,7 @@ describe("application quick review flag", () => {
 
   it("does not mount the panel while the flag is off", () => {
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
-    assert.match(panel, /APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus\(driver\.status\) \? \([\s\S]*<ApplicationQuickReview /);
+    assert.match(panel, /APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus\(driver\.status\) \? \([\s\S]*<ApplicationQuickReview[\s>]/);
     assert.doesNotMatch(panel.slice(panel.indexOf("function approveAndSend"), panel.indexOf("function approveAndSend") + 800), /ApplicationQuickReview|getApplicationQuickReview/);
   });
 
@@ -239,7 +269,12 @@ describe("application quick review flag", () => {
     assert.match(card, /Application Quick Review/);
     assert.match(card, /Still Needed/);
     assert.match(card, /documents\.find\(\(item\) => item\.id === doc\.id\)\?\.url/);
+    assert.match(card, /Link expired, open in Documents/);
+    assert.match(card, /onRefreshDocuments/);
     assert.doesNotMatch(card, /createSignedUrl|getPublicUrl|license_photo_url|stripe|approveApplication|supabaseAdmin/);
+    const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+    assert.match(panel, /onRefreshDocuments=\{refreshVault\}/);
+    assert.match(panel, /onOpenDocuments=\{\(\) => setTab\("documents"\)\}/);
   });
 
   it("reads document expiry through the vault helper", () => {
