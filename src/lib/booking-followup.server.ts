@@ -219,8 +219,14 @@ async function latestContacts(
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(READ_CAP + 1);
-    if (message.error) throw new Error(message.error.message);
+    if (message.error) {
+      unchecked.push(...chunk);
+      continue;
+    }
     const messages = keptNewest(message.data ?? []);
+    const messageAt = firstPerApplication(messages.kept, (row) =>
+      isSentDelivery(row.delivery_state) ? text(row.created_at) : null,
+    );
 
     const outbound = await admin
       .from("outbound_messages")
@@ -231,12 +237,16 @@ async function latestContacts(
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(READ_CAP + 1);
-    if (outbound.error) throw new Error(outbound.error.message);
+    if (outbound.error) {
+      for (const applicationId of chunk) {
+        const messageSeen = messageAt.get(applicationId);
+        if (messageSeen) stamps.push({ applicationId, at: messageSeen, source: "message" });
+        else unchecked.push(applicationId);
+      }
+      continue;
+    }
     const outbounds = keptNewest(outbound.data ?? []);
 
-    const messageAt = firstPerApplication(messages.kept, (row) =>
-      isSentDelivery(row.delivery_state) ? text(row.created_at) : null,
-    );
     const outboundAt = firstPerApplication(outbounds.kept, (row) =>
       isSentDelivery(row.status) ? text(row.sent_at) ?? text(row.created_at) : null,
     );
@@ -290,7 +300,10 @@ async function approvalStamps(
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .limit(READ_CAP + 1);
-    if (approvalsQuery.error) throw new Error(approvalsQuery.error.message);
+    if (approvalsQuery.error) {
+      truncated = true;
+      continue;
+    }
     const rows = approvalsQuery.data ?? [];
     const capped = rows.length > READ_CAP;
     const seen = new Set<string>();
