@@ -2,7 +2,7 @@
 // Last service counts only when status is completed and performed_on is set.
 // Inactive rows are ignored. A schedule with no completed history stays on
 // the list with a null last_done_on, so its due state stays Unknown.
-import { normalizeCategory } from "@/lib/maintenance-rules";
+import { dueStatus, normalizeCategory, type DueResult } from "@/lib/maintenance-rules";
 
 export type CompanyDefault = {
   id: string;
@@ -45,16 +45,22 @@ function byItemThenId(a: { item: string; id: string }, b: { item: string; id: st
   return a.item.localeCompare(b.item) || a.id.localeCompare(b.id);
 }
 
-/** Company defaults, then this vehicle's extra schedules. Overrides replace the company interval. */
+/**
+ * Company defaults, then this vehicle's extra schedules. Overrides replace the company interval.
+ * Ordered sorting is for the dark schedule only. The live list keeps query order.
+ */
 export function mergeSchedules(
   defs: CompanyDefault[] | null | undefined,
   own: VehicleSchedule[] | null | undefined,
+  options?: { ordered?: boolean },
 ): ScheduleFact[] {
-  const activeDefs = (defs ?? []).filter((d) => d.is_active !== false).sort(byItemThenId);
+  const ordered = options?.ordered === true;
+  const activeDefs = (defs ?? []).filter((d) => d.is_active !== false);
+  const defsInOrder = ordered ? activeDefs.sort(byItemThenId) : activeDefs;
   const activeOwn = (own ?? []).filter((s) => s.is_active !== false);
   const byDefault = new Map(activeOwn.filter((s) => s.default_id).map((s) => [s.default_id as string, s]));
   const rows: ScheduleFact[] = [];
-  for (const d of activeDefs) {
+  for (const d of defsInOrder) {
     const s = byDefault.get(d.id);
     rows.push({
       key: `d:${d.id}`,
@@ -71,8 +77,9 @@ export function mergeSchedules(
       last_done_miles: s?.last_done_miles ?? null,
     });
   }
-  const extras = activeOwn.filter((s) => !s.default_id).sort(byItemThenId);
-  for (const s of extras) {
+  const extras = activeOwn.filter((s) => !s.default_id);
+  const extrasInOrder = ordered ? extras.sort(byItemThenId) : extras;
+  for (const s of extrasInOrder) {
     rows.push({
       key: `s:${s.id}`,
       default_id: null,
@@ -104,13 +111,16 @@ type HistoryRecord = {
 export function withHistory<T extends { item: string; last_done_on: string | null; last_done_miles: number | null }>(
   rows: T[],
   records: HistoryRecord[],
+  options?: { tieBreakById?: boolean },
 ): T[] {
+  const tieBreakById = options?.tieBreakById === true;
   return rows.map((r) => {
     if (r.last_done_on) return r;
     const cat = normalizeCategory(r.item);
     const hit = records
       .filter((m) => m.status === "completed" && m.performed_on && (normalizeCategory(m.category) === cat || (m.items ?? []).some((i) => normalizeCategory(i.category) === cat)))
       .sort((a, b) => {
+        if (!tieBreakById) return (a.performed_on ?? "") < (b.performed_on ?? "") ? 1 : -1;
         const aOn = a.performed_on ?? "";
         const bOn = b.performed_on ?? "";
         if (aOn !== bOn) return aOn < bOn ? 1 : -1;
@@ -120,4 +130,17 @@ export function withHistory<T extends { item: string; last_done_on: string | nul
       })[0];
     return hit ? { ...r, last_done_on: hit.performed_on ?? null, last_done_miles: hit.odometer ?? null } : r;
   });
+}
+
+/** Dark schedule only. The live due list leaves this reason blank. */
+export function scheduleDue(
+  row: { item: string; interval_miles: number | null; interval_days: number | null; last_done_on: string | null; last_done_miles: number | null },
+  currentMiles: number | null,
+  today: string,
+): DueResult {
+  const due = dueStatus(row, currentMiles, today);
+  if (due.reason === "" && due.dueMiles != null && currentMiles == null) {
+    return { ...due, reason: "No Mileage On Record" };
+  }
+  return due;
 }

@@ -120,9 +120,9 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
               )}
 
               <SectionCard title="Maintenance Due" icon={<Clock className="h-4 w-4" />} subtitle="Company intervals from Settings, with any overrides for this vehicle">
-                {status === "error"
+                {MAINTENANCE_DUE_ENABLED && status === "error"
                   ? <div className="text-[13px] text-muted-foreground">Could Not Load Maintenance Due</div>
-                  : status === "loading"
+                  : MAINTENANCE_DUE_ENABLED && status === "loading"
                     ? <div className="text-[13px] text-muted-foreground">Loading Maintenance Due</div>
                     : schedules.length === 0
                       ? <div className="text-[13px] text-muted-foreground">No maintenance intervals are set. An Owner can add them in Settings → Maintenance.</div>
@@ -138,7 +138,7 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
                             {data.canManage && s.default_id && <button className="text-[12px] text-muted-foreground underline-offset-2 hover:underline" onClick={() => setOverride(s)}>Change Interval</button>}
                           </div>
                         ))}</div>}
-                {truncated ? <p className="mt-2 text-[12px] text-muted-foreground">Maintenance Due Is Capped</p> : null}
+                {MAINTENANCE_DUE_ENABLED && truncated ? <p className="mt-2 text-[12px] text-muted-foreground">Maintenance Due Is Capped</p> : null}
               </SectionCard>
             </>
           );

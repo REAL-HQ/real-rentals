@@ -115,7 +115,6 @@ export function dueStatus(s: ScheduleLike, currentMiles: number | null, today: s
   let reason = "";
   if (pickMiles && milesLeft != null) reason = milesLeft < 0 ? `Overdue By ${fmt(-milesLeft)} Miles` : milesLeft === 0 ? "Due Now" : `Due In ${fmt(milesLeft)} Miles`;
   else if (daysLeft != null) reason = daysLeft < 0 ? `Overdue By ${fmt(-daysLeft)} Days` : daysLeft === 0 ? "Due Today" : `Due In ${fmt(daysLeft)} Days`;
-  else if (dueMiles != null && currentMiles == null) reason = "No Mileage On Record";
   return { state, reason, dueMiles, dueOn };
 }
 

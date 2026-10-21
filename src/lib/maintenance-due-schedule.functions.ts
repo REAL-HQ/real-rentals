@@ -7,8 +7,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
-import { dueStatus, type DueResult } from "@/lib/maintenance-rules";
-import { mergeSchedules, withHistory, type ScheduleFact } from "@/lib/maintenance-schedule";
+import { mergeSchedules, scheduleDue, withHistory, type ScheduleFact } from "@/lib/maintenance-schedule";
+import type { DueResult } from "@/lib/maintenance-rules";
 
 const DISABLED = "Maintenance Due is off";
 const LIMIT = 200;
@@ -58,7 +58,7 @@ export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
         .order("performed_on", { ascending: false, nullsFirst: false })
         .order("id", { ascending: false })
         .limit(LIMIT + 1),
-      supabaseAdmin.from("vehicles").select("id,current_odometer").eq("id", data.vehicleId).limit(LIMIT + 1),
+      supabaseAdmin.from("vehicles").select("id,current_odometer").eq("id", data.vehicleId).maybeSingle(),
     ]);
     if (defaultsQ.error) throw new Error(defaultsQ.error.message);
     if (schedulesQ.error) throw new Error(schedulesQ.error.message);
@@ -68,9 +68,8 @@ export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
     const defaults = capped(defaultsQ.data);
     const schedules = capped(schedulesQ.data);
     const records = capped(recordsQ.data);
-    const vehicles = capped(vehicleQ.data);
     const today = new Date().toISOString().slice(0, 10);
-    const currentMiles = vehicles.rows[0]?.current_odometer ?? null;
+    const currentMiles = vehicleQ.data?.current_odometer ?? null;
     const history = records.rows.map((row) => ({
       id: row.id,
       status: row.status,
@@ -82,10 +81,10 @@ export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
 
     return {
       today,
-      schedules: withHistory(mergeSchedules(defaults.rows, schedules.rows), history).map((row) => ({
+      schedules: withHistory(mergeSchedules(defaults.rows, schedules.rows, { ordered: true }), history, { tieBreakById: true }).map((row) => ({
         ...row,
-        due: dueStatus(row, currentMiles, today),
+        due: scheduleDue(row, currentMiles, today),
       })),
-      truncated: defaults.truncated || schedules.truncated || records.truncated || vehicles.truncated,
+      truncated: defaults.truncated || schedules.truncated || records.truncated,
     };
   });

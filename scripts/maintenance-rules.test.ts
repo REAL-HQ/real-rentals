@@ -26,7 +26,7 @@ ok(r.state === "overdue" && /Days/.test(r.reason), "J. time interval can make it
 r = dueStatus({ ...s, last_done_on: null, last_done_miles: null }, 90000, "2026-07-01");
 ok(r.state === "unknown", "K. no service on record → Unknown, never invented");
 r = dueStatus({ item: "Oil Change", interval_miles: 5000, interval_days: null, last_done_on: null, last_done_miles: 10000 }, null, "2026-10-21");
-ok(r.state === "unknown" && r.reason === "No Mileage On Record", "K2. mileage due without a current odometer says No Mileage On Record");
+ok(r.state === "unknown" && r.reason === "", "K2. mileage due without a current odometer stays blank on the live list");
 
 const fusions: any[] = [
   { id: "a", vin: "3FA6P0H71ER118769", unit_number: "RR-006", license_plate: null, plate_state: null, title_number: null, registration_number: null, year: 2015, make: "Ford", model: "Fusion" },

@@ -28,8 +28,8 @@ async function sha256Hex(bytes: Uint8Array) {
 /** Resolve schedules for a vehicle: company defaults + this vehicle's overrides/extras. */
 async function loadSchedules(sb: any, vehicleId: string) {
   const [{ data: defs }, { data: own }] = await Promise.all([
-    sb.from("maintenance_defaults").select("*").eq("is_active", true).order("item").order("id"),
-    sb.from("maintenance_schedules").select("*").eq("vehicle_id", vehicleId).eq("is_active", true).order("item").order("id"),
+    sb.from("maintenance_defaults").select("*").eq("is_active", true).order("item"),
+    sb.from("maintenance_schedules").select("*").eq("vehicle_id", vehicleId).eq("is_active", true),
   ]);
   return mergeSchedules(defs, own);
 }
@@ -44,7 +44,7 @@ export const getVehicleService = createServerFn({ method: "POST" })
     const sb = await admin();
     const [{ data: v }, { data: recs }, { data: readings }, { data: down }] = await Promise.all([
       sb.from("vehicles").select("id,current_odometer,odometer_updated_at,status").eq("id", data.vehicleId).single(),
-      sb.from("maintenance_records").select("*, vendors(name), maintenance_record_items(*)").eq("vehicle_id", data.vehicleId).order("performed_on", { ascending: false, nullsFirst: false }).limit(300),
+      sb.from("maintenance_records").select("*, vendors(name), maintenance_record_items(*)").eq("vehicle_id", data.vehicleId).order("performed_on", { ascending: false, nullsFirst: true }).limit(300),
       sb.from("odometer_readings").select("*").eq("vehicle_id", data.vehicleId).order("observed_on", { ascending: false }).order("mileage", { ascending: false }).limit(500),
       sb.from("vehicle_downtime").select("*").eq("vehicle_id", data.vehicleId).order("started_at", { ascending: false }).limit(50),
     ]);

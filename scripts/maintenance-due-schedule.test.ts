@@ -1,8 +1,7 @@
 // Next Service stays on the existing Maintenance Due list (run: bun scripts/maintenance-due-schedule.test.ts).
 import { readFileSync } from "node:fs";
 import { MAINTENANCE_DUE_ENABLED } from "../src/lib/maintenance-due";
-import { dueStatus } from "../src/lib/maintenance-rules";
-import { mergeSchedules, withHistory, type CompanyDefault, type VehicleSchedule } from "../src/lib/maintenance-schedule";
+import { mergeSchedules, scheduleDue, withHistory, type CompanyDefault, type VehicleSchedule } from "../src/lib/maintenance-schedule";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -34,21 +33,25 @@ const read = handler.indexOf('.from("maintenance_defaults")');
 ok(thrown >= 0 && thrown < role && role < read, "the schedule throws before requireManager and before any read");
 ok(thrown < handler.indexOf("import("), "the throw happens before any dynamic import");
 ok(!server.slice(0, server.indexOf("export const listMaintenanceDueSchedule")).includes("roles.server"), "the role module is not a static import");
-ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 4, "defaults, schedules, records, and the vehicle each use limit plus one");
+ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 3, "defaults, schedules, and records use limit plus one");
+ok(server.includes('.eq("id", data.vehicleId).maybeSingle()'), "one vehicle is read by its id");
+ok(!server.includes("vehicles.truncated"), "a single vehicle is not a truncated page");
 ok(
   server.includes("defaults.truncated") &&
     server.includes("schedules.truncated") &&
-    server.includes("records.truncated") &&
-    server.includes("vehicles.truncated"),
+    server.includes("records.truncated"),
   "a long page sets truncated and is not thrown",
 );
-ok(server.includes("mergeSchedules") && server.includes("withHistory") && server.includes("dueStatus"), "the reader uses the vehicle-service schedule computation");
+ok(server.includes("mergeSchedules") && server.includes("withHistory") && server.includes("scheduleDue"), "the reader uses the vehicle-service schedule computation");
 ok(service.includes("return mergeSchedules(defs, own)") && service.includes("withHistory("), "vehicle service loads schedules through the same computation");
+ok(!service.includes("ordered: true") && !service.includes("tieBreakById"), "the live service list does not opt into the dark ordering");
+ok(server.includes("ordered: true") && server.includes("tieBreakById: true"), "the dark schedule keeps a deterministic order");
 ok(rules.includes('m.status === "completed" && m.performed_on'), "only a completed record with performed_on counts as last service");
-ok(server.includes('nullsFirst: false') && service.includes("nullsFirst: false"), "record reads put null dates last");
-ok(!service.includes("nullsFirst: true"), "the vehicle service record read no longer puts null dates first");
+ok(server.includes("nullsFirst: false"), "the dark record read puts null dates last");
+ok(service.includes("nullsFirst: true") && !service.includes("nullsFirst: false"), "the live record read still puts null dates first");
 ok(server.includes('.eq("is_active", true)') && rules.includes("is_active !== false"), "inactive defaults and schedules are ignored");
-ok(dueRules.includes('reason = "No Mileage On Record"'), "a mileage interval without a current odometer names that reason");
+ok(!dueRules.includes("No Mileage On Record"), "the live due list does not gain a no-mileage reason");
+ok(rules.includes('reason: "No Mileage On Record"'), "the dark schedule names a missing odometer");
 ok(!/\.(insert|update|delete|upsert|rpc)\(/.test(server + rules), "the schedule does not write");
 ok(!/stripe|total_cost|notes|labor_cost/i.test(server), "the schedule does not read money, notes, or Stripe");
 ok(server.includes('.from("maintenance_defaults")'), "company defaults are part of the read");
@@ -61,7 +64,10 @@ const existingRead = existingHandler.indexOf('.from("vehicles")');
 ok(existingGate >= 0 && existingGate < existingRole && existingRole < existingRead, "the existing reader also throws before the role check");
 
 ok(ui.indexOf("if (!MAINTENANCE_DUE_ENABLED) return children") < ui.indexOf("useServerFn(listMaintenanceDueSchedule)"), "the schedule returns before its server call");
-ok(ui.includes('title="Maintenance Due"') && ui.includes('label="Next Service"') && ui.includes("Maintenance Due Is Capped"), "due rows stay on the existing list and Next Service stat");
+ok(ui.includes('title="Maintenance Due"') && ui.includes('label="Next Service"'), "due rows stay on the existing list and Next Service stat");
+ok(ui.includes('MAINTENANCE_DUE_ENABLED && status === "error"') && ui.includes("Could Not Load Maintenance Due"), "the load error is behind the flag");
+ok(ui.includes('MAINTENANCE_DUE_ENABLED && status === "loading"') && ui.includes("Loading Maintenance Due"), "the loading line is behind the flag");
+ok(ui.includes("MAINTENANCE_DUE_ENABLED && truncated") && ui.includes("Maintenance Due Is Capped"), "the cap notice is behind the flag");
 ok(!log.includes("listMaintenanceDueSchedule") && !log.includes('title="Next Service"'), "the log screen does not add a second card");
 ok(!profile.includes("MaintenanceDueSchedule"), "vehicle detail does not mount a second card");
 ok(profile.includes("{MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}"), "the log history stays behind its own flag");
@@ -85,9 +91,9 @@ function listed(input: {
   schedules: VehicleSchedule[];
   records: RecordRow[];
 }) {
-  return withHistory(mergeSchedules(input.defaults, input.schedules), input.records).map((row) => ({
+  return withHistory(mergeSchedules(input.defaults, input.schedules, { ordered: true }), input.records, { tieBreakById: true }).map((row) => ({
     ...row,
-    due: dueStatus(row, input.currentMiles, input.today),
+    due: scheduleDue(row, input.currentMiles, input.today),
   }));
 }
 
@@ -155,11 +161,12 @@ const sameDay = listed({
 ok(sameDay[0]?.item === "Brakes" && sameDay[0].due.reason === "No Mileage On Record", "Brakes with a mileage interval and no current odometer says No Mileage On Record");
 
 const tied = withHistory(
-  mergeSchedules([], [{ id: "s-oil", item: "Oil Change", interval_miles: 5000, interval_days: null, is_active: true }]),
+  mergeSchedules([], [{ id: "s-oil", item: "Oil Change", interval_miles: 5000, interval_days: null, is_active: true }], { ordered: true }),
   [
     { id: "b", status: "completed", category: "oil_change", performed_on: "2026-10-01", odometer: 2 },
     { id: "a", status: "completed", category: "oil_change", performed_on: "2026-10-01", odometer: 1 },
   ],
+  { tieBreakById: true },
 );
 ok(tied[0]?.last_done_miles === 2, "equal performed_on dates break the tie by id");
 
