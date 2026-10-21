@@ -5,7 +5,7 @@
   "application": {
     "scripts/drivers-list-access.test.mjs": "d4caf6b7d4ffc3b5d491d2abb53f2019e07e52de995bdeb29f9b7881c5c484bc",
     "scripts/esign-immutable-archive-v1.test.cjs": "eb099d17a8824e4ce6f236cccb739440aceb59406db6ae9b367922da0419e35b",
-    "scripts/record-rental-closeout.test.cjs": "da092ffd12a432fd4ab354a00197926e1cef7520404d958814a25818d078d63f",
+    "scripts/record-rental-closeout.test.cjs": "42d2f9eaa775651bfd6af3429fbaa3746b48352ac916927a4c48fb82b7c7a5cf",
     "scripts/record-rental-document-reader.test.cjs": "bb8ea2c04f8c365a3fd1ea127c0e0f273dbb0a30ff7de1858bba967b7bb0f580",
     "scripts/record-rental-integration.test.cjs": "b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0",
     "scripts/record-rental-operation.test.cjs": "e96a69019de56c115aa765ccd18b7c1234f91bdebad3e4ad84c570a3565fe0ad",
@@ -25,7 +25,7 @@
     "src/lib/record-rental-runtime.server.ts": "8905acd02161f6fa7822fccbfe23e10740552aa4ae4cec14fb30119eb06e400b",
     "src/lib/record-rental-transport.server.ts": "1762071545760c15b0859ec13ca14e9d93d58d2f2a8b1ac10fb3c4981d794823",
     "src/lib/record-rental.functions.ts": "f57639a3582312995c24a12db1d9d853da5abf20dc2416aa99bc4bb1673e3ed7",
-    "src/lib/rentals.functions.ts": "5303d4ca56beb3924275a41fec4c4ecf5c5522b79ac02653ed5840e995f97ba5"
+    "src/lib/rentals.functions.ts": "fe50277a7c5b70c74124bae9d1aacb1cc2350cc38f70efd2762cde14dc508b6a"
   },
   "ciFiles": [
     ".github/workflows/record-rental-validation.yml",
@@ -49,10 +49,10 @@
     },
     {
       "file": "scripts/record-rental-closeout.test.cjs",
-      "sha256": "da092ffd12a432fd4ab354a00197926e1cef7520404d958814a25818d078d63f",
-      "checks": 22,
+      "sha256": "42d2f9eaa775651bfd6af3429fbaa3746b48352ac916927a4c48fb82b7c7a5cf",
+      "checks": 26,
       "kind": "application assertions",
-      "stdout": "PASS proposed caller transpiles\nPASS authenticated RPC with exact timestamp and no actor override\nPASS recovery uses original operation before legacy closed shortcut\nPASS missing RPC fails without fallback\nPASS ambiguous transport does not automatically retry\nPASS mismatched operation response rejected\nPASS malformed response rejected\nPASS non-ISO infinite timestamp rejected before RPC\nPASS missing reason rejected before RPC\nPASS server role denial before RPC\nPASS nonledger exact named contract and actor\nPASS nonledger structured alreadyClosed response\nPASS nonledger rejects missing contract\nPASS nonledger rejects wrong contract\nPASS nonledger rejects missing disposition\nPASS nonledger rejects malformed reasons\nPASS nonledger rejects old string\nPASS nonledger denied RPC is not retried\nPASS ledger failure never falls back to legacy service client\nPASS nonledger already closed precheck no second mutation\nPASS disabled ledger endpoint refuses before RPC\nPASS disabled integration preserves legacy five-argument path\n{\"pass\":22,\"fail\":0}"
+      "stdout": "PASS proposed caller transpiles\nPASS authenticated RPC with exact timestamp and no actor override\nPASS recovery uses original operation before legacy closed shortcut\nPASS missing RPC fails without fallback\nPASS ambiguous transport does not automatically retry\nPASS mismatched operation response rejected\nPASS malformed response rejected\nPASS non-ISO infinite timestamp rejected before RPC\nPASS missing reason rejected before RPC\nPASS server role denial before RPC\nPASS nonledger exact named contract and actor\nPASS nonledger structured alreadyClosed response\nPASS nonledger rejects missing contract\nPASS nonledger rejects wrong contract\nPASS nonledger rejects missing disposition\nPASS nonledger rejects malformed reasons\nPASS nonledger rejects old string\nPASS nonledger denied RPC is not retried\nPASS ledger failure never falls back to legacy service client\nPASS nonledger already closed precheck no second mutation\nPASS disabled ledger endpoint refuses before RPC\nPASS disabled integration preserves legacy five-argument path\nPASS safe release independent of disabled Record Rental\nPASS disabled intake still validates safe-release maintenance response\nPASS disabled intake rejects malformed safe-release response\nPASS unresolved safe-release call is sent once with no automatic fallback\n{\"pass\":26,\"fail\":0}"
     },
     {
       "file": "scripts/application-lifecycle.test.mjs",
