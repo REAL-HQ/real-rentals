@@ -53,7 +53,7 @@ export function sanitizeTrackingUrl(raw: string): string {
     if (SENSITIVE_QUERY_KEYS.includes(key)) url.searchParams.delete(key);
   }
   let path = normalizedPathname(url.pathname);
-  path = path.replace(/\/sign\/[^/]*/, "/sign/redacted");
+  path = path.replace(/\/sign\/[^/]*/, "/sign/redacted").replace(/\/card\/[^/]*/, "/card/redacted");
   url.pathname = path;
   url.hash = "";
   return url.toString();
@@ -76,8 +76,8 @@ export function trackingPagePath(href: string): string {
 
 /**
  * Inline head snippet. Credential routes never load or configure the tag.
- * Every other route passes a sanitized page_location, and a same-origin
- * page_referrer when there is one, into gtag('config'). History changes
+ * Every other route passes a sanitized page_location and page_referrer into
+ * gtag('config'), including a cross-origin referrer. History changes
  * re-apply page_location with gtag('set') so a tag already loaded on a
  * marketing page cannot send a later client-side credential URL.
  *
@@ -104,7 +104,7 @@ export const GOOGLE_ADS_BOOTSTRAP = `(function(){
       for (var i = 0; i < keys.length; i++) {
         if (sensitive.indexOf(keys[i]) !== -1) url.searchParams.delete(keys[i]);
       }
-      var path = normalizedPathname(url.pathname).replace(/\\/sign\\/[^/]*/, "/sign/redacted");
+      var path = normalizedPathname(url.pathname).replace(/\\/sign\\/[^/]*/, "/sign/redacted").replace(/\\/card\\/[^/]*/, "/card/redacted");
       url.pathname = path;
       url.hash = "";
       return url.toString();
@@ -144,11 +144,7 @@ export const GOOGLE_ADS_BOOTSTRAP = `(function(){
 
     var referrer = document.referrer;
     var fields = { page_location: sanitizeTrackingUrl(location.href) };
-    if (referrer) {
-      try {
-        if (new URL(referrer).origin === location.origin) fields.page_referrer = sanitizeTrackingUrl(referrer);
-      } catch (e) {}
-    }
+    if (referrer) fields.page_referrer = sanitizeTrackingUrl(referrer);
     window.gtag("set", fields);
     window.gtag("js", new Date());
     window.gtag("config", id, fields);

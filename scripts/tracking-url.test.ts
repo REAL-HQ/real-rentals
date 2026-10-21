@@ -53,8 +53,9 @@ describe("sanitizeTrackingUrl", () => {
     expect(parsed(`${ORIGIN}/%73ign/Esign-Token?t=resume-token&gclid=abc123`).href).toBe(
       `${ORIGIN}/sign/redacted?gclid=abc123`,
     );
-    expect(parsed(`${ORIGIN}/card/app-id?t=resume-token&gclid=abc123`).searchParams.has("t")).toBe(false);
-    expect(parsed(`${ORIGIN}/card/app-id?t=resume-token&gclid=abc123`).searchParams.get("gclid")).toBe("abc123");
+    expect(parsed(`${ORIGIN}/card/app-id?t=resume-token&gclid=abc123`).href).toBe(`${ORIGIN}/card/redacted?gclid=abc123`);
+    expect(parsed(`${ORIGIN}/CARD/App-Id?gclid=abc123`).href).toBe(`${ORIGIN}/card/redacted?gclid=abc123`);
+    expect(parsed(`${ORIGIN}/%63ard/app-id?t=resume-token&gclid=abc123`).href).toBe(`${ORIGIN}/card/redacted?gclid=abc123`);
     expect(parsed(`${ORIGIN}/%?t=resume-token`).href).toBe(`${ORIGIN}/%`);
   });
 
@@ -121,6 +122,7 @@ describe("trackingLandingPage", () => {
       "/thank-you?utm_source=google&gclid=abc123",
     );
     expect(trackingLandingPage(`${ORIGIN}/sign/esign-token?gclid=abc123`)).toBe("/sign/redacted?gclid=abc123");
+    expect(trackingLandingPage(`${ORIGIN}/CARD/app-id?gclid=abc123`)).toBe("/card/redacted?gclid=abc123");
   });
 });
 
@@ -215,7 +217,7 @@ describe("googleAdsBootstrap", () => {
     expect(page.searchParams.has("t")).toBe(false);
   });
 
-  it("sanitizes a same-origin referrer and omits a cross-origin one", () => {
+  it("sets page_referrer to the sanitized value for every referrer", () => {
     const href = `${ORIGIN}/?utm_source=google&gclid=abc123`;
     const same = run(href, `${ORIGIN}/thank-you?t=resume-token&utm_source=email`);
     const sameConfig = same.queued().find((call) => call[0] === "config");
@@ -224,9 +226,14 @@ describe("googleAdsBootstrap", () => {
       page_referrer: sanitizeTrackingUrl(`${ORIGIN}/thank-you?t=resume-token&utm_source=email`),
     });
 
-    const cross = run(href, "https://ads.example/landing?utm_source=google");
+    const crossReferrer = "https://ads.example/CARD/app-id?claim=claim-token&utm_source=google&gclid=abc123";
+    const cross = run(href, crossReferrer);
     const crossConfig = cross.queued().find((call) => call[0] === "config");
-    expect(crossConfig?.[2]).toEqual({ page_location: sanitizeTrackingUrl(href) });
+    expect(crossConfig?.[2]).toEqual({
+      page_location: sanitizeTrackingUrl(href),
+      page_referrer: sanitizeTrackingUrl(crossReferrer),
+    });
+    expect(sanitizeTrackingUrl(crossReferrer)).toBe("https://ads.example/card/redacted?utm_source=google&gclid=abc123");
   });
 
   it("re-applies a sanitized page_location before a client-side navigation", () => {
@@ -264,11 +271,15 @@ describe("googleAdsBootstrap", () => {
     history.pushState({}, "", "/SIGN/esign-token?t=resume-token&gclid=abc123");
     history.pushState({}, "", "/%73ign/esign-token?t=resume-token");
     history.pushState({}, "", "/Thank-You?t=resume-token&utm_source=google");
+    history.pushState({}, "", "/CARD/app-id?t=resume-token&gclid=abc123");
+    history.pushState({}, "", "/%63ard/app-id?claim=claim-token");
     const sets = queued().slice(before).filter((call) => call[0] === "set");
     expect(sets.map((call) => (call[1] as { page_location: string }).page_location)).toEqual([
       sanitizeTrackingUrl(`${ORIGIN}/SIGN/esign-token?t=resume-token&gclid=abc123`),
       sanitizeTrackingUrl(`${ORIGIN}/%73ign/esign-token?t=resume-token`),
       sanitizeTrackingUrl(`${ORIGIN}/Thank-You?t=resume-token&utm_source=google`),
+      sanitizeTrackingUrl(`${ORIGIN}/CARD/app-id?t=resume-token&gclid=abc123`),
+      sanitizeTrackingUrl(`${ORIGIN}/%63ard/app-id?claim=claim-token`),
     ]);
   });
 });
