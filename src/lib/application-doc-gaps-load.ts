@@ -1,11 +1,9 @@
-import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
 import {
   APPLICATION_DOC_GAPS_ROW_CAP,
   OPEN_APPLICATION_STATUSES,
   type ApplicationDocGapsResult,
 } from "./application-doc-gaps";
 import { buildApplicationDocGaps, type GapApplication, type GapDocument } from "./application-doc-gaps-build";
-import { VAULT_TO_REQUIRED } from "./required-docs";
 
 const PAGE = 200;
 const MAX_ROWS = 100_000;
@@ -13,10 +11,6 @@ const ID_BATCH = 100;
 
 const APPLICATION_COLUMNS = "id,full_name,status,deleted_at,created_at";
 const DOCUMENT_COLUMNS = "id,driver_id,category,is_current,review_status,created_at";
-
-const DOCUMENT_CATEGORIES = [
-  ...new Set<string>([...REQUIRED_DOC_TYPES, ...Object.keys(VAULT_TO_REQUIRED)]),
-];
 
 type Page = { data: unknown[] | null; error: unknown; count: number | null };
 
@@ -116,9 +110,12 @@ export async function loadApplicationDocGaps(admin: {
       : await readInIdBatches(ids, (chunk, from, to) =>
           admin
             .from("documents")
+            // No category list here. An exact category match cannot see a
+            // value that canonicalRequiredDoc only accepts after trim, so the
+            // builder is the only gate. Each driver_id list stays at or under
+            // ID_BATCH.
             .select(DOCUMENT_COLUMNS, { count: "exact" })
             .in("driver_id", chunk)
-            .in("category", DOCUMENT_CATEGORIES)
             .order("id", { ascending: true })
             .range(from, to),
         );

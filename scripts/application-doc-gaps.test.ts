@@ -1,3 +1,4 @@
+// Run: bun test scripts/application-doc-gaps.test.ts
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -54,14 +55,17 @@ describe("application document gaps", () => {
     const client = handler.indexOf('import("@/integrations/supabase/client.server")');
     const loadCall = handler.indexOf("loadApplicationDocGaps(");
     assert.ok(asserted !== -1 && asserted < loadImport && loadImport < role && role < client && client < loadCall);
-    assert.match(handler, /if \(DOC_GAPS_REFUSED\) \{[^}]*return idle\(\);/s);
+    assert.match(handler, /if \(DOC_GAPS_REFUSED\) \{\s*assertApplicationDocGapsEnabled\(\);\s*\} else \{/);
+    assert.doesNotMatch(fn, /return idle\(/);
     assert.doesNotMatch(fn, /\.from\(|\.limit\(/);
     assert.doesNotMatch(fn, /throw /);
     assert.doesNotMatch(fn, /\.(insert|update|delete|upsert)\(/);
     const load = read("src/lib/application-doc-gaps-load.ts");
     assert.match(load, /count: "exact"/);
     assert.match(load, /\.range\(from, to\)/);
-    assert.match(load, /canonicalRequiredDoc|VAULT_TO_REQUIRED|REQUIRED_DOC_TYPES/);
+    assert.match(load, /canonicalRequiredDoc/);
+    assert.match(load, /const ID_BATCH = 100/);
+    assert.doesNotMatch(load, /\.in\("category"/);
     assert.doesNotMatch(load, /\.limit\(/);
     assert.doesNotMatch(load, /proof_of_address|license_photo_url|insurance_doc_url|address/);
     assert.equal(APPLICATION_DOC_GAPS_ROW_CAP, 1000);
@@ -161,6 +165,177 @@ describe("application document gaps", () => {
     assert.equal(slot(result, "bare", "license_front")?.state, "missing");
     assert.equal(slot(result, "bare", "proof_of_address")?.state, "unknown");
     assert.equal(result.applications.some((app) => app.slots.some((item) => item.key === "trip_history")), false);
+  });
+});
+
+describe("application document gap pages", () => {
+  type Page = { data: unknown[] | null; error: unknown; count: number | null };
+
+  function pagingAdmin(reply: (table: string, from: number, to: number) => Page, batches: number[] = []) {
+    return {
+      from(table: string) {
+        const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+        const query = {
+          select() {
+            return query;
+          },
+          is(field: string, value: unknown) {
+            filters.push((row) => (value === null ? row[field] == null : row[field] === value));
+            return query;
+          },
+          in(field: string, values: readonly string[]) {
+            if (table === "documents" && field === "driver_id") batches.push(values.length);
+            filters.push((row) => values.map(String).includes(String(row[field])));
+            return query;
+          },
+          neq(field: string, value: unknown) {
+            filters.push((row) => String(row[field]) !== String(value));
+            return query;
+          },
+          order() {
+            return query;
+          },
+          range(from: number, to: number) {
+            return Promise.resolve(reply(table, from, to));
+          },
+        };
+        return query;
+      },
+    };
+  }
+
+  it("rejects a count that changes between pages", async () => {
+    let calls = 0;
+    const result = await loadApplicationDocGaps(
+      pagingAdmin((table, from, to) => {
+        if (table !== "applications") return { data: [], error: null, count: 0 };
+        calls += 1;
+        const count = calls === 1 ? 400 : 401;
+        const data = Array.from({ length: to - from + 1 }, (_, index) => ({
+          id: `app-${from + index}`,
+          full_name: "Driver",
+          status: "new",
+          deleted_at: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+        }));
+        return { data, error: null, count };
+      }),
+    );
+    assert.equal(result.failed, true);
+    assert.equal(result.truncated, false);
+    assert.deepEqual(result.applications, []);
+    assert.equal(calls, 2);
+  });
+
+  it("rejects an empty short page while the count says rows remain", async () => {
+    const result = await loadApplicationDocGaps(
+      pagingAdmin((table) => {
+        if (table !== "applications") return { data: [], error: null, count: 0 };
+        return { data: [], error: null, count: 50 };
+      }),
+    );
+    assert.equal(result.failed, true);
+    assert.equal(result.truncated, false);
+    assert.deepEqual(result.applications, []);
+  });
+
+  it("rejects a document batch whose count is above the pager ceiling", async () => {
+    const result = await loadApplicationDocGaps(
+      pagingAdmin((table) => {
+        if (table === "applications") {
+          return {
+            data: [
+              {
+                id: "app-1",
+                full_name: "Driver",
+                status: "new",
+                deleted_at: null,
+                created_at: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+            error: null,
+            count: 1,
+          };
+        }
+        return {
+          data: [
+            {
+              id: "doc-1",
+              driver_id: "app-1",
+              category: "license_front",
+              is_current: true,
+              review_status: "uploaded",
+              created_at: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          error: null,
+          count: 100_001,
+        };
+      }),
+    );
+    assert.equal(result.failed, true);
+    assert.equal(result.truncated, false);
+    assert.deepEqual(result.applications, []);
+  });
+
+  it("keeps every document id list at or under 100 and counts a trimmed category", async () => {
+    const batches: number[] = [];
+    const applications = Array.from({ length: 101 }, (_, index) => ({
+      id: `app-${String(index).padStart(3, "0")}`,
+      full_name: `Driver ${index}`,
+      status: "new",
+      deleted_at: null,
+      created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    }));
+    const documents = [
+      {
+        id: "padded",
+        driver_id: "app-100",
+        category: " license_front ",
+        is_current: true,
+        review_status: "uploaded",
+        created_at: "2026-03-08T05:00:00.000Z",
+      },
+    ];
+    const result = await loadApplicationDocGaps({
+      from(table: string) {
+        const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+        const rows = table === "applications" ? applications : documents;
+        const query = {
+          select() {
+            return query;
+          },
+          is(field: string, value: unknown) {
+            filters.push((row) => (value === null ? row[field] == null : row[field] === value));
+            return query;
+          },
+          in(field: string, values: readonly string[]) {
+            if (table === "documents" && field === "driver_id") batches.push(values.length);
+            const wanted = new Set(values.map(String));
+            filters.push((row) => wanted.has(String(row[field])));
+            return query;
+          },
+          neq(field: string, value: unknown) {
+            filters.push((row) => String(row[field]) !== String(value));
+            return query;
+          },
+          order() {
+            return query;
+          },
+          range(from: number, to: number) {
+            const matched = rows.filter((row) => filters.every((keep) => keep(row as Record<string, unknown>)));
+            return Promise.resolve({ data: matched.slice(from, to + 1), error: null, count: matched.length });
+          },
+        };
+        return query;
+      },
+    });
+    assert.equal(result.failed, false);
+    assert.equal(batches.length > 0, true);
+    assert.equal(batches.every((size) => size <= 100), true);
+    assert.equal(Math.max(...batches), 100);
+    const padded = result.applications.find((app) => app.id === "app-100");
+    assert.equal(padded?.slots.find((slot) => slot.key === "license_front")?.state, "present");
   });
 });
 

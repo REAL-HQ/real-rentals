@@ -39,10 +39,11 @@ export type ApplicationDocGapsResult = {
   applications: ApplicationDocGap[];
 };
 
-export function assertApplicationDocGapsEnabled(): void {
+export function assertApplicationDocGapsEnabled(): never {
   if (APPLICATION_DOC_GAPS_ENABLED !== true) {
     throw new Error("Application document gaps are disabled.");
   }
+  return APPLICATION_DOC_GAPS_ENABLED as never;
 }
 
 /** True while the view stays off. The handler stops before any read. */
