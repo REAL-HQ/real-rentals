@@ -10,6 +10,11 @@ import { validFinanceDate } from "./unified-finance";
  * consolidatedRevenue helpers, with the vehicle id as the grouping key. It
  * is not the Overview total: Overview includes Stripe deposit charges and
  * refunds, and it also adds payments that have only a Stripe invoice id.
+ * TODO(#234): after https://github.com/REAL-HQ/real-rentals/pull/234 merges,
+ * that invoice-only sentence is stale. A Stripe-settled invoice stays out of
+ * Overview's non-Stripe sum. A failed autopay invoice that staff later mark
+ * paid still counts, because failure_reason remains set. Update this header
+ * and VEHICLE_PNL_REVENUE_NOTE then. Do not change the formula before that merge.
  * Stripe net is after refunds and fees. Recorded payments with no Stripe
  * payment intent or invoice id are added for rent, late fee, and other.
  * Deposit payments and deposit charges are excluded. A payment with a
@@ -24,6 +29,9 @@ import { validFinanceDate } from "./unified-finance";
 export const VEHICLE_PNL_PAGE = 100;
 export const VEHICLE_PNL_MAX_PAGES = 20;
 
+// TODO(#234): after https://github.com/REAL-HQ/real-rentals/pull/234 merges, rewrite the
+// "counts invoice-only rent rows" sentence. Stripe-settled invoice rows are excluded.
+// A failed invoice later marked paid (failure_reason still set, no payment intent) still counts.
 export const VEHICLE_PNL_REVENUE_NOTE =
   "Verified revenue is Stripe net after refunds and fees, plus recorded payments with no Stripe payment intent or invoice, for rent, late fee, and other. Deposit payments and deposit charges are excluded. This is not the Overview total: Overview includes Stripe deposits and also counts invoice-only rent rows in the non-Stripe sum. A missing amount stays Unknown.";
 export const VEHICLE_PNL_ONCE_NOTE =
