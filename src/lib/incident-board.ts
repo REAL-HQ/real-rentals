@@ -343,8 +343,16 @@ export type IncidentClaimTotal = {
 
 /** Shown when the full incident scan passes the page cap or a cent sum overflows. */
 export const OPEN_INCIDENT_TOTALS_LABEL = "Open Incidents (Latest 200)";
+export const OPEN_INCIDENT_LIST_LIMIT = 200;
 export const INCIDENT_CLAIM_PAGE = 1000;
 export const INCIDENT_CLAIM_MAX_PAGES = 100;
+export const INCIDENT_CLAIM_READ_REASON =
+  "Claim columns and totals are hidden because that read failed.";
+
+/** True only when the scan has a row past 100 pages of 1000. Exactly 100000 is complete. */
+export function incidentClaimScanPastCap(rowCount: number): boolean {
+  return rowCount > INCIDENT_CLAIM_PAGE * INCIDENT_CLAIM_MAX_PAGES;
+}
 
 export type IncidentBoardList = {
   rows: IncidentBoardRow[];
@@ -356,6 +364,8 @@ export type IncidentBoardList = {
   totalsCapped: boolean;
   totalsLabel: string | null;
   totalsReason: "page_cap" | "overflow" | null;
+  claimsReason: string | null;
+  openTruncated: boolean;
 };
 
 export function incidentMoneyText(cents: number | null, unknown: number): string {
