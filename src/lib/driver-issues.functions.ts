@@ -6,6 +6,8 @@ import {
   ISSUE_STATUSES,
   incidentSeedFromIssue,
   isIssueClosed,
+  isPinnedIssue,
+  pinIssues,
   type IssueIncidentSeed,
 } from "@/lib/driver-issues";
 
@@ -38,6 +40,7 @@ export type DriverIssueRow = {
   vehicleId: string | null;
   vehicleLabel: string | null;
   rentalId: string | null;
+  pinned: boolean;
   notesEnabled: false;
 };
 
@@ -107,7 +110,7 @@ export const listDriverIssues = createServerFn({ method: "POST" })
 
     return {
       truncated: (count ?? list.length) > list.length,
-      rows: list.map((r) => {
+      rows: pinIssues(list.map((r) => {
         const linkedApp = r.rental_id ? rentalApp.get(String(r.rental_id)) : null;
         const candidates = appsByUser.get(String(r.driver_id)) ?? [];
         const chosen = (linkedApp && candidates.find((a) => a.id === linkedApp)) || candidates[0] || null;
@@ -126,9 +129,10 @@ export const listDriverIssues = createServerFn({ method: "POST" })
           vehicleId: r.vehicle_id,
           vehicleLabel: r.vehicle_id ? vehicleById.get(String(r.vehicle_id)) ?? "Vehicle" : null,
           rentalId: r.rental_id,
+          pinned: isPinnedIssue({ kind: r.kind, severity: r.severity }),
           notesEnabled: DRIVER_ISSUE_NOTES_ENABLED,
         };
-      }),
+      })),
     };
   });
 
