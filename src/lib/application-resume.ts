@@ -321,3 +321,40 @@ export function continueDraft(snapshot: ResumeSnapshot, canOpenWizard: boolean):
   const progress = progressFromSnapshot(snapshot);
   return { progress, answers: savedAnswers(snapshot, progress), canOpenWizard };
 }
+
+/**
+ * The link promotion already minted. Same address resumeUrl() builds for
+ * /thank-you. Plaintext exists only in the admin session that just promoted.
+ */
+export function resumeLinkForToken(token: string): string {
+  return `https://drivereal.com/thank-you?t=${encodeURIComponent(token)}`;
+}
+
+/**
+ * The application a waitlist promotion already created or linked.
+ * Rows are this verified email only, newest signup first. The first row
+ * with a promoted application wins. An unpromoted row does not invent one.
+ */
+export function continuationApplicationId(
+  rows: { promoted_application_id?: string | null }[],
+): string | null {
+  for (const row of rows) {
+    const id = row.promoted_application_id;
+    if (typeof id === "string" && id.trim()) return id;
+  }
+  return null;
+}
+
+/** The promoted application belongs to this verified caller, and to nobody else. */
+export function canContinuePromotedApplication(
+  app: { email?: string | null; deleted_at?: string | null; user_id?: string | null },
+  verifiedEmail: string,
+  userId: string,
+): boolean {
+  if (app.deleted_at) return false;
+  const email = verifiedEmail.trim().toLowerCase();
+  const appEmail = String(app.email ?? "").trim().toLowerCase();
+  if (!email || appEmail !== email) return false;
+  if (app.user_id && app.user_id !== userId) return false;
+  return true;
+}

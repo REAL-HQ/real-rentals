@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { resumeUrl } from "../src/lib/resume-tokens.server";
 import {
   APPLICATION_RESUME_ENABLED,
   OWN_DRAFT_COLUMNS,
+  canContinuePromotedApplication,
+  continuationApplicationId,
   continueDraft,
   progressFromSnapshot,
   progressFromWizard,
+  resumeLinkForToken,
   snapshotFromOwnRow,
   type ResumeSnapshot,
 } from "../src/lib/application-resume";
@@ -17,6 +21,9 @@ const banner = readFileSync("src/components/site/ContinueApplicationBanner.tsx",
 const home = readFileSync("src/routes/index.tsx", "utf8");
 const apply = readFileSync("src/routes/apply.tsx", "utf8");
 const wizard = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8");
+const panel = readFileSync("src/components/admin/WaitlistPanel.tsx", "utf8");
+const portal = readFileSync("src/lib/portal-access.functions.ts", "utf8");
+const waitlistFns = readFileSync("src/lib/waitlist.functions.ts", "utf8");
 
 function flagValue(source: string): string | null {
   const match = source.match(/const APPLICATION_RESUME_ENABLED: boolean = (false|true)/);
@@ -148,5 +155,59 @@ describe("application resume progress", () => {
     assert.equal(progress.phase, "driving");
     assert.equal(progress.step, 3);
     assert.ok(progress.missingDocuments.includes("Driver's Licence"));
+  });
+});
+
+describe("waitlist promotion resume", () => {
+  it("shows the minted link in admin and does not email it", () => {
+    assert.equal(flagValue(panel), "false");
+    assert.equal(APPLICATION_RESUME_ENABLED, false);
+    assert.doesNotMatch(panel, /from ["']@\/lib\/application-resume/);
+    assert.doesNotMatch(panel, /sendEmail|sendApplication|sendSms/);
+    const load = panel.indexOf('import("@/lib/application-resume")');
+    assert.ok(load !== -1);
+    assert.match(panel.slice(0, load), /APPLICATION_RESUME_ENABLED === true/);
+    assert.match(panel, /Copy Link/);
+    assert.match(panel, /This page does not send an email/);
+    const promoteStart = waitlistFns.indexOf("export const promoteToApplicant");
+    const promoteEnd = waitlistFns.indexOf("export const listWaitlistHolds");
+    const promote = waitlistFns.slice(promoteStart, promoteEnd);
+    assert.match(promote, /if \(r\.created\) \{[\s\S]*issueResumeToken/);
+    assert.doesNotMatch(promote, /sendEmail|sendApplication|sendSms/);
+    const token = "abc+def/ghi";
+    assert.equal(resumeLinkForToken(token), resumeUrl(token));
+    assert.equal(resumeLinkForToken(token).startsWith("https://drivereal.com/thank-you?t="), true);
+  });
+
+  it("continues the application promotion already created or linked", () => {
+    assert.equal(flagValue(portal), "false");
+    assert.doesNotMatch(portal, /from ["']@\/lib\/application-resume["']/);
+    assert.doesNotMatch(portal, /sendEmail|sendSms/);
+    const calls = [...portal.matchAll(/applicationFromPromotion\(/g)];
+    assert.equal(calls.length, 3);
+    for (const call of calls) {
+      if (portal.slice(call.index!, call.index! + 40).includes("admin: any")) continue;
+      assert.match(portal.slice(Math.max(0, call.index! - 180), call.index!), /APPLICATION_RESUME_ENABLED === true/);
+    }
+    const reader = portal.slice(portal.indexOf("async function applicationFromPromotion"));
+    assert.match(reader, /import\("@\/lib\/application-resume"\)/);
+    assert.match(reader, /\.eq\("id", id\)/);
+    assert.doesNotMatch(reader, /promote_waitlist_entry|\.insert\(|\.update\(|\.delete\(|\.or\(`|\.filter\(`/);
+
+    const promoted = "11111111-1111-4111-8111-111111111111";
+    assert.equal(
+      continuationApplicationId([
+        { promoted_application_id: null },
+        { promoted_application_id: promoted },
+      ]),
+      promoted,
+    );
+    assert.equal(continuationApplicationId([{ promoted_application_id: null }]), null);
+    const app = { email: "Ada@Example.com", deleted_at: null, user_id: null };
+    assert.equal(canContinuePromotedApplication(app, "ada@example.com", "user-1"), true);
+    assert.equal(canContinuePromotedApplication(app, "other@example.com", "user-1"), false);
+    assert.equal(canContinuePromotedApplication({ ...app, deleted_at: "2026-01-01" }, "ada@example.com", "user-1"), false);
+    assert.equal(canContinuePromotedApplication({ ...app, user_id: "someone-else" }, "ada@example.com", "user-1"), false);
+    assert.equal(canContinuePromotedApplication({ ...app, user_id: "user-1" }, "ada@example.com", "user-1"), true);
   });
 });

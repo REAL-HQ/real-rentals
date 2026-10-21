@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+/** Duplicated so this module does not import the resume module while the flag is off. */
+const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+
 /**
  * Stage-based access for signed-in people who are not (yet) drivers: Lead /
  * Waitlist and Applicant. Drivers keep the existing portal untouched. Every
@@ -64,8 +67,35 @@ export const getMyPortalAccess = createServerFn({ method: "GET" })
     }
     const waitlist = verified && email ? (await myWaitlist(admin, email)).find((w: any) => !w.promoted_application_id) ?? null : null;
 
-    const stage = app
-      ? app.status === "approved"
+    // Flag off, this stays null and the return below is the user_id application.
+    // Flag on, a promotion that already created or linked an application is
+    // shown instead of sending the caller to /apply to start another one.
+    let continuation: any = null;
+    let continuationDocs: { category: string; created_at: string }[] = [];
+    let continuationHold = false;
+    if (APPLICATION_RESUME_ENABLED === true && !app && verified && email) {
+      continuation = await applicationFromPromotion(admin, email, context.userId);
+      if (continuation) {
+        const { data: docs } = await admin
+          .from("documents")
+          .select("category,created_at")
+          .eq("driver_id", continuation.id)
+          .contains("visibility", ["driver"]);
+        continuationDocs = (docs ?? []) as any;
+        const { count } = await admin
+          .from("application_waitlist_holds")
+          .select("id", { count: "exact", head: true })
+          .eq("application_id", continuation.id)
+          .is("removed_at", null);
+        continuationHold = (count ?? 0) > 0;
+      }
+    }
+    const shown = continuation ?? app;
+    const shownDocs = continuation ? continuationDocs : documents;
+    const shownHold = continuation ? continuationHold : onWaitlist;
+
+    const stage = shown
+      ? shown.status === "approved"
         ? "approved"
         : "applicant"
       : waitlist
@@ -75,8 +105,8 @@ export const getMyPortalAccess = createServerFn({ method: "GET" })
       stage: stage as "approved" | "applicant" | "waitlist" | "none",
       email,
       review,
-      application: app
-        ? { status: app.status, step: app.current_step, name: app.full_name, createdAt: app.created_at, onWaitlist, documents }
+      application: shown
+        ? { status: shown.status, step: shown.current_step, name: shown.full_name, createdAt: shown.created_at, onWaitlist: shownHold, documents: shownDocs }
         : null,
       waitlist: waitlist
         ? { name: waitlist.full_name, phone: waitlist.phone, city: waitlist.city, state: waitlist.state, pickupDate: waitlist.pickup_date, status: waitlist.status, createdAt: waitlist.created_at }
@@ -89,7 +119,7 @@ export const openMyApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: app } = await supabaseAdmin
+    const { data: linked } = await supabaseAdmin
       .from("applications")
       .select("id,status")
       .eq("user_id", context.userId)
@@ -97,6 +127,14 @@ export const openMyApplication = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    let app = linked;
+    if (!app && APPLICATION_RESUME_ENABLED === true) {
+      const { admin, email, verified } = await identity(context.userId);
+      if (verified && email) {
+        const promoted = await applicationFromPromotion(admin, email, context.userId);
+        if (promoted) app = { id: promoted.id, status: promoted.status };
+      }
+    }
     if (!app) throw new Error("No application is linked to this account.");
     if (["declined", "closed"].includes(String(app.status))) throw new Error("This application is closed. Contact us to reopen it.");
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
@@ -144,3 +182,21 @@ export const updateMyWaitlist = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+/**
+ * The application promote_waitlist_entry already created or linked for this
+ * verified email. Reads only. Does not promote, insert, or send.
+ */
+async function applicationFromPromotion(admin: any, email: string, userId: string) {
+  const { canContinuePromotedApplication, continuationApplicationId } = await import("@/lib/application-resume");
+  const id = continuationApplicationId(await myWaitlist(admin, email));
+  if (!id) return null;
+  const { data } = await admin
+    .from("applications")
+    .select("id,full_name,status,current_step,created_at,email,deleted_at,user_id")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!data || !canContinuePromotedApplication(data, email, userId)) return null;
+  return data;
+}

@@ -27,7 +27,7 @@ A signed-in applicant can read their own row when `applications.user_id` equals 
 
 ## What the flag turns on
 
-`APPLICATION_RESUME_ENABLED` lives in `src/lib/application-resume.ts` and is duplicated in `src/routes/index.tsx`, `src/routes/apply.tsx`, and `ApplicationWizard.tsx`. The routes do not import the module until `!== true` has returned.
+`APPLICATION_RESUME_ENABLED` lives in `src/lib/application-resume.ts` and is duplicated in `src/routes/index.tsx`, `src/routes/apply.tsx`, `ApplicationWizard.tsx`, `src/components/admin/WaitlistPanel.tsx`, and `src/lib/portal-access.functions.ts`. Those files do not import the module until `=== true`.
 
 With the flag on:
 
@@ -39,9 +39,22 @@ With the flag on:
 
 Closed statuses (`approved`, `active`, `suspended`, `declined`, `closed`, `duplicate`, `complete`) and a finished document set do not get a banner.
 
+## Waitlist promotion
+
+From the live-path note in draft #166 (`docs/waitlist-current-state.md` on `74099fa8`). No new SQL and no email.
+
+Promote already mints a resume token when it creates an application, and only then (`src/lib/waitlist.functions.ts:433-436`, `issueResumeToken`). Linking an existing application returns `token: null` and does not mint a second credential (`:431`). The admin panel used to ignore that token (`src/components/admin/WaitlistPanel.tsx` `handlePromote`). With the flag on, the same token is shown once as **Resume Link** with **Copy Link**. The page does not send email or SMS. The plaintext is not stored. Leaving the screen drops it. A later promote that only links clears the box.
+
+The portal used to hide a promoted waitlist row (`src/lib/portal-access.functions.ts`, the `!promoted_application_id` filter) and send a verified person with no `user_id` application to bare `/apply` (`src/components/portal/ApplicantHome.tsx:50` and the waitlist card at `:190`). That starts a second application. `openMyApplication` only looked up `user_id` (`portal-access.functions.ts` `openMyApplication`).
+
+With the flag on, a verified email whose waitlist row already has `promoted_application_id` sees that application and **Continue Application**. The read checks the email matches, the row is not deleted, and `user_id` is empty or already this account. **Continue Application** still calls `issueResumeToken`, the same write `openMyApplication` already does. The portal does not call `promote_waitlist_entry` and does not insert an application. An unpromoted signup still has **Start My Application**.
+
 ## Gaps
 
 - Saving another answer still requires a resume token. Login plus RLS can show the draft. It cannot call `updateApplicationStep`, and this change does not add a writer or send the recovery email.
 - `getApplicationForWizard` does not return `status`, so a token for a decided application can still show a banner when answers are incomplete. The existing upload endpoint already refuses decided applications.
 - `user_id` is null on a draft until a driver account is linked, so most anonymous applicants are invisible to the signed-in read until then. Their path remains the resume link.
 - The flag-on stash read on `/apply` will open whatever application this tab's token belongs to. The flag-off page does not.
+- The admin copy link exists only for a promotion that created an application, and only until that admin leaves the page. Linking an existing application does not mint a token.
+- The portal does not continue a promoted application that is deleted, whose email no longer matches, or whose `user_id` belongs to someone else. It also does not promote a still-waiting signup, so **Start My Application** on that card still opens `/apply`.
+- While the promoted application is the portal card, another unpromoted signup for the same email is not shown.

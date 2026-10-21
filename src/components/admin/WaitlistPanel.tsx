@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
 
+/** Duplicated so this panel does not import the resume module while the flag is off. */
+const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+
 // Waitlist back office.
 //
 // One number drives everything: how many cars are available right now. Above
@@ -54,6 +57,7 @@ export function WaitlistPanel({
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   const [reviewId, setReviewId] = useState<string | null>(null);
+  const [resumeLink, setResumeLink] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -143,6 +147,14 @@ export function WaitlistPanel({
         throw new Error(res.error);
       }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
+      if (APPLICATION_RESUME_ENABLED === true) {
+        if (res.token) {
+          const { resumeLinkForToken } = await import("@/lib/application-resume");
+          setResumeLink(resumeLinkForToken(res.token));
+        } else {
+          setResumeLink(null);
+        }
+      }
       await refresh();
       onPromoted?.();
     } catch (e: any) {
@@ -156,8 +168,42 @@ export function WaitlistPanel({
     s === "promoted" ? "green" : "amber";
   const statusLabel = (s: string) => (s === "waiting" ? "Waiting" : s === "notified" ? "Notified" : "Promoted");
 
+  async function copyResumeLink() {
+    if (!resumeLink) return;
+    try {
+      await navigator.clipboard.writeText(resumeLink);
+      toast.success("Link copied.");
+    } catch {
+      toast.error("Select the link and copy it.");
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {APPLICATION_RESUME_ENABLED === true && resumeLink ? (
+        <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label="Resume Link">
+          <div className="text-sm font-semibold text-[#111114]">Resume Link</div>
+          <p className="mt-1 text-[13px] leading-snug text-[#55555E]">
+            Promotion created this application. Copy this link and give it to the applicant. This page does not send an email.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              aria-label="Resume Link"
+              value={resumeLink}
+              className="min-h-11 w-full rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] px-3 text-sm text-[#111114]"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button
+              type="button"
+              onClick={() => void copyResumeLink()}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-[#D03020] px-4 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Copy Link
+            </button>
+          </div>
+        </section>
+      ) : null}
       <SectionCard
         title="Cars Available"
         subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
