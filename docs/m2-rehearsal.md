@@ -221,6 +221,54 @@ Local proof after steps 1, 0, and 2 through 6, with user triggers disabled so on
 
 `approval-privileges.local.sql` stays excluded.
 
+## Whether `verify_approval_identity` is reachable
+
+It is not reachable from `private.approval_validate`, `private.approval_snapshot`, `public.record_existing_rental_tx`, or any other installed function. After the recommended install, `pg_proc.prosrc` contains the text `verify_approval_identity(` in zero functions. The only insert of `kind = 'approval_identity'` and `resolution = 'verified'` is the body of `public.verify_approval_identity` itself. Nothing calls that function.
+
+`private.approval_validate` reads a row of that shape. It does not insert one. `private.approval_snapshot` reads the application and the two current license documents. It does not insert a review. The installed functions that call `approval_validate(` are `private.approval_application_guard`, `private.approval_write_audit`, `public.approval_readiness`, and `public.record_existing_rental_tx`. Step 7 replaced the step 5 bodies, so `record_snapshot_v1` and `record_existing_rental_evidence_core_v1` no longer call it.
+
+No step 6b file was added. These calls do not fail the step 6 check, because they never insert the row.
+
+Local proof on the production-matching baseline, recommended order (step 1, `00-approval-boundary.sql`, steps 2 through the return checklist). The seed was a manager `auth.users` row, a matching `auth.sessions` row, an `admin` role, an approved application with a driver `user_id` and a future license, two current verified `license_front` / `license_back` documents, and an available vehicle. Those rows were inserted with `session_replication_role = replica` and then the calls ran with triggers on. A normal `license_front` insert, triggers on, fails before any review write:
+
+```
+ERROR: evidence_version_managed
+CONTEXT: PL/pgSQL function private.approval_application_guard() line 7 at RAISE
+SQL statement "UPDATE public.applications SET approval_evidence_version=approval_evidence_version+1 WHERE id=old_id OR id=new_id"
+PL/pgSQL function private.approval_evidence_changed() line 11 at SQL statement
+```
+
+`approval_evidence_changed` is security definer, owned by `postgres`. The guard allows that version bump only when `current_user` is `rr_approval_executor`.
+
+The calls used `session_authorization = authenticator`, `role = authenticated`, and `request.jwt.claims` with that manager, that session, `role = authenticated`, and a future `exp`.
+
+`public.verify_approval_identity` stopped here. The insert is the statement after this assignment, and it did not run:
+
+```
+ERROR: approval_storage_version_unverified
+CONTEXT: PL/pgSQL function private.approval_object_version(uuid) line 2 at RAISE
+PL/pgSQL function private.approval_snapshot(uuid) line 13 at assignment
+PL/pgSQL function public.verify_approval_identity(uuid,jsonb,text) line 7 at assignment
+```
+
+`private.approval_object_version` is the step 0 deny stub. It raises before `approval_snapshot` can return evidence.
+
+`public.record_existing_rental_tx` with no `record.application_id` stopped at its own manager check, line 21, `ERROR: manager_required`. `record_executor_scope_v3` returns false when that setting is empty, so the executor's `user_roles` read sees no row. That is before `approval_validate`.
+
+The same call with `record.application_id` and `record.vehicle_id` set to the seeded ids reached the identity read and stopped in the same stub. It did not call `verify_approval_identity` and it did not insert a review:
+
+```
+ERROR: approval_storage_version_unverified
+CONTEXT: PL/pgSQL function private.approval_object_version(uuid) line 2 at RAISE
+PL/pgSQL function private.approval_snapshot(uuid) line 13 at assignment
+PL/pgSQL function private.approval_validate(uuid) line 4 at assignment
+PL/pgSQL function public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text) line 31 at assignment
+```
+
+Line 31 is `identity_id:=private.approval_validate(_application_id)`. The call did not reach `private.record_agreement_evidence`, which remains the deny-all adapter.
+
+The seed transaction was rolled back. Schema rollback then ran return, extend, 20, 19b, 19 through 2, `00-approval-boundary.sql`, and `01-auth-binding.sql`. `pg_dump --schema-only --no-owner --no-privileges` matched the production-matching baseline (normalized length 273072). Applications were 0, `rr_%` roles were 0, and no function whose name contains `approval` remained.
+
 ## Step 0 install and rollback
 
 Order applied: step 1, step 0, steps 2 through the return checklist. Every step passed.
