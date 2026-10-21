@@ -134,11 +134,11 @@ export function WaitlistPanel({
 
   async function handlePromote(entry: WaitlistEntry) {
     setPromotingId(entry.id);
-    if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
+    setResumeLink(null);
     try {
       const res = await promote({ data: { entryId: entry.id } });
       if (!res.ok) {
-        if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
+        setResumeLink(null);
         if ("conflict" in res && res.conflict) {
           setConflictIds((s) => new Set(s).add(entry.id));
           toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
@@ -149,12 +149,15 @@ export function WaitlistPanel({
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
       if (APPLICATION_RESUME_ENABLED === true) {
         const { resumeLinkForPromotion } = await import("@/lib/application-resume");
-        setResumeLink(resumeLinkForPromotion({ ok: res.ok, token: res.token, name: entry.full_name }));
+        const link = resumeLinkForPromotion({ ok: res.ok, token: res.token, name: entry.full_name });
+        setResumeLink(link?.href && link.name ? link : null);
+      } else {
+        setResumeLink(null);
       }
       await refresh();
       onPromoted?.();
     } catch (e: any) {
-      if (APPLICATION_RESUME_ENABLED === true) setResumeLink(null);
+      setResumeLink(null);
       toast.error(e?.message ?? "Could not promote.");
     } finally {
       setPromotingId(null);
@@ -177,7 +180,7 @@ export function WaitlistPanel({
 
   return (
     <div className="space-y-4">
-      {APPLICATION_RESUME_ENABLED === true && resumeLink ? (
+      {APPLICATION_RESUME_ENABLED === true && resumeLink?.href && resumeLink.name ? (
         <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label={`Resume Link For ${resumeLink.name}`}>
           <div className="text-sm font-semibold text-[#111114]">Resume Link For {resumeLink.name}</div>
           <p className="mt-1 text-[13px] leading-snug text-[#55555E]">

@@ -3,9 +3,10 @@ import type { ContinueDraft } from "@/lib/application-resume";
 
 /**
  * Shown on / and /apply only after APPLICATION_RESUME_ENABLED is on and a
- * draft was read. A signed-in draft continues through onContinue, which mints
- * a token for that account. This component never reads a token from the tab
- * and never sends a link.
+ * draft was read. A signed-in draft passes onContinue, and that button is
+ * the Continue path: it mints a token for the account. A token-less
+ * /thank-you link is only for a draft that can already open the wizard.
+ * This component never reads a token from the tab and never sends a link.
  */
 export function ContinueApplicationBanner({
   draft,
@@ -43,14 +44,7 @@ export function ContinueApplicationBanner({
           ))}
         </dl>
       )}
-      {draft.canOpenWizard ? (
-        <Link
-          to="/thank-you"
-          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-real-red px-5 text-sm font-semibold text-white hover:opacity-90"
-        >
-          Continue
-        </Link>
-      ) : onContinue ? (
+      {onContinue ? (
         <>
           <button
             type="button"
@@ -62,6 +56,13 @@ export function ContinueApplicationBanner({
           </button>
           {continueError ? <p className="mt-2 text-sm text-real-red">{continueError}</p> : null}
         </>
+      ) : draft.canOpenWizard ? (
+        <Link
+          to="/thank-you"
+          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-real-red px-5 text-sm font-semibold text-white hover:opacity-90"
+        >
+          Continue
+        </Link>
       ) : (
         <Link
           to="/apply"

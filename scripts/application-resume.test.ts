@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { resumeUrl } from "../src/lib/resume-tokens.server";
 import { APPLICATION_RESUME_ENABLED, isClosedResumeStatus } from "../src/lib/application-resume-flag";
@@ -28,6 +29,16 @@ const wizard = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8")
 const panel = readFileSync("src/components/admin/WaitlistPanel.tsx", "utf8");
 const portal = readFileSync("src/lib/portal-access.functions.ts", "utf8");
 const waitlistFns = readFileSync("src/lib/waitlist.functions.ts", "utf8");
+
+function walkSources(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSources(path));
+    else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(path);
+  }
+  return out;
+}
 
 function flagValue(source: string): string | null {
   const match = source.match(/const APPLICATION_RESUME_ENABLED: boolean = (false|true)/);
@@ -60,8 +71,14 @@ describe("application resume flag", () => {
   it("is a hard false, declared once, and / and /apply do not load the resume module", () => {
     assert.equal(APPLICATION_RESUME_ENABLED, false);
     assert.equal(flagValue(flagFile), "false");
-    const declarations = [flagFile, lib, client, banner, home, apply, wizard, panel, portal].filter((source) => flagValue(source));
-    assert.equal(declarations.length, 1);
+    const declarations = walkSources("src").filter((path) =>
+      /const APPLICATION_RESUME_ENABLED\b/.test(readFileSync(path, "utf8")),
+    );
+    assert.deepEqual(declarations, ["src/lib/application-resume-flag.ts"]);
+    const dead = walkSources("src").filter((path) =>
+      readFileSync(path, "utf8").includes("stashedTokenContinuesApplication"),
+    );
+    assert.deepEqual(dead, []);
     for (const source of [lib, client, home, apply, wizard, panel, portal]) {
       assert.match(source, /from ["']@\/lib\/application-resume-flag["']/);
     }
@@ -106,6 +123,9 @@ describe("application resume flag", () => {
   it("gives a signed-in draft on /apply a Continue path through the account", () => {
     assert.match(banner, /onContinue/);
     assert.match(banner, />\s*Continue\s*</);
+    const accountContinue = banner.indexOf("onClick={() => void onContinue()}");
+    const wizardContinue = banner.indexOf('to="/thank-you"');
+    assert.ok(accountContinue !== -1 && wizardContinue !== -1 && accountContinue < wizardContinue);
     assert.doesNotMatch(banner, /These are the answers already saved/);
     assert.match(signedIn, /openMyApplication/);
     assert.match(signedIn, /onContinue=/);
@@ -204,7 +224,10 @@ describe("waitlist promotion resume", () => {
     const cleared = promoteFn.indexOf("setResumeLink(null)");
     const request = promoteFn.indexOf("promote(");
     assert.ok(cleared !== -1 && request !== -1 && cleared < request);
-    assert.match(promoteFn, /if \(!res\.ok\) \{[\s\S]*setResumeLink\(null\)/);
+    assert.match(promoteFn, /setResumeLink\(null\);\s*try \{/);
+    assert.match(promoteFn, /if \(!res\.ok\) \{\s*setResumeLink\(null\);/);
+    assert.match(promoteFn, /catch \(e: any\) \{\s*setResumeLink\(null\);/);
+    assert.match(panel, /resumeLink\?\.href && resumeLink\.name/);
     assert.match(promoteFn, /resumeLinkForPromotion\(\{ ok: res\.ok, token: res\.token, name: entry\.full_name \}\)/);
     const token = "abc+def/ghi";
     const named = resumeLinkForPromotion({ ok: true, token, name: "Ada Lovelace" });
@@ -245,9 +268,11 @@ describe("waitlist promotion resume", () => {
     const reviewRefuse = open.indexOf('decision === "review"');
     const issue = open.indexOf("issueResumeToken");
     assert.ok(reviewRefuse !== -1 && issue !== -1 && reviewRefuse < issue);
-    const closed = open.indexOf("isClosedResumeStatus(app.status)");
+    const closed = open.indexOf("CLOSED_RESUME_STATUSES");
     assert.ok(closed !== -1 && closed < issue);
+    assert.match(portal, /CLOSED_RESUME_STATUSES\s*\} from ["']@\/lib\/application-resume-flag["']/);
     assert.doesNotMatch(open, /\["declined", "closed"\]/);
+    assert.doesNotMatch(open, /const CLOSED_RESUME_STATUSES/);
     assert.doesNotMatch(open, /applicationFromPromotion/);
     for (const status of ["approved", "active", "suspended", "declined", "closed", "duplicate", "complete"]) {
       assert.equal(isClosedResumeStatus(status), true);
