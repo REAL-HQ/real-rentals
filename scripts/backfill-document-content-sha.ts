@@ -10,10 +10,14 @@
  * content_sha256 is not 64 hex is hashed through writeUploadedContentSha.
  * A stored hash is compared after lowercasing. A match is skipped, a
  * difference is counted mismatched and is not replaced. Missing is HTTP
- * 404, including HTTP 400 whose body statusCode is 404. A download 5xx,
- * including one raised by writeUploadedContentSha, is storage_errors and
- * does not abort the run. The unhashed write path downloads once, inside
- * writeUploadedContentSha.
+ * 404, including HTTP 400 whose body statusCode is 404. Any other HTTP
+ * status, including 403 and a 5xx from writeUploadedContentSha's download,
+ * is storage_errors and does not abort the run. A download error with no
+ * HTTP status and no message is storage_errors, not missing. The writer
+ * substitutes "Uploaded bytes missing" when the client sent neither, and
+ * that fallback is a storage error. A thrown network error has a message
+ * and no HTTP status, and it still aborts the run. The unhashed write path
+ * downloads once, inside writeUploadedContentSha.
  * --write exits nonzero when missing, mismatched, or storage_errors is
  * greater than 0. Clearing documents.content_sha256 does not remove
  * private.uploaded_content_sha.
@@ -24,7 +28,8 @@
  * Bun loads the committed .env, which points at hosted. This script refuses
  * to run unless SUPABASE_URL is passed with --url or is a shell value
  * different from that file. It prints the target host. The key's JWT role
- * must be service_role. A storage failure is storage_errors, not missing.
+ * must be service_role. An HTTP storage failure other than 404 is
+ * storage_errors, not missing. A thrown network error still aborts.
  *
  * This does not turn DOCUMENT_CONTENT_SHA256_ENABLED on.
  *
@@ -93,6 +98,30 @@ export function classifyStorageFailure(error: StorageError, hasId: boolean): "ok
   if (!error && hasId) return "ok";
   if (storageHttpStatus(error) === 404) return "missing";
   return "error";
+}
+
+/**
+ * How --write treats an error thrown by writeUploadedContentSha.
+ * Missing is status 404 only. Any other HTTP status is storage_errors.
+ * An empty client error becomes the fallback "Uploaded object missing" or
+ * "Uploaded bytes missing" and is storage_errors, not missing.
+ * A thrown network error has some other message and no status, and aborts.
+ */
+export function classifyWriteDownloadFailure(caught: unknown): "missing" | "mismatched" | "storage" | "abort" {
+  const status = storageHttpStatus(caught);
+  const message = failureMessage(caught);
+  if (status === 404) return "missing";
+  if (message.includes("content_sha256_mismatch") || message === "Uploaded object changed") return "mismatched";
+  if (status >= 400 && status <= 599) return "storage";
+  if (message === "" || message === "Uploaded object missing" || message === "Uploaded bytes missing") return "storage";
+  return "abort";
+}
+
+function failureMessage(caught: unknown): string {
+  if (caught instanceof Error) return caught.message;
+  if (typeof caught === "string") return caught;
+  if (caught && typeof caught === "object" && "message" in caught && typeof caught.message === "string") return caught.message;
+  return "";
 }
 
 export function contentShaBackfillExitCode(write: boolean, counts: ContentShaBackfillCounts): number {
@@ -259,16 +288,11 @@ export async function backfillLicenseContentSha(
       await writeUploadedContentSha(admin, bucket, path);
       counts.hashed += 1;
     } catch (caught) {
-      const status = storageHttpStatus(caught);
-      const message = caught instanceof Error ? caught.message : String(caught);
-      if (status >= 500 && status <= 599) counts.storageErrors += 1;
-      else if (status === 404 || message === "Uploaded object missing" || message === "Uploaded bytes missing") {
-        counts.missing += 1;
-      } else if (message.includes("content_sha256_mismatch") || message === "Uploaded object changed") {
-        counts.mismatched += 1;
-      } else {
-        throw caught;
-      }
+      const kind = classifyWriteDownloadFailure(caught);
+      if (kind === "missing") counts.missing += 1;
+      else if (kind === "mismatched") counts.mismatched += 1;
+      else if (kind === "storage") counts.storageErrors += 1;
+      else throw caught;
     }
   }
   return counts;

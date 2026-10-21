@@ -15,6 +15,7 @@ import {
   assertServiceRoleKey,
   backfillLicenseContentSha,
   classifyStorageFailure,
+  classifyWriteDownloadFailure,
   contentShaBackfillExitCode,
   isRecordedHash,
   readDotenvAssignment,
@@ -328,6 +329,20 @@ if (classifyStorageFailure({ message: "NoSuchKey", statusCode: "404" }, false) !
 if (classifyStorageFailure({ message: "Object not found", status: 400, statusCode: "404" }, false) !== "missing") {
   throw new Error("HTTP 400 with body statusCode 404 was not counted missing");
 }
+const forbidden = new Error("Forbidden") as Error & { status: number };
+forbidden.status = 403;
+if (classifyWriteDownloadFailure(forbidden) !== "storage") {
+  throw new Error("HTTP 403 was not a storage error");
+}
+if (classifyWriteDownloadFailure(new Error("")) !== "storage") {
+  throw new Error("a download error with no status and no message was not a storage error");
+}
+if (classifyWriteDownloadFailure(new Error("Uploaded bytes missing")) !== "storage") {
+  throw new Error("the empty-download fallback was counted missing");
+}
+if (classifyWriteDownloadFailure(new Error("socket hang up")) !== "abort") {
+  throw new Error("a thrown network error was not left to abort");
+}
 const emptyCounts = { hashed: 0, skipped: 0, missing: 0, mismatched: 0, pending: 0, storageErrors: 0 };
 if (contentShaBackfillExitCode(false, { ...emptyCounts, missing: 1 }) !== 0) {
   throw new Error("dry-run missing exited");
@@ -348,7 +363,7 @@ type StorageResult = {
 function licenseAdmin(
   rows: { content_sha256: string | null; id: string }[],
   info: StorageResult,
-  download?: StorageResult | "throw500",
+  download?: StorageResult | "throw500" | "network" | "empty" | "forbidden" | Array<StorageResult | "network" | "empty" | "forbidden">,
 ) {
   let downloads = 0;
   const rpcArgs: unknown[] = [];
@@ -379,12 +394,16 @@ function licenseAdmin(
           async info() { return info; },
           async download() {
             downloads += 1;
-            if (download === "throw500") {
+            const next = Array.isArray(download) ? download[downloads - 1] : download;
+            if (next === "throw500") {
               const failure = new Error("Internal Server Error") as Error & { statusCode: string };
               failure.statusCode = "500";
               throw failure;
             }
-            if (download) return download;
+            if (next === "network") throw new Error("socket hang up");
+            if (next === "empty") return { data: null, error: {} };
+            if (next === "forbidden") return { data: null, error: { message: "Forbidden", status: 403 } };
+            if (next) return next;
             return { data: new Blob([frontBytes]), error: null };
           },
         };
@@ -462,6 +481,58 @@ try {
 }
 if (thrownServerError || !thrownWrite || thrownWrite.storageErrors !== 1 || thrownWrite.missing !== 0) {
   throw new Error(`thrown download 500 was not a storage error: threw=${thrownServerError} ${JSON.stringify(thrownWrite)}`);
+}
+const continued = licenseAdmin(
+  [{ id: "deny-dl", content_sha256: null }, { id: "after", content_sha256: null }],
+  { data: { id: "obj" }, error: null },
+  ["forbidden", { data: new Blob([frontBytes]), error: null }],
+);
+let continuedThrew = false;
+let continuedWrite: Awaited<ReturnType<typeof backfillLicenseContentSha>> | null = null;
+try {
+  continuedWrite = await backfillLicenseContentSha(continued.admin, { write: true });
+} catch {
+  continuedThrew = true;
+}
+if (
+  continuedThrew
+  || !continuedWrite
+  || continuedWrite.storageErrors !== 1
+  || continuedWrite.hashed !== 1
+  || continuedWrite.missing !== 0
+  || continued.downloads() !== 2
+  || continued.rpcArgs.length !== 1
+) {
+  throw new Error(`download 403 aborted the run: threw=${continuedThrew} ${JSON.stringify(continuedWrite)} downloads=${continued.downloads()}`);
+}
+const blank = licenseAdmin(
+  [{ id: "blank", content_sha256: null }],
+  { data: { id: "obj" }, error: null },
+  "empty",
+);
+let blankThrew = false;
+let blankWrite: Awaited<ReturnType<typeof backfillLicenseContentSha>> | null = null;
+try {
+  blankWrite = await backfillLicenseContentSha(blank.admin, { write: true });
+} catch {
+  blankThrew = true;
+}
+if (blankThrew || !blankWrite || blankWrite.storageErrors !== 1 || blankWrite.missing !== 0 || blank.rpcArgs.length !== 0) {
+  throw new Error(`empty download error was missing or aborted: threw=${blankThrew} ${JSON.stringify(blankWrite)}`);
+}
+const network = licenseAdmin(
+  [{ id: "net", content_sha256: null }, { id: "later", content_sha256: null }],
+  { data: { id: "obj" }, error: null },
+  "network",
+);
+let networkThrew = false;
+try {
+  await backfillLicenseContentSha(network.admin, { write: true });
+} catch (error) {
+  networkThrew = error instanceof Error && error.message === "socket hang up";
+}
+if (!networkThrew || network.downloads() !== 1) {
+  throw new Error(`a thrown network error did not abort: threw=${networkThrew} downloads=${network.downloads()}`);
 }
 
 if (/[0-9a-f]{64}/i.test(proof)) {
