@@ -1,13 +1,13 @@
--- Step 26 of proposed/HOSTED-INSTALL.md. Not a supabase/migrations file.
+-- Step 27 of proposed/HOSTED-INSTALL.md. Not a supabase/migrations file.
 -- A hosted run uses that procedure. Do not apply this file on its own.
 --
--- Install after the Record Rental packet (after step 19: the 17 cutover files,
--- then subscription-coordination-v1.sql, then the corrected
--- signed-archive-protection-v1.sql). Needs private.approval_lock and
--- private.approval_actor from step 1, and private.record_immutable from step 3.
--- Independent of proposed/m2-packet/20.sql. If both are approved, either
--- order after step 19 is safe. This file does not create those objects and
--- does not weaken their grants.
+-- Install after proposed/m2-packet/19.sql (HOSTED-INSTALL step 23, signed
+-- archive protection). Needs private.approval_lock and
+-- private.approval_actor from step 1, and private.record_immutable from
+-- proposed/m2-packet/03.sql (HOSTED-INSTALL step 5).
+-- Independent of proposed/m2-packet/20.sql (HOSTED-INSTALL step 26). If both
+-- are approved, either order after step 23 is safe. This file does not create
+-- those objects and does not weaken their grants.
 --
 -- Execute is service_role only. The handler calls with supabaseAdmin after
 -- requireManager and passes the actor id. This function checks that actor is
