@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getVehiclePnl } from "@/lib/vehicle-pnl.functions";
+import { getExpenseExport } from "@/lib/expense-export.functions";
+import { EXPENSE_EXPORT_ENABLED } from "@/lib/expense-export-flag";
 import { currentEtMonth, previousMonth } from "@/lib/owner-pnl";
 import type { VehiclePnlReport } from "@/lib/vehicle-pnl";
 
@@ -18,10 +20,14 @@ export function VehiclePnlSection() {
   const read = useServerFn(getVehiclePnl);
   const readRef = useRef(read);
   readRef.current = read;
+  const exportMonth = useServerFn(getExpenseExport);
+  const exportRef = useRef(exportMonth);
+  exportRef.current = exportMonth;
   const today = currentEtMonth(new Date());
   const prior = today ? previousMonth(today) : null;
   const [month, setMonth] = useState(today ?? "");
   const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!month) {
@@ -85,8 +91,19 @@ export function VehiclePnlSection() {
               Last Month
             </button>
           )}
+          {EXPENSE_EXPORT_ENABLED && (
+            <button type="button" onClick={() => void downloadFinanceCsv()} className="rounded-md border px-3 py-1.5 text-sm">
+              Download Monthly Finance CSV
+            </button>
+          )}
         </div>
       </div>
+      {EXPENSE_EXPORT_ENABLED && (report?.truncated || exportNote === "This Export Is Truncated") && (
+        <p className="text-sm text-muted-foreground">This Export Is Truncated</p>
+      )}
+      {exportNote && exportNote !== "This Export Is Truncated" && (
+        <p className="text-sm text-muted-foreground">{exportNote}</p>
+      )}
       {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Vehicle Profit</p>}
       {load.kind === "unavailable" && (
         <div className="rounded-lg border p-6 text-center">
@@ -162,6 +179,32 @@ export function VehiclePnlSection() {
       )}
     </section>
   );
+
+  async function downloadFinanceCsv() {
+    if (!month) return;
+    setExportNote(null);
+    try {
+      const result = await exportRef.current({ data: { month } });
+      if (result.status === "disabled") {
+        setExportNote("Monthly Finance Export Is Off");
+        return;
+      }
+      if (result.status === "unavailable") {
+        setExportNote(result.reason);
+        return;
+      }
+      const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `monthly-finance-${result.month}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      if (result.truncated) setExportNote("This Export Is Truncated");
+    } catch (error: unknown) {
+      setExportNote(error instanceof Error ? error.message : "Monthly Finance Export could not be loaded");
+    }
+  }
 }
 
 function money(cents: number | null): string {
