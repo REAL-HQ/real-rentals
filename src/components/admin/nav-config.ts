@@ -40,6 +40,7 @@ import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 
 export type TabDef = {
   id: string;
@@ -158,6 +159,16 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Payout Breakdown is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PAYOUT_BREAKDOWN_TAB: TabDef = {
+  id: "payout_breakdown",
+  label: "Payout Breakdown",
+  icon: Banknote,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
+};
+
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
@@ -269,6 +280,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -317,6 +329,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
