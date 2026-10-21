@@ -17,6 +17,12 @@ export { showsCloseoutPreview };
 export const CLOSEOUT_PREVIEW_NOTE =
   "Staff must settle manually. This preview does not end the rental, change the deposit, or call billing.";
 
+/** Shown when a closed incident's driver amount is held because nothing links it to a payment. */
+export const CLOSED_INCIDENT_HOLD = "closed incident, no linked payment, confirm before refund";
+
+/** Shown when a closed incident and a damage payment on the same rental could be the same money. */
+export const POSSIBLE_DOUBLE_COUNT = "possible double count";
+
 const TERMINAL_PAYMENTS = ["paid", "refunded", "void", "waived"] as const;
 const SETTLED_TOLLS = ["rebilled", "paid", "written_off"] as const;
 const TICKET_TYPES = new Set(["ticket", "tickets", "citation", "citations", "red_light", "speeding", "parking", "impound"]);
@@ -63,7 +69,6 @@ export type CloseoutPreviewInput = {
     estimated_cost: unknown;
     driver_responsible_amount: unknown;
     drivable: boolean | null;
-    payment_id?: string | null;
   }>;
   payments: RowLoad<{
     status: string | null;
@@ -326,6 +331,36 @@ function incidentFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
     return amount != null && amount >= 0 ? amount : null;
   });
   const responsibleCents = responsible.every((cost) => cost != null) ? sumCents(responsible as number[]) : null;
+  const deductions = usable(input.deductions);
+  const payments = usable(input.payments);
+  const closedRows = rows.filter((row) => !isOpenIncident(row.status));
+  const closedUnreadable = closedRows.some((row) => {
+    const amount = finite(row.driver_responsible_amount);
+    return amount == null || amount < 0;
+  });
+  const closedHeld = closedRows.some((row) => {
+    const amount = finite(row.driver_responsible_amount);
+    return amount != null && amount > 0;
+  });
+  const driver = !closedUnreadable && deductions ? uncoveredDriverCents(rows, deductions) : null;
+  const closedCents = closedUnreadable ? null : closedHeld ? (driver ? driver.closedUncovered : null) : 0;
+  const totalCents = costCents == null || closedCents == null ? null : costCents + closedCents;
+  const double = closedCents != null && closedCents > 0 && !!payments?.some(countsAsDamagePayment);
+  const openCost =
+    responsibleCents == null
+      ? "Recorded cost on open incidents. Driver responsibility could not be totaled. These open costs are not added to deposit deductions."
+      : `Recorded cost on open incidents. Driver responsibility recorded: ${money(fromCents(responsibleCents))}. These open costs are not added to deposit deductions.`;
+  const closedNote =
+    closedCents != null && closedCents > 0 ? `${money(fromCents(closedCents))} ${CLOSED_INCIDENT_HOLD}.` : "";
+  const doubleNote = double
+    ? `${POSSIBLE_DOUBLE_COUNT}. A damage payment on this rental is not linked to the closed incident, so the proposal does not subtract both.`
+    : "";
+  const explanation =
+    costCents == null
+      ? "An open incident is missing both an actual cost and an estimated cost."
+      : closedCents == null
+        ? "A closed incident is missing a driver-responsible amount, or the deductions list could not be read."
+        : [open.length || closedCents === 0 ? openCost : "", closedNote, doubleNote].filter(Boolean).join(" ");
   return [
     {
       key: "incidents",
@@ -338,13 +373,10 @@ function incidentFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
     {
       key: "incident-costs",
       title: "Incident Costs",
-      state: costCents == null ? "Unknown" : costCents > 0 ? "Needs Attention" : "Ready",
-      value: costCents == null ? "Unknown" : money(fromCents(costCents)),
-      source: `${source}; a positive actual_cost, otherwise a positive estimated_cost`,
-      explanation:
-        costCents == null
-          ? "An open incident is missing both an actual cost and an estimated cost."
-          : `Recorded cost on open incidents.${responsibleCents == null ? " Driver responsibility could not be totaled." : ` Driver responsibility recorded: ${money(fromCents(responsibleCents))}.`} These costs are not added to deposit deductions.`,
+      state: totalCents == null ? "Unknown" : totalCents > 0 ? "Needs Attention" : "Ready",
+      value: totalCents == null ? "Unknown" : money(fromCents(totalCents)),
+      source: `${source}; open incidents use a positive actual_cost, otherwise a positive estimated_cost; a closed incident adds driver_responsible_amount because no payment link column exists`,
+      explanation,
     },
   ];
 }
@@ -361,8 +393,6 @@ type IncidentRow = {
   id: string;
   status: string | null;
   driver_responsible_amount: unknown;
-  /** Set when a payment row bills this incident. Incidents have no such column today, so a live row counts as unbilled. */
-  payment_id?: string | null;
 };
 
 type DeductionRow = { amount: unknown; incident_id?: string | null };
@@ -387,10 +417,10 @@ function isDepositPayment(row: { type: string | null }): boolean {
   return String(row.type ?? "").trim().toLowerCase() === "deposit";
 }
 
-function linkedPaymentId(row: { payment_id?: string | null }): string | null {
-  if (row.payment_id == null) return null;
-  const id = String(row.payment_id).trim();
-  return id.length > 0 ? id : null;
+function countsAsDamagePayment(row: { status: string | null; type: string | null }): boolean {
+  if (String(row.type ?? "").trim().toLowerCase() !== "damage") return false;
+  const status = String(row.status ?? "").trim().toLowerCase();
+  return status !== "void" && status !== "waived";
 }
 
 /** A payment whose balance cannot be read. Matches Closeout Readiness: both fields null is Unknown, even though owedOn would return 0. */
@@ -510,11 +540,12 @@ function billingFigure(input: CloseoutPreviewInput): CloseoutFigure {
   };
 }
 
-/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. A deposit row is the deposit itself and is not subtracted from the refund. */
-function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string): number | null {
+/** Outstanding payments due on or before the return day. Rent due later is excluded here and is not subtracted again. A deposit row is the deposit itself and is not subtracted from the refund. When skipDamage is set, an unlinked damage payment is left out so it is not subtracted on top of a closed incident. */
+function paymentBalanceThroughReturnDay(payments: PaymentRow[], day: string, skipDamage = false): number | null {
   let total = 0;
   for (const row of payments) {
     if (isTerminalPayment(row.status) || isDepositPayment(row)) continue;
+    if (skipDamage && countsAsDamagePayment(row)) continue;
     const due = calendarDay(row.due_date);
     if (!due) return null;
     if (due > day) continue;
@@ -537,12 +568,18 @@ function openChargeCents(rows: TollRow[], kind: "toll" | "ticket"): number | nul
 
 /**
  * Driver responsibility left after deductions that name the incident.
- * Open incidents count. A closed incident counts only when no payment row is
- * linked, so a closed incident that was already billed is not subtracted again.
- * Incident Costs still lists open incidents only. The deduction itself is still
- * subtracted in full.
+ * Open incidents count. Closed incidents count too.
+ *
+ * incidents has no payment_id, and payments has no incident_id, so a live row
+ * never links a closed incident to a payment. Do not skip a closed incident
+ * because of a payment id. That skip applies only once a real link column
+ * exists; until then the driver-responsible amount stays in the deposit hold.
+ * The deduction itself is still subtracted in full.
  */
-function uncoveredDriverCents(incidents: IncidentRow[], deductions: DeductionRow[]): number | null {
+function uncoveredDriverCents(
+  incidents: IncidentRow[],
+  deductions: DeductionRow[],
+): { total: number; closedUncovered: number } | null {
   const covered = new Map<string, number>();
   for (const row of deductions) {
     if (!row.incident_id) continue;
@@ -551,13 +588,15 @@ function uncoveredDriverCents(incidents: IncidentRow[], deductions: DeductionRow
     covered.set(row.incident_id, (covered.get(row.incident_id) ?? 0) + cents(amount));
   }
   let total = 0;
+  let closedUncovered = 0;
   for (const row of incidents) {
-    if (!isOpenIncident(row.status) && linkedPaymentId(row)) continue;
     const amount = finite(row.driver_responsible_amount);
     if (amount == null || amount < 0) return null;
-    total += Math.max(0, cents(amount) - (covered.get(row.id) ?? 0));
+    const uncovered = Math.max(0, cents(amount) - (covered.get(row.id) ?? 0));
+    total += uncovered;
+    if (!isOpenIncident(row.status)) closedUncovered += uncovered;
   }
-  return total;
+  return { total, closedUncovered };
 }
 
 function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
@@ -602,7 +641,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
             };
     }
   }
-  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day, excluding deposit rows; open tolls and tickets that are not already a payment and are not disputed; incidents.driver_responsible_amount for open incidents and for closed incidents with no linked payment, after a linked deduction`;
+  const proposalSource = `${depositSource}; ${deductionSource}; payments due on or before the return day, excluding deposit rows; open tolls and tickets that are not already a payment and are not disputed; incidents.driver_responsible_amount for open incidents and for closed incidents, after a linked deduction. A damage payment beside a closed incident is not subtracted again`;
   const canPropose = held === true && !settled && amount != null && deductionCents != null;
   const noProposal = (why: string): [CloseoutFigure, CloseoutFigure] => [
     {
@@ -639,10 +678,12 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
     const payments = usable(input.payments);
     const tolls = usable(input.tolls);
     const incidents = usable(input.rentalIncidents);
-    const paymentCents = day && payments ? paymentBalanceThroughReturnDay(payments, day) : null;
+    const driver = incidents && rows ? uncoveredDriverCents(incidents, rows) : null;
+    const driverCents = driver ? driver.total : null;
+    const double = !!(driver && driver.closedUncovered > 0 && payments?.some(countsAsDamagePayment));
+    const paymentCents = day && payments ? paymentBalanceThroughReturnDay(payments, day, double) : null;
     const tollCents = tolls ? openChargeCents(tolls, "toll") : null;
     const ticketCents = tolls ? openChargeCents(tolls, "ticket") : null;
-    const driverCents = incidents && rows ? uncoveredDriverCents(incidents, rows) : null;
     const why = !day
       ? "No proposal. The return day is not recorded, so the payment balance through the return cannot be limited to a date."
       : !payments
@@ -664,12 +705,22 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
       const net = cents(amount as number) - (deductionCents as number) - paymentCents - tollCents - ticketCents - driverCents;
       const refund = Math.max(0, net);
       const due = Math.max(0, -net);
+      const closedHold =
+        driver && driver.closedUncovered > 0
+          ? ` ${money(fromCents(driver.closedUncovered))} ${CLOSED_INCIDENT_HOLD}.`
+          : "";
+      const doubleNote = double
+        ? ` ${POSSIBLE_DOUBLE_COUNT}. A damage payment on this rental is not linked to the closed incident, so it is not subtracted again.`
+        : "";
       const settledAgainst =
-        "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day (deposit rows excluded), open tolls and tickets that are not already a payment and are not disputed, and driver responsibility on open incidents or on closed incidents with no linked payment. Unpaid rent is included only inside that payment balance. Staff must settle manually.";
+        "Recorded deposit minus recorded deductions, the outstanding payment balance due on or before the return day (deposit rows excluded), open tolls and tickets that are not already a payment and are not disputed, and driver responsibility on open incidents and on closed incidents." +
+        closedHold +
+        doubleNote +
+        " Unpaid rent is included only inside that payment balance. Staff must settle manually.";
       proposedRefund = {
         key: "proposed-refund",
         title: "Proposed Refund",
-        state: refund > 0 ? "Needs Attention" : "Ready",
+        state: double || refund > 0 ? "Needs Attention" : "Ready",
         value: money(fromCents(refund)),
         source: proposalSource,
         explanation: `${settledAgainst} This is not a refund.`,
@@ -677,7 +728,7 @@ function settlementFigures(input: CloseoutPreviewInput): CloseoutFigure[] {
       balanceDue = {
         key: "balance-due",
         title: "Balance Due",
-        state: due > 0 ? "Needs Attention" : "Ready",
+        state: double || due > 0 ? "Needs Attention" : "Ready",
         value: money(fromCents(due)),
         source: proposalSource,
         explanation: `${settledAgainst} This is not a charge.`,

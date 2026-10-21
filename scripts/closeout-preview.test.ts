@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "../src/lib/closeout-preview-flag";
 import { OUTSTANDING_STATUSES } from "../src/lib/payment-collection.server";
 import {
+  CLOSED_INCIDENT_HOLD,
   CLOSEOUT_PREVIEW_NOTE,
+  POSSIBLE_DOUBLE_COUNT,
   buildCloseoutPreview,
   easternCalendarDate,
   type CloseoutPreviewInput,
@@ -239,7 +241,7 @@ ok(figure(money, "charges").value === "$155.00", "outstanding charges keep every
 ok(figure(money, "tolls").value === "1 · $15.00", "open tolls add the admin fee and skip rebilled rows");
 ok(figure(money, "tickets").value === "2 · $48.00", "parking is a ticket, so the ticket line is the citation plus parking");
 ok(!money.figures.some((item) => item.key === "other-charges"), "parking is no longer an other charge");
-ok(figure(money, "incident-costs").value === "$250.00", "an unset actual cost falls through to the estimate, and a closed incident is excluded");
+ok(figure(money, "incident-costs").value === "$250.00", "an unset actual cost falls through to the estimate, and a closed incident with no driver amount is not added");
 ok(figure(money, "incidents").explanation.includes("not drivable"), "an incident marked not drivable is named");
 ok(figure(money, "billing").state === "Needs Attention" && figure(money, "billing").explanation.includes("No provider request was made."), "billing names autopay and does not call the provider");
 ok(
@@ -367,80 +369,117 @@ ok(
 const paymentsUnread = buildCloseoutPreview(input({ payments: failed() }));
 ok(figure(paymentsUnread, "proposed-refund").value === "No Proposal", "no settlement is proposed when payments could not be read");
 
-const closedUnbilled = buildCloseoutPreview(
-  input({
-    rentalIncidents: loaded([
-      { id: "inc-closed", status: "closed", actual_cost: 80, estimated_cost: 80, driver_responsible_amount: 80, drivable: true },
-    ]),
-  }),
-);
-ok(figure(closedUnbilled, "incident-costs").value === "$0.00", "Incident Costs still leaves a closed incident out of the open-cost total");
+const incidentSelect = fn.match(/from\("incidents"\)[\s\S]*?\.select\("([^"]+)"/);
 ok(
-  figure(closedUnbilled, "proposed-refund").value === "$420.00" && figure(closedUnbilled, "balance-due").value === "$0.00",
-  "a closed incident with no linked payment still reduces the refund",
+  incidentSelect?.[1] === "id,status,actual_cost,estimated_cost,driver_responsible_amount,drivable",
+  "the rental incident read uses the live columns and does not select payment_id",
 );
+const incidentInput = rules.slice(rules.indexOf("rentalIncidents:"), rules.indexOf("payments:"));
+ok(!incidentInput.includes("payment_id"), "the incident input has no payment_id field");
+ok(!rules.includes("linkedPaymentId"), "a closed incident is not skipped through a payment id the table does not have");
 
-const closedBilled = buildCloseoutPreview(
+function heldMatches(preview: ReturnType<typeof buildCloseoutPreview>, deposit = 500): boolean {
+  const costs = Number(figure(preview, "incident-costs").value.replace(/[$,]/g, ""));
+  const refund = Number(figure(preview, "proposed-refund").value.replace(/[$,]/g, ""));
+  const due = Number(figure(preview, "balance-due").value.replace(/[$,]/g, ""));
+  return Math.round((deposit - refund + due) * 100) === Math.round(costs * 100);
+}
+
+const liveIncident = {
+  id: "inc-live",
+  status: "closed" as const,
+  actual_cost: 999,
+  estimated_cost: 999,
+  driver_responsible_amount: 200,
+  drivable: true,
+};
+
+const closedAlone = buildCloseoutPreview(
   input({
-    payments: loaded([{ status: "pending", amount: 80, balance_due: 80, type: "damage", due_date: "2026-10-21" }]),
-    rentalIncidents: loaded([
-      {
-        id: "inc-billed",
-        status: "closed",
-        actual_cost: 80,
-        estimated_cost: 80,
-        driver_responsible_amount: 80,
-        drivable: true,
-        payment_id: "pay-damage",
-      },
-    ]),
+    rentalIncidents: loaded([liveIncident]),
   }),
 );
+ok(figure(closedAlone, "incident-costs").value === "$200.00", "a closed incident shows its driver amount, not a zero and not the unused repair cost");
+ok(figure(closedAlone, "incident-costs").explanation.includes(CLOSED_INCIDENT_HOLD), "a closed incident is labeled for confirmation before refund");
+ok(!figure(closedAlone, "incident-costs").explanation.includes(POSSIBLE_DOUBLE_COUNT), "a closed incident alone is not a double count");
 ok(
-  figure(closedBilled, "proposed-refund").value === "$420.00" && figure(closedBilled, "balance-due").value === "$0.00",
-  "a closed incident that already has a payment is subtracted once, through that payment",
+  figure(closedAlone, "proposed-refund").value === "$300.00" && figure(closedAlone, "balance-due").value === "$0.00",
+  "a closed $200 incident on a $500 deposit leaves a $300 refund",
 );
+ok(figure(closedAlone, "proposed-refund").explanation.includes(CLOSED_INCIDENT_HOLD), "the refund names the same closed-incident hold");
+ok(heldMatches(closedAlone), "Incident Costs matches the amount held from the refund for a closed incident alone");
+
+const closedPending = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-pending" }]),
+  }),
+);
+ok(figure(closedPending, "charges").value === "$200.00", "the pending damage payment stays visible as an outstanding charge");
+ok(figure(closedPending, "incident-costs").value === "$200.00", "Incident Costs stays at the closed incident amount when a damage payment is also pending");
+ok(figure(closedPending, "incident-costs").explanation.includes(CLOSED_INCIDENT_HOLD), "the pending-damage case still labels the closed incident");
+ok(figure(closedPending, "incident-costs").explanation.includes(POSSIBLE_DOUBLE_COUNT), "a closed incident plus a pending damage payment warns of a possible double count");
+ok(figure(closedPending, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT), "the refund warning is shown to the manager");
+ok(
+  figure(closedPending, "proposed-refund").value === "$300.00" && figure(closedPending, "balance-due").value === "$0.00",
+  "a closed $200 incident plus a pending $200 damage payment does not subtract $400",
+);
+ok(heldMatches(closedPending), "Incident Costs matches the amount held from the refund when a damage payment is pending");
 
 const closedPaid = buildCloseoutPreview(
   input({
-    payments: loaded([{ status: "paid", amount: 80, balance_due: 0, type: "damage", due_date: "2026-10-18" }]),
+    payments: loaded([{ status: "paid", amount: 200, balance_due: 0, type: "damage", due_date: "2026-10-18" }]),
+    rentalIncidents: loaded([{ ...liveIncident, id: "inc-paid" }]),
+  }),
+);
+ok(figure(closedPaid, "charges").value === "$0.00", "a paid damage payment is not an outstanding charge");
+ok(figure(closedPaid, "incident-costs").value === "$200.00", "a paid damage payment does not remove the closed incident from Incident Costs");
+ok(figure(closedPaid, "incident-costs").explanation.includes(POSSIBLE_DOUBLE_COUNT), "a paid damage payment beside a closed incident warns of a possible double count");
+ok(
+  figure(closedPaid, "proposed-refund").value === "$300.00" && figure(closedPaid, "balance-due").value === "$0.00",
+  "a paid damage payment is not subtracted again, and the closed incident is still held",
+);
+ok(heldMatches(closedPaid), "Incident Costs matches the amount held from the refund when the damage payment is paid");
+
+const openIncident = buildCloseoutPreview(
+  input({
     rentalIncidents: loaded([
-      {
-        id: "inc-paid",
-        status: "closed",
-        actual_cost: 80,
-        estimated_cost: 80,
-        driver_responsible_amount: 80,
-        drivable: true,
-        payment_id: "pay-paid",
-      },
+      { id: "inc-open", status: "open", actual_cost: 200, estimated_cost: 200, driver_responsible_amount: 200, drivable: true },
+    ]),
+  }),
+);
+ok(figure(openIncident, "incidents").value === "1", "an open incident is counted as open");
+ok(figure(openIncident, "incident-costs").value === "$200.00", "an open incident shows its recorded cost");
+ok(!figure(openIncident, "incident-costs").explanation.includes(CLOSED_INCIDENT_HOLD), "an open incident does not use the closed-incident label");
+ok(!figure(openIncident, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT), "an open incident alone is not a double count");
+ok(
+  figure(openIncident, "proposed-refund").value === "$300.00" && figure(openIncident, "balance-due").value === "$0.00",
+  "an open $200 incident on a $500 deposit leaves a $300 refund",
+);
+ok(heldMatches(openIncident), "Incident Costs matches the amount held from the refund for an open incident");
+
+const openAndDamage = buildCloseoutPreview(
+  input({
+    payments: loaded([{ status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" }]),
+    rentalIncidents: loaded([
+      { id: "inc-open-pay", status: "open", actual_cost: 200, estimated_cost: 200, driver_responsible_amount: 200, drivable: true },
     ]),
   }),
 );
 ok(
-  figure(closedPaid, "proposed-refund").value === "$500.00",
-  "a closed incident whose payment is already paid is not subtracted again",
+  figure(openAndDamage, "proposed-refund").value === "$100.00" &&
+    !figure(openAndDamage, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT),
+  "an open incident and a damage payment are both still subtracted",
 );
 
-const openBilled = buildCloseoutPreview(
+const damageOnly = buildCloseoutPreview(
   input({
-    payments: loaded([{ status: "pending", amount: 80, balance_due: 80, type: "damage", due_date: "2026-10-21" }]),
-    rentalIncidents: loaded([
-      {
-        id: "inc-open",
-        status: "open",
-        actual_cost: 80,
-        estimated_cost: 80,
-        driver_responsible_amount: 80,
-        drivable: true,
-        payment_id: "pay-open",
-      },
-    ]),
+    payments: loaded([{ status: "pending", amount: 200, balance_due: 200, type: "damage", due_date: "2026-10-21" }]),
   }),
 );
 ok(
-  figure(openBilled, "proposed-refund").value === "$340.00",
-  "an open incident still counts even when a payment row is linked",
+  figure(damageOnly, "proposed-refund").value === "$300.00" && !figure(damageOnly, "proposed-refund").explanation.includes(POSSIBLE_DOUBLE_COUNT),
+  "a damage payment with no closed incident is still subtracted once",
 );
 
 const depositCharge = buildCloseoutPreview(

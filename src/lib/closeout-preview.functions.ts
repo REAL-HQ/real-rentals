@@ -71,6 +71,7 @@ export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
       rowsOf(() =>
         sb
           .from("incidents")
+          // Live incidents have no payment_id, and payments have no incident_id. Do not select a link that is not there.
           .select("id,status,actual_cost,estimated_cost,driver_responsible_amount,drivable", { count: "exact" })
           .eq("rental_id", data.rentalId)
           .limit(PAGE),
