@@ -57,6 +57,8 @@ import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { PayoutBreakdownPanel } from "@/components/admin/PayoutBreakdownPanel";
+import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
@@ -308,6 +310,10 @@ function Admin() {
     if (urlTab === "vehicle_profit") {
       if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "vehicle_profit";
+    }
+    if (urlTab === "payout_breakdown") {
+      if (!PAYOUT_BREAKDOWN_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "payout_breakdown";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -822,6 +828,7 @@ function Admin() {
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
+            {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

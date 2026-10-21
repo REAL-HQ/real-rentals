@@ -41,7 +41,7 @@ export function createReadOnlyStripe(env: StripeEnv, options?: ReadOnlyStripeOpt
           const fn = Reflect.get(raw, method, methodReceiver);
           if (typeof fn !== "function") return fn;
           return (...args: unknown[]) => {
-            const run = () => Reflect.apply(fn, raw, args);
+            const run = () => Reflect.apply(fn, raw, args) as Promise<unknown>;
             const call = useCache ? cachedCall(env, `${prop}.${method}`, args, run) : run();
             return call.catch((error: unknown) => {
               if (isStripeTemporarilyUnavailable(error)) throw new StripeTemporarilyUnavailable();

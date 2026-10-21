@@ -30,6 +30,7 @@ import {
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 
 export type TabDef = {
   id: string;
@@ -131,6 +132,16 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Payout Breakdown is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PAYOUT_BREAKDOWN_TAB: TabDef = {
+  id: "payout_breakdown",
+  label: "Payout Breakdown",
+  icon: Banknote,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
+};
+
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
@@ -147,6 +158,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (!extra.length) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
@@ -188,6 +200,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (!extra.length) return entries;
   const next = [...entries];
   const at = next.findIndex((t) => t.id === "expenses");
