@@ -137,6 +137,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
+import type { ExpiryScope } from "@/lib/document-expiry";
 
 /**
  * What arrived, at a glance, above the tabs.
@@ -383,6 +384,7 @@ export function DriversPanel({
   const loadExpiring = useServerFn(listExpiringRenterDocuments);
   const [expiringDocs, setExpiringDocs] = useState<ExpiringRenterDocuments | null>(null);
   const [expiringFailed, setExpiringFailed] = useState(false);
+  const [expiringScope, setExpiringScope] = useState<ExpiryScope>("approved");
   useEffect(() => {
     if (!canManageWaitlist) return;
     let live = true;
@@ -390,6 +392,7 @@ export function DriversPanel({
       .then((result) => {
         if (!live) return;
         setExpiringDocs(result);
+        setExpiringScope(result.defaultScope);
         setExpiringFailed(false);
       })
       .catch(() => {
@@ -855,7 +858,7 @@ setDocCounts(requiredDocCounts(rows));
             onClick={() => setFilter("documents-expiring")}
             className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
           >
-            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? expiringDocs.renters.length : "…"})
+            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
           </button>
         )}
         {/*
@@ -896,6 +899,8 @@ setDocCounts(requiredDocCounts(rows));
         <DocumentsExpiringList
           result={expiringDocs}
           failed={expiringFailed}
+          scope={expiringScope}
+          onScope={setExpiringScope}
           onOpen={(id) => setOpenId(id)}
         />
       ) : (

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
-import { daysLeftLabel, type ExpiringRenter } from "@/lib/document-expiry";
+import { daysLeftLabel, type ExpiringRenter, type ExpiryScope } from "@/lib/document-expiry";
 import { displayPersonName } from "@/lib/display-normalize";
 
 /** Count chip for Overview. Loads through the manager server read. */
@@ -13,7 +13,10 @@ export function DocumentsExpiringChip() {
     let live = true;
     load({ data: undefined })
       .then((result) => {
-        if (live) setCount(result.renters.length);
+        if (live) {
+          const rows = result.defaultScope === "renting" ? result.renting : result.approved;
+          setCount(rows.length);
+        }
       })
       .catch(() => {
         if (live) setCount(null);
@@ -49,10 +52,14 @@ function cellText(renter: ExpiringRenter, kind: ExpiringRenter["cells"][number][
 export function DocumentsExpiringList({
   result,
   failed,
+  scope,
+  onScope,
   onOpen,
 }: {
   result: ExpiringRenterDocuments | null;
   failed: boolean;
+  scope: ExpiryScope;
+  onScope: (scope: ExpiryScope) => void;
   onOpen: (applicationId: string) => void;
 }) {
   if (failed) {
@@ -67,17 +74,38 @@ export function DocumentsExpiringList({
   }
   const soonest = (renter: ExpiringRenter) =>
     renter.soonestDays == null ? "Unknown" : daysLeftLabel(renter.soonestDays, renter.soonestDays < 0 ? "expired" : "expiring");
+  const rows = scope === "renting" ? result.renting : result.approved;
+  const empty =
+    scope === "renting" ? "No Active Rentals With Documents Expiring" : "No Approved Drivers With Documents Expiring";
   return (
     <div className="rounded-lg border border-border bg-white" data-documents-expiring-list>
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-[15px] font-semibold text-[#111114]">Documents Expiring</h2>
         <p className="mt-0.5 text-[12px] text-[#55555E]">
-          Active renters whose driver license, insurance, or rideshare platform document is expired, expires within{" "}
-          {result.windowDays} days, or has no date on file. Days are Eastern Time. Missing dates show as Unknown.
+          Driver license, insurance, or rideshare platform documents that are expired, expire within {result.windowDays}{" "}
+          days, or have no date on file. Days are Eastern Time. Missing dates show as Unknown.
         </p>
+        <div className="mt-3 flex gap-2" role="group" aria-label="Documents Expiring Scope">
+          {(
+            [
+              ["renting", "Renting Now", result.renting.length],
+              ["approved", "Approved Drivers", result.approved.length],
+            ] as const
+          ).map(([key, label, count]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={scope === key}
+              onClick={() => onScope(key)}
+              className={`rounded-md px-3 py-1.5 text-[12px] font-semibold ${scope === key ? "bg-black text-white" : "border border-[#EDEDF0] bg-white text-[#111114]"}`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
       </div>
-      {result.renters.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-[#55555E]">No Documents Expiring</p>
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-[#55555E]">{empty}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -91,7 +119,7 @@ export function DocumentsExpiringList({
               </tr>
             </thead>
             <tbody>
-              {result.renters.map((renter) => (
+              {rows.map((renter) => (
                 <tr key={renter.applicationId} className="border-t border-border">
                   <td className="px-3 py-2.5">
                     <button

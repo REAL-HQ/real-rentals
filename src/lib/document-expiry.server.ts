@@ -3,14 +3,25 @@
 // not send email or SMS and does not write document rows.
 
 import {
+  APPROVED_DRIVER_STATUSES,
   EXPIRY_DOCUMENT_CATEGORIES,
   classifyActiveRenter,
+  defaultExpiryScope,
   etCalendarDate,
+  expiryScopes,
   renterNeedsExpiryNotice,
   sortExpiringRenters,
   type ExpiringRenter,
+  type ExpiryScope,
   type RenterExpiryInput,
 } from "@/lib/document-expiry";
+
+export type ExpiringPopulation = {
+  todayEt: string;
+  renting: ExpiringRenter[];
+  approved: ExpiringRenter[];
+  defaultScope: ExpiryScope;
+};
 
 export function documentExpiryNoticesEnabled(): boolean {
   return process.env.DOCUMENT_EXPIRY_NOTICES_ENABLED === "true";
@@ -20,7 +31,7 @@ type Admin = {
   from: (table: string) => any;
 };
 
-export async function loadExpiringRenters(admin: Admin, now: Date = new Date()): Promise<ExpiringRenter[]> {
+export async function loadExpiringPopulation(admin: Admin, now: Date = new Date()): Promise<ExpiringPopulation> {
   const todayEt = etCalendarDate(now);
   const { data: rentals, error: rentalErr } = await admin
     .from("rentals")
@@ -37,23 +48,47 @@ export async function loadExpiringRenters(admin: Admin, now: Date = new Date()):
       rentalByApplication.set(applicationId, rentalId);
     }
   }
-  const ids = [...rentalByApplication.keys()];
-  if (!ids.length) return [];
 
-  const [{ data: apps, error: appErr }, { data: docs, error: docErr }] = await Promise.all([
-    admin
+  const { data: statusApps, error: statusErr } = await admin
+    .from("applications")
+    .select("id, full_name, status, license_expiration, insurance_expires_on")
+    .in("status", [...APPROVED_DRIVER_STATUSES])
+    .is("deleted_at", null);
+  if (statusErr) throw new Error(statusErr.message);
+
+  const seen = new Set<string>();
+  const apps: any[] = [];
+  for (const app of statusApps ?? []) {
+    if (!app.id || seen.has(app.id)) continue;
+    seen.add(app.id);
+    apps.push(app);
+  }
+  const rentalOnly = [...rentalByApplication.keys()].filter((id) => !seen.has(id));
+  if (rentalOnly.length) {
+    const { data: extra, error: extraErr } = await admin
       .from("applications")
-      .select("id, full_name, license_expiration, insurance_expires_on")
-      .in("id", ids)
-      .is("deleted_at", null),
-    admin
-      .from("documents")
-      .select("driver_id, category, expires_at")
-      .eq("is_current", true)
-      .in("driver_id", ids)
-      .in("category", [...EXPIRY_DOCUMENT_CATEGORIES]),
-  ]);
-  if (appErr) throw new Error(appErr.message);
+      .select("id, full_name, status, license_expiration, insurance_expires_on")
+      .in("id", rentalOnly)
+      .is("deleted_at", null);
+    if (extraErr) throw new Error(extraErr.message);
+    for (const app of extra ?? []) {
+      if (!app.id || seen.has(app.id)) continue;
+      seen.add(app.id);
+      apps.push(app);
+    }
+  }
+
+  const ids = [...seen];
+  if (!ids.length) {
+    return { todayEt, renting: [], approved: [], defaultScope: defaultExpiryScope(0, 0) };
+  }
+
+  const { data: docs, error: docErr } = await admin
+    .from("documents")
+    .select("driver_id, category, expires_at")
+    .eq("is_current", true)
+    .in("driver_id", ids)
+    .in("category", [...EXPIRY_DOCUMENT_CATEGORIES]);
   if (docErr) throw new Error(docErr.message);
 
   const docsByDriver = new Map<string, RenterExpiryInput["documents"]>();
@@ -65,11 +100,16 @@ export async function loadExpiringRenters(admin: Admin, now: Date = new Date()):
     docsByDriver.set(driverId, list);
   }
 
-  const classified: ExpiringRenter[] = [];
-  for (const app of apps ?? []) {
+  const renting: ExpiringRenter[] = [];
+  const approved: ExpiringRenter[] = [];
+  for (const app of apps) {
     const applicationId = app.id as string;
-    const rentalId = rentalByApplication.get(applicationId);
-    if (!rentalId) continue;
+    const rentalId = rentalByApplication.get(applicationId) ?? "";
+    const scopes = expiryScopes({
+      hasActiveRental: rentalByApplication.has(applicationId),
+      status: (app.status as string | null) ?? null,
+    });
+    if (!scopes.length) continue;
     const row = classifyActiveRenter(
       {
         applicationId,
@@ -81,15 +121,22 @@ export async function loadExpiringRenters(admin: Admin, now: Date = new Date()):
       },
       todayEt,
     );
-    if (row) classified.push(row);
+    if (!row) continue;
+    if (scopes.includes("renting")) renting.push(row);
+    if (scopes.includes("approved")) approved.push(row);
   }
-  return sortExpiringRenters(classified);
+  return {
+    todayEt,
+    renting: sortExpiringRenters(renting),
+    approved: sortExpiringRenters(approved),
+    defaultScope: defaultExpiryScope(renting.length, approved.length),
+  };
 }
 
 type EnrollArgs = {
   trigger: "document_expiring";
   applicationId: string;
-  rentalId: string;
+  rentalId: string | null;
 };
 
 export type ExpiryEnrollDeps = {
@@ -99,7 +146,8 @@ export type ExpiryEnrollDeps = {
 
 async function defaultLoad(): Promise<ExpiringRenter[]> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return loadExpiringRenters(supabaseAdmin);
+  const population = await loadExpiringPopulation(supabaseAdmin);
+  return population.approved;
 }
 
 async function defaultEnroll(args: EnrollArgs): Promise<{ enrolled: number }> {
@@ -112,7 +160,8 @@ async function defaultEnroll(args: EnrollArgs): Promise<{ enrolled: number }> {
 }
 
 /**
- * Enroll active renters who have a document expired or inside 30 days.
+ * Enroll approved drivers (and anyone with an active rental) who have a
+ * document expired or inside 30 days.
  * Unknown dates are a manager cue, not a customer notice. Flag off returns
  * before any read. A failure here must not fail the automation sweep.
  */
@@ -133,7 +182,7 @@ export async function enrollDocumentExpiringNotices(
         const result = await enroll({
           trigger: "document_expiring",
           applicationId: renter.applicationId,
-          rentalId: renter.rentalId,
+          rentalId: renter.rentalId || null,
         });
         enrolled += result.enrolled;
       } catch (err) {

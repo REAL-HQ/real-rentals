@@ -6,7 +6,10 @@ import { afterEach, describe, it } from "node:test";
 import {
   classifyActiveRenter,
   daysLeftLabel,
+  defaultExpiryScope,
   etCalendarDate,
+  expiryScopes,
+  isApprovedDriverStatus,
   sortExpiringRenters,
   type RenterExpiryInput,
 } from "../src/lib/document-expiry";
@@ -132,6 +135,25 @@ describe("classifyActiveRenter", () => {
     );
     assert.ok(unknown && dated);
     assert.deepEqual(sortExpiringRenters([unknown, dated]).map((row) => row.applicationId), ["d", "u"]);
+  });
+});
+
+describe("population", () => {
+  it("uses approved and active, the real statuses, and keeps an active rental in both scopes", () => {
+    assert.equal(isApprovedDriverStatus("approved"), true);
+    assert.equal(isApprovedDriverStatus("ACTIVE"), true);
+    assert.equal(isApprovedDriverStatus("reviewing"), false);
+    assert.equal(isApprovedDriverStatus("complete"), false);
+    assert.deepEqual(expiryScopes({ hasActiveRental: false, status: "approved" }), ["approved"]);
+    assert.deepEqual(expiryScopes({ hasActiveRental: false, status: "active" }), ["approved"]);
+    assert.deepEqual(expiryScopes({ hasActiveRental: true, status: "closed" }), ["renting", "approved"]);
+    assert.deepEqual(expiryScopes({ hasActiveRental: false, status: "reviewing" }), []);
+  });
+
+  it("defaults to Approved Drivers when Renting Now is empty", () => {
+    assert.equal(defaultExpiryScope(0, 3), "approved");
+    assert.equal(defaultExpiryScope(2, 5), "renting");
+    assert.equal(defaultExpiryScope(0, 0), "approved");
   });
 });
 

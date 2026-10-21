@@ -20,6 +20,44 @@
 export const EXPIRY_WINDOW_DAYS = 30;
 export const EXPIRY_TIME_ZONE = "America/New_York";
 
+/**
+ * Who counts as an approved driver, from applications_status_check
+ * (migration 20260727033224):
+ *   partial, new, complete, reviewing, approved, active,
+ *   suspended, declined, closed, duplicate
+ *
+ * There is no "onboarded" or "ready-to-rent" status. `approved` is the
+ * approval. `active` is the operating application status (the portal's
+ * onboarded driver, including a row marked active when public.rentals is
+ * still empty). Readiness "decision_ready" is not approval. Vehicle
+ * rental-ready is a car, not a driver.
+ */
+export const APPROVED_DRIVER_STATUSES = ["approved", "active"] as const;
+
+export type ExpiryScope = "renting" | "approved";
+
+export function isApprovedDriverStatus(status: string | null | undefined): boolean {
+  const value = (status ?? "").toLowerCase();
+  return (APPROVED_DRIVER_STATUSES as readonly string[]).includes(value);
+}
+
+/** Renting Now is an active rentals row. Approved Drivers is that plus approved/active applications. */
+export function expiryScopes(input: { hasActiveRental: boolean; status: string | null | undefined }): ExpiryScope[] {
+  const scopes: ExpiryScope[] = [];
+  if (input.hasActiveRental) scopes.push("renting");
+  if (input.hasActiveRental || isApprovedDriverStatus(input.status)) scopes.push("approved");
+  return scopes;
+}
+
+/**
+ * Prefer Renting Now when that list has anyone. When it is empty, use
+ * Approved Drivers — including when both lists are empty.
+ */
+export function defaultExpiryScope(rentingCount: number, _approvedCount: number): ExpiryScope {
+  if (rentingCount > 0) return "renting";
+  return "approved";
+}
+
 export const LICENSE_DOCUMENT_CATEGORIES = ["license_front", "license_back"] as const;
 export const INSURANCE_DOCUMENT_CATEGORIES = ["insurance"] as const;
 export const RIDESHARE_DOCUMENT_CATEGORIES = ["gig_profile", "trip_history"] as const;
