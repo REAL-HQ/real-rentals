@@ -784,6 +784,7 @@ function Admin() {
               <BookingsPanel
                 externalSearch={globalSearch}
                 openId={urlRecordId}
+                canViewConversion={tierAllows(tier, "manager")}
                 listState={{
                   q: search?.q,
                   phase: search?.phase,
