@@ -331,6 +331,51 @@ export type Database = {
           },
         ]
       }
+      application_recovery_attempts: {
+        Row: {
+          application_id: string
+          created_at: string
+          finished_at: string | null
+          id: string
+          provider_id: string | null
+          status: string
+          token_id: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          provider_id?: string | null
+          status?: string
+          token_id?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          provider_id?: string | null
+          status?: string
+          token_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_recovery_attempts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_recovery_attempts_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "application_resume_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_resume_tokens: {
         Row: {
           application_id: string
@@ -4424,8 +4469,8 @@ export type Database = {
           card_last4: string | null
           card_on_file_at: string | null
           created_at: string
-          deposit_amount: number
-          deposit_held: boolean
+          deposit_amount: number | null
+          deposit_held: boolean | null
           deposit_notes: string | null
           deposit_refund_amount: number | null
           deposit_settled_at: string | null
@@ -4455,8 +4500,8 @@ export type Database = {
           card_last4?: string | null
           card_on_file_at?: string | null
           created_at?: string
-          deposit_amount?: number
-          deposit_held?: boolean
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
           deposit_notes?: string | null
           deposit_refund_amount?: number | null
           deposit_settled_at?: string | null
@@ -4486,8 +4531,8 @@ export type Database = {
           card_last4?: string | null
           card_on_file_at?: string | null
           created_at?: string
-          deposit_amount?: number
-          deposit_held?: boolean
+          deposit_amount?: number | null
+          deposit_held?: boolean | null
           deposit_notes?: string | null
           deposit_refund_amount?: number | null
           deposit_settled_at?: string | null
