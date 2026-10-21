@@ -27,7 +27,12 @@ import {
 import { fmtDate } from "@/lib/date-format";
 import { EXPENSE_RECEIPT_GAPS_ENABLED } from "@/lib/expense-receipt-gaps-flag";
 import { listExpenseReceiptGaps, type ExpenseReceiptGapsResult } from "@/lib/expense-receipt-gaps.functions";
-import { easternGapWindow, monthLabel } from "@/lib/expense-receipt-gaps";
+import {
+  MISSING_RECEIPTS_UNREAD,
+  easternGapWindow,
+  easternLedgerRange,
+  monthLabel,
+} from "@/lib/expense-receipt-gaps";
 
 // Expenses and per-vehicle P&L.
 //
@@ -44,7 +49,12 @@ function money2(n: number): string {
 
 type VehicleOption = { id: string; label: string };
 
-/** First and last day of the month, N months back from now. */
+/**
+ * Browser-local first and last day, then UTC dates via toISOString.
+ * P&L and the ledger use this while receipt gaps are off.
+ * The receipt-gap ledger uses easternLedgerRange instead, because a local
+ * Date near midnight can shift a day when it is written as UTC.
+ */
 function monthRange(monthsBack: number): { from: string; to: string } {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
@@ -126,11 +136,14 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
       ) : (
-        EXPENSE_RECEIPT_GAPS_ENABLED ? (
-          <MissingReceiptLedger vehicles={vehicles} period={period} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
-        ) : (
-          <Ledger vehicles={vehicles} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
-        )
+        <Ledger
+          vehicles={vehicles}
+          period={period}
+          from={range.from}
+          to={range.to}
+          autoOpenAdd={autoOpenAdd}
+          receiptGaps={EXPENSE_RECEIPT_GAPS_ENABLED}
+        />
       )}
     </div>
   );
@@ -271,41 +284,111 @@ function Stat({
 
 function Ledger({
   vehicles,
+  period,
   from,
   to,
   autoOpenAdd,
+  receiptGaps,
 }: {
   vehicles: VehicleOption[];
+  period: string;
   from: string | null;
   to: string | null;
   autoOpenAdd?: boolean;
+  receiptGaps: boolean;
 }) {
   const load = useServerFn(listExpenses);
+  const loadGaps = useServerFn(listExpenseReceiptGaps);
   const del = useServerFn(deleteExpense);
   const [rows, setRows] = useState<Expense[]>([]);
+  const [gaps, setGaps] = useState<ExpenseReceiptGapsResult | null>(null);
+  const [gapError, setGapError] = useState<string | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [missingOnly, setMissingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(!!autoOpenAdd);
   const [vehicleFilter, setVehicleFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const showGaps = receiptGaps && missingOnly;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await load({
-        data: {
-          vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
-          category: categoryFilter,
-          from: from ?? undefined,
-          to: to ?? undefined,
-        },
-      });
-      setRows(res);
+      if (showGaps) {
+        const window = easternGapWindow(gapPeriod(period), new Date());
+        if (!window) {
+          setGapError(MISSING_RECEIPTS_UNREAD);
+          setLedgerError(null);
+          setGaps(null);
+          setRows([]);
+          toast.error(MISSING_RECEIPTS_UNREAD);
+          return;
+        }
+        const res = await loadGaps({
+          data: {
+            category: categoryFilter,
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            from: window.from ?? undefined,
+            to: window.to ?? undefined,
+          },
+        });
+        setGapError(null);
+        setLedgerError(null);
+        setGaps(res);
+        setRows([]);
+      } else if (receiptGaps) {
+        const bounds = easternLedgerRange(gapPeriod(period), new Date());
+        if (!bounds) {
+          setLedgerError("Could not load expenses.");
+          setGapError(null);
+          setGaps(null);
+          setRows([]);
+          toast.error("Could not load expenses.");
+          return;
+        }
+        const res = await load({
+          data: {
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            category: categoryFilter,
+            from: bounds.from ?? undefined,
+            to: bounds.to ?? undefined,
+          },
+        });
+        setLedgerError(null);
+        setGapError(null);
+        setGaps(null);
+        setRows(res);
+      } else {
+        const res = await load({
+          data: {
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            category: categoryFilter,
+            from: from ?? undefined,
+            to: to ?? undefined,
+          },
+        });
+        setRows(res);
+      }
     } catch {
-      toast.error("Could not load expenses.");
+      if (showGaps) {
+        setGapError(MISSING_RECEIPTS_UNREAD);
+        setLedgerError(null);
+        setGaps(null);
+        setRows([]);
+        toast.error(MISSING_RECEIPTS_UNREAD);
+      } else if (receiptGaps) {
+        setLedgerError("Could not load expenses.");
+        setGapError(null);
+        setGaps(null);
+        setRows([]);
+        toast.error("Could not load expenses.");
+      } else {
+        toast.error("Could not load expenses.");
+      }
     } finally {
       setLoading(false);
     }
-  }, [load, vehicleFilter, categoryFilter, from, to]);
+  }, [load, loadGaps, showGaps, receiptGaps, period, vehicleFilter, categoryFilter, from, to]);
 
   useEffect(() => {
     void refresh();
@@ -347,9 +430,23 @@ function Ledger({
             </option>
           ))}
         </select>
-        <span className="text-sm text-muted-foreground">
-          {rows.length} item(s) · {money2(total)}
-        </span>
+        {receiptGaps && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={missingOnly}
+              onChange={(event) => setMissingOnly(event.target.checked)}
+            />
+            Missing Receipt
+          </label>
+        )}
+        {gapError || ledgerError ? null : (
+          <span className="text-sm text-muted-foreground">
+            {showGaps && gaps?.status === "ready"
+              ? `${gaps.total} Missing ${gaps.total === 1 ? "Receipt" : "Receipts"}`
+              : `${rows.length} item(s) · ${money2(total)}`}
+          </span>
+        )}
         <button
           onClick={() => setShowForm(true)}
           disabled={vehicles.length === 0}
@@ -360,8 +457,62 @@ function Ledger({
         </button>
       </div>
 
+      {showGaps && gaps?.status === "ready" && gaps.counts.length > 0 && (
+        <ul className="text-sm text-muted-foreground">
+          {gaps.counts.map((count) => (
+            <li key={`${count.month}-${count.category}`}>
+              {monthLabel(count.month)} · {categoryLabel(count.category)} · {count.count}
+            </li>
+          ))}
+        </ul>
+      )}
+      {showGaps && gaps?.status === "capped" && (
+        <p className="text-sm text-muted-foreground">{gaps.reason}</p>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : showGaps && gapError ? (
+        <p className="text-sm text-muted-foreground">{gapError}</p>
+      ) : showGaps && gaps?.status === "ready" && gaps.rows.length > 0 ? (
+        <AdminTableScroll className="rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-[#FAFAFB] text-left">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Date</th>
+                <th className="px-4 py-2.5 font-medium">Vehicle</th>
+                <th className="px-4 py-2.5 font-medium">Category</th>
+                <th className="px-4 py-2.5 font-medium">Description</th>
+                <th className="px-4 py-2.5 font-medium text-right">Amount</th>
+                <th className="px-4 py-2.5 font-medium">Receipt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gaps.rows.map((row) => (
+                <tr key={row.id} className="border-t border-border">
+                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                    {/^\d{4}-\d{2}-\d{2}$/.test(row.incurredOn) ? fmtDate(row.incurredOn + "T00:00:00") : "Unknown"}
+                  </td>
+                  <td className="px-4 py-3">{row.vehicleLabel}</td>
+                  <td className="px-4 py-3">{categoryLabel(row.category)}</td>
+                  <td className="px-4 py-3">{row.description}</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium">{row.amountText}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">Missing</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </AdminTableScroll>
+      ) : showGaps && gaps?.status === "capped" ? null : showGaps && gaps?.status === "ready" && gaps.rows.length === 0 ? (
+        <EmptyState
+          icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Missing Receipts"
+          hint="Every expense in this period has a receipt on file."
+        />
+      ) : showGaps ? (
+        <p className="text-sm text-muted-foreground">{MISSING_RECEIPTS_UNREAD}</p>
+      ) : ledgerError ? (
+        <p className="text-sm text-muted-foreground">{ledgerError}</p>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
@@ -449,264 +600,6 @@ function gapPeriod(id: string): "this_month" | "last_3" | "last_12" | "all" {
 
 function categoryLabel(value: string): string {
   return EXPENSE_CATEGORIES.find((item) => item.value === value)?.label ?? (value === "unknown" ? "Unknown" : value);
-}
-
-function MissingReceiptLedger({
-  vehicles,
-  period,
-  from,
-  to,
-  autoOpenAdd,
-}: {
-  vehicles: VehicleOption[];
-  period: string;
-  from: string | null;
-  to: string | null;
-  autoOpenAdd?: boolean;
-}) {
-  const load = useServerFn(listExpenses);
-  const loadGaps = useServerFn(listExpenseReceiptGaps);
-  const del = useServerFn(deleteExpense);
-  const [rows, setRows] = useState<Expense[]>([]);
-  const [gaps, setGaps] = useState<ExpenseReceiptGapsResult | null>(null);
-  const [missingOnly, setMissingOnly] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(!!autoOpenAdd);
-  const [vehicleFilter, setVehicleFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const showGaps = EXPENSE_RECEIPT_GAPS_ENABLED && missingOnly;
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (showGaps) {
-        const window = easternGapWindow(gapPeriod(period), new Date());
-        if (!window) {
-          toast.error("Could not load expenses.");
-          setGaps(null);
-          return;
-        }
-        const res = await loadGaps({
-          data: {
-            category: categoryFilter,
-            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
-            from: window.from ?? undefined,
-            to: window.to ?? undefined,
-          },
-        });
-        setGaps(res);
-        setRows([]);
-      } else {
-        setGaps(null);
-        const res = await load({
-          data: {
-            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
-            category: categoryFilter,
-            from: from ?? undefined,
-            to: to ?? undefined,
-          },
-        });
-        setRows(res);
-      }
-    } catch {
-      toast.error("Could not load expenses.");
-    } finally {
-      setLoading(false);
-    }
-  }, [load, loadGaps, showGaps, period, vehicleFilter, categoryFilter, from, to]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const total = rows.reduce((s, r) => s + r.amount, 0);
-
-  async function onDelete(r: Expense) {
-    if (!confirm(`Delete this ${r.category} expense of ${money2(r.amount)}?\n\n${r.description}`)) return;
-    await del({ data: { id: r.id } });
-    toast.success("Deleted");
-    void refresh();
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
-        <select
-          value={vehicleFilter}
-          onChange={(e) => setVehicleFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
-        >
-          <option value="all">All Vehicles</option>
-          {vehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
-        >
-          <option value="all">All Categories</option>
-          {EXPENSE_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-        {EXPENSE_RECEIPT_GAPS_ENABLED && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={missingOnly}
-              onChange={(event) => setMissingOnly(event.target.checked)}
-            />
-            Missing Receipt
-          </label>
-        )}
-        <span className="text-sm text-muted-foreground">
-          {showGaps && gaps?.status === "ready"
-            ? `${gaps.total} Missing ${gaps.total === 1 ? "Receipt" : "Receipts"}`
-            : `${rows.length} item(s) · ${money2(total)}`}
-        </span>
-        <button
-          onClick={() => setShowForm(true)}
-          disabled={vehicles.length === 0}
-          title={vehicles.length === 0 ? "Add a vehicle first" : undefined}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          <Plus className="w-4 h-4" /> Record Expense
-        </button>
-      </div>
-
-      {showGaps && gaps?.status === "ready" && gaps.counts.length > 0 && (
-        <ul className="text-sm text-muted-foreground">
-          {gaps.counts.map((count) => (
-            <li key={`${count.month}-${count.category}`}>
-              {monthLabel(count.month)} · {categoryLabel(count.category)} · {count.count}
-            </li>
-          ))}
-        </ul>
-      )}
-      {showGaps && gaps?.status === "capped" && (
-        <p className="text-sm text-muted-foreground">{gaps.reason}</p>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : showGaps ? (
-        gaps?.status === "ready" && gaps.rows.length > 0 ? (
-          <AdminTableScroll className="rounded-xl border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-[#FAFAFB] text-left">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Date</th>
-                  <th className="px-4 py-2.5 font-medium">Vehicle</th>
-                  <th className="px-4 py-2.5 font-medium">Category</th>
-                  <th className="px-4 py-2.5 font-medium">Description</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Amount</th>
-                  <th className="px-4 py-2.5 font-medium">Receipt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gaps.rows.map((row) => (
-                  <tr key={row.id} className="border-t border-border">
-                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                      {/^\d{4}-\d{2}-\d{2}$/.test(row.incurredOn) ? fmtDate(row.incurredOn + "T00:00:00") : "Unknown"}
-                    </td>
-                    <td className="px-4 py-3">{row.vehicleLabel}</td>
-                    <td className="px-4 py-3">{categoryLabel(row.category)}</td>
-                    <td className="px-4 py-3">{row.description}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">{row.amountText}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">Missing</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </AdminTableScroll>
-        ) : gaps?.status === "capped" ? null : (
-          <EmptyState
-            icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
-            title="No Missing Receipts"
-            hint="Every expense in this period has a receipt on file."
-          />
-        )
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Expenses Recorded"
-          hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
-        />
-      ) : (
-        <AdminTableScroll className="rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-[#FAFAFB] text-left">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Date</th>
-                <th className="px-4 py-2.5 font-medium">Vehicle</th>
-                <th className="px-4 py-2.5 font-medium">Category</th>
-                <th className="px-4 py-2.5 font-medium">Description</th>
-                <th className="px-4 py-2.5 font-medium text-right">Amount</th>
-                <th className="px-4 py-2.5 font-medium">Receipt</th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-border">
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                    {fmtDate(r.incurred_on + "T00:00:00")}
-                  </td>
-                  <td className="px-4 py-3">{r.vehicle_label}</td>
-                  <td className="px-4 py-3 capitalize">
-                    {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
-                  </td>
-                  <td className="px-4 py-3">
-                    {r.description}
-                    {r.vendor_name && (
-                      <span className="block text-xs text-muted-foreground">{r.vendor_name}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium">{money2(r.amount)}</td>
-                  <td className="px-4 py-3">
-                    {r.receipt_url ? (
-                      <a
-                        href={r.receipt_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-[#D03020] underline"
-                      >
-                        <Paperclip className="w-3.5 h-3.5" /> View
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => onDelete(r)} className="text-muted-foreground hover:text-[#D03020]">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </AdminTableScroll>
-      )}
-
-      {showForm && (
-        <ExpenseForm
-          vehicles={vehicles}
-          onClose={() => setShowForm(false)}
-          onSaved={() => {
-            setShowForm(false);
-            void refresh();
-          }}
-        />
-      )}
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------ form

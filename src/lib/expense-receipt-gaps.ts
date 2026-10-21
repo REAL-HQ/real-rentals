@@ -9,6 +9,16 @@ export const EXPENSE_RECEIPT_GAP_LIMIT = 1000;
 export const EXPENSE_RECEIPT_GAP_CAP =
   "Missing receipt rows passed the page cap. The count is withheld.";
 
+export const MISSING_RECEIPTS_UNREAD = "Missing receipts could not be read.";
+
+/**
+ * Same missing paths as receiptOnFile: null, empty, or whitespace only.
+ * PostgREST `match` is POSIX `[[:space:]]`, which covers the spaces trim() removes.
+ * The handler still drops any row receiptOnFile would keep.
+ */
+export const MISSING_RECEIPT_PATH_OR =
+  'receipt_path.is.null,receipt_path.eq.,receipt_path.match."^[[:space:]]+$"';
+
 const EASTERN = "America/New_York";
 
 const MONTHS = [
@@ -80,6 +90,38 @@ export function easternGapWindow(
   const end = monthStart(year * 12 + month);
   if (!start || !end) return null;
   return { from: start, to: end };
+}
+
+/**
+ * Inclusive dates for listExpenses, which uses lte on `to`.
+ * The gap query keeps easternGapWindow's exclusive end.
+ * All Time has neither bound. A bad clock returns null.
+ */
+export function easternLedgerRange(
+  period: GapPeriod,
+  now: Date,
+): { from: string | null; to: string | null } | null {
+  const window = easternGapWindow(period, now);
+  if (!window) return null;
+  if (window.to == null) return { from: null, to: null };
+  const through = previousDate(window.to);
+  if (!through) return null;
+  return { from: window.from, to: through };
+}
+
+function previousDate(ymd: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const [year, month, day] = ymd.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  date.setUTCDate(date.getUTCDate() - 1);
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export function monthLabel(month: string): string {

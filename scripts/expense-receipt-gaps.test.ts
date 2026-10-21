@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { EXPENSE_RECEIPT_GAPS_ENABLED } from "../src/lib/expense-receipt-gaps-flag";
 import {
   EXPENSE_RECEIPT_GAP_LIMIT,
+  MISSING_RECEIPT_PATH_OR,
+  MISSING_RECEIPTS_UNREAD,
   easternGapWindow,
+  easternLedgerRange,
   easternMonth,
   formatExpenseAmount,
   monthLabel,
@@ -21,6 +24,9 @@ describe("missing receipt gaps", () => {
     expect(receiptOnFile("")).toBe(false);
     expect(receiptOnFile("  ")).toBe(false);
     expect(receiptOnFile("receipts/oil.pdf")).toBe(true);
+    expect(MISSING_RECEIPT_PATH_OR).toBe(
+      'receipt_path.is.null,receipt_path.eq.,receipt_path.match."^[[:space:]]+$"',
+    );
   });
 
   it("uses the Eastern month around midnight", () => {
@@ -31,6 +37,9 @@ describe("missing receipt gaps", () => {
     const three = easternGapWindow("last_3", new Date("2026-10-21T16:00:00Z"));
     expect(three).toEqual({ from: "2026-08-01", to: "2026-11-01" });
     expect(easternGapWindow("all", new Date("2026-10-21T16:00:00Z"))).toEqual({ from: null, to: null });
+    const ledger = easternLedgerRange("this_month", new Date("2026-10-21T16:00:00Z"));
+    expect(ledger).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+    expect(easternLedgerRange("all", new Date("2026-10-21T16:00:00Z"))).toEqual({ from: null, to: null });
   });
 
   it("counts missing receipts by month and category and skips a path that is on file", () => {
@@ -82,11 +91,27 @@ describe("missing receipt gaps", () => {
     expect(role).toBeGreaterThan(gate);
     expect(read).toBeGreaterThan(role);
     expect(source).toContain(".limit(EXPENSE_RECEIPT_GAP_LIMIT + 1)");
-    expect(source).toContain("receipt_path.is.null,receipt_path.eq.");
+    expect(source).toContain(".or(MISSING_RECEIPT_PATH_OR)");
+    expect(source).toContain("throw new Error(MISSING_RECEIPTS_UNREAD)");
+    expect(MISSING_RECEIPTS_UNREAD).toBe("Missing receipts could not be read.");
     expect(source).not.toMatch(/\.(insert|update|upsert|delete|rpc)\s*\(/);
     const panel = readFileSync(new URL("../src/components/admin/ExpensesPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("EXPENSE_RECEIPT_GAPS_ENABLED");
+    expect(panel).toContain("receiptGaps={EXPENSE_RECEIPT_GAPS_ENABLED}");
+    expect(panel).not.toContain("function MissingReceiptLedger");
     expect(panel).toContain("Missing Receipt");
+    expect(panel).toContain("setRows([])");
+    expect(panel).toContain("setGaps(null)");
+    expect(panel).toContain("easternLedgerRange");
+    const allClear = panel.indexOf('title="No Missing Receipts"');
+    const readyEmpty = panel.lastIndexOf('gaps?.status === "ready" && gaps.rows.length === 0', allClear);
+    expect(readyEmpty).toBeGreaterThan(-1);
+    expect(panel.indexOf("showGaps && gapError")).toBeGreaterThan(-1);
+    expect(panel.indexOf("showGaps && gapError")).toBeLessThan(allClear);
+    const monthRangeStart = panel.indexOf("function monthRange");
+    const monthRange = panel.slice(monthRangeStart, panel.indexOf("const PERIODS", monthRangeStart));
+    expect(monthRange).toContain("getFullYear");
+    expect(monthRange).toContain("toISOString");
+    expect(monthRange).not.toContain("America/New_York");
     expect(panel).not.toMatch(/text-transform|uppercase/);
     const admin = readFileSync(new URL("../src/routes/admin.tsx", import.meta.url), "utf8");
     expect(admin).toContain('tab === "expenses" && <ExpensesPanel');

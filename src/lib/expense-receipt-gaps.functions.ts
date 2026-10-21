@@ -5,6 +5,8 @@ import { EXPENSE_RECEIPT_GAPS_ENABLED, EXPENSE_RECEIPT_GAPS_OFF } from "./expens
 import {
   EXPENSE_RECEIPT_GAP_CAP,
   EXPENSE_RECEIPT_GAP_LIMIT,
+  MISSING_RECEIPT_PATH_OR,
+  MISSING_RECEIPTS_UNREAD,
   formatExpenseAmount,
   receiptOnFile,
   summarizeReceiptGaps,
@@ -48,7 +50,7 @@ export const listExpenseReceiptGaps = createServerFn({ method: "POST" })
     let query = supabaseAdmin
       .from("vehicle_expenses")
       .select("id,vehicle_id,category,description,amount,incurred_on,receipt_path")
-      .or("receipt_path.is.null,receipt_path.eq.")
+      .or(MISSING_RECEIPT_PATH_OR)
       .order("incurred_on", { ascending: false })
       .order("id", { ascending: true })
       .limit(EXPENSE_RECEIPT_GAP_LIMIT + 1);
@@ -57,7 +59,7 @@ export const listExpenseReceiptGaps = createServerFn({ method: "POST" })
     if (data.from) query = query.gte("incurred_on", data.from);
     if (data.to) query = query.lt("incurred_on", data.to);
     const { data: loaded, error } = await query;
-    if (error) throw new Error("Missing receipts could not be read.");
+    if (error) throw new Error(MISSING_RECEIPTS_UNREAD);
     const raw = loaded ?? [];
     const summary = summarizeReceiptGaps(
       raw.map((row) => ({
@@ -73,7 +75,7 @@ export const listExpenseReceiptGaps = createServerFn({ method: "POST" })
     for (let index = 0; index < vehicleIds.length; index += 100) {
       const slice = vehicleIds.slice(index, index + 100);
       const vehicles = await supabaseAdmin.from("vehicles").select("id,year,make,model,license_plate").in("id", slice);
-      if (vehicles.error) throw new Error("Missing receipts could not be read.");
+      if (vehicles.error) throw new Error(MISSING_RECEIPTS_UNREAD);
       for (const vehicle of vehicles.data ?? []) labels.set(String(vehicle.id), vehicleName(vehicle));
     }
     return {
