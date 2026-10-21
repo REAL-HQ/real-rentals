@@ -11,6 +11,8 @@ describe("Phase 2 no-live-I/O structural boundary", () => {
     const text = readFileSync(new URL("../src/lib/unified-finance.functions.ts", import.meta.url), "utf8");
     expect(text.match(/\.from\(/g)).toHaveLength(1);
     expect(text).toContain('.from("user_roles")');
-    expect(text).not.toMatch(/buildMock|process\.env|import\.meta\.env|enabled|synthetic/i);
+    expect(text).toContain("if (!UNIFIED_FINANCE_ENDPOINT_ENABLED)");
+    expect(text).not.toMatch(/buildMock|process\.env|import\.meta\.env|synthetic/i);
+    expect(text.replaceAll("UNIFIED_FINANCE_ENDPOINT_ENABLED", "")).not.toMatch(/enabled/i);
   });
 });

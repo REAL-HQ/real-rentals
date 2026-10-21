@@ -89,7 +89,7 @@ describe('injected read-only provider event evidence',()=>{
 
 describe('release remains isolated',()=>{
   it('endpoint stays disabled for authorized users',()=>{expect(disabledUnifiedFinanceResponse('owner',['admin'])).toEqual({status:'disabled',report:null});expect(disabledUnifiedFinanceResponse('manager',['team'])).toEqual({status:'disabled',report:null});});
-  it('endpoint does not wire adapters or financial reads',()=>{const s=readFileSync('src/lib/unified-finance.functions.ts','utf8');expect(s).not.toMatch(/database-transport|provider-events|createStripeClient|buildMock/);expect(s.match(/\.from\(/g)).toHaveLength(1);expect(s).toContain('.from("user_roles")');});
+  it('endpoint gates live reads behind the compile-time constant',()=>{const s=readFileSync('src/lib/unified-finance.functions.ts','utf8');expect(s).not.toMatch(/database-transport|provider-events|createStripeClient|buildMock/);expect(s.match(/\.from\(/g)).toHaveLength(1);expect(s).toContain('.from("user_roles")');expect(s).toContain('if (!UNIFIED_FINANCE_ENDPOINT_ENABLED)');expect(s).toContain('./unified-finance-live.server');});
   it('new adapters cannot invoke mutations or instantiate credentials',()=>{for(const path of ['database-transport','provider-events']){const s=readFileSync(`src/lib/unified-finance-${path}.server.ts`,'utf8');expect(s).not.toMatch(/\.(insert|upsert|update|delete|rpc|create|cancel|capture|refund)\s*\(/);expect(s).not.toMatch(/process\.env|supabaseAdmin|fetch\s*\(|createStripeClient\s*\(/);}});
 });
 

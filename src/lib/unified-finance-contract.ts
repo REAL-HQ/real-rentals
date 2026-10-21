@@ -39,7 +39,19 @@ export type UnifiedFinanceReport = {
   attributionComplete: AdapterResult["attributionComplete"];
   issues: string[]; complete: boolean;
 };
-export type UnifiedFinanceResponse = { status: "disabled"; report: null } | { status: "ready"; report: UnifiedFinanceReport };
+/** Existing per-vehicle profitability, in cents. Separate from unified event totals. */
+export type VehicleProfitLine = {
+  vehicleId: string;
+  label: string;
+  revenueCents: number;
+  expenseCents: number;
+  maintenanceCents: number;
+  netCents: number;
+};
+export type VehicleProfitSection = { complete: boolean; rows: VehicleProfitLine[]; reasons: string[] };
+export type UnifiedFinanceResponse =
+  | { status: "disabled"; report: null }
+  | { status: "ready"; report: UnifiedFinanceReport; vehicles: VehicleProfitSection };
 export type FinancePage = { rows: FinanceSourceRow[]; nextCursor: string | null };
 export type FinancePageReader = (cursor: string | null, signal?: AbortSignal) => Promise<FinancePage>;
 export type FinanceReadPlan = Partial<Record<FinanceSource, FinancePageReader>>;
