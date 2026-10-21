@@ -48,6 +48,7 @@ import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
 import { VehicleTimeline } from "./VehicleTimeline";
+import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { usStateOptions } from "@/lib/us-states";
@@ -563,6 +564,10 @@ function Overview({
           <Row label="Service" value={<button onClick={() => onOpenTab("service")} className="text-[13px] font-medium underline-offset-2 hover:underline">View Service</button>} />
           <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
           <Row label="Rentals to Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
+        </SectionCard>
+
+        <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory vehicleId={v.id} />
         </SectionCard>
 
         {p.financials && (
