@@ -20,6 +20,11 @@
 -- created_at is not an anon insert column. The trigger stamps it so a
 -- backdated value cannot fall outside the hour. Anon is not granted the column.
 --
+-- The trigger is BEFORE INSERT FOR EACH ROW and does not look at the role.
+-- It overwrites created_at on every insert, including service_role and staff,
+-- and the same five-row limit applies to those roles. A staff or service
+-- insert cannot backdate created_at and cannot open a second bucket.
+--
 -- Applying this trigger refuses an insert when that email already has 5 rows
 -- of any source in the last hour.
 --
@@ -50,9 +55,11 @@ BEGIN
 END;
 $$;
 
--- EXECUTE only lets the inserting role fire this trigger. It is not a
--- SELECT grant. The count runs as the function owner because the function
--- is security definer, and anon still has no SELECT on waitlist.
+-- PostgreSQL grants EXECUTE on a new function to PUBLIC. That is not limited
+-- to the inserting role, and it is not a SELECT grant. Remove the default,
+-- then grant EXECUTE only so anon and authenticated can fire the trigger.
+-- The count still runs as the function owner.
+REVOKE ALL ON FUNCTION public.waitlist_coming_soon_email_limit() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.waitlist_coming_soon_email_limit() TO anon, authenticated;
 
 DROP TRIGGER IF EXISTS waitlist_coming_soon_email_limit ON public.waitlist;

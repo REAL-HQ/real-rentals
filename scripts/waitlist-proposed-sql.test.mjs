@@ -346,15 +346,28 @@ await catalog.close();
 const [landingApply, landingRollback] = landingSql.split("-- ===== ROLLBACK =====");
 const landingApplySql = sqlStatements(landingApply);
 const landingRollbackSql = sqlStatements(landingRollback);
-check(landingApplySql.length === 4 && landingRollbackSql.length === 2, "the landing length file has an apply section and a rollback section");
+const landingAlters = landingApplySql.filter((statement) => statement.startsWith("ALTER"));
+const landingCounts = landingApplySql.filter((statement) => statement.startsWith("SELECT"));
+check(
+  landingApplySql[0] === "BEGIN"
+    && landingApplySql.at(-1) === "COMMIT"
+    && landingCounts.length === 2
+    && landingAlters.length === 4
+    && landingRollbackSql.length === 2,
+  "the landing length file wraps apply in a transaction and counts over-long rows",
+);
 check(
   landingSql.includes("CHECK (landing_page IS NULL OR length(landing_page) <= 500) NOT VALID")
     && landingSql.includes("CHECK (referrer IS NULL OR length(referrer) <= 500) NOT VALID")
+    && landingSql.includes("length(landing_page) > 500")
+    && landingSql.includes("length(referrer) > 500")
+    && landingSql.includes("left(landing_page, 500)")
+    && landingSql.includes("blocks updates of existing")
     && landingSql.includes("VALIDATE CONSTRAINT applications_landing_page_length")
     && landingSql.includes("VALIDATE CONSTRAINT applications_referrer_length")
     && landingSql.includes("DROP CONSTRAINT IF EXISTS applications_landing_page_length")
     && landingSql.includes("DROP CONSTRAINT IF EXISTS applications_referrer_length"),
-  "landing_page and referrer are checked at 500 characters, then the checks can be dropped",
+  "landing_page and referrer are checked at 500 characters, with a remediation note, then the checks can be dropped",
 );
 
 const landing = new PGlite();
@@ -369,8 +382,8 @@ await landing.exec(`
 const longLanding = "L".repeat(501);
 const longReferrer = "R".repeat(501);
 await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${longLanding}', '${longReferrer}')`);
-await landing.exec(`${landingApplySql[0]};`);
-await landing.exec(`${landingApplySql[2]};`);
+await landing.exec(`${landingAlters[0]};`);
+await landing.exec(`${landingAlters[2]};`);
 const unvalidated = await landing.query(`
   SELECT conname, convalidated
   FROM pg_constraint
@@ -383,21 +396,21 @@ check(
 );
 let validateLanding = "";
 try {
-  await landing.exec(`${landingApplySql[1]};`);
+  await landing.exec(`${landingAlters[1]};`);
 } catch (error) {
   validateLanding = String(error?.message ?? error);
 }
 check(/applications_landing_page_length/.test(validateLanding), "VALIDATE refuses the existing long landing_page");
 let validateReferrer = "";
 try {
-  await landing.exec(`${landingApplySql[3]};`);
+  await landing.exec(`${landingAlters[3]};`);
 } catch (error) {
   validateReferrer = String(error?.message ?? error);
 }
 check(/applications_referrer_length/.test(validateReferrer), "VALIDATE refuses the existing long referrer");
 await landing.exec(`UPDATE public.applications SET landing_page = left(landing_page, 500), referrer = left(referrer, 500)`);
-await landing.exec(`${landingApplySql[1]};`);
-await landing.exec(`${landingApplySql[3]};`);
+await landing.exec(`${landingAlters[1]};`);
+await landing.exec(`${landingAlters[3]};`);
 const validated = await landing.query(`
   SELECT bool_and(convalidated) AS ok
   FROM pg_constraint
@@ -430,6 +443,45 @@ const dropped = await landing.query(`
 check(Number(dropped.rows[0]?.n) === 0, "the landing rollback drops both checks");
 await landing.exec(`INSERT INTO public.applications (landing_page, referrer) VALUES ('${longLanding}', '${longReferrer}')`);
 check(true, "a long landing_page inserts again after the rollback");
+const counted = await landing.query(`
+  SELECT landing_page_over_500.n AS landing_page_over_500, referrer_over_500.n AS referrer_over_500
+  FROM (${landingCounts[0]}) AS landing_page_over_500(n),
+       (${landingCounts[1]}) AS referrer_over_500(n)
+`);
+check(
+  Number(counted.rows[0]?.landing_page_over_500) === 1 && Number(counted.rows[0]?.referrer_over_500) === 1,
+  "the pre-flight counts the over-long landing_page and referrer rows",
+);
 await landing.close();
+
+const rolled = new PGlite();
+await rolled.exec(`
+  CREATE SCHEMA IF NOT EXISTS public;
+  CREATE TABLE public.applications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    landing_page text,
+    referrer text
+  );
+  INSERT INTO public.applications (landing_page) VALUES ('${"L".repeat(501)}');
+`);
+let applyFailed = "";
+try {
+  await rolled.exec(landingApply);
+} catch (error) {
+  applyFailed = String(error?.message ?? error);
+}
+check(/applications_landing_page_length/.test(applyFailed), "VALIDATE inside the apply transaction refuses the long row");
+try {
+  await rolled.exec("ROLLBACK");
+} catch {
+  // The failed statement already ended the transaction.
+}
+const leftBehind = await rolled.query(`
+  SELECT count(*)::int AS n
+  FROM pg_constraint
+  WHERE conname IN ('applications_landing_page_length', 'applications_referrer_length')
+`);
+check(Number(leftBehind.rows[0]?.n) === 0, "a failed VALIDATE does not leave a NOT VALID check behind");
+await rolled.close();
 
 console.log(`${passed} proposed waitlist SQL checks passed`);
