@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { getStripe, getStripeEnvironment } from '@/lib/stripe';
 import { createCardOnFileSession } from '@/lib/payments.functions';
-import { useResumeToken } from '@/lib/resume-token';
+import { CARD_TOKEN_KEY, useResumeToken } from '@/lib/resume-token';
 import { supabase } from '@/integrations/supabase/client';
 
 export const Route = createFileRoute('/card/$applicationId')({
@@ -25,8 +25,9 @@ export const Route = createFileRoute('/card/$applicationId')({
 function CardOnFilePage() {
   const { applicationId } = Route.useParams();
   const { t, status: returnStatus } = Route.useSearch();
-  // Same credential as /thank-you: take `t` out of the address bar and keep it for this tab.
-  const token = useResumeToken(t);
+  // Take `t` out of the address bar. The card token uses its own sessionStorage
+  // key, so this tab does not present it to /thank-you as a resume credential.
+  const token = useResumeToken(t, { storageKey: CARD_TOKEN_KEY });
   const [status, setStatus] = useState<'idle' | 'error' | 'done'>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sessionState, setSessionState] = useState<'unknown' | 'yes' | 'no'>('unknown');

@@ -380,6 +380,27 @@ try {
     );
     assert.equal(db.application_resume_tokens[0].revoked_at, null);
   });
+  await test("a card link is reused, refused by thank-you, and leaves the resume link live", async () => {
+    const resume = await tokens.issueResumeToken(globalThis.__rr.client, appId);
+    const card = await tokens.issueResumeToken(globalThis.__rr.client, appId, { purpose: "card" });
+    const again = await tokens.issueResumeToken(globalThis.__rr.client, appId, { purpose: "card" });
+    assert.equal(again, card);
+    assert.equal((await applications.openResumeLink({ data: { token: card } })).token, null);
+    await assert.rejects(tokens.resolveResumeToken(globalThis.__rr.client, card), /no longer valid/);
+    assert.equal(await tokens.resolveCardToken(globalThis.__rr.client, card), appId);
+    assert.equal(await tokens.resolveResumeToken(globalThis.__rr.client, resume), appId);
+    await assert.rejects(
+      applications.getApplicationForWizard({ data: { token: card } }),
+      /no longer valid/,
+    );
+    const cardRows = db.application_resume_tokens.filter((row) => row.purpose === "card");
+    assert.equal(cardRows.length, 1);
+    assert.equal(cardRows[0].revoked_at, null);
+    assert.equal(
+      db.application_resume_tokens.filter((row) => row.purpose !== "card" && row.revoked_at).length,
+      0,
+    );
+  });
   await test("database errors do not masquerade as successful identity reviews", async () => {
     globalThis.__rr.fail = "application_identity_reviews:insert";
     await assert.rejects(
