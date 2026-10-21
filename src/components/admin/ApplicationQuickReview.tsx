@@ -1,0 +1,124 @@
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { FileText } from "lucide-react";
+import { getApplicationQuickReview } from "@/lib/application-quick-review.functions";
+import type { QuickReview, QuickReviewDocument } from "@/lib/application-quick-review";
+
+/**
+ * Read-only. File links are the signed URLs already on the vault documents
+ * from adminListDriverDocuments. This component does not sign anything.
+ */
+export function ApplicationQuickReview({
+  applicationId,
+  documents,
+}: {
+  applicationId: string;
+  documents: { id: string; url: string | null }[];
+}) {
+  const load = useServerFn(getApplicationQuickReview);
+  const { data } = useQuery({
+    queryKey: ["application-quick-review", applicationId],
+    queryFn: () => load({ data: { applicationId } }),
+  });
+  if (!data?.show) return null;
+  return <ApplicationQuickReviewPanel review={data} documents={documents} />;
+}
+
+function isImage(doc: QuickReviewDocument): boolean {
+  return (doc.mimeType ?? "").startsWith("image/");
+}
+
+function ApplicationQuickReviewPanel({
+  review,
+  documents,
+}: {
+  review: QuickReview;
+  documents: { id: string; url: string | null }[];
+}) {
+  return (
+    <section className="rounded-2xl border border-[#EDEDF0] bg-white p-5 space-y-5">
+      <h3 className="text-[13px] font-semibold text-[#111114]">Application Quick Review</h3>
+
+      {review.fields.length > 0 ? (
+        <div>
+          <div className="text-[11px] font-semibold text-[#55555E]">Driver Info</div>
+          <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2">
+            {review.fields.map((field) => (
+              <div key={field.label} className="min-w-0">
+                <dt className="text-[10px] text-[#9A9AA3]">{field.label}</dt>
+                <dd className="text-[12px] text-[#111114] truncate">{field.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      {review.documents.length > 0 ? (
+        <div>
+          <div className="text-[11px] font-semibold text-[#55555E]">Documents</div>
+          <ul className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {review.documents.map((doc) => {
+              const url = documents.find((item) => item.id === doc.id)?.url || null;
+              const image = Boolean(url) && isImage(doc);
+              return (
+                <li key={doc.id} className="min-w-0">
+                  {url ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                      <span className="relative block aspect-[16/10] rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] overflow-hidden">
+                        {image ? (
+                          <img src={url} alt={doc.label} className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
+                            <FileText className="w-6 h-6" />
+                          </span>
+                        )}
+                      </span>
+                    </a>
+                  ) : (
+                    <span className="relative block aspect-[16/10] rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] overflow-hidden">
+                      <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
+                        <FileText className="w-6 h-6" />
+                      </span>
+                    </span>
+                  )}
+                  <div className="mt-1.5 text-[12px] font-medium text-[#111114] leading-tight">{doc.label}</div>
+                  {doc.fileName ? <div className="text-[11px] text-[#9A9AA3] truncate">{doc.fileName}</div> : null}
+                  {doc.expiryLabel ? <div className="text-[11px] text-[#8A6A00]">{doc.expiryLabel}</div> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {review.identity ? (
+        <div>
+          <div className="text-[12px] font-semibold text-[#111114]">{review.identity.label}</div>
+          {review.identity.detail ? <p className="mt-1 text-[12px] text-[#55555E]">{review.identity.detail}</p> : null}
+          {review.identity.submitted ? <p className="mt-1 text-[11px] text-[#9A9AA3]">{review.identity.submitted}</p> : null}
+        </div>
+      ) : null}
+
+      {review.esign ? (
+        <div>
+          <div className="text-[12px] font-semibold text-[#111114]">{review.esign.label}</div>
+          <p className="mt-1 text-[12px] text-[#55555E]">{review.esign.detail}</p>
+        </div>
+      ) : null}
+
+      {review.missing.length > 0 ? (
+        <div>
+          <div className="text-[11px] font-semibold text-[#55555E]">Still Needed</div>
+          <ul className="mt-2 divide-y divide-[#EDEDF0]">
+            {review.missing.map((item) => (
+              <li key={item.id} className="flex items-baseline justify-between gap-3 py-2">
+                <span className="text-[12px] font-medium text-[#111114]">{item.label}</span>
+                {item.detail ? <span className="text-[12px] text-[#55555E] text-right">{item.detail}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
