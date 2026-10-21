@@ -74,6 +74,15 @@ import {
   Loader2,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
+import {
+  cardEmailHref,
+  cardLinkFresh,
+  cardTextHref,
+  forgetCachedCardLink,
+  readCachedCardLink,
+  rememberCachedCardLink,
+  type CachedCardLink,
+} from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
@@ -2793,6 +2802,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
         setBusy(true);
         try {
           const res = await reissue({ data: { id: applicationId } });
+          forgetCardOnFileLink(applicationId);
           await navigator.clipboard.writeText(res.url).catch(() => {});
           toast.success(
             res.revoked
@@ -2811,31 +2821,62 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   );
 }
 
-const cardLinkCache = new Map<string, string>();
-const cardLinkPending = new Map<string, Promise<string>>();
+const cardLinkCache = new Map<string, CachedCardLink>();
+const cardLinkPending = new Map<string, Promise<CachedCardLink>>();
+const cardLinkListeners = new Set<() => void>();
+
+function notifyCardLinks() {
+  for (const listener of cardLinkListeners) listener();
+}
+
+function forgetCardOnFileLink(applicationId: string) {
+  forgetCachedCardLink(cardLinkCache, applicationId);
+  cardLinkPending.delete(applicationId);
+  notifyCardLinks();
+}
 
 function useCardOnFileLink(applicationId: string) {
   const issue = useServerFn(issueCardOnFileLink);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((tick) => tick + 1);
+    cardLinkListeners.add(listener);
+    return () => {
+      cardLinkListeners.delete(listener);
+    };
+  }, []);
   const ensure = useCallback(() => {
-    const cached = cardLinkCache.get(applicationId);
+    const cached = readCachedCardLink(cardLinkCache, applicationId);
     if (cached) return Promise.resolve(cached);
     const pending = cardLinkPending.get(applicationId);
     if (pending) return pending;
     const next = issue({ data: { applicationId } })
       .then((res) => {
-        const link = `${window.location.origin}${res.path}`;
-        cardLinkCache.set(applicationId, link);
+        if (typeof res.expiresAt !== "number" || !cardLinkFresh(res.expiresAt)) {
+          forgetCardOnFileLink(applicationId);
+          throw new Error("Could not prepare the card link.");
+        }
+        const entry = {
+          link: `${window.location.origin}${res.path}`,
+          expiresAt: res.expiresAt,
+        };
+        rememberCachedCardLink(cardLinkCache, applicationId, entry);
         cardLinkPending.delete(applicationId);
-        return link;
+        notifyCardLinks();
+        return entry;
       })
       .catch((error: unknown) => {
-        cardLinkPending.delete(applicationId);
+        forgetCardOnFileLink(applicationId);
         throw error;
       });
     cardLinkPending.set(applicationId, next);
     return next;
   }, [applicationId, issue]);
-  return { ensure };
+  return { ensure, cached: readCachedCardLink(cardLinkCache, applicationId) };
+}
+
+function cardLinkText(ensure: () => Promise<CachedCardLink>) {
+  return () => ensure().then((entry) => entry.link);
 }
 
 /**
@@ -2881,33 +2922,28 @@ function previewCardLink(ensureLink: () => Promise<string>) {
     });
 }
 
+const handoffItemClass =
+  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none bg-white text-foreground hover:bg-muted [&>svg]:size-4 [&>svg]:shrink-0";
+
 function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
-  const { ensure: ensureLink } = useCardOnFileLink(driver.id);
+  const { ensure: ensureLink, cached } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const ready = cached && cardLinkFresh(cached.expiresAt) ? cached : null;
+  const canHandoff = !!(driver.phone || driver.email);
 
   function copyLink() {
-    copyCardLink(ensureLink, "Card-on-file link copied");
+    copyCardLink(cardLinkText(ensureLink), "Card-on-file link copied");
   }
 
-  function openLink(kind: "sms" | "email") {
-    const opened = window.open("", "_blank");
-    if (!opened) {
-      toast.error("Failed to prepare the link");
-      return;
-    }
-    opened.opener = null;
+  function prepare(event: Event) {
+    event.preventDefault();
+    if (preparing || ready) return;
+    setPreparing(true);
     void ensureLink()
-      .then((link) => {
-        const text = `Save your card on file for Real Rentals: ${link}`;
-        opened.location.href = kind === "sms"
-          ? `sms:${driver.phone}?&body=${encodeURIComponent(text)}`
-          : `mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(text)}`;
-      })
-      .catch(() => {
-        opened.close();
-        toast.error("Failed to prepare the link");
-      });
+      .catch(() => toast.error("Failed to prepare the link"))
+      .finally(() => setPreparing(false));
   }
 
   async function remove() {
@@ -2949,15 +2985,20 @@ function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpda
               <DropdownMenuItem onClick={copyLink}>
                 <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
               </DropdownMenuItem>
-              {driver.phone && (
-                <DropdownMenuItem onClick={() => openLink("sms")}>
-                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+              {canHandoff && !ready && (
+                <DropdownMenuItem onSelect={prepare} disabled={preparing}>
+                  <LinkIcon className="w-4 h-4 mr-2" /> {preparing ? "Preparing Link…" : "Prepare Link"}
                 </DropdownMenuItem>
               )}
-              {driver.email && (
-                <DropdownMenuItem onClick={() => openLink("email")}>
+              {ready && driver.phone && (
+                <a href={cardTextHref(driver.phone, ready.link)} className={handoffItemClass}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+                </a>
+              )}
+              {ready && driver.email && (
+                <a href={cardEmailHref(driver.email, ready.link)} className={handoffItemClass}>
                   <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
-                </DropdownMenuItem>
+                </a>
               )}
             </>
           ) : (
@@ -3203,14 +3244,14 @@ function CardOnFileCard({
           {canIssue ? (
             <div className="flex gap-1.5">
               <button
-                onClick={() => copyCardLink(ensureLink, "Link copied")}
+                onClick={() => copyCardLink(cardLinkText(ensureLink), "Link copied")}
                 className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
               >
                 Copy Link
               </button>
               <button
                 type="button"
-                onClick={() => previewCardLink(ensureLink)}
+                onClick={() => previewCardLink(cardLinkText(ensureLink))}
                 className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
               >
                 Preview
