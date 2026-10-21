@@ -312,11 +312,14 @@ async function approvalStamps(
         .order("created_at", { ascending: true })
         .order("id", { ascending: true })
         .limit(1);
-      if (one.error || !one.data?.[0]) {
+      if (one.error) {
         truncated = true;
         continue;
       }
-      stamps.push({ applicationId, at: String(one.data[0].created_at ?? "") });
+      // An empty re-read means this application has no approval audit row. That is not a truncated page.
+      const row = one.data?.[0];
+      if (!row) continue;
+      stamps.push({ applicationId, at: String(row.created_at ?? "") });
     }
   }
   return { stamps, truncated };

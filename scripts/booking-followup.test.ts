@@ -94,6 +94,8 @@ describe("booking follow-up flag", () => {
     assert.doesNotMatch(server, /\.in\("entity_id", approvedIds\)/);
     assert.doesNotMatch(server, /\.in\("entity_id", ids\)/);
     assert.match(server, /\.limit\(1\)/);
+    assert.match(server, /if \(one\.error\) \{\s*truncated = true;/);
+    assert.doesNotMatch(server, /one\.error \|\| !one\.data/);
     assert.match(server, /source: "outbound"/);
     assert.match(server, /source: "message"/);
     assert.doesNotMatch(server, /stamps\.push\(\{ applicationId, at, source: "message" \}\)/);
