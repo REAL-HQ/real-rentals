@@ -8,12 +8,27 @@
 //
 // The check parses with the TypeScript compiler so JSX text, mid-line
 // statements, split declarators, object and array binding patterns,
-// parameters (including defaults), and aliases stay visible. A second const,
-// let, var, parameter, or alias that introduces the same _ENABLED name in
-// src/ fails the check. A plain same-name re-export (`export { X_ENABLED }`
+// parameters (including defaults), class properties, and aliases stay
+// visible. A second const, let, var, parameter, class property, or alias
+// that introduces the same _ENABLED name in src/ fails the check. A plain
+// same-name re-export (`export { X_ENABLED }`
 // or `export { X_ENABLED } from "..."`) does not, and neither does a
 // same-name import. Passing an existing flag as a default value
 // (`function f(on = X_ENABLED)`) is a use, not a second declaration.
+//
+// A production declaration must be initialized with literal `false` or
+// `false as boolean`. Aliases, binding patterns, and parameters are
+// non-literal even when a parameter default is `false`, so they fail.
+// Object properties (`{ X_ENABLED: true }` and shorthand `{ X_ENABLED }`)
+// and PropertyAccessExpression assignment targets (`globalThis.X_ENABLED = …`)
+// are declarations. Their initializer is the assigned expression.
+// Element access (`obj["X_ENABLED"] = …`), computed property names,
+// compound assignments (`+=`), and property signatures in types
+// (`interface Flags { X_ENABLED: boolean }` and `{ X_ENABLED?: string }`)
+// are out of scope. A type field names a shape; it does not declare the flag.
+//
+// LIVE_TRUE_FLAGS may be literal `true`. On 7e3e6eb (release/rc2-dark-features)
+// the only `*_ENABLED = true` under src/ is STRIPE_COLLECTIONS_ENABLED.
 //
 // Hidden boolean gates that are not named *_ENABLED (for example
 // `filtersOn = false as boolean`) are not declarations and are not a failure.
@@ -28,6 +43,10 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+
+// Live in source on 7e3e6eb and on this branch. Env-backed flags are not
+// literal true, so they are not listed and the value check fails them.
+const LIVE_TRUE_FLAGS = new Set(["STRIPE_COLLECTIONS_ENABLED"]);
 
 const ROOTS = ["src"];
 const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
@@ -50,7 +69,7 @@ export function collectFlagDeclarations(root) {
   for (const file of walk(root)) {
     for (const decl of declarationsIn(file)) {
       const sites = byName.get(decl.name) ?? [];
-      sites.push({ file, line: decl.line });
+      sites.push({ file, line: decl.line, initializer: decl.initializer });
       byName.set(decl.name, sites);
     }
   }
@@ -68,6 +87,23 @@ export function isTestOrScript(file) {
 
 export function productionSites(sites) {
   return sites.filter((site) => !isTestOrScript(site.file));
+}
+
+/**
+ * Production declarations whose initializer is not literal `false` or
+ * `false as boolean`. LIVE_TRUE_FLAGS may be literal `true`.
+ * Non-empty means the scanner exits 1.
+ */
+export function initializerFailures(byName) {
+  const failures = [];
+  for (const [name, sites] of byName) {
+    for (const site of productionSites(sites)) {
+      if (site.initializer === "false" || site.initializer === "false as boolean") continue;
+      if (LIVE_TRUE_FLAGS.has(name) && site.initializer === "true") continue;
+      failures.push([name, site]);
+    }
+  }
+  return failures.sort(([a], [b]) => a.localeCompare(b));
 }
 
 /** Non-empty means the scanner exits 1. */
@@ -108,15 +144,16 @@ function sourceFile(file) {
 function declarationsIn(file) {
   const source = sourceFile(file);
   const found = [];
-  const push = (nameNode) => {
-    if (!nameNode || !ts.isIdentifier(nameNode) || !nameNode.text.endsWith("_ENABLED")) return;
+  const push = (nameNode, initializer = "non-literal") => {
+    const text = nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) ? nameNode.text : null;
+    if (!text || !text.endsWith("_ENABLED")) return;
     const { line } = source.getLineAndCharacterOfPosition(nameNode.getStart(source));
-    found.push({ name: nameNode.text, line: line + 1 });
+    found.push({ name: text, line: line + 1, initializer });
   };
   const bindings = (name) => {
     if (!name) return;
     if (ts.isIdentifier(name)) {
-      push(name);
+      push(name, "non-literal");
       return;
     }
     if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
@@ -125,14 +162,40 @@ function declarationsIn(file) {
       }
     }
   };
+  const recordProperty = (node) => {
+    if (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) push(node.name, classifyInitializer(node.initializer));
+  };
   const visit = (node) => {
-    if (ts.isVariableDeclaration(node) || ts.isParameter(node)) bindings(node.name);
-    else if (ts.isImportDeclaration(node)) recordImport(node, push);
+    if (ts.isVariableDeclaration(node)) {
+      if (ts.isIdentifier(node.name)) push(node.name, classifyInitializer(node.initializer));
+      else bindings(node.name);
+    } else if (ts.isParameter(node)) bindings(node.name);
+    else if (ts.isPropertyDeclaration(node) || ts.isPropertyAssignment(node)) recordProperty(node);
+    else if (ts.isShorthandPropertyAssignment(node)) push(node.name, "non-literal");
+    else if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left)
+    ) {
+      push(node.left.name, classifyInitializer(node.right));
+    } else if (ts.isImportDeclaration(node)) recordImport(node, push);
     else if (ts.isExportDeclaration(node)) recordExport(node, push);
     ts.forEachChild(node, visit);
   };
   visit(source);
   return found;
+}
+
+/** `false`, `false as boolean`, `true`, or non-literal. Parentheses are ignored. */
+function classifyInitializer(node) {
+  const expr = unwrap(node);
+  if (!expr) return "non-literal";
+  if (expr.kind === ts.SyntaxKind.FalseKeyword) return "false";
+  if (expr.kind === ts.SyntaxKind.TrueKeyword) return "true";
+  if ((ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) && unwrap(expr.expression)?.kind === ts.SyntaxKind.FalseKeyword && isBooleanType(expr.type)) {
+    return "false as boolean";
+  }
+  return "non-literal";
 }
 
 function recordImport(node, push) {
@@ -268,7 +331,7 @@ function selfTest() {
         label: "object and array binding patterns",
         file: "bind.ts",
         flag: "BIND_ENABLED",
-        count: 2,
+        count: 3,
         source: [
           "const bag = { BIND_ENABLED: false };",
           "const { BIND_ENABLED } = bag;",
@@ -367,6 +430,13 @@ function selfTest() {
         count: 2,
         source: ["const CJS_ENABLED = false;", "function f(CJS_ENABLED) { return CJS_ENABLED; }", ""].join("\n"),
       },
+      {
+        label: "class static property",
+        file: "calendar.ts",
+        flag: "FLEET_CALENDAR_ENABLED",
+        count: 2,
+        source: ["export const FLEET_CALENDAR_ENABLED = false;", "class Calendar { static FLEET_CALENDAR_ENABLED = false; }", ""].join("\n"),
+      },
     ];
     for (const item of duplicates) {
       const dir = join(root, item.flag);
@@ -381,6 +451,129 @@ function selfTest() {
       assert.equal(ran.status, 1, `${item.label} should exit 1, exited ${ran.status}\n${ran.stderr}`);
       duplicateExits.push(`${item.label} exit ${ran.status}`);
     }
+
+    const badValues = [
+      {
+        label: "literal true",
+        file: "true.ts",
+        flag: "BRAND_NEW_ENABLED",
+        initializer: "true",
+        source: "export const BRAND_NEW_ENABLED = true;\n",
+      },
+      {
+        label: "class property true",
+        file: "class-true.ts",
+        flag: "CLASS_TRUE_ENABLED",
+        initializer: "true",
+        source: "class Calendar { static CLASS_TRUE_ENABLED = true; }\n",
+      },
+      {
+        label: "object property true",
+        file: "object-true.ts",
+        flag: "OBJECT_ENABLED",
+        initializer: "true",
+        source: "const bag = { OBJECT_ENABLED: true };\n",
+      },
+      {
+        label: "string object property true",
+        file: "object-string.ts",
+        flag: "STRING_OBJECT_ENABLED",
+        initializer: "true",
+        source: "const bag = { \"STRING_OBJECT_ENABLED\": true };\n",
+      },
+      {
+        label: "shorthand object property",
+        file: "shorthand.ts",
+        flag: "SHORTHAND_ENABLED",
+        initializer: "non-literal",
+        source: "const bag = { SHORTHAND_ENABLED };\n",
+      },
+      {
+        label: "globalThis assignment",
+        file: "global.ts",
+        flag: "GLOBAL_ENABLED",
+        initializer: "true",
+        source: "globalThis.GLOBAL_ENABLED = true;\n",
+      },
+      {
+        label: "binding is non-literal",
+        file: "binding.ts",
+        flag: "BIND_VALUE_ENABLED",
+        initializer: "non-literal",
+        source: "const { BIND_VALUE_ENABLED } = {};\n",
+      },
+      {
+        label: "parameter default false is non-literal",
+        file: "param-value.ts",
+        flag: "PARAM_VALUE_ENABLED",
+        initializer: "non-literal",
+        source: "function f(PARAM_VALUE_ENABLED = false) { return PARAM_VALUE_ENABLED; }\n",
+      },
+      {
+        label: "import alias is non-literal",
+        file: "alias-value.ts",
+        flag: "ALIAS_VALUE_ENABLED",
+        initializer: "non-literal",
+        source: "import { t as ALIAS_VALUE_ENABLED } from './a';\n",
+      },
+      {
+        label: "env expression is not literal false",
+        file: "env.ts",
+        flag: "ENV_EXPR_ENABLED",
+        initializer: "non-literal",
+        source: "export const ENV_EXPR_ENABLED = process.env.ENV_EXPR_ENABLED === \"true\";\n",
+      },
+    ];
+    for (const item of badValues) {
+      const dir = join(root, `value-${item.flag}`);
+      mkdirSync(dir);
+      writeFileSync(join(dir, item.file), item.source);
+      const byName = collectFlagDeclarations(dir);
+      assert.equal(duplicateFailures(byName).length, 0, `${item.label} is one declaration`);
+      const bad = initializerFailures(byName);
+      assert.equal(bad.length, 1, `${item.label} should fail the value check`);
+      assert.equal(bad[0][0], item.flag);
+      assert.equal(bad[0][1].initializer, item.initializer, `${item.label} initializer`);
+      const ran = scannerExit(dir);
+      assert.equal(ran.status, 1, `${item.label} should exit 1, exited ${ran.status}\n${ran.stderr}`);
+      assert.match(ran.stderr, new RegExp(item.flag));
+      duplicateExits.push(`${item.label} exit ${ran.status}`);
+    }
+
+    const goodValues = [
+      { label: "literal false", source: "export const OK_FALSE_ENABLED = false;\n" },
+      { label: "false as boolean", source: "export const OK_CAST_ENABLED = false as boolean;\n" },
+      { label: "parenthesized false", source: "export const OK_PAREN_ENABLED = (false);\n" },
+      { label: "class static false", source: "class Calendar { static OK_CLASS_ENABLED = false; }\n" },
+      { label: "class static false as boolean", source: "class Calendar { static OK_CLASS_CAST_ENABLED = false as boolean; }\n" },
+      { label: "object property false", source: "const bag = { OK_OBJECT_ENABLED: false };\n" },
+      { label: "assignment false", source: "globalThis.OK_ASSIGN_ENABLED = false;\n" },
+      { label: "live true allowlist", source: "export const STRIPE_COLLECTIONS_ENABLED = true;\n" },
+      {
+        label: "type signature is not a declaration",
+        source: [
+          "export const SHAPE_ENABLED = false;",
+          "interface Flags { SHAPE_ENABLED?: boolean; }",
+          "type Alias = { SHAPE_ENABLED: boolean };",
+          "function f(env: { SHAPE_ENABLED?: string } = process.env) { return env.SHAPE_ENABLED; }",
+          "",
+        ].join("\n"),
+      },
+    ];
+    for (const item of goodValues) {
+      const dir = join(root, `good-${item.label.replaceAll(" ", "-")}`);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "ok.ts"), item.source);
+      assert.equal(initializerFailures(collectFlagDeclarations(dir)).length, 0, `${item.label} should be an accepted initializer`);
+      const ran = scannerExit(dir);
+      assert.equal(ran.status, 0, `${item.label} should exit 0\n${ran.stderr}`);
+      cleanExits.push(`${item.label} exit ${ran.status}`);
+    }
+    const liveButBound = join(root, "live-bound");
+    mkdirSync(liveButBound);
+    writeFileSync(liveButBound + "/bound.ts", "const { STRIPE_COLLECTIONS_ENABLED } = {};\n");
+    assert.equal(initializerFailures(collectFlagDeclarations(liveButBound)).length, 1, "a live flag name in a binding is still non-literal");
+    assert.equal(scannerExit(liveButBound).status, 1);
 
     const clean = join(root, "clean");
     mkdirSync(clean);
@@ -510,6 +703,23 @@ function reportDuplicates(dupes, flagCount) {
   console.error(`flag-single-source: ${flagCount} flag names, ${dupes.length} declared more than once:\n` + lines.join("\n"));
 }
 
+function reportInitializers(failures) {
+  const lines = failures.map(([name, site]) => `  ${name} ${formatSite(site)} initializer ${site.initializer}`);
+  console.error(
+    `flag-single-source: ${failures.length} *_ENABLED declarations are not literal false or false as boolean:\n` + lines.join("\n"),
+  );
+}
+
+function rejectScan(byName) {
+  const dupes = duplicateFailures(byName);
+  const bad = initializerFailures(byName);
+  if (!dupes.length && !bad.length) return false;
+  const flagCount = [...byName.values()].filter((sites) => productionSites(sites).length > 0).length;
+  if (dupes.length) reportDuplicates(dupes, flagCount);
+  if (bad.length) reportInitializers(bad);
+  return true;
+}
+
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const scanAt = process.argv.indexOf("--scan");
@@ -520,23 +730,13 @@ if (isMain) {
       process.exit(2);
     }
     const byName = collectFlagDeclarations(dir);
-    const dupes = duplicateFailures(byName);
-    if (dupes.length) {
-      const flagCount = [...byName.values()].filter((sites) => productionSites(sites).length > 0).length;
-      reportDuplicates(dupes, flagCount);
-      process.exit(1);
-    }
+    if (rejectScan(byName)) process.exit(1);
     process.exit(0);
   }
   selfTest();
   console.log("flag-single-source: self-test passed");
   const byName = scanWorkspace();
-  const dupes = duplicateFailures(byName);
   const flagCount = [...byName.values()].filter((sites) => productionSites(sites).length > 0).length;
-  if (dupes.length) {
-    reportDuplicates(dupes, flagCount);
-    process.exit(1);
-  }
   const warnings = falseConstWarnings("src");
   if (warnings.length) {
     const lines = warnings.map((item) => `  ${item.file}:${item.line} ${item.name} (${item.kind})`);
@@ -545,6 +745,7 @@ if (isMain) {
         lines.join("\n"),
     );
   }
+  if (rejectScan(byName)) process.exit(1);
   console.log(
     `flag-single-source: OK (${flagCount} flags in src/, one declaration each; scripts/ and test files are not part of the duplicate rule)`,
   );
