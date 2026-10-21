@@ -17,8 +17,11 @@ import {
   getDriverProfile,
   updateDriverProfile,
   getDriverPictures,
+  getMyPaymentBanner,
   type DriverDashboard,
 } from "@/lib/portal.functions";
+import { RenterPaymentBanner } from "@/components/portal/RenterPaymentBanner";
+import { RENTER_PAYMENT_BANNER_ENABLED, renterPaymentBanner } from "@/lib/renter-payment-banner";
 import {
   getRentalBilling,
   payRentalBalance,
@@ -300,17 +303,56 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
     );
   if (!data) return null;
 
-  if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
-  if (tab === "documents") return <DocumentsView />;
-  if (tab === "pictures") return <PicturesView />;
-  if (tab === "settings") return <SettingsView />;
-  if (tab === "issue") return <IssuesView />;
-  if (tab === "referrals") return <ReferralsView />;
-  if (tab === "vehicle") return <VehicleView data={data} />;
-  if (tab === "payments") return <PaymentsView data={data} />;
-  if (tab === "deposit") return <DepositView data={data} />;
-  if (tab === "maintenance") return <MaintenanceView data={data} />;
-  return <Stub label={TABS.find((t) => t.id === tab)!.label} />;
+  const body =
+    tab === "dashboard" ? (
+      <DashboardView data={data} onNavigate={onNavigate} />
+    ) : tab === "documents" ? (
+      <DocumentsView />
+    ) : tab === "pictures" ? (
+      <PicturesView />
+    ) : tab === "settings" ? (
+      <SettingsView />
+    ) : tab === "issue" ? (
+      <IssuesView />
+    ) : tab === "referrals" ? (
+      <ReferralsView />
+    ) : tab === "vehicle" ? (
+      <VehicleView data={data} />
+    ) : tab === "payments" ? (
+      <PaymentsView data={data} />
+    ) : tab === "deposit" ? (
+      <DepositView data={data} />
+    ) : tab === "maintenance" ? (
+      <MaintenanceView data={data} />
+    ) : (
+      <Stub label={TABS.find((t) => t.id === tab)!.label} />
+    );
+
+  return (
+    <div className="space-y-6">
+      {RENTER_PAYMENT_BANNER_ENABLED === true ? <RenterPaymentBannerGate /> : null}
+      {body}
+    </div>
+  );
+}
+
+function RenterPaymentBannerGate() {
+  const phone = useBusinessPhone();
+  const previewId = usePreviewDriver();
+  const fetchBanner = usePortalRead(getMyPaymentBanner);
+  const { data } = useQuery({
+    queryKey: ["renter-payment-banner", previewId],
+    queryFn: () => fetchBanner(),
+    enabled: RENTER_PAYMENT_BANNER_ENABLED === true,
+  });
+  if (!data) return null;
+  const model = renterPaymentBanner(
+    { hasActiveRental: data.active, weeklyRate: data.weeklyRate, nextPaymentDue: data.nextPaymentDue },
+    new Date(),
+    phone.display,
+  );
+  if (!model) return null;
+  return <RenterPaymentBanner model={model} phone={phone} />;
 }
 
 function Stub({ label }: { label: string }) {
