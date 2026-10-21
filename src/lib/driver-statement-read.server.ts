@@ -1,4 +1,5 @@
-import { createStripeClient } from "./stripe.server";
+import { STRIPE_READER_MAX_PAGES, StripeTemporarilyUnavailable, paginateStripeList, stripeReadFailureReason } from "./stripe-reader";
+import { createReadOnlyStripe } from "./stripe-reader.server";
 import type { StatementCharge, StatementCustomer, StatementInvoice, StatementRefund } from "./driver-statement";
 
 /**
@@ -36,7 +37,6 @@ export type StatementStripeGateway = {
 };
 
 const PAGE = 100;
-const MAX_PAGES = 100;
 
 export async function readDriverStatement(
   gateway: StatementStripeGateway,
@@ -59,7 +59,7 @@ export async function readDriverStatement(
       if (!customerId) return null;
       const cached = people.get(customerId);
       if (cached) return cached;
-      if (now() >= deadline) return null;
+      if (now() >= deadline) throw new StripeTemporarilyUnavailable();
       options.signal?.throwIfAborted();
       const loaded = mapCustomer(await gateway.customers.retrieve(customerId, {}, { timeout: remaining(deadline, now) }));
       if (!loaded) return null;
@@ -74,7 +74,7 @@ export async function readDriverStatement(
     }
     for (const row of refunds) {
       if (!row.customer && row.chargeId && !row.chargeLoaded) {
-        if (now() >= deadline) return fail;
+        if (now() >= deadline) throw new StripeTemporarilyUnavailable();
         options.signal?.throwIfAborted();
         const charge = mapCharge(await gateway.charges.retrieve(row.chargeId, {}, { timeout: remaining(deadline, now) }));
         if (!charge) return fail;
@@ -108,13 +108,13 @@ export async function readDriverStatement(
         status: row.status, outstandingCents: row.outstandingCents, customer: row.customer,
       })),
     };
-  } catch {
-    return fail;
+  } catch (error) {
+    return { ok: false, reason: stripeReadFailureReason(error) };
   }
 }
 
 export function readLiveDriverStatement(signal?: AbortSignal) {
-  return readDriverStatement(createStripeClient("live"), { signal });
+  return readDriverStatement(createReadOnlyStripe("live", { cache: true }), { signal });
 }
 
 type MappedCharge = {
@@ -159,24 +159,11 @@ async function pages<T, R, P extends Record<string, unknown>>(
   now: () => number,
   map: (row: T) => R | null,
 ): Promise<R[] | null> {
-  const rows: R[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    if (now() >= deadline) return null;
-    signal?.throwIfAborted();
-    const result = await list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) });
-    if (!Array.isArray(result.data) || typeof result.has_more !== "boolean") return null;
-    for (const row of result.data) {
-      const mapped = map(row);
-      if (!mapped) return null;
-      rows.push(mapped);
-    }
-    if (!result.has_more) return rows;
-    const next = idOf((result.data.at(-1) as { id?: unknown } | undefined)?.id);
-    if (!next || next === cursor) return null;
-    cursor = next;
-  }
-  return null;
+  const result = await paginateStripeList(
+    (cursor) => list({ ...filter, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) }, { timeout: remaining(deadline, now) }),
+    { label: `Stripe list ${Object.keys(filter).sort().join(",") || "page"}`, maxPages: STRIPE_READER_MAX_PAGES, signal, deadline, now, map, strict: true },
+  );
+  return result.ok ? result.rows : null;
 }
 
 function mapCustomer(row: RawCustomer): StatementCustomer | null {
