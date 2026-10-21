@@ -54,6 +54,8 @@ import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { OwnerPnlPanel } from "@/components/admin/OwnerPnlPanel";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
+import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -303,6 +305,10 @@ function Admin() {
     if (urlTab === "owner_pnl") {
       if (!OWNER_PNL_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_pnl";
+    }
+    if (urlTab === "accountant_export") {
+      if (!ACCOUNTANT_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "accountant_export";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -812,6 +818,7 @@ function Admin() {
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
+            {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

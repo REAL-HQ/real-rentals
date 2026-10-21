@@ -20,11 +20,13 @@ import {
   Upload,
   Landmark,
   Scale,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 
 export type TabDef = {
   id: string;
@@ -133,6 +135,26 @@ function withOwnerPnl<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?
   return next;
 }
 
+/** Shown only while the Accountant Export is compiled on. Kept out of TABS so a dark build cannot list it. */
+const ACCOUNTANT_EXPORT_TAB: TabDef = {
+  id: "accountant_export",
+  label: "Accountant Export",
+  icon: FileSpreadsheet,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Year To Date Revenue, Refunds, Expenses And Net",
+};
+
+function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const ownerPnl = next.findIndex((t) => t.id === "owner_pnl");
+  const at = ownerPnl >= 0 ? ownerPnl : next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...ACCOUNTANT_EXPORT_TAB, href } : ACCOUNTANT_EXPORT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
   const withFinance = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")
@@ -143,7 +165,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
       next.splice(at + 1, 0, FINANCE_TAB);
       return next;
     })();
-  return withOwnerPnl(withFinance, tier);
+  return withAccountantExport(withOwnerPnl(withFinance, tier), tier);
 }
 
 /**
@@ -180,7 +202,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     const at = entries.findIndex((t) => t.id === "expenses");
     entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
   }
-  return withOwnerPnl(entries, tier, "owner_pnl");
+  return withAccountantExport(withOwnerPnl(entries, tier, "owner_pnl"), tier, "accountant_export");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
