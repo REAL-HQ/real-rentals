@@ -1,138 +1,193 @@
 /**
- * Read-only payment history for a signed-in driver.
- *
- * Rows come from public.payments. "Drivers can view their own payments"
- * already lets a driver SELECT a row whose driver_id is one of their
- * applications. This module only decides which of those rows are history
- * and how to read the date. It does not write, and it does not call Stripe.
- *
- * History is a row whose status is paid, failed, or refunded. A charge that
- * is still pending, current, late, or unpaid is not history.
+ * Driver payment history rules. No database access and no writes.
+ * A payments row is a charge. A payment is that charge collected through a
+ * verified source. Balance due is the open balance on the charges we read.
  */
 
-export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false;
+export const HISTORY_READ_CAP = 999;
+export const HISTORY_CHUNK = 50;
 
-export const PORTAL_PAYMENT_HISTORY_STATUSES = ["paid", "failed", "refunded"] as const;
+const CLOSED_CHARGE_STATUSES = ["paid", "refunded", "void", "waived"] as const;
 
-export type PortalPaymentStatus = (typeof PORTAL_PAYMENT_HISTORY_STATUSES)[number];
-
-export const PORTAL_PAYMENT_TIME_ZONE = "America/New_York";
-
-const PURPOSE_LABEL: Record<string, string> = {
-  rent: "Rent",
-  deposit: "Deposit",
-  late_fee: "Late Fee",
-  toll: "Toll",
-  damage: "Damage",
-  fee: "Fee",
-  cleaning: "Cleaning",
-  fuel: "Fuel",
+/** Sources a collected payment may name. Card covers a Stripe card or ACH charge. */
+const VERIFIED_SOURCE_LABEL: Record<string, string> = {
+  stripe: "Card",
+  card: "Card",
+  ach: "Card",
+  cash: "Cash",
+  cash_app: "Cash App",
+  cashapp: "Cash App",
+  venmo: "Venmo",
+  zelle: "Zelle",
+  bank_transfer: "Bank Transfer",
+  bank: "Bank Transfer",
+  check: "Check",
+  money_order: "Money Order",
   other: "Other",
 };
 
-export type PaymentHistoryRow = {
+export type HistoryRow = {
   id: string;
+  type: string | null;
   status: string | null;
   amount: number | string | null;
-  type: string | null;
-  reason: string | null;
+  balance_due: number | string | null;
+  net_collected: number | string | null;
+  refunded_amount: number | string | null;
+  due_date: string | null;
   paid_date: string | null;
-  refunded_at: string | null;
-  last_attempt_at: string | null;
   created_at: string | null;
+  payment_method: string | null;
 };
 
-export type PaymentHistoryItem = {
+export type HistoryCharge = {
   id: string;
-  /** Eastern calendar day, YYYY-MM-DD, or null when no date was recorded. */
-  date: string | null;
-  amount: number | null;
-  status: PortalPaymentStatus;
-  /** What the payment was for, when type or reason was recorded. */
-  purpose: string | null;
+  typeLabel: string;
+  statusLabel: string;
+  amount: number;
+  balanceDue: number;
+  dueDate: string | null;
+  paidDate: string | null;
 };
 
-export function assertPortalPaymentHistoryEnabled(): void {
-  if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) {
-    throw new Error("Portal payment history is not enabled.");
-  }
+export type HistoryPayment = {
+  id: string;
+  typeLabel: string;
+  statusLabel: string;
+  amount: number;
+  collected: number;
+  refunded: number;
+  sourceLabel: string;
+  paidDate: string | null;
+};
+
+export type PortalPaymentHistory = {
+  charges: HistoryCharge[];
+  payments: HistoryPayment[];
+  /** Null when a capped read means the total would be incomplete. */
+  balanceDue: number | null;
+  truncated: boolean;
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  upcoming: "Upcoming",
+  pending: "Processing",
+  current: "Due",
+  paid: "Paid",
+  overdue: "Overdue",
+  past_due: "Past Due",
+  failed: "Failed",
+  unpaid: "Unpaid",
+  collections: "In Collections",
+  refunded: "Refunded",
+  waived: "Waived",
+  void: "Void",
+  late: "Late",
+};
+
+function money(value: number | string | null | undefined): number {
+  const n = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-/** YYYY-MM-DD in Eastern Time. */
-export function easternCalendarDate(now: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: PORTAL_PAYMENT_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+function statusKey(status: string | null | undefined): string {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
-/** A date column stays that calendar day. A timestamp becomes its Eastern day. */
-export function asEasternCalendarDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) return null;
-  return easternCalendarDate(new Date(parsed));
+export function historyStatusLabel(status: string | null | undefined): string {
+  const key = statusKey(status);
+  if (!key) return "Not Recorded";
+  return STATUS_LABEL[key] ?? key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function money(value: number | string | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const amount = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(amount) ? amount : null;
+export function historyTypeLabel(type: string | null | undefined): string {
+  const key = typeof type === "string" ? type.trim().toLowerCase() : "";
+  if (!key) return "Charge";
+  if (key === "rent") return "Rent";
+  if (key === "deposit") return "Deposit";
+  if (key === "late_fee") return "Late Fee";
+  return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function purposeLabel(value: string | null | undefined): string | null {
-  const key = (value ?? "").trim().toLowerCase();
+/** A known collection source. An empty or unknown method is not verified. */
+export function verifiedSourceLabel(method: string | null | undefined): string | null {
+  const key = typeof method === "string" ? method.trim().toLowerCase().replace(/[\s-]+/g, "_") : "";
   if (!key) return null;
-  return PURPOSE_LABEL[key] ?? null;
+  return VERIFIED_SOURCE_LABEL[key] ?? null;
 }
 
-function moment(raw: string | null | undefined): { date: string; sort: string } | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  const date = asEasternCalendarDate(trimmed);
-  if (!date) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return { date, sort: `${date}|` };
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) return { date, sort: `${date}|` };
-  return { date, sort: `${date}|${new Date(parsed).toISOString()}` };
+function collectedAmount(row: HistoryRow): number {
+  if (row.net_collected != null && row.net_collected !== "") return money(row.net_collected);
+  return money(row.amount);
 }
 
-function when(row: PaymentHistoryRow, status: PortalPaymentStatus): { date: string; sort: string } | null {
-  if (status === "refunded") {
-    return moment(row.refunded_at) ?? moment(row.paid_date) ?? moment(row.created_at);
-  }
-  if (status === "failed") {
-    return moment(row.last_attempt_at) ?? moment(row.created_at) ?? moment(row.paid_date);
-  }
-  return moment(row.paid_date) ?? moment(row.created_at) ?? moment(row.refunded_at);
-}
+export function buildPortalPaymentHistory(input: {
+  rows: readonly HistoryRow[];
+  truncated: boolean;
+}): PortalPaymentHistory {
+  const seen = new Set<string>();
+  const charges: HistoryCharge[] = [];
+  const payments: HistoryPayment[] = [];
+  let balance = 0;
 
-/**
- * Past payments, newest Eastern day first. Same day keeps the later timestamp
- * first. Pending and other open charges are left out.
- */
-export function paymentHistory(rows: PaymentHistoryRow[]): PaymentHistoryItem[] {
-  const items: Array<PaymentHistoryItem & { sort: string }> = [];
-  for (const row of rows) {
-    const status = row.status?.trim().toLowerCase();
-    if (status !== "paid" && status !== "failed" && status !== "refunded") continue;
-    const at = when(row, status);
-    const recorded = purposeLabel(row.reason) ?? purposeLabel(row.type);
-    items.push({
+  const ordered = [...input.rows].sort((a, b) => {
+    const left = a.created_at ?? a.due_date ?? "";
+    const right = b.created_at ?? b.due_date ?? "";
+    return right.localeCompare(left) || a.id.localeCompare(b.id);
+  });
+
+  for (const row of ordered) {
+    if (!row.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    const status = statusKey(row.status);
+    const balanceDue = money(row.balance_due);
+    charges.push({
       id: row.id,
-      date: at?.date ?? null,
+      typeLabel: historyTypeLabel(row.type),
+      statusLabel: historyStatusLabel(row.status),
       amount: money(row.amount),
-      status,
-      purpose: recorded,
-      sort: at?.sort ?? "",
+      balanceDue,
+      dueDate: row.due_date,
+      paidDate: row.paid_date,
     });
+    if (!(CLOSED_CHARGE_STATUSES as readonly string[]).includes(status) && balanceDue > 0) {
+      balance += balanceDue;
+    }
+    const source = verifiedSourceLabel(row.payment_method);
+    if ((status === "paid" || status === "refunded") && source) {
+      payments.push({
+        id: row.id,
+        typeLabel: historyTypeLabel(row.type),
+        statusLabel: historyStatusLabel(row.status),
+        amount: money(row.amount),
+        collected: collectedAmount(row),
+        refunded: money(row.refunded_amount),
+        sourceLabel: source,
+        paidDate: row.paid_date,
+      });
+    }
   }
-  items.sort((a, b) => b.sort.localeCompare(a.sort) || b.id.localeCompare(a.id));
-  return items.map(({ sort: _sort, ...item }) => item);
+
+  return {
+    charges,
+    payments,
+    balanceDue: input.truncated ? null : Math.round(balance * 100) / 100,
+    truncated: input.truncated,
+  };
+}
+
+export function receiptText(payment: HistoryPayment): string {
+  return [
+    "REAL RENTALS",
+    "Receipt",
+    "",
+    `Receipt ${payment.id}`,
+    `Type: ${payment.typeLabel}`,
+    `Status: ${payment.statusLabel}`,
+    `Source: ${payment.sourceLabel}`,
+    `Amount: ${payment.amount.toFixed(2)}`,
+    `Collected: ${payment.collected.toFixed(2)}`,
+    `Refunded: ${payment.refunded.toFixed(2)}`,
+    payment.paidDate ? `Paid: ${payment.paidDate.slice(0, 10)}` : "Paid: Not Recorded",
+  ].join("\n");
 }

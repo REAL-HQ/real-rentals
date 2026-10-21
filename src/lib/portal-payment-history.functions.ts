@@ -1,57 +1,91 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history-flag";
 import {
-  assertPortalPaymentHistoryEnabled,
-  paymentHistory,
-  type PaymentHistoryItem,
-  type PaymentHistoryRow,
+  HISTORY_CHUNK,
+  HISTORY_READ_CAP,
+  buildPortalPaymentHistory,
+  type HistoryRow,
+  type PortalPaymentHistory,
 } from "@/lib/portal-payment-history";
 
-function previewInput(d: unknown): { previewDriverId?: string } {
-  const id = (d as { previewDriverId?: unknown } | null)?.previewDriverId;
-  if (id == null || id === "") return {};
-  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid driver");
-  return { previewDriverId: id };
+const PAYMENT_COLUMNS =
+  "id,type,status,amount,balance_due,net_collected,refunded_amount,due_date,paid_date,created_at,payment_method";
+
+/** Refuses before auth. The handler never receives a driver id from the client. */
+const portalPaymentHistoryGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) throw new Error("Payment history is not enabled.");
+  return next();
+});
+
+function chunks(ids: readonly string[]): string[][] {
+  const groups: string[][] = [];
+  for (let index = 0; index < ids.length; index += HISTORY_CHUNK) {
+    groups.push(ids.slice(index, index + HISTORY_CHUNK));
+  }
+  return groups;
 }
 
-/**
- * The signed-in driver's past payments.
- *
- * Read with the caller's own Supabase client. A driver SELECT is limited by
- * "Drivers can view their own payments" to rows whose driver_id is an
- * application they own. A manager in Driver Preview uses that same client:
- * "Managers manage payments" already lets them SELECT, and the query is
- * still limited to the previewed driver's applications. No service role,
- * no Stripe.
- */
-export const getPortalPaymentHistory = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(previewInput)
-  .handler(async ({ context, data }): Promise<PaymentHistoryItem[]> => {
-    assertPortalPaymentHistoryEnabled();
-    let userId = context.userId;
-    if (data.previewDriverId) {
-      const { requireManager } = await import("@/lib/roles.server");
-      await requireManager(context.userId);
-      userId = data.previewDriverId;
-    }
+async function ownedIds(
+  admin: { from: (table: string) => any },
+  table: "applications" | "rentals",
+  column: "user_id" | "driver_id",
+  userId: string,
+): Promise<{ ids: string[]; truncated: boolean }> {
+  const page = await admin
+    .from(table)
+    .select("id")
+    .eq(column, userId)
+    .order("id", { ascending: true })
+    .limit(HISTORY_READ_CAP + 1);
+  if (page.error) throw new Error("Payment history could not be loaded.");
+  const rows = (page.data ?? []) as { id: string }[];
+  const truncated = rows.length > HISTORY_READ_CAP;
+  return { ids: (truncated ? rows.slice(0, HISTORY_READ_CAP) : rows).map((row) => row.id).filter(Boolean), truncated };
+}
 
-    const { data: apps, error: appError } = await context.supabase
-      .from("applications")
-      .select("id")
-      .eq("user_id", userId);
-    if (appError) throw new Error("Could not load your payments.");
-    const appIds = (apps ?? []).map((app: { id: string }) => app.id);
-    if (appIds.length === 0) return [];
-
-    const { data: rows, error } = await context.supabase
+async function paymentRows(
+  admin: { from: (table: string) => any },
+  column: "driver_id" | "rental_id",
+  ids: readonly string[],
+): Promise<{ rows: HistoryRow[]; truncated: boolean }> {
+  const rows: HistoryRow[] = [];
+  let truncated = false;
+  for (const group of chunks(ids)) {
+    const page = await admin
       .from("payments")
-      .select("id,status,amount,type,reason,paid_date,refunded_at,last_attempt_at,created_at")
-      .in("driver_id", appIds)
-      .in("status", ["paid", "failed", "refunded"])
+      .select(PAYMENT_COLUMNS)
+      .in(column, group)
       .order("created_at", { ascending: false })
-      .limit(200);
-    if (error) throw new Error("Could not load your payments.");
+      .order("id", { ascending: false })
+      .limit(HISTORY_READ_CAP + 1);
+    if (page.error) throw new Error("Payment history could not be loaded.");
+    const found = (page.data ?? []) as HistoryRow[];
+    if (found.length > HISTORY_READ_CAP) truncated = true;
+    rows.push(...(found.length > HISTORY_READ_CAP ? found.slice(0, HISTORY_READ_CAP) : found));
+  }
+  return { rows, truncated };
+}
 
-    return paymentHistory((rows ?? []) as PaymentHistoryRow[]);
+export const getPortalPaymentHistory = createServerFn({ method: "GET" })
+  .middleware([portalPaymentHistoryGate, requireSupabaseAuth])
+  .handler(async ({ context }): Promise<PortalPaymentHistory> => {
+    if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) throw new Error("Payment history is not enabled.");
+    const userId = context.userId;
+    if (typeof userId !== "string" || userId.trim() === "") throw new Error("Payment history could not be loaded.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const applications = await ownedIds(supabaseAdmin, "applications", "user_id", userId);
+    const rentals = await ownedIds(supabaseAdmin, "rentals", "driver_id", userId);
+    const byDriver = applications.ids.length
+      ? await paymentRows(supabaseAdmin, "driver_id", applications.ids)
+      : { rows: [], truncated: false };
+    const byRental = rentals.ids.length
+      ? await paymentRows(supabaseAdmin, "rental_id", rentals.ids)
+      : { rows: [], truncated: false };
+
+    return buildPortalPaymentHistory({
+      rows: [...byDriver.rows, ...byRental.rows],
+      truncated: applications.truncated || rentals.truncated || byDriver.truncated || byRental.truncated,
+    });
   });

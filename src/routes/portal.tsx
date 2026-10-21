@@ -49,6 +49,8 @@ import {
   signCheckoutInspection,
 } from "@/lib/inspections.functions";
 import { getMyCharges } from "@/lib/charges.functions";
+import { PortalPaymentHistory } from "@/components/portal/PortalPaymentHistory";
+import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history-flag";
 import { searchPreviewDrivers, recordDriverPreview } from "@/lib/driver-preview.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { NEXT_STEPS_CARD_ENABLED } from "@/lib/next-steps";
@@ -2258,6 +2260,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           </table>
         )}
       </div>
+      {PORTAL_PAYMENT_HISTORY_ENABLED === true ? <PortalPaymentHistory /> : null}
     </div>
   );
 }
