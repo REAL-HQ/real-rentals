@@ -15,7 +15,7 @@ import {pathToFileURL} from 'node:url';
 const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));
 const hash=b=>createHash('sha256').update(b).digest('hex');
 export function checkPaths(changed){
- const app={...manifest.application,...manifest.evidence},allowed=new Set([...Object.keys(app),...manifest.ciFiles]);
+ const app={...manifest.application,...manifest.evidence},allowed=new Set([...Object.keys(app),...manifest.ciFiles,...Object.keys(manifest.lockedFiles)]);
  assert.equal(new Set(changed).size,changed.length,'Duplicate paths');
  for(const path of changed)assert(allowed.has(path),'Unapproved path: '+path);
  for(const path of Object.keys(app))assert(changed.includes(path),'Required application path: '+path);

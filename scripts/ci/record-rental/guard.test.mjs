@@ -8,7 +8,10 @@ function test(name,fn){fn();console.log('PASS '+name);count++;}
 test('ten original plus four approved evidence paths accepted',()=>checkPaths(paths));
 test('application plus separate CI paths accepted',()=>checkPaths([...paths,...m.ciFiles]));
 for(const p of paths)test('missing application path rejected: '+p,()=>assert.throws(()=>checkPaths(paths.filter(x=>x!==p))));
-for(const p of ['drizzle/migrations/new.sql','src/lib/stripe-new.ts','package.json','.github/workflows/paper-validation.yml'])test('unapproved path rejected: '+p,()=>assert.throws(()=>checkPaths([...paths,p])));
+for(const p of ['drizzle/migrations/new.sql','src/lib/stripe-new.ts','docs/extra.md','.github/workflows/paper-validation.yml'])test('unapproved path rejected: '+p,()=>assert.throws(()=>checkPaths([...paths,p])));
+test('pinned package.json and bun.lock are allowed paths',()=>checkPaths([...paths,'package.json','bun.lock']));
+test('altered package.json hash rejected',()=>assert.throws(()=>checkScope(paths,f=>f==='package.json'?Buffer.from('{}\n'):readFileSync(f))));
+test('altered bun.lock hash rejected',()=>assert.throws(()=>checkScope(paths,f=>f==='bun.lock'?Buffer.from('changed\n'):readFileSync(f))));
 test('duplicate path rejected',()=>assert.throws(()=>checkPaths([...paths,paths[0]])));
 test('rc mode is opt-in and does not replace checkPaths',()=>{
  assert.deepEqual(inspectOptionsFromArgv(['node','guard.mjs']),{rc:false});
