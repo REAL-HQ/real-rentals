@@ -15,10 +15,11 @@
 -- Do not grant the two-argument function to rr_record_executor.
 --
 -- The new function records evidence for an agreement that is already signed
--- and archived for the rental's current vehicle. It loads the agreement
--- itself. The caller cannot supply a hash. It does not render, send, or
--- update the agreement or its document, so signed-archive and
--- document-integrity protections are not written by this path.
+-- and archived. It loads the agreement itself. The caller cannot supply a
+-- hash. The recorded vehicle is the car named on that agreement, which may
+-- already be the replacement while the rental still points at the previous
+-- car. It does not render, send, or update the agreement or its document,
+-- so signed-archive and document-integrity protections are not written here.
 --
 -- Lock order, same keys as the swap, source order strictly increasing.
 -- One vehicle: the rental's current car. This does not certify deadlock
@@ -124,13 +125,13 @@ BEGIN
   OR ag.document_id IS NULL OR ag.completed_document_id IS DISTINCT FROM ag.document_id
   OR ag.signed_at IS NULL OR NOT isfinite(ag.signed_at)
   OR ag.application_id IS DISTINCT FROM r.application_id
-  OR ag.vehicle_id IS DISTINCT FROM r.vehicle_id
+  OR ag.vehicle_id IS NULL
   OR doc_id IS NULL
  THEN RAISE EXCEPTION 'agreement_evidence_required' USING ERRCODE='42501'; END IF;
  INSERT INTO private.agreement_evidence(
   agreement_id, rental_id, application_id, vehicle_id, document_id, sha256, signed_at, signer_user_id, actor_id)
  VALUES (
-  ag.id, r.id, r.application_id, r.vehicle_id, ag.document_id, ag.sha256, ag.signed_at, signer_id, actor)
+  ag.id, r.id, r.application_id, ag.vehicle_id, ag.document_id, ag.sha256, ag.signed_at, signer_id, actor)
  RETURNING * INTO existing;
  INSERT INTO public.audit_log(actor_user_id,actor_role,action,entity_type,entity_id,summary,metadata)
  VALUES (actor,

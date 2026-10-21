@@ -70,14 +70,16 @@ function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; o
   }, [load, rentalId]);
 
   async function onPreview() {
-    if (!SWAP_ENABLED || !readiness?.vehiclesMatch || !readiness.applicationId) return;
+    if (!SWAP_ENABLED || !readiness?.applicationId || !readiness.rentalVehicleId) return;
     setBusy(true);
     setError(null);
     try {
-      const result = (await preview({ data: { applicationId: readiness.applicationId } })) as PreviewShape;
+      const result = (await preview({
+        data: { applicationId: readiness.applicationId, vehicleId: readiness.rentalVehicleId },
+      })) as PreviewShape;
       if (result.vehicleId !== readiness.rentalVehicleId) {
         setPreviewed(null);
-        setError("The existing send uses the application vehicle and is refused.");
+        setError("The agreement vehicle must be the rental's current vehicle.");
         return;
       }
       setPreviewed(result);
@@ -89,7 +91,7 @@ function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; o
   }
 
   async function onSend() {
-    if (!SWAP_ENABLED || !readiness?.vehiclesMatch || !previewed?.fingerprint || !previewed.canSend) return;
+    if (!SWAP_ENABLED || !readiness?.rentalVehicleId || !previewed?.fingerprint || !previewed.canSend) return;
     if (previewed.companyMissing.length > 0 && !companyAck) return;
     setBusy(true);
     setError(null);
@@ -126,7 +128,7 @@ function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; o
   }
 
   const canSend = Boolean(
-    readiness?.vehiclesMatch &&
+    readiness?.rentalVehicleId &&
       previewed?.canSend &&
       previewed.fingerprint &&
       previewed.vehicleId === readiness.rentalVehicleId &&
@@ -146,10 +148,9 @@ function ReplacementAgreementDialog({ rentalId, onClose }: { rentalId: string; o
           </button>
         </div>
         <div className="space-y-4 p-5 text-[13px] text-[#55555E]">
-          <p>Signing uses the existing agreement send. Evidence is linked after the agreement is signed and archived.</p>
+          <p>Signing uses the existing agreement send. The agreement names the rental's current vehicle. Evidence is linked after the agreement is signed and archived.</p>
           {!readiness && !error && <p>Loading</p>}
-          {readiness && !readiness.vehiclesMatch && <p>{readiness.refusal}</p>}
-          {readiness?.vehiclesMatch && (
+          {readiness && (
             <div className="space-y-3">
               <button
                 type="button"

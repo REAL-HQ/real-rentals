@@ -5,13 +5,10 @@ import { SWAP_ENABLED } from "@/lib/record-numbers";
 
 const DISABLED = "Replacement agreement is disabled pending installation and acceptance";
 
-// The existing issueAgreement path stamps agreements.vehicle_id and the
-// contract VIN from applications.vehicle_id. A swap does not move that
-// column. Sending while they differ would ask the driver to sign the
-// previous car. Naming the replacement car needs a vehicle override in
-// prepareAgreement / issueAgreement. That is not an esign.server change
-// and is not made here.
-const VEHICLE_REFUSAL = "The existing send uses the application vehicle and is refused.";
+// issueAgreement names applications.vehicle_id unless a vehicle override is
+// passed. After a swap that column is still the previous car. This send
+// passes the rental's current vehicle; prepareAgreement checks that override
+// on the server and the agreement names that car.
 
 const loadInput = z.object({ rentalId: z.string().uuid() }).strict();
 const sendInput = z
@@ -92,18 +89,14 @@ export const loadReplacementAgreement = createServerFn({ method: "POST" })
     await requireManager(context.userId);
     if (!SWAP_ENABLED) throw new Error(DISABLED);
     const vehicles = await currentVehicles(context.supabase, data.rentalId);
-    const vehiclesMatch = vehicles.applicationVehicleId === vehicles.rentalVehicleId;
     return {
       ...vehicles,
-      vehiclesMatch,
-      refusal: vehiclesMatch ? null : VEHICLE_REFUSAL,
+      vehiclesMatch: vehicles.applicationVehicleId === vehicles.rentalVehicleId,
+      refusal: null,
     };
   });
 
-/**
- * Manager-only. Uses the existing issueAgreement send. Refuses before that
- * call when the application still names a different vehicle than the rental.
- */
+/** Manager-only. Uses the existing issueAgreement send, naming the rental's current vehicle. */
 export const sendReplacementAgreement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => sendInput.parse(input))
@@ -112,13 +105,13 @@ export const sendReplacementAgreement = createServerFn({ method: "POST" })
     await requireManager(context.userId);
     if (!SWAP_ENABLED) throw new Error(DISABLED);
     const vehicles = await currentVehicles(context.supabase, data.rentalId);
-    if (vehicles.applicationVehicleId !== vehicles.rentalVehicleId) throw new Error(VEHICLE_REFUSAL);
     const { issueAgreement } = await import("@/lib/agreements.functions");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const sent = await issueAgreement(supabaseAdmin, vehicles.applicationId, {
       fingerprint: data.fingerprint,
       createdBy: context.userId,
       companyAck: data.companyAck,
+      vehicleId: vehicles.rentalVehicleId,
     });
     return z
       .object({

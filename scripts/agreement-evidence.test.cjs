@@ -39,9 +39,7 @@ test("replacement send is offered only after a recorded swap while the flag is o
   const serverFn = ui.indexOf("useServerFn(", dialog);
   assert.ok(dialog !== -1 && serverFn > dialog);
   assert.equal(ui.slice(0, dialog).includes("useServerFn("), false);
-  const guard = ui.indexOf("readiness?.vehiclesMatch");
-  const preview = ui.indexOf("preview({");
-  assert.ok(guard !== -1 && preview > guard);
+  assert.match(ui, /vehicleId: readiness\.rentalVehicleId/);
   assert.equal(ui.includes("esign.server"), false);
   assert.doesNotMatch(ui, /stripe/i);
   assert.doesNotMatch(history, /weekly_rate|stripe|payments/);
@@ -59,10 +57,10 @@ test("server checks the flag before reads, the send, and the evidence rpc", () =
   const linkHandler = server.slice(server.indexOf("export const linkReplacementAgreement"));
   assert.ok(loadHandler.indexOf("if (!SWAP_ENABLED)") < loadHandler.indexOf("currentVehicles("));
   assert.ok(sendHandler.indexOf("if (!SWAP_ENABLED)") < sendHandler.indexOf("currentVehicles("));
-  assert.ok(sendHandler.indexOf("VEHICLE_REFUSAL") < sendHandler.indexOf('import("@/lib/agreements.functions")'));
+  assert.ok(sendHandler.indexOf("currentVehicles(") < sendHandler.indexOf('import("@/lib/agreements.functions")'));
+  assert.match(sendHandler, /vehicleId: vehicles\.rentalVehicleId/);
   assert.ok(sendHandler.indexOf('import("@/lib/agreements.functions")') < sendHandler.indexOf('import("@/integrations/supabase/client.server")'));
   assert.ok(linkHandler.indexOf("if (!SWAP_ENABLED)") < linkHandler.indexOf('.rpc("link_replacement_agreement_v1"'));
-  assert.match(server, /The existing send uses the application vehicle and is refused\./);
   assert.match(server, /requireManager/);
   assert.doesNotMatch(server, /from ["']@\/lib\/esign\.server["']/);
   assert.doesNotMatch(server, /import\(["']@\/lib\/esign\.server["']\)/);
@@ -125,10 +123,10 @@ test("backfill proposes no rows and refuses until live records are read", () => 
   assert.doesNotMatch(backfill, /INSERT\s+INTO/i);
 });
 
-test("esign and agreement generation are unchanged", () => {
+test("esign.server.ts is unchanged from the published branch", () => {
   const diff = execFileSync(
     "git",
-    ["diff", "1052656", "--", "src/lib/esign.server.ts", "src/lib/agreements.functions.ts"],
+    ["diff", "origin/codex/revenue-publication", "--", "src/lib/esign.server.ts"],
     { cwd: root, encoding: "utf8" },
   );
   assert.equal(diff, "");
@@ -147,6 +145,7 @@ const AGREEMENT = "99999999-9999-4999-8999-999999999999";
 const BAD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DOC = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const COORD = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const PRE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const HASH = "ab".repeat(32);
 
 function loadServer(swapEnabled) {
@@ -184,7 +183,12 @@ function loadServer(swapEnabled) {
         required.push(name);
         return {
           issueAgreement: async (_admin, applicationId, opts) => {
-            issueCalls.push({ applicationId, fingerprint: opts.fingerprint, createdBy: opts.createdBy });
+            issueCalls.push({
+              applicationId,
+              fingerprint: opts.fingerprint,
+              createdBy: opts.createdBy,
+              vehicleId: opts.vehicleId,
+            });
             return {
               id: AGREEMENT,
               url: "https://example.test/sign/token",
@@ -478,6 +482,30 @@ function transactionTests() {
       END $$;
     `);
   });
+  test("evidence names the agreement vehicle while the rental is still on the previous car", () => {
+    psql(`
+      INSERT INTO public.agreements VALUES
+       ('${PRE}', '${APP}', '${NEW}', 'signed', '${HASH}', '${DOC}', '${DOC}', '2026-10-19 12:00:00+00', 'archived');
+      UPDATE public.rentals SET vehicle_id='${OLD}' WHERE id='${RENTAL}';
+    `);
+    const linked = JSON.parse(psql(linkSql(RENTAL, PRE)).trim());
+    assert.equal(linked.vehicleId, NEW);
+    assert.equal(linked.recovered, false);
+    psql(`
+      DO $$ BEGIN
+        IF (SELECT vehicle_id FROM public.rentals WHERE id='${RENTAL}') <> '${OLD}' THEN
+          RAISE EXCEPTION 'rental pointer moved';
+        END IF;
+        IF (SELECT vehicle_id FROM private.agreement_evidence WHERE agreement_id='${PRE}') <> '${NEW}' THEN
+          RAISE EXCEPTION 'evidence did not name the agreement vehicle';
+        END IF;
+        IF (SELECT sha256 FROM public.agreements WHERE id='${PRE}') <> '${HASH}'
+         OR (SELECT archive_status FROM public.agreements WHERE id='${PRE}') <> 'archived'
+        THEN RAISE EXCEPTION 'archive changed'; END IF;
+      END $$;
+      UPDATE public.rentals SET vehicle_id='${NEW}' WHERE id='${RENTAL}';
+    `);
+  });
   test("the same agreement cannot be linked to a different rental", () => {
     psql(`
       DO $$ BEGIN
@@ -488,11 +516,131 @@ function transactionTests() {
         IF SQLERRM NOT LIKE '%evidence_conflict%' THEN RAISE; END IF;
       END $$;
       DO $$ BEGIN
-        IF (SELECT count(*) FROM private.agreement_evidence) <> 1 THEN RAISE EXCEPTION 'conflict wrote another row'; END IF;
-        IF (SELECT rental_id FROM private.agreement_evidence) <> '${RENTAL}' THEN RAISE EXCEPTION 'rental binding changed'; END IF;
+        IF (SELECT count(*) FROM private.agreement_evidence WHERE agreement_id='${AGREEMENT}') <> 1 THEN
+          RAISE EXCEPTION 'conflict wrote another row';
+        END IF;
+        IF (SELECT rental_id FROM private.agreement_evidence WHERE agreement_id='${AGREEMENT}') <> '${RENTAL}' THEN
+          RAISE EXCEPTION 'rental binding changed';
+        END IF;
       END $$;
     `);
   });
+}
+
+function loadAgreementsModule() {
+  const cache = new Map();
+  const crypto = require("crypto");
+  function resolve(fromDir, name) {
+    if (name.startsWith("@/")) return path.join(root, "src", name.slice(2));
+    if (name.startsWith(".")) return path.resolve(fromDir, name);
+    return null;
+  }
+  function load(abs) {
+    const file = fs.existsSync(abs + ".ts") ? abs + ".ts" : abs;
+    if (cache.has(file)) return cache.get(file);
+    const built = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    });
+    const module = { exports: {} };
+    const sandbox = {
+      module,
+      exports: module.exports,
+      require: makeRequire(path.dirname(file)),
+      console,
+      process,
+      Buffer,
+      TextEncoder,
+      crypto,
+      URL,
+    };
+    vm.runInNewContext(built.outputText, sandbox, { filename: file });
+    cache.set(file, module.exports);
+    return module.exports;
+  }
+  function makeRequire(fromDir) {
+    return (name) => {
+      if (name === "zod") return z;
+      if (name === "@tanstack/react-start" || name === "@tanstack/react-start/server") {
+        return { createServerFn() { return { middleware() { return this; }, inputValidator() { return this; }, handler() { return this; } }; }, getRequest() { return null; } };
+      }
+      if (name === "@/integrations/supabase/auth-middleware") return { requireSupabaseAuth: {} };
+      if (name === "@/integrations/supabase/client.server") return { supabaseAdmin: {} };
+      if (name === "@/lib/esign.server") {
+        return {
+          getCompanySigner: async () => ({ name: "Real Rentals", title: "Owner" }),
+          deliverSigningLink: async () => ({ email: "queued", sms: "skipped", delivered: true }),
+        };
+      }
+      if (name === "@/lib/esign-pdf.server") {
+        return { sha256Hex: async (value) => crypto.createHash("sha256").update(String(value)).digest("hex"), renderPreviewPdf: async () => new Uint8Array() };
+      }
+      if (name === "@/lib/company-identity.server") {
+        return { getCompanyIdentity: async () => ({ merge: {}, missing: [], fromSettings: {} }) };
+      }
+      if (name === "@/lib/vin") return { checkVin: () => ({ formatValid: true }) };
+      if (name === "@/lib/audit.server") return { logAudit: async () => {} };
+      if (name === "@/lib/roles.server") return { getActor: async () => ({ tier: "manager", userId: ACTOR }), requireTier: async () => ({ tier: "manager" }) };
+      if (name === "@/lib/email.server") return {};
+      if (name === "@/lib/driver-preview.server") return {};
+      if (name === "@/lib/agreement-templates.functions") return { loadLibraryDraft: async () => null };
+      const abs = resolve(fromDir, name);
+      if (!abs) throw new Error("Unexpected dependency: " + name);
+      return load(abs);
+    };
+  }
+  return load(path.join(root, "src/lib/agreements.functions"));
+}
+
+function agreementAdmin(rentalVehicleId) {
+  const inserts = [];
+  const oldVehicle = {
+    id: OLD, year: 2020, make: "Kia", model: "Soul", trim: null, color: "White",
+    vin: "OLDV1N00000000001", unit_number: "12", weekly_rate: 300, deposit: 0,
+    license_plate: "OLD123", plate_state: "FL",
+  };
+  const newVehicle = { ...oldVehicle, id: NEW, make: "Toyota", model: "Camry", vin: "NEWV1N00000000001", license_plate: "NEW123" };
+  const app = {
+    id: APP, full_name: "Driver Example", email: "driver@example.test", phone: "8135550100",
+    address: "1 Main St", city: "Tampa", state: "FL", zip: "33602",
+    license_number: "D1234567", license_state: "FL", license_expiration: "2028-01-01",
+    vehicle_id: OLD, weekly_rent: 350, deposit_amount: 0, contract_start_date: "2026-10-01",
+    contract_end_date: "2026-11-01", market_id: null, dob: "1990-01-01", card_brand: null, card_last4: null,
+    insurance_carrier: null, insurance_policy_number: null,
+  };
+  const admin = {
+    from(table) {
+      const state = { cols: "", eqs: [] };
+      const run = async () => {
+        if (table === "applications") return { data: app, error: null };
+        if (table === "rentals") {
+          if (String(state.cols).includes("vehicle_id")) return { data: { vehicle_id: rentalVehicleId }, error: null };
+          return { data: { start_date: "2026-10-01", end_date: "2026-11-01", status: "active" }, error: null };
+        }
+        if (table === "vehicles") {
+          const id = state.eqs.find((entry) => entry[0] === "id")?.[1];
+          return { data: id === NEW ? newVehicle : oldVehicle, error: null };
+        }
+        if (table === "agreement_templates" || table === "markets" || table === "app_settings") return { data: table === "agreement_templates" ? [] : null, error: null };
+        if (table === "agreements") return { data: { id: AGREEMENT }, error: null };
+        return { data: null, error: null };
+      };
+      const chain = {
+        select(cols) { state.cols = cols; return chain; },
+        eq(col, val) { state.eqs.push([col, val]); return chain; },
+        order() { return chain; },
+        limit() {
+          const promise = run();
+          promise.maybeSingle = () => promise;
+          return promise;
+        },
+        maybeSingle() { return run(); },
+        insert(payload) { inserts.push({ table, payload }); return chain; },
+        single() { return run(); },
+      };
+      return chain;
+    },
+  };
+  return { admin, inserts, oldVehicle, newVehicle };
 }
 
 (async () => {
@@ -521,19 +669,18 @@ function transactionTests() {
     rentals: { id: RENTAL, status: "active", application_id: APP, vehicle_id: NEW },
     applications: { id: APP, vehicle_id: OLD, deleted_at: null },
   });
-  await assert.rejects(
-    mismatch.api.sendReplacementAgreement({ data: sendData, context: mismatch.context }),
-    /application vehicle and is refused/,
-  );
-  assert.equal(mismatch.required.includes("@/lib/agreements.functions"), false);
-  assert.equal(mismatch.required.includes("@/integrations/supabase/client.server"), false);
-  assert.equal(mismatch.issueCalls.length, 0);
+  const sentMismatch = await mismatch.api.sendReplacementAgreement({ data: sendData, context: mismatch.context });
+  assert.equal(sentMismatch.id, AGREEMENT);
+  assert.equal(mismatch.issueCalls.length, 1);
+  assert.equal(mismatch.issueCalls[0].applicationId, APP);
+  assert.equal(mismatch.issueCalls[0].vehicleId, NEW);
   assert.equal(mismatch.calls.some((c) => c[0] === "rpc"), false);
   const readiness = await mismatch.api.loadReplacementAgreement({ data: { rentalId: RENTAL }, context: mismatch.context });
   assert.equal(readiness.vehiclesMatch, false);
-  assert.match(readiness.refusal, /application vehicle and is refused/);
-  results.push("mismatched application vehicle is refused before send");
-  console.log("PASS mismatched application vehicle is refused before send");
+  assert.equal(readiness.rentalVehicleId, NEW);
+  assert.equal(readiness.refusal, null);
+  results.push("a different application vehicle still sends the rental's current vehicle");
+  console.log("PASS a different application vehicle still sends the rental's current vehicle");
 
   const match = loadServer(true);
   match.setRows({
@@ -549,6 +696,7 @@ function transactionTests() {
   assert.equal(match.issueCalls[0].applicationId, APP);
   assert.equal(match.issueCalls[0].fingerprint, HASH);
   assert.equal(match.issueCalls[0].createdBy, ACTOR);
+  assert.equal(match.issueCalls[0].vehicleId, NEW);
   const evidence = {
     contract: "agreement-evidence-v1",
     evidenceId: id(7),
@@ -577,6 +725,26 @@ function transactionTests() {
   assert.equal("_sha256" in rpc[0][2], false);
   results.push("matching vehicles use the existing send and the evidence rpc");
   console.log("PASS matching vehicles use the existing send and the evidence rpc");
+
+  const agreements = loadAgreementsModule();
+  const wrong = agreementAdmin(NEW);
+  await assert.rejects(
+    agreements.issueAgreement(wrong.admin, APP, { fingerprint: HASH, createdBy: ACTOR, vehicleId: OLD }),
+    /must be the rental's current vehicle/,
+  );
+  assert.equal(wrong.inserts.length, 0);
+  const named = agreementAdmin(NEW);
+  const issued = await agreements.issueAgreement(named.admin, APP, { fingerprint: undefined, createdBy: ACTOR, vehicleId: NEW });
+  assert.equal(issued.id, AGREEMENT);
+  assert.equal(named.inserts[0].payload.vehicle_id, NEW);
+  assert.match(named.inserts[0].payload.body, /NEWV1N00000000001/);
+  assert.doesNotMatch(named.inserts[0].payload.body, /OLDV1N00000000001/);
+  const plain = agreementAdmin(NEW);
+  await agreements.issueAgreement(plain.admin, APP, { createdBy: ACTOR });
+  assert.equal(plain.inserts[0].payload.vehicle_id, OLD);
+  assert.match(plain.inserts[0].payload.body, /OLDV1N00000000001/);
+  results.push("override names the rental vehicle and the default path names the application vehicle");
+  console.log("PASS override names the rental vehicle and the default path names the application vehicle");
 
   startDatabase();
   try {
