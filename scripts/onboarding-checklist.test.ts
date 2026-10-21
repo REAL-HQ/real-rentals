@@ -1,9 +1,10 @@
+// Run: bun test scripts/onboarding-checklist.test.ts
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { supabaseAdmin } from "./fake-supabase.src.mjs";
-import { COUNTED_ID_BATCH, COUNTED_PAGE } from "../src/lib/count-paged-read";
+import { COUNTED_ID_BATCH, COUNTED_MAX, COUNTED_PAGE, readCounted, readInIdBatches } from "../src/lib/count-paged-read";
 import {
   readinessFacts,
   type ReadinessAgreement,
@@ -90,6 +91,11 @@ describe("onboarding checklist", () => {
     assert.equal(ui.includes("useServerFn"), false);
     assert.equal(panel.includes("focusId"), false);
     assert.match(panel, /<OnboardingReadinessRows driver=\{sharedDriver\} \/>/);
+    assert.match(panel, /This Driver Is Past The First 1000\. Showing The Original Readiness Rows\./);
+    assert.match(panel, /onSharedReadinessRefresh/);
+    const note = panel.indexOf("This Driver Is Past The First 1000");
+    const rows = panel.indexOf("<OnboardingReadinessRows driver={sharedDriver} />");
+    assert.ok(rows !== -1 && note > rows);
     assert.match(panel, /<SignalRow key=\{r\.label\} label=\{r\.label\} ok=\{r\.ok\} \/>/);
     assert.doesNotMatch(ui, /uppercase|lowercase|capitalize/);
     assert.doesNotMatch(read("src/components/admin/nav-config.ts"), /onboarding/);
@@ -210,6 +216,95 @@ describe("onboarding checklist", () => {
     });
     assert.equal(passedBackground.find((step) => step.key === "id")?.state, "unknown");
     assert.equal(passedBackground.find((step) => step.key === "agreement")?.state, "missing");
+  });
+
+  it("uses the latest live rental for pickup", () => {
+    const blank = {
+      card_last4: null,
+      stripe_payment_method_id: null,
+      card_on_file_at: null,
+      deposit_held: false,
+      deposit_status: null,
+      deposit_settled_at: null,
+    };
+    const facts = readinessFacts({
+      application: app({ id: "p" }),
+      documents: [],
+      screening: null,
+      agreements: [],
+      payments: [],
+      rentals: [
+        { application_id: "p", status: "ended", start_date: "2026-01-15", ...blank },
+        { application_id: "p", status: "cancelled", start_date: "2026-12-01", ...blank },
+        { application_id: "p", status: "active", start_date: "2026-03-01", ...blank },
+        { application_id: "p", status: "active", start_date: "2026-06-15", ...blank },
+      ],
+    });
+    const pickup = facts.find((step) => step.key === "pickup");
+    assert.equal(pickup?.state, "done");
+    assert.equal(pickup?.source, "Rental");
+    assert.equal(pickup?.at, "2026-06-15");
+  });
+
+  it("does not treat a refunded deposit as received when the held flag is still true", () => {
+    const facts = readinessFacts({
+      application: app({ id: "d" }),
+      documents: [],
+      screening: null,
+      agreements: [],
+      payments: [],
+      rentals: [
+        {
+          application_id: "d",
+          status: "active",
+          start_date: "2026-04-01",
+          card_last4: null,
+          stripe_payment_method_id: null,
+          card_on_file_at: null,
+          deposit_held: true,
+          deposit_status: "refunded",
+          deposit_settled_at: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const deposit = facts.find((step) => step.key === "deposit");
+    assert.equal(deposit?.state, "missing");
+    assert.equal(deposit?.source, null);
+    assert.equal(deposit?.at, null);
+  });
+});
+
+describe("count-checked pages", () => {
+  it("rejects a count that changes between pages", async () => {
+    let calls = 0;
+    const read = await readCounted(async (from, to) => {
+      calls += 1;
+      const count = calls === 1 ? 400 : 401;
+      const data = Array.from({ length: to - from + 1 }, (_, index) => ({ id: `row-${from + index}` }));
+      return { data, error: null, count };
+    });
+    assert.equal(read.ok, false);
+    assert.equal(calls, 2);
+  });
+
+  it("rejects an empty page while rows remain", async () => {
+    const read = await readCounted(async (from, to) => {
+      if (from === 0) {
+        const data = Array.from({ length: to - from + 1 }, (_, index) => ({ id: `row-${index}` }));
+        return { data, error: null, count: 400 };
+      }
+      return { data: [], error: null, count: 400 };
+    });
+    assert.equal(read.ok, false);
+  });
+
+  it("rejects an id batch that reports more rows than the pager ceiling", async () => {
+    const read = await readInIdBatches(["driver-1"], async () => ({
+      data: [{ id: "doc-1" }],
+      error: null,
+      count: COUNTED_MAX + 1,
+    }));
+    assert.equal(read.ok, false);
   });
 });
 
