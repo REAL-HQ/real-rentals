@@ -30,6 +30,7 @@ import {
   Scale,
   FileSpreadsheet,
   HeartPulse,
+  CircleDollarSign,
   BarChart3,
   CalendarClock,
   CalendarRange,
@@ -49,6 +50,9 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
+import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
+import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
@@ -248,6 +252,63 @@ const DEPOSIT_TAB: TabDef = {
   group: "BUSINESS",
   description: "Security Deposits Held, Due Back, Or Unknown",
 };
+
+/** Shown only while Finance Data Quality is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FINANCE_DATA_QUALITY_TAB: TabDef = {
+  id: "finance_data_quality",
+  label: "Finance Data Quality",
+  icon: ListChecks,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Gaps That Leave Finance Totals Partial Or Unavailable",
+};
+
+function withFinanceDataQuality<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_DATA_QUALITY_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...FINANCE_DATA_QUALITY_TAB, href } : FINANCE_DATA_QUALITY_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+/** Shown only while Rent Aging is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RENT_AGING_TAB: TabDef = {
+  id: "rent_aging",
+  label: "Rent Aging",
+  icon: Scale,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Outstanding Renter Balances By How Far Past Due",
+};
+
+function withRentAging<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_AR_AGING_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...RENT_AGING_TAB, href } : RENT_AGING_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+/** Shown only while Deposit Ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FINANCE_DEPOSIT_LEDGER_TAB: TabDef = {
+  id: "finance_deposit_ledger",
+  label: "Deposit Ledger",
+  icon: CircleDollarSign,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Deposit Collected, Held, Applied, Refunded, And Still Held",
+};
+
+function withFinanceDepositLedger<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_DEPOSIT_LEDGER_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...FINANCE_DEPOSIT_LEDGER_TAB, href } : FINANCE_DEPOSIT_LEDGER_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
 
 /** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
 const REVENUE_FORECAST_TAB: TabDef = {
@@ -484,10 +545,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length) return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
+  if (!extra.length) return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
+  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -558,11 +619,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
+    return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
+  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -677,6 +738,18 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "tax_export") {
     if (!TAX_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
     return "tax_export";
+  }
+  if (args.urlTab === "finance_data_quality") {
+    if (!FINANCE_DATA_QUALITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance_data_quality";
+  }
+  if (args.urlTab === "rent_aging") {
+    if (!FINANCE_AR_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "rent_aging";
+  }
+  if (args.urlTab === "finance_deposit_ledger") {
+    if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance_deposit_ledger";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
