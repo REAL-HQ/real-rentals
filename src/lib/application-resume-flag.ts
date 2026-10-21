@@ -37,14 +37,16 @@ function applicationStatus(status: unknown): string {
 
 /**
  * Whether the portal should refuse to open this application.
- * Flag off: declined and closed only.
+ * Flag off: exact String(status) match of declined or closed, the live check.
  * Flag on: the full resume-closed list, except approved and complete. Those
  * two stay open for Review My Application. The wider list only blocks a resume
  * token for a draft that is no longer open.
  */
 export function portalOpenRefused(status: unknown, resumeEnabled: boolean): boolean {
+  if (!resumeEnabled) {
+    return (BASE_CLOSED_APPLICATION_STATUSES as readonly string[]).includes(String(status));
+  }
   const raw = applicationStatus(status);
   if ((REVIEW_APPLICATION_STATUSES as readonly string[]).includes(raw)) return false;
-  const closed = resumeEnabled ? CLOSED_RESUME_STATUSES : BASE_CLOSED_APPLICATION_STATUSES;
-  return (closed as readonly string[]).includes(raw);
+  return (CLOSED_RESUME_STATUSES as readonly string[]).includes(raw);
 }

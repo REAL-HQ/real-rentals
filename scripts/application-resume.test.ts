@@ -281,6 +281,11 @@ describe("waitlist promotion resume", () => {
     assert.doesNotMatch(open, /const CLOSED_RESUME_STATUSES/);
     assert.doesNotMatch(open, /applicationFromPromotion/);
     assert.deepEqual([...BASE_CLOSED_APPLICATION_STATUSES], ["declined", "closed"]);
+    assert.match(flagFile, /includes\(String\(status\)\)/);
+    assert.equal(portalOpenRefused("declined", false), true);
+    assert.equal(portalOpenRefused("Declined", false), false);
+    assert.equal(portalOpenRefused(" closed", false), false);
+    assert.equal(portalOpenRefused("closed ", false), false);
     for (const status of ["approved", "complete"]) {
       assert.equal(portalOpenRefused(status, false), false);
       assert.equal(portalOpenRefused(status, true), false);
