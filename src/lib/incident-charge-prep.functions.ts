@@ -1,0 +1,53 @@
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { z } from "zod";
+import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
+import { buildIncidentChargePrep, type IncidentChargePrepRow } from "@/lib/incident-charge-prep";
+
+const rowSchema = z.object({
+  incidentId: z.string().uuid(),
+  vehicleId: z.string().uuid(),
+  rentalId: z.string().uuid().nullable(),
+  vehicleLabel: z.string(),
+  incidentType: z.string(),
+  occurredAt: z.string(),
+  status: z.enum(["open", "in_claim", "repairing"]),
+  proposedAmount: z.number().positive().nullable(),
+  basis: z.enum(["driver_responsible_amount", "no_driver_amount"]),
+}).strict();
+
+function vehicleName(row: { year?: number | null; make?: string | null; model?: string | null } | null): string {
+  if (!row) return "";
+  return [row.year, row.make, row.model].filter((part) => part != null && String(part).trim() !== "").join(" ");
+}
+
+/** Manager-only. Throws before the role check and before any read while the flag is off. */
+export const listIncidentChargePrep = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({}).strict().parse(input ?? {}))
+  .handler(async ({ context }): Promise<IncidentChargePrepRow[]> => {
+    if (!INCIDENT_CHARGE_PREP_ENABLED) throw new Error("Incident Charge Prep is off");
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("incidents")
+      .select("id,status,incident_type,occurred_at,vehicle_id,rental_id,driver_responsible_amount,vehicles(unit_number,year,make,model)")
+      .in("status", ["open", "in_claim", "repairing"]);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []).map((row) => {
+      const vehicle = Array.isArray(row.vehicles) ? row.vehicles[0] : row.vehicles;
+      return {
+        id: row.id as string,
+        status: row.status as string,
+        incidentType: row.incident_type as string,
+        occurredAt: row.occurred_at as string,
+        vehicleId: row.vehicle_id as string,
+        rentalId: (row.rental_id as string | null) ?? null,
+        driverResponsibleAmount: row.driver_responsible_amount == null ? null : Number(row.driver_responsible_amount),
+        unitNumber: (vehicle?.unit_number as string | null) ?? null,
+        vehicle: vehicleName(vehicle),
+      };
+    });
+    return z.array(rowSchema).parse(buildIncidentChargePrep(rows));
+  });

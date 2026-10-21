@@ -14,6 +14,8 @@ import {
 import { incidentSeedForIssue } from "@/lib/driver-issues.functions";
 import type { IssueIncidentSeed } from "@/lib/driver-issues";
 import { fmtDateTime } from "@/lib/date-format";
+import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
+import { IncidentChargePrep } from "./IncidentChargePrep";
 
 type VehicleLite = {
   id: string;
@@ -104,6 +106,8 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
           <Plus className="w-4 h-4" /> Log Incident
         </button>
       </div>
+
+      {INCIDENT_CHARGE_PREP_ENABLED ? <IncidentChargePrep /> : null}
 
       <div className="flex flex-wrap gap-1.5">
         {["all", ...STATUSES].map((s) => (
