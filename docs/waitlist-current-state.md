@@ -1,55 +1,68 @@
 # Waitlist current state
 
-Read-only review of live `7e3e6eb` (`Merge pull request #68 from REAL-HQ/release/rc2-dark-features`, tip of `codex/revenue-publication` at the time of this note). No schema was applied, no hosted database was queried, and no row counts below come from production. Line numbers are that commit.
+Read-only review of live `7e3e6eb` (`Merge pull request #68 from REAL-HQ/release/rc2-dark-features`, tip of `codex/revenue-publication`). No schema was applied, no hosted database was queried, and no row counts below come from production. Line numbers are that commit. This note does not change the Waitlist Conflict Resolver.
 
-Two different things share the word Waitlist. They are not one queue.
+Two lists share the name Waitlist.
 
 | | Public queue | Staff hold |
 | --- | --- | --- |
 | Table | `public.waitlist` | `public.application_waitlist_holds` |
-| Who is on it | Someone who signed up before they had an application | An application that already exists |
-| What Promote does | Creates or links an application | Does not apply. Add / Remove Waitlist only opens or closes a hold |
-| What a booking is | Not created here | Not created here |
+| Who | A person who signed up before they had an application | An application that already exists |
+| Staff action | Promote creates or links an application | Add / Remove Waitlist opens or closes a hold |
+| Booking | Not created | Not created |
 
-A booking or a rental is a later step on an application. Nothing in the waitlist server functions inserts a booking or a rental.
+A booking or a rental is a later step on an application. No waitlist server function inserts a booking or a rental.
 
-## 1. How a public entry is created
-
-There are two writers.
+## Signup entry points
 
 ### City hero, only when Cars Available is 0
 
-`CityHeroLeadForm` loads `getAvailability` on mount. `waitlistMode` is `availability === 0`. Any other value, including "not set" (`null`), still saves an application.
+`CityHeroLeadForm` loads `getAvailability` on mount. Waitlist mode is `availability === 0`. Any other value, including "not set" (`null`), still saves an application.
 
-- `src/components/site/CityHeroLeadForm.tsx:56` and `:121-131`
-- `src/lib/waitlist.functions.ts:29-45` (`cars_available()`; an error or a non-number returns `null`, which leaves the hero in application mode)
-- `supabase/migrations/20260930222027_8aa77696-37ad-4595-a1b6-ba4b7dc384b1.sql:19-31` (the function reads only `app_settings.value->>'cars_available'` for key `fleet_availability`)
+- `src/components/site/CityHeroLeadForm.tsx:56`, `:121-131`
+- `src/lib/waitlist.functions.ts:29-45`
+- `supabase/migrations/20260930222027_8aa77696-37ad-4595-a1b6-ba4b7dc384b1.sql:19-31` (`cars_available()` reads only `app_settings.value->>'cars_available'` for key `fleet_availability`)
 
-`joinWaitlist` (`src/lib/waitlist.functions.ts:47-137`):
+`joinWaitlist` (`src/lib/waitlist.functions.ts:47-137`) lowercases the email, refuses a second `waiting` row for that email regardless of market (`:78-84`), and inserts `status: 'waiting'` with source `fleet_waitlist`, phone, pickup date, market, city, state, and UTM / gclid (`:86-104`). It then sends "You're on the REAL RENTALS waitlist" (`:123-134`). The hero requires a phone of at least 7 digits and a pickup date (`CityHeroLeadForm.tsx:92-99`). It does not collect `driver_status` and it does not show a queue position (`:122-123`, `WaitlistPanel.tsx:227-230`).
 
-1. Lowercases the email.
-2. If any row with that email is already `status = 'waiting'`, returns success and does not insert and does not email (`:78-84`). The check ignores market.
-3. Inserts `status: 'waiting'`, `source` defaulting to `fleet_waitlist`, plus phone, pickup date, market, city, state, and UTM / gclid (`:86-104`).
-4. `landing_page` and `referrer` are accepted and then dropped. The comment says the table has no such columns (`:102-103`). The generated row type confirms that (`src/integrations/supabase/types.ts:5794-5818`).
-5. Sends "You're on the REAL RENTALS waitlist" (`:123-134`). The copy says they can leave by replying. No inbound handler for that reply exists on this path.
-6. A unique-index violation whose message contains `duplicate` is treated as success (`:106-110`) and still falls through to the confirmation email.
-
-The hero requires a phone of at least 7 digits and a pickup date (`CityHeroLeadForm.tsx:92-99`). It does not collect `driver_status`. It does not show a position (`:122-123`, panel copy at `WaitlistPanel.tsx:227-230`).
+`landing_page` and `referrer` are accepted and dropped. The table has no such columns (`waitlist.functions.ts:102-103`, `src/integrations/supabase/types.ts:5794-5818`). A unique-index error whose message contains `duplicate` is treated as success (`:106-110`) and still sends the confirmation.
 
 ### Homepage Coming Soon cities
 
-`LocationsSection` inserts straight from the browser with the anon key. It does not call `joinWaitlist`.
+`LocationsSection` inserts from the browser. It does not call `joinWaitlist`.
 
 - `src/components/site/LocationsSection.tsx:140-165`
-- Columns granted to anon: `full_name, email, phone, market_id, driver_status, source, utm_*, gclid` (`supabase/migrations/20260721192708_1efcc7f8-cfa7-4788-93eb-643981f90c06.sql:14-17`)
-- `status` is omitted, so the column default `waiting` applies (`20260930222027_...sql:4`)
-- Source is `homepage_waitlist`. Phone is optional. `driver_status` is `active`, `pending`, `not_yet`, or `""` if they skip the gig-app question (`LocationsSection.tsx:136`, `:191-210`)
-- No confirmation email. A database error is toasted raw (`:160`)
-- No server-side "already on the list" response
+- Anon may insert `full_name, email, phone, market_id, driver_status, source, utm_*, gclid` (`supabase/migrations/20260721192708_1efcc7f8-cfa7-4788-93eb-643981f90c06.sql:14-17`)
+- `status` is omitted, so the default `waiting` applies (`20260930222027_...sql:4`)
+- Source is `homepage_waitlist`. Phone is optional. `driver_status` is `active`, `pending`, `not_yet`, or `""` (`LocationsSection.tsx:136`, `:191-210`)
+- No confirmation email. A database error is shown raw (`:160`)
 
-`driver_status` is not selected by `listWaitlist`, not copied by `promote_waitlist_entry`, and not shown in the admin table. It is stored and then unused.
+`driver_status` is not selected by `listWaitlist`, not copied by promotion, and not shown in the admin table.
 
-### The one-active-email rule
+### Portal
+
+A verified email with a waitlist row and no application sees `WaitlistCard` (`src/components/portal/ApplicantHome.tsx:36`, `:46`, `:157-230` on `7e3e6eb`). They can edit name, phone, city, state, and preferred start date (`updateMyWaitlist`, `src/lib/portal-access.functions.ts:107-146`). **Start My Application** links to bare `/apply` (`ApplicantHome.tsx:190-192`). That does not promote or link the waitlist row. Sign-in can find a waitlist email (`src/lib/portal-signin.server.ts:78-84`). If an application exists, the portal prefers it and hides the waitlist card (`portal-access.functions.ts:65-83`).
+
+Login copy mentions a waitlist spot (`src/routes/login.tsx:23`, `:210`).
+
+## Tables and row access
+
+### `public.waitlist`
+
+Created in `supabase/migrations/20260621011525_22b1864d-5a3f-45fc-a9bd-c0ca7d099cf3.sql:10-25`. Later columns: `status`, `pickup_date`, `notified_at`, `promoted_application_id`, `promoted_at` (`20260930222027_...sql:3-8`); `city`, `state` (`20260930223843_3c1454a2-4539-484a-9f94-627af1428c28.sql:1-2`); `review_reason`, `review_flagged_at` (`drizzle/migrations/0015_waitlist_promotion_identity_review.sql:1`).
+
+Row-level security is on (`20260621011525_...sql:31`).
+
+| Policy | Who | What |
+| --- | --- | --- |
+| "Anyone can join waitlist" | `anon`, `authenticated` INSERT | Email length 5–255 and an email shape (`20260721192409_e6878fdf-a4f4-41ec-9e23-870d17b3d35b.sql:36-41`). Replaces the earlier `char_length(email) > 3` check (`20260713042527_...sql:31-34`) and the original `WITH CHECK (true)` (`20260621011525_...sql:33-34`). |
+| "Admins/team can view waitlist" | `authenticated` SELECT | `has_role` `admin` or `team` (`20260621011525_...sql:36-38`). A Coordinator is neither, so the browser client cannot read the queue. |
+| "Admins manage waitlist" | `authenticated` ALL | `has_role` `admin` (`:40-43`). |
+| "No direct waitlist deletes" | `anon`, `authenticated` DELETE | Restrictive `USING (false)` (`drizzle/migrations/0017_0017_driver_deletion_security_repair.sql:3-5`). `DELETE` and `TRUNCATE` are revoked from those roles. |
+
+Anon insert was narrowed to the columns listed above (`20260721192708_...sql:3-17`). `joinWaitlist`, promote, notify, and the conflict write use the service role, which bypasses these policies. Those server functions check the staff tier themselves: `requireStaff` (Coordinator and up) for the list, `requireManager` (Owner `admin` or Manager `team`) for Cars Available, notify, promote, holds, and conflict review (`src/lib/roles.ts:17-20`, `src/lib/waitlist.functions.ts:178`, `:305`, `:343`, `:399`, `:472`, `:570`, `:639`).
+
+One waiting row per lowercased email and market:
 
 ```12:14:supabase/migrations/20260930222027_8aa77696-37ad-4595-a1b6-ba4b7dc384b1.sql
 CREATE UNIQUE INDEX IF NOT EXISTS waitlist_one_active_per_email
@@ -57,261 +70,185 @@ CREATE UNIQUE INDEX IF NOT EXISTS waitlist_one_active_per_email
   WHERE status = 'waiting';
 ```
 
-Consequences, from the index definition and the two writers:
+A `notified` or `promoted` row does not occupy the index. PostgreSQL treats NULL as distinct, so two `waiting` rows with the same email and a null `market_id` are not collapsed. The homepage form always sends `market_id`. `joinWaitlist` still refuses any second waiting email before insert.
 
-- The same email may wait in two markets if the insert does not go through `joinWaitlist`. The server function refuses that; the homepage form does not.
-- A `notified` or `promoted` row does not occupy the index, so the same email can join again and get a second `waiting` row, plus another confirmation email.
-- PostgreSQL unique indexes treat NULL as distinct. Two `waiting` rows with the same email and a null `market_id` are not collapsed by this index. The homepage form always sends `market_id`. The server function's email check still collapses them.
+### Holds and application columns
 
-## 2. How entries are ordered
+`application_waitlist_holds` (`drizzle/migrations/0014_waitlist_holds_and_safe_promotion.sql:5-22`): `id`, `application_id`, `added_at`, `added_by`, `removed_at`, `removed_by`. One open hold per application. Authenticated users may SELECT. The policy "Staff read waitlist holds" uses `private.is_staff()` (`:21-22`). Service role has full access. Trigger `waitlist_holds_guard` forbids deletes and forbids edits other than closing the hold (`:24-36`).
 
-Position is computed on read. It is not stored.
+`applications.waitlist_signed_up_at` and `applications.waitlist_source` (`0014_...sql:1-3`) are copied on link and on create, and are not overwritten once set.
 
-`listWaitlist` loads every waitlist row, oldest `created_at` first, with no `.range()` (`src/lib/waitlist.functions.ts:195-202`). For each row still `waiting`, it assigns position 1, 2, 3… inside `market_id`. A null market shares the key `"_"` (`:260-269`). `notified` and `promoted` get position `null` and the table shows an em dash (`WaitlistPanel.tsx:267-268`).
+`promote_waitlist_entry` and `resolve_waitlist_phone_conflict` are `SECURITY DEFINER` and executable only by `service_role` (`0015_...sql:63-64`, `drizzle/migrations/0022_waitlist_resolve_phone_conflict.sql:88-89`).
 
-`notifyWaitlistTop` does not use that position. It takes the oldest `waiting` rows in the whole table, up to the requested limit, with no market, city, or pickup-date filter (`waitlist.functions.ts:346-353`).
+Deleting a driver closes an open hold and rewrites the linked waitlist name, email, and phone to `Deleted Driver` / `deleted+<id>@invalid.example` (`drizzle/migrations/0016_0016_driver_deletion_stage1.sql:137-138`). `market_id` is left in place. Restore can reopen the hold that delete closed (`0017`).
 
-Cars Available is one global integer (`setCarsAvailable`, `:301-337`). The city hero still says "Only N cars available in {city}" (`CityHeroLeadForm.tsx:203-210`). N is not that city's count.
+## Statuses
 
-The Websites demand chips count every waitlist row with a `market_id`, including notified, promoted, and scrubbed rows (`src/components/admin/WebsitesPanel.tsx:32-40`, `:68-76`). Rows with a null market are omitted. That select is also unbounded.
+`waitlist.status` is text, default `waiting`, with no `CHECK` in the waitlist migrations (`20260930222027_...sql:4`).
 
-Both unbounded selects stop at the project's PostgREST row cap. This repo does not set `db-max-rows`. Supabase's default cap is 1000. This note did not measure the live cap. If the queue is larger than the cap, positions and demand counts are computed from a truncated read.
+| Status | Meaning | Position |
+| --- | --- | --- |
+| `waiting` | In the queue. Only these rows get a position. | Per `market_id`, oldest `created_at` first. A null market shares the key `"_"`. Computed on read (`waitlist.functions.ts:195-202`, `:260-269`). |
+| `notified` | Opening email was attempted. | Em dash (`WaitlistPanel.tsx:267-268`). |
+| `promoted` | Linked to an application. | Em dash. |
 
-## 3. How an entry becomes an application
+`review_reason` is separate from status: `phone_only_match`, `email_phone_conflict`, or `email_match_phone_differs` (`0015_...sql:30-40`). It is cleared when a link succeeds.
 
-Staff press **Promote To Applicant** (`WaitlistPanel.tsx:303-312`). That calls `promoteToApplicant` (`waitlist.functions.ts:394-448`), which calls `promote_waitlist_entry`. The function in force is the replacement in `drizzle/migrations/0015_waitlist_promotion_identity_review.sql:3-64`. It is `SECURITY DEFINER`, executable only by `service_role`.
+Hold rows are not a waitlist status. The application `status` column is unchanged (`DriversPanel.tsx:381-382` on `7e3e6eb`). The Drivers chips hide a held person from their old status count (`:790-793`).
 
-The function locks the waitlist row. If `promoted_application_id` is already set, it returns `already` and the server function stops (`waitlist.functions.ts:431`). Otherwise it matches applications with `status <> 'duplicate'`:
+## Order and the admin queue
 
-1. Email: `lower(a.email) = lower(w.email)`, preferring a primary application, then the oldest (`0015_...sql:17-20`).
-2. Phone: last 10 digits, and only when the waitlist phone has 10 digits (`:21-27`). A missing or short phone skips the phone checks.
+`listWaitlist` loads every waitlist row, oldest first, with no `.range()` (`waitlist.functions.ts:195-202`). Both that read and the Websites demand count (`src/components/admin/WebsitesPanel.tsx:32-40`) stop at the project's PostgREST row cap. This repo does not set `db-max-rows`. Supabase's default cap is 1000. This note did not measure the live cap. Past the cap, positions and demand counts are computed from a truncated read.
+
+There is no Waitlist item in the main nav. `?tab=waitlist` resolves to Drivers with `filter=waitlist` (`src/components/admin/nav-config.ts:70-76` on `7e3e6eb`). That page shows held applications in the driver table and, below them, every public waitlist row (`DriversPanel.tsx:600`, `:1130`, `:1139-1148`). The chip adds unpromoted signups and open holds (`:373-379`, `:790-793`).
+
+`WaitlistPanel` columns are Position, Driver, Wants To Start, Readiness, Status, and Joined (`WaitlistPanel.tsx:254-292`). Market, source, UTM, `driver_status`, and `review_reason` are not columns. Readiness appears only after `promoted_application_id` points at an application (`waitlist.functions.ts:206-225`, `:287-289`).
+
+Cars Available is one global integer (`setCarsAvailable`, `waitlist.functions.ts:301-337`). The city hero still says the number is "in {city}" (`CityHeroLeadForm.tsx:203-210`). Fleet Available and Ready To Rent Now are displayed beside the override and are not what the public number uses (`WaitlistPanel.tsx:177-192`).
+
+Settings → Website shows "Waitlist Demand (Coming Soon Cities)" as a count of every row with a `market_id`, any status (`WebsitesPanel.tsx:67-78`). Settings copy: `src/components/admin/SettingsWorkspace.tsx:20`. Delete Driver shows Waitlist History (`src/components/admin/DeleteDriverDialog.tsx:74`, `:86-87` on `7e3e6eb`).
+
+Coordinator can open the queue and still sees Promote, Save, and Add Waitlist. The server rejects the write. `WaitlistPanel` is not told the caller's tier.
+
+## Notifications
+
+| Message | When | Where |
+| --- | --- | --- |
+| "You're on the REAL RENTALS waitlist" | After `joinWaitlist` inserts, including a unique-index race | `waitlist.functions.ts:123-134` |
+| "A car just opened up — you're next" | Staff confirm the dialog | `:360-372` |
+| Homepage Coming Soon signup | No email | `LocationsSection.tsx:145-164` |
+| Promote | No email. The comment says "Sends nothing" | `waitlist.functions.ts:404` |
+| Hold add / remove | No email | `:465` |
+| SMS | Never. Waitlist mode hides SMS consent (`CityHeroLeadForm.tsx:234-238`). A new application is inserted with `sms_consent = false` (`0015_...sql:53-57`). | |
+
+The opening email is not a button on the queue. The dialog opens only when a Manager saves Cars Available from `0` or `null` to a positive number while someone is `waiting` (`WaitlistPanel.tsx:99-104`). Dismissing it does not offer it again. `setNotifyOpen(true)` appears only in that branch.
+
+`notifyWaitlistTop` takes the oldest `waiting` rows in the whole table, up to the limit, with no market filter (`waitlist.functions.ts:346-353`). The link is `siteOrigin()/apply` with no resume token (`:368`, `:522-524`). After the send attempt the row is always set to `notified` (`:375-380`), including when `sendEmail` fails. The comment above that update says a failed send is retried against rows still `waiting`. The update removes them from that set. The toast and the audit count only successful sends (`:374`, `:383-388`, `WaitlistPanel.tsx:121-125`).
+
+The email says they were at the top, that the car is in their city, that the link opens the application they started, and that they stay at the top if the car is already claimed (`waitlist.functions.ts:366-370`). The code sends globally, links to a fresh `/apply`, and removes them from the waiting set.
+
+## How a row becomes an application
+
+Staff press **Promote To Applicant** (`WaitlistPanel.tsx:303-312`). That calls `promoteToApplicant` (`waitlist.functions.ts:394-448`), which calls `promote_waitlist_entry`. The function in force is `drizzle/migrations/0015_waitlist_promotion_identity_review.sql:3-64`.
+
+It locks the waitlist row. If `promoted_application_id` is already set, it returns `already` (`waitlist.functions.ts:431`). Otherwise it matches applications with `status <> 'duplicate'`:
+
+1. Email match, preferring a primary application, then the oldest (`0015_...sql:17-20`).
+2. Phone match on the last 10 digits, and only when the waitlist phone has 10 digits (`:21-27`). A missing or short phone skips the phone checks.
 3. Phone match and no email match → `phone_only_match`. Nothing is created (`:30-32`).
 4. Phone match and email match on different people → `email_phone_conflict` (`:34-36`).
 5. Same email, both phones 10 digits, phones differ → `email_match_phone_differs` (`:38-40`).
-6. Email match that survived those checks → link that application. Copy `waitlist_signed_up_at` and `waitlist_source` only when those application columns are still null (`:43-50`).
-7. No email match → `INSERT` an application with `status = 'new'`, `current_step = 'rental'`, `sms_consent = false`, the waitlist's UTM and gclid, and `source` from the waitlist row (`:53-61`).
+6. Email match that survived those checks → link that application and copy the waitlist signup date and source when those columns are still null (`:43-50`).
+7. No email match → insert an application with `status = 'new'`, `current_step = 'rental'`, `sms_consent = false`, and the waitlist UTM and gclid (`:53-61`).
 
 The waitlist row becomes `promoted` and stores `promoted_application_id` and `promoted_at`.
 
-What this does not do:
+What this does not do: it does not insert a booking or a rental, it does not set `vehicle_id`, it does not create a login, and it does not email the person. When the insert path runs, the server issues a resume token (`waitlist.functions.ts:433-436`) and returns it to the staff caller. `handlePromote` never reads `token` (`WaitlistPanel.tsx:133-147`). The toast says the person is now under New.
 
-- It does not insert a booking or a rental, and it does not set `vehicle_id`.
-- It does not create a login.
-- It does not email the person. The server comment says "Sends nothing" (`waitlist.functions.ts:404`).
-- When the insert path runs, the server issues a resume token (`:433-436`) and returns it to the staff caller. `handlePromote` never reads `token` (`WaitlistPanel.tsx:133-147`). The toast says they are now under New.
+The match queries in `0015` do not exclude `deleted_at`. A soft-deleted application with the same email can be the row that gets linked. The conflict function does exclude deleted and duplicate applications (`0022_...sql:30`).
 
-The match queries in `0015` do not exclude `deleted_at`. A soft-deleted application with the same email can be the row that gets linked, and the waitlist entry then leaves the queue onto a driver staff no longer see in the active list. `resolve_waitlist_phone_conflict` does exclude deleted and duplicate applications (`drizzle/migrations/0022_waitlist_resolve_phone_conflict.sql:30`).
+After a real application exists, the normal application wizard and the later rental activation path are what produce a rental. That path is outside this queue.
 
-After a real application exists, the normal application wizard and the later rental activation path are what produce a rental. That path is outside this queue. Portal sign-in can find a waitlist email (`src/lib/portal-signin.server.ts:78-84`). The portal prefers an application over a waitlist row (`src/lib/portal-access.functions.ts:65-83`). A waitlist-only person sees `WaitlistCard`, which links to bare `/apply` (`src/components/portal/ApplicantHome.tsx:157-191` on `7e3e6eb`). Starting that application does not promote or link the waitlist row.
+### Holds
 
-### Staff holds are a separate list
+**Add Waitlist** / **Remove Waitlist** calls `setWaitlistHold` (`waitlist.functions.ts:465-506`, menu at `DriversPanel.tsx:1067-1072` on `7e3e6eb`). It does not create an application. Owner and Manager only.
 
-**Add Waitlist** / **Remove Waitlist** on a driver calls `setWaitlistHold` (`waitlist.functions.ts:465-506`). It inserts or closes `application_waitlist_holds`. One open hold per application (`drizzle/migrations/0014_waitlist_holds_and_safe_promotion.sql:6-15`). A trigger forbids deletes and forbids edits other than the close (`:24-36`). The application's `status` column is not changed (`DriversPanel.tsx:381-382` on `7e3e6eb`). The Drivers chips do hide that person from their old status count (`:790-793`).
+## Waitlist Conflict Resolver
 
-Owner and Manager only (`requireManager`). Coordinator can see the queue (`requireStaff` on `listWaitlist`) and still sees Promote, Save, and Add Waitlist. The server rejects the write. `WaitlistPanel` is not told the caller's tier.
+Documented here only. This note does not change the dialog or `resolve_waitlist_phone_conflict`.
 
-Deleting a driver closes an open hold and scrubs linked waitlist name, email, and phone to `Deleted Driver` / `deleted+<id>@invalid.example` (`drizzle/migrations/0016_0016_driver_deletion_stage1.sql:137-138`, restated in `0017`). Direct deletes of `waitlist` are revoked (`0017_0017_driver_deletion_security_repair.sql:3-5`). Restore can reopen the hold that the delete closed (`0017` around the restore function). `market_id` is not cleared, so a scrubbed row can still increment a Websites demand count.
+Promotion returns `conflict: "email_match_phone_differs"` for that reason and `conflict: null` for the other two (`waitlist.functions.ts:419-429`). **Review Conflict** is shown only when that flag was set this session or `review_reason === "email_match_phone_differs"` (`WaitlistPanel.tsx:137-141`, `:294-302`).
 
-## 4. Notifications
+`phone_only_match` and `email_phone_conflict` are stored (`0015_...sql:30-36`). After refresh the button goes back to **Promote To Applicant**. Pressing it flags the same row again. There is no resolver for those two reasons.
 
-| Message | When | From |
-| --- | --- | --- |
-| "You're on the REAL RENTALS waitlist" | After `joinWaitlist` inserts, including a unique-index race | `waitlist.functions.ts:123-134` |
-| "A car just opened up — you're next" | Staff confirm the dialog | `waitlist.functions.ts:360-372` |
-| Homepage Coming Soon signup | No email | `LocationsSection.tsx:145-164` |
-| Promote | No email | `waitlist.functions.ts:404` |
-| Hold add / remove | No email | `waitlist.functions.ts:465` |
-| SMS | Never. The hero hides the SMS consent field in waitlist mode (`CityHeroLeadForm.tsx:234-238`). Promotion writes `sms_consent = false`. | |
+Review Conflict (`src/components/admin/WaitlistConflictDialog.tsx`) compares the waitlist row with the single non-deleted application that has that exact email (`getWaitlistConflict`, `waitlist.functions.ts:563-607`). Emails are masked (`:544-548`). Phones are shown in full. Confirm requires a phone choice and `affirmed: true` (`:631`). Using the waitlist phone requires a reason of at least 5 characters (`:635`, dialog `:154-165`).
 
-The opening email is not a button on the queue. The dialog opens only when a Manager saves Cars Available from `0` or `null` to a positive number while someone is `waiting` (`WaitlistPanel.tsx:99-104`). Dismissing it, or saving the same positive number again, does not offer it again. There is no later "Email The List" control. `setNotifyOpen(true)` appears only in that save branch.
+The write is `resolve_waitlist_phone_conflict` (`0022_...sql:1-89`):
 
-The email says they were at the top, that the car is in their city, that `/apply` opens "the application you started", and that if the car is already claimed they stay at the top (`waitlist.functions.ts:366-370`). In code:
-
-- Recipients are the oldest `waiting` rows globally, not the top of that city (`:346-353`).
-- The link is `siteOrigin()/apply` with no resume token (`:368`, `siteOrigin` at `:522-524`). A waitlist-only person has no application to resume.
-- After the send attempt, the row is always updated to `notified` (`:375-380`). They leave the position counter. They do not stay at the top.
-- The comment above that update says a failed send is retried by running the action again against rows still `waiting`. The update runs whether `res.ok` is true or false, so a failed send is not retried.
-- The audit summary and the toast count `sent`, which increments only on `res.ok` (`:374`, `:383-388`, `WaitlistPanel.tsx:121-125`). Rows flipped can be higher than the number staff just saw.
-
-There is no per-person notify, no SMS, and no "you're next" message tied to an actual vehicle becoming Available. Fleet Available and Ready To Rent Now are displayed beside the override (`WaitlistPanel.tsx:177-192`) and are not what the public number or the email uses.
-
-## 5. Admin views
-
-There is no Waitlist item in the main nav. Old `?tab=waitlist` resolves to Drivers with `filter=waitlist` (`src/components/admin/nav-config.ts:70-76` on `7e3e6eb`).
-
-`/admin?tab=drivers&filter=waitlist` (`DriversPanel.tsx:360-371` on `7e3e6eb`) shows two lists:
-
-1. The driver table, filtered to applications with an open hold (`DriversPanel.tsx:600`, `filter === "waitlist"`).
-2. Under that, `WaitlistPanel` titled "Waitlist Signups" / "People Who Joined The Waitlist Before Applying" (`:1139-1148`). That panel lists every public waitlist row, including promoted ones.
-
-The Waitlist chip count is `(rows whose status is not promoted) + (applications with an open hold)` (`:373-379` and `:790-793`). A person who is both an unpromoted signup and a held application is counted twice. Promoted signups appear in the panel and not in the chip. When there are signups but no holds, the driver table says "No Drivers Yet" (`:1130`) above a populated signup list.
-
-`WaitlistPanel` columns: Position, Driver (name, email, phone), Wants To Start (`pickup_date`), Readiness (only after `promoted_application_id` points at an application), Status (`Waiting` / `Notified` / `Promoted`), Joined (`created_at`). Market, source, UTM, `driver_status`, and `review_reason` are not columns. Readiness for an unlinked row is "not started" (`WaitlistPanel.tsx:280-286`, type comment at `waitlist.functions.ts:158-159`).
-
-Other surfaces:
-
-- Settings → Website, "Waitlist Demand (Coming Soon Cities)" (`WebsitesPanel.tsx:67-78`). Settings copy: `src/components/admin/SettingsWorkspace.tsx:20`.
-- Delete Driver shows Waitlist History and says an active hold closes and linked waitlist contact is scrubbed (`src/components/admin/DeleteDriverDialog.tsx:74` and `:86-87` on `7e3e6eb`).
-- Portal `WaitlistCard` lets a verified email edit name, phone, city, state, and preferred start date (`ApplicantHome.tsx:157-230` on `7e3e6eb`; `updateMyWaitlist` at `portal-access.functions.ts:107-146`). The card always says "On The Waitlist", including when status is `notified`. There is no leave-the-list control. Saving is audited as `portal.waitlist_self_update`.
-
-`listWaitlist` is the heavy read: every waitlist row, then readiness batches, then every vehicle, active rentals, passed pre-delivery inspections, and `vehicle_rental_ready_missing` for eligible cars (`waitlist.functions.ts:206-258`). A failed fleet read throws "Waitlist data unavailable" and the panel clears both the fleet numbers and the queue (`WaitlistPanel.tsx:58-61`). `scripts/waitlist-security.test.mjs` locks the fail-closed behavior. `scripts/waitlist-roles.test.ts` locks Manager on hold, promote, notify, and Cars Available. `scripts/waitlist-conflict.test.ts` runs the `0022` function against disposable Postgres. `scripts/waitlist-readiness.test.ts` locks the shared readiness and Fleet Available counts the queue reuses.
-
-## 6. Conflict resolver
-
-Promotion refuses to guess in three cases. The UI can resolve only one.
-
-`promoteToApplicant` returns `conflict: "email_match_phone_differs"` for that reason and `conflict: null` for `phone_only_match` and `email_phone_conflict` (`waitlist.functions.ts:419-429`). The panel opens **Review Conflict** only when `conflict` was set this session or `review_reason === "email_match_phone_differs"` (`WaitlistPanel.tsx:137-141` and `:294-302`).
-
-For the other two reasons the row is flagged in SQL (`0015_...sql:30-36`) and the staff toast is the error string. After refresh, `review_reason` is loaded (`waitlist.functions.ts:200`) and then ignored. The button goes back to **Promote To Applicant**. Pressing it flags the same row again. There is no resolver for those two reasons.
-
-Review Conflict (`src/components/admin/WaitlistConflictDialog.tsx`) is a side-by-side of the waitlist row and the single non-deleted application with that exact email (`getWaitlistConflict`, `waitlist.functions.ts:563-607`). Emails are masked (`:544-548`). Phones are shown in full. Documents and rentals are counted for the application only.
-
-Confirm requires an explicit choice and the literal affirmation `affirmed: true` (`:631`). "Link — Keep Existing Phone" needs no reason. "Link — Use Waitlist Phone" needs a reason of at least 5 characters and a waitlist phone (`:635`, dialog `:154-165`). The write is `resolve_waitlist_phone_conflict` (`0022_...sql:1-89`):
-
-- Caller must have `user_roles.role` of `admin` or `team` (Owner or Manager). `service_role` only.
-- Locks waitlist, then application.
-- Idempotent if this entry is already linked to this application. Rejects a link to a different application.
+- The caller must have `user_roles.role` of `admin` or `team`. Execute is `service_role` only.
+- Locks the waitlist row, then the application.
+- Idempotent when this entry is already linked to this application. Rejects a link to a different application.
 - Rejects a deleted or duplicate application, an email that no longer matches, stale last-10 phone digits, a second live application with the same email, and a waitlist phone that belongs to a different driver.
-- Updates `waitlist_signed_up_at` / `waitlist_source`, and phone only when requested.
-- Sets the waitlist row `promoted` and clears `review_reason`.
-- Inserts `audit_log` action `waitlist.conflict_resolved` in the same transaction, with identity affirmed, the reason, and last-4 of the old and new phone.
+- Updates the waitlist signup columns, and the phone only when requested.
+- Sets the waitlist row to `promoted`, clears `review_reason`, and inserts `audit_log` action `waitlist.conflict_resolved` in the same transaction.
 
-The dialog tells staff to resolve multiple email matches first (`waitlist.functions.ts:588`). This screen does not merge them. The file comment says not to call `mergeDuplicateApplications` here (`:542`).
+Multiple email matches are reported as "resolve those first" (`waitlist.functions.ts:588`). This screen does not merge them (`:542`). Linking does not create an application, an account, or a message.
 
-Linking does not create an application, an account, or a message (`:539-542`).
+Audited actions on these paths: `availability.set`, `waitlist.notified`, `waitlist.promoted`, `waitlist.promotion_needs_review`, `waitlist.hold_added`, `waitlist.hold_removed`, `waitlist.conflict_resolved`, `portal.waitlist_self_update`.
 
-## 7. Data fields
+Tests already on this commit: `scripts/waitlist-security.test.mjs` (the list fails closed), `scripts/waitlist-roles.test.ts` (Manager on hold, promote, notify, and Cars Available), `scripts/waitlist-conflict.test.ts` (the `0022` function on disposable Postgres), `scripts/waitlist-readiness.test.ts` (the readiness and Fleet Available counts the queue reuses).
 
-### `public.waitlist`
+## Data-quality gaps
 
-From the original table (`supabase/migrations/20260621011525_22b1864d-5a3f-45fc-a9bd-c0ca7d099cf3.sql:10-25`) plus later columns. Types: `src/integrations/supabase/types.ts:5794-5818`.
+Read from the code paths above. No production rows were counted.
 
-| Field | Role |
-| --- | --- |
-| `id` | uuid primary key |
-| `full_name`, `email`, `phone` | Identity. Email is not forced lowercase on the homepage insert. Phone is optional there and required on the hero. |
-| `market_id` | FK to `markets`, `ON DELETE SET NULL`. Nulls share one position bucket and do not satisfy the unique index against each other. |
-| `city`, `state` | Hero sets them. Homepage does not. The opening email uses `city` only. |
-| `pickup_date` | "Wants To Start". Required on the hero, absent on the homepage form. |
-| `driver_status` | Homepage only. Unused after insert. |
-| `source` | `fleet_waitlist`, `homepage_waitlist`, or whatever the client sends (max 60 on the server fn). Copied onto the application as `waitlist_source` and, on create, as `applications.source`. |
-| `status` | `waiting` (default), `notified`, `promoted`. No `CHECK` constraint in the waitlist migrations. |
-| `notified_at` | Set when notify flips the row, including after a failed send. |
-| `promoted_application_id`, `promoted_at` | Set by promote or by the conflict function. FK to `applications`. |
-| `review_reason`, `review_flagged_at` | `phone_only_match`, `email_phone_conflict`, `email_match_phone_differs`. Cleared on a successful link. |
-| `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `gclid` | Copied onto a newly created application. Not shown in the admin table. |
-| `created_at` | Queue order. |
-| `landing_page`, `referrer` | Not columns. Accepted by `joinWaitlist` and discarded. |
+1. **Two writers.** `joinWaitlist` lowercases email, dedupes any waiting email, and sends a confirmation. The homepage insert does none of those. The same person can be waiting in two markets only on the homepage path. A `notified` person can join again, because the unique index covers `waiting` only (`20260930222027_...sql:12-14`, `waitlist.functions.ts:78-84`).
+2. **Fields that do not land.** `landing_page` and `referrer` are accepted and discarded (`waitlist.functions.ts:102-103`). `driver_status` is stored from the homepage form and never read. A skipped gig-app question stores `""` (`LocationsSection.tsx:136`, `:150`).
+3. **Phone shape.** The hero accepts 7 or more digits. The homepage accepts a blank phone. Promotion treats a phone as comparable only at 10 digits, so a short or missing phone skips `email_match_phone_differs` and links on email alone (`0015_...sql:38`, `CityHeroLeadForm.tsx:96`).
+4. **Email case and NULL markets.** The unique index uses `lower(email)`. The homepage insert does not lowercase. Two waiting rows with a null `market_id` are allowed by the index because NULL does not compare equal.
+5. **Failed notify looks like success.** The row becomes `notified` even when the send fails, so it leaves the queue and is not retried. The audit count can be lower than the number of rows flipped (`waitlist.functions.ts:374-388`).
+6. **Deleted drivers stay in the demand count.** Scrubbing clears name, email, and phone and leaves `market_id` (`0016_...sql:137-138`). Websites demand counts every status (`WebsitesPanel.tsx:32-40`).
+7. **Promotion can attach a hidden driver.** `promote_waitlist_entry` does not filter `deleted_at` (`0015_...sql:17-20`). The conflict function does (`0022_...sql:30`).
+8. **The Drivers chip is not either list.** It adds unpromoted signups and held applications (`DriversPanel.tsx:790-793` on `7e3e6eb`). One person can count twice. Promoted signups appear in the panel and not in the chip. An empty hold table says "No Drivers Yet" above a populated signup list (`:1130`).
+9. **Queue position can be a partial read.** `listWaitlist` has no `.range()` (`waitlist.functions.ts:197-202`). Positions are assigned only to the rows that came back.
+10. **The public number is not a city count.** One `cars_available` integer is described as cars available in the city on the hero (`CityHeroLeadForm.tsx:203-210`). The opening email uses the row's `city`, which the homepage form never sets (`waitlist.functions.ts:366`).
+11. **Review reasons for two of the three conflicts are stored and then not shown.** After refresh, only `email_match_phone_differs` keeps Review Conflict (`WaitlistPanel.tsx:294`).
+12. **The confirmation promises a way off the list.** It says reply to leave (`waitlist.functions.ts:131`). No inbound handler and no portal leave action exist. The portal card always says "On The Waitlist", including when status is `notified` (`ApplicantHome.tsx` WaitlistCard).
 
-### Application columns and holds
+## Top 5 improvements, by renter conversion
 
-- `applications.waitlist_signed_up_at`, `applications.waitlist_source` (`0014_...sql:1-3`). Written on link and on create. Not overwritten once set.
-- `application_waitlist_holds`: `id`, `application_id`, `added_at`, `added_by`, `removed_at`, `removed_by`. Both removal columns are null or both are set. One open hold per application.
+Ranked by how directly each one moves a person who wants a car from the queue into an application they can finish, which is the step that later becomes a booking. Effort is the size of the change. Risk is what can go wrong if it ships. A migration means a new SQL migration or a replaced deployed function. None of these five edits the Waitlist Conflict Resolver.
 
-### Audited actions
+### 1. Make the opening email a real claim, and only mark Notified after it sends
 
-`availability.set`, `waitlist.notified`, `waitlist.promoted`, `waitlist.promotion_needs_review`, `waitlist.hold_added`, `waitlist.hold_removed`, `waitlist.conflict_resolved`, `portal.waitlist_self_update`.
+This is the moment a car is supposed to turn a waiting person into an applicant. Today the oldest waiting person in any city is emailed a bare `/apply` link, told they stay at the top, and removed from the queue even when the send fails (`waitlist.functions.ts:346-380`). Staff can send that email only by raising Cars Available off zero (`WaitlistPanel.tsx:99-104`).
 
-## 8. Known bugs and friction
-
-1. A failed opening email still sets `notified`, so that person leaves the queue and is not retried. The toast and the audit count can be lower than the number of rows flipped (`waitlist.functions.ts:374-388`).
-2. The opening email describes a queue the code does not run: global oldest-first, a bare `/apply` link, and "you stay at the top" after the row has been removed from the waiting set (`:346-380`).
-3. Staff can send that email only by raising Cars Available off `0` or empty. There is no second chance on the queue (`WaitlistPanel.tsx:99-104`).
-4. `phone_only_match` and `email_phone_conflict` are stored and then presented as a normal Promote button (`WaitlistPanel.tsx:294-312`).
-5. `promote_waitlist_entry` can link a soft-deleted application (`0015_...sql:17-20`). The conflict function refuses those rows (`0022_...sql:30`).
-6. The Drivers Waitlist chip adds unpromoted signups and held applications (`DriversPanel.tsx:790-793` on `7e3e6eb`). The page under it is two lists that do not match that number.
-7. Homepage Coming Soon signups skip dedupe, confirmation, and the unused-field comments of `joinWaitlist`. `driver_status` is collected and never read. A unique-index failure is shown as a raw database message.
-8. `landing_page` and `referrer` are silently dropped (`waitlist.functions.ts:102-103`). The confirmation email tells people to reply to leave, and the portal has no leave action (`ApplicantHome.tsx` WaitlistCard).
-9. The resume token created on promote is discarded (`WaitlistPanel.tsx:133-147`). The person is not told they were promoted.
-10. `listWaitlist` and the Websites demand count are unbounded, and the demand count includes every status (`WebsitesPanel.tsx:32-40`). `listWaitlist` also recomputes fleet readiness for the whole fleet on every queue load (`waitlist.functions.ts:227-258`).
-11. The public scarcity line attributes the global Cars Available integer to one city (`CityHeroLeadForm.tsx:203-210`).
-12. A short or missing phone skips the "email matches, phone differs" review and links on email alone (`0015_...sql:38`). The homepage form allows that phone.
-13. Coordinator sees Promote, Cars Available, and Add Waitlist, then gets a server rejection. The panel does not take `canManageWaitlist`.
-
-## 9. Ranked improvement options
-
-Ranked for a later Waitlist pass. This document does not implement them. Effort is the size of the change. Risk is what can go wrong if it ships. SQL means a migration or a change to a deployed function, not a hosted read.
-
-### 1. Make the opening email true, and only mark Notified after it sends
-
-Per-market recipient list (the same key as position), a real next step instead of bare `/apply`, and `status = 'notified'` only when `sendEmail` returns ok. Add an Email The List action so staff are not stuck after dismissing the dialog. Keep the failed rows `waiting`.
+Send per market, the same key position already uses. Put a resume or apply link that belongs to that person on the button. Set `notified` only when `sendEmail` returns ok, and add Email The List so a dismissed dialog is not the only chance.
 
 - Effort: medium. `notifyWaitlistTop`, the dialog, and the email copy.
 - Risk: medium. This sends live email. A wrong market filter emails the wrong city.
-- SQL: no. `status` is already free text and the update already exists.
+- Migration: no. `status` is already free text, and the update already exists.
 
-### 2. Stop the dead-end Promote loop for the two unresolved reasons
+### 2. Hand the new applicant the link promotion already mints
 
-Show `phone_only_match` and `email_phone_conflict` on the row and replace Promote with a disabled state that names the reason. Do not build a merge button in that pass. A real resolver for "these are different people" is a separate identity feature.
+Promote is the staff step that creates the application a booking later hangs on. The server issues a resume token and the panel discards it (`waitlist.functions.ts:433-436`, `WaitlistPanel.tsx:133-147`). The person is not told they can continue, so the new `status = 'new'` application stalls.
 
-- Effort: small for the label and the button. Large if a second resolver is added.
-- Risk: low for the label. High for any new link or merge, because it writes identity.
-- SQL: no for the label (`review_reason` is already stored). Yes for a new resolver function.
-
-### 3. Refuse deleted applications inside `promote_waitlist_entry`
-
-Add `deleted_at IS NULL` to both match queries in the `0015` function, matching `0022`. A deleted email match should fall through to a new application or to review, not to a hidden driver.
-
-- Effort: small. One function replacement, covered by the disposable conflict harness.
-- Risk: medium. The same promote click can create a new application where it used to link a deleted one.
-- SQL: yes.
-
-### 4. Make the Drivers Waitlist chip match the two lists
-
-Count signups and holds separately, or label the chip "N signups · M holds". Point the empty driver-table copy at the signup list when the hold set is empty.
-
-- Effort: small. `DriversPanel` filter count and empty state.
-- Risk: low. Display only. Holds and statuses stay as they are.
-- SQL: no.
-
-### 5. Send Coming Soon signups through `joinWaitlist`
-
-One writer: confirmation email, the email dedupe, no raw database error, and a decision on `driver_status` (keep it and show it, or stop asking). Homepage phone should follow the same 10-digit rule the promote function already uses, so a short phone cannot skip review.
-
-- Effort: medium. `LocationsSection` plus the server input. The anon column grant can stay until the client insert is gone.
-- Risk: medium. It changes a public form and who receives the confirmation.
-- SQL: no, unless `driver_status` is dropped. Keeping the column needs no migration.
-
-### 6. Hand the staff member the resume link, and tell the applicant they were promoted
-
-`promoteToApplicant` already returns a token when it created the application. Surface Copy Link on the toast, and send one email that uses that token. Linking an existing application should not mint a second credential; `openMyApplication` already does that for a signed-in applicant.
+Show Copy Link on the success toast, and send one email that uses that token. Linking an existing application should not mint a second credential. `openMyApplication` already does that for a signed-in applicant (`portal-access.functions.ts:87-105`).
 
 - Effort: small for Copy Link. Medium if the email is added.
 - Risk: medium. The token resumes the application. Emailing it is a live message to the address on the new row.
-- SQL: no.
+- Migration: no.
 
-### 7. Honor "reply to leave" with an actual leave action
+### 3. Send Coming Soon signups through `joinWaitlist`
 
-A portal control, or a signed link in the confirmation, that sets `status` to a non-waiting value and writes an audit row. The partial unique index then frees the email. Do not delete the row; deletion is already revoked.
+Homepage Coming Soon visitors are a second public queue with no confirmation (`LocationsSection.tsx:145-164`). They do not get the email that tells them a car will be offered to them, and a short or blank phone lets promotion link them on email alone (`0015_...sql:38`). A person attached to the wrong driver, or never told they are waiting, does not become a renter.
 
-- Effort: medium. Portal card plus a server function. Inbound email parsing is a larger version of the same idea.
-- Risk: medium. A guessable link would let someone else remove a spot. The link has to be signed, and the portal path has to stay on the verified email.
-- SQL: no. `status` has no check constraint in the waitlist migrations. A constraint or a `left_at` column would be optional SQL.
+Use the server function: confirmation, the email dedupe, no raw database error, and the same 10-digit phone the promote function already compares. Stop asking `driver_status` until something reads it, or show it on the queue.
 
-### 8. Page the queue and count demand as people still waiting
+- Effort: medium. `LocationsSection` plus the server input.
+- Risk: medium. It changes a public form and who receives the confirmation.
+- Migration: no. Keeping the unused `driver_status` column needs no migration.
 
-Use the existing paged read for `listWaitlist` and for the Websites count. Count `waiting` rows only, and say so on the chip. Leave the fleet numbers on a separate load so a vehicle-read failure does not blank the queue.
+### 4. Let the portal continue the same application the queue will promote
 
-- Effort: medium. `listWaitlist` and `WebsitesPanel`.
-- Risk: low. Read path. Position must be computed from the full waiting set, not from one page, or the numbers restart on each page.
-- SQL: no. An index on `(status, created_at)` would be optional.
+`WaitlistCard` sends a verified waitlist email to bare `/apply` (`ApplicantHome.tsx:190-192`). That wizard does not link `promoted_application_id`. The person can start a second application while the queue row stays `waiting`, and staff promote may then collide with it. Self-serve is the path that does not wait for a Manager to press Promote.
 
-### 9. Stop calling the global number a per-city count
+For a verified email, start or open the application `promote_waitlist_entry` would create or link, and return its resume token. Do not add a second resolver. The existing promote function already refuses the three ambiguous identity cases and creates nothing in those cases (`0015_...sql:29-40`).
 
-Change the hero sentence so Cars Available is the company-wide override it already is. A per-market number is a later product choice: the setting is one jsonb value, and position is already per market.
+- Effort: medium. Portal card plus a server function that calls the existing promote function for the caller's own waiting row.
+- Risk: medium. A verified email that matches an existing driver will link, which is what staff Promote already does. The three review reasons still create nothing.
+- Migration: no, unless the deleted-application fix below ships in the same function replacement.
 
-- Effort: small for the sentence. Medium for a per-market override, because notify, the hero, and the save dialog all assume one integer.
-- Risk: low for the sentence. Medium for per-market numbers, because the public form and the email both change.
-- SQL: no for the sentence. Per-market can stay inside `app_settings.value` without a new table. A constraint would be optional SQL.
+### 5. Refuse a soft-deleted application inside `promote_waitlist_entry`
 
-### 10. Persist attribution, or stop accepting it
+If the only email match is a deleted driver, promotion links the waitlist row and takes the person off the queue onto a driver staff no longer see (`0015_...sql:17-20`). They never reach an application that can be approved and booked. `resolve_waitlist_phone_conflict` already refuses those rows (`0022_...sql:30`). This change is the promote function, not the conflict function.
 
-Either add `landing_page` and `referrer` and copy them the way UTM is copied onto a new application, or remove them from the `joinWaitlist` input so the payload matches the table.
+Add `deleted_at IS NULL` to both match queries. A deleted email match should fall through to a new application or to review.
 
-- Effort: small.
-- Risk: low. Staff do not see these fields today.
-- SQL: yes if the columns are added. No if the input fields are removed.
+- Effort: small. One function replacement, covered by the disposable harness.
+- Risk: medium. The same promote click can create a new application where it used to link a deleted one.
+- Migration: yes.
 
 ## What this note did not do
 
-No production SQL, no hosted read, and no code change. Live queue length, how many rows are stuck in `phone_only_match`, and whether the API row cap has been raised are not known from this review.
+No production SQL, no hosted read, and no code change. The Conflict Resolver is described and left as it is. Live queue length, how many rows are stuck on `phone_only_match` or `email_phone_conflict`, and whether the API row cap has been raised are not known from this review.
