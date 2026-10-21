@@ -13,7 +13,7 @@ const rowSchema = z.object({
   occurredAt: z.string(),
   status: z.enum(["open", "in_claim", "repairing"]),
   proposedAmount: z.number().positive().nullable(),
-  basis: z.enum(["driver_responsible_amount", "no_driver_amount"]),
+  basis: z.enum(["driver_responsible_amount", "no_driver_amount", "no_rental", "already_deducted"]),
 }).strict();
 
 function vehicleName(row: { year?: number | null; make?: string | null; model?: string | null } | null): string {
@@ -49,5 +49,18 @@ export const listIncidentChargePrep = createServerFn({ method: "POST" })
         vehicle: vehicleName(vehicle),
       };
     });
-    return z.array(rowSchema).parse(buildIncidentChargePrep(rows));
+    const ids = rows.map((row) => row.id);
+    let deductions: { incidentId: string | null; amount: number | null }[] = [];
+    if (ids.length > 0) {
+      const { data: taken, error: takenError } = await supabaseAdmin
+        .from("deposit_deductions")
+        .select("incident_id,amount")
+        .in("incident_id", ids);
+      if (takenError) throw new Error(takenError.message);
+      deductions = (taken ?? []).map((row) => ({
+        incidentId: (row.incident_id as string | null) ?? null,
+        amount: row.amount == null ? null : Number(row.amount),
+      }));
+    }
+    return z.array(rowSchema).parse(buildIncidentChargePrep(rows, deductions));
   });
