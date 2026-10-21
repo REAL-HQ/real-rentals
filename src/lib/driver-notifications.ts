@@ -61,6 +61,11 @@ export function noticeWithoutRenter(): DriverNoticeResult {
   return NO_RENTER;
 }
 
+/** The in-app row lists email only after that channel was actually sent. */
+export function noticeChannels(email: DriverNoticeResult["email"]): Array<"in_app" | "email"> {
+  return email === "sent" ? ["in_app", "email"] : ["in_app"];
+}
+
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")

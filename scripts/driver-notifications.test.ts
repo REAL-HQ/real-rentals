@@ -5,6 +5,7 @@ import {
   DRIVER_NOTIFICATIONS_ENABLED,
   deliverDriverNotice,
   incidentOpenedNotice,
+  noticeChannels,
   issueStatusChangedNotice,
   rentalEndedNotice,
   type DriverNotice,
@@ -40,7 +41,9 @@ describe("driver notifications flag", () => {
   it("is a hard false, and nothing sends while it is off", async () => {
     assert.equal(DRIVER_NOTIFICATIONS_ENABLED, false);
     assert.match(lib, /export const DRIVER_NOTIFICATIONS_ENABLED: boolean = false as boolean/);
-    assert.match(issues, /const DRIVER_NOTIFICATIONS_ENABLED: boolean = false as boolean/);
+    assert.equal((lib.match(/const DRIVER_NOTIFICATIONS_ENABLED/g) ?? []).length, 1);
+    assert.equal((issues.match(/const DRIVER_NOTIFICATIONS_ENABLED/g) ?? []).length, 0);
+    assert.match(issues, /import \{ DRIVER_NOTIFICATIONS_ENABLED \} from ["']@\/lib\/driver-notifications["']/);
 
     let calls = 0;
     const send = async () => {
@@ -82,13 +85,19 @@ describe("driver notifications flag", () => {
     assert.match(sendBody, /import\("@\/lib\/sms\.server"\)/);
     assert.match(sendBody, /sendSms\(\{/);
     assert.match(sendBody, /from\("notifications"\)\.insert/);
-    assert.match(sendBody, /channels: \["in_app", "email"\]/);
+    assert.match(sendBody, /channels: noticeChannels\(result\.email\)/);
+    assert.doesNotMatch(sendBody, /channels:\s*\[[^\]]*email/);
     assert.doesNotMatch(sendBody, /requireConsent:\s*false/);
+    assert.deepEqual(noticeChannels("sent"), ["in_app", "email"]);
+    assert.deepEqual(noticeChannels("skipped"), ["in_app"]);
+    assert.deepEqual(noticeChannels("failed"), ["in_app"]);
 
     const hook = issues.indexOf('import("@/lib/driver-notifications.server")');
     assert.ok(hook !== -1);
     assert.match(issues.slice(Math.max(0, hook - 280), hook), /DRIVER_NOTIFICATIONS_ENABLED === true/);
-    assert.doesNotMatch(issues, /from ["']@\/lib\/driver-notifications/);
+    assert.equal(issues.slice(hook - 5, hook), "void ");
+    assert.doesNotMatch(issues, /await import\("@\/lib\/driver-notifications\.server"\)/);
+    assert.doesNotMatch(issues, /from ["']@\/lib\/driver-notifications\.server["']/);
   });
 
   it("does not put claim or staff detail in the renter copy", () => {

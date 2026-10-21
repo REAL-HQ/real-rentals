@@ -14,6 +14,7 @@ import {
   deliverDriverNotice,
   incidentOpenedNotice,
   issueStatusChangedNotice,
+  noticeChannels,
   noticeHeld,
   noticeWithoutRenter,
   rentalEndedNotice,
@@ -199,7 +200,7 @@ export async function sendDriverNoticeChannels(notice: DriverNotice): Promise<Dr
         kind: notice.kind,
         title: notice.title,
         body: notice.body,
-        channels: ["in_app", "email"],
+        channels: noticeChannels(result.email),
       });
       if (error) {
         console.error("[driver-notifications] in-app failed", notice.kind, error.message);

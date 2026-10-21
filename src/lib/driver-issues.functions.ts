@@ -8,9 +8,7 @@ import {
   isIssueClosed,
   type IssueIncidentSeed,
 } from "@/lib/driver-issues";
-
-/** Duplicated so this module does not load the notice sender while the flag is off. */
-const DRIVER_NOTIFICATIONS_ENABLED: boolean = false as boolean;
+import { DRIVER_NOTIFICATIONS_ENABLED } from "@/lib/driver-notifications";
 
 // Manager inbox for public.issues.
 //
@@ -164,7 +162,7 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       metadata: { from: existing.status, to: data.status },
     });
     if (DRIVER_NOTIFICATIONS_ENABLED === true) {
-      await import("@/lib/driver-notifications.server")
+      void import("@/lib/driver-notifications.server")
         .then((m) => m.notifyIssueStatusChanged(data.id))
         .catch((err) => console.error("[driver-notifications] issue_status", err));
     }
