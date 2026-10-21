@@ -1,0 +1,20 @@
+-- Disposable synthetic schema only. No production data or outbound extensions.
+DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE service_role BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE SCHEMA auth; CREATE SCHEMA private;
+CREATE TABLE auth.users(id uuid PRIMARY KEY);
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+CREATE TABLE public.user_roles(user_id uuid,role text);
+CREATE FUNCTION private.is_manager() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT EXISTS(SELECT 1 FROM public.user_roles WHERE user_id=auth.uid() AND role IN ('admin','team')) $$;
+GRANT USAGE ON SCHEMA public,auth,private TO anon,authenticated,service_role;
+CREATE TABLE public.rentals(id uuid PRIMARY KEY,application_id uuid,vehicle_id uuid,start_date date,weekly_rate numeric,stripe_customer_id text,stripe_payment_method_id text,stripe_subscription_id text,autopay_active boolean DEFAULT false);
+CREATE UNIQUE INDEX rentals_stripe_subscription_id_key ON public.rentals(stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
+CREATE TABLE public.payments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),rental_id uuid,driver_id uuid,vehicle_id uuid,type text,reason text,amount numeric NOT NULL,balance_due numeric,status text,due_date date,paid_date date,stripe_invoice_id text,stripe_subscription_id text,stripe_payment_intent_id text,refunded_amount numeric DEFAULT 0,refunded_at timestamptz);
+CREATE UNIQUE INDEX payments_stripe_invoice_id_key ON public.payments(stripe_invoice_id) WHERE stripe_invoice_id IS NOT NULL;
+CREATE UNIQUE INDEX payments_stripe_payment_intent_id_key ON public.payments(stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.payments,public.rentals TO authenticated,service_role;
+CREATE FUNCTION private.is_staff() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT private.is_manager() $$;
+INSERT INTO auth.users VALUES('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002'),('00000000-0000-0000-0000-000000000003'),('00000000-0000-0000-0000-000000000004');
+INSERT INTO public.user_roles VALUES('00000000-0000-0000-0000-000000000001','admin'),('00000000-0000-0000-0000-000000000002','team'),('00000000-0000-0000-0000-000000000003','coordinator'),('00000000-0000-0000-0000-000000000004','driver');
+INSERT INTO public.rentals(id,weekly_rate,stripe_customer_id,stripe_payment_method_id) VALUES('10000000-0000-0000-0000-000000000001',350,'cus_synthetic','pm_synthetic'),('10000000-0000-0000-0000-000000000002',350,'cus_synthetic','pm_synthetic');
