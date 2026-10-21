@@ -1,4 +1,5 @@
--- LOCAL PROPOSAL. Not a migration. Do not run against a hosted database.
+-- Step 26 of proposed/HOSTED-INSTALL.md. Not a supabase/migrations file.
+-- A hosted run uses that procedure. Do not apply this file on its own.
 --
 -- Install after the Record Rental packet (after step 19: the 17 cutover files,
 -- then subscription-coordination-v1.sql, then the corrected

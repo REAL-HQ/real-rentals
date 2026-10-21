@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { recordUploadedContentSha } from "@/lib/document-content-sha";
+import {
+  DOCUMENT_CONTENT_SHA256_ENABLED,
+  isUploadedContentShaRefusal,
+  recordUploadedContentSha,
+} from "@/lib/document-content-sha";
 
 export const DOC_BUCKET = "driver-docs";
 
@@ -340,6 +344,30 @@ async function objectMeta(
 }
 
 /**
+ * Flag off: registerDocument's errors propagate, as they did before the
+ * content-hash flag. Flag on: only a content-hash refusal is logged and
+ * skipped, so one file does not drop the rest of the wizard sync.
+ */
+async function registerSyncedUpload(
+  admin: any,
+  category: string,
+  args: Parameters<typeof registerDocument>[1],
+): Promise<boolean> {
+  if (!DOCUMENT_CONTENT_SHA256_ENABLED) {
+    const res = await registerDocument(admin, args);
+    return !!res;
+  }
+  try {
+    const res = await registerDocument(admin, args);
+    return !!res;
+  } catch (e) {
+    if (!isUploadedContentShaRefusal(e)) throw e;
+    console.error("[documents] registration refused", category, e);
+    return false;
+  }
+}
+
+/**
  * Copy any files captured during the application into the document vault.
  * Safe to call on every wizard step — already-registered paths are skipped.
  */
@@ -355,8 +383,8 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    try {
-      const res = await registerDocument(admin, {
+    if (
+      await registerSyncedUpload(admin, field.category, {
         applicationId: application.id as string,
         category: field.category,
         bucket: field.bucket,
@@ -368,12 +396,9 @@ export async function syncApplicationUploads(
         uploadedBy: (application.user_id as string) ?? null,
         uploadedByRole: "driver",
         ...(await objectMeta(admin, field.bucket, path)),
-      });
-      if (res) registered++;
-    } catch (e) {
-      // Flag on, registerDocument throws when the content hash cannot be
-      // recorded. One file must not drop the rest of the wizard sync.
-      console.error("[documents] registration refused", field.category, e);
+      })
+    ) {
+      registered++;
     }
   }
 
@@ -381,8 +406,8 @@ export async function syncApplicationUploads(
   const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
   for (const path of shots) {
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    try {
-      const res = await registerDocument(admin, {
+    if (
+      await registerSyncedUpload(admin, "trip_history", {
         applicationId: application.id as string,
         category: "trip_history",
         bucket: TRIP_SCREENSHOT_BUCKET,
@@ -392,10 +417,9 @@ export async function syncApplicationUploads(
         uploadedBy: (application.user_id as string) ?? null,
         uploadedByRole: "driver",
         ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
-      });
-      if (res) registered++;
-    } catch (e) {
-      console.error("[documents] registration refused", "trip_history", e);
+      })
+    ) {
+      registered++;
     }
   }
 

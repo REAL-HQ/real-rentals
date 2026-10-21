@@ -13,6 +13,34 @@ mkdir -p "$DUMPS"
 
 psqlq() { psql "$PGURL" -v ON_ERROR_STOP=1 -q "$@"; }
 
+cleanup_transport() {
+  psql "$PGURL" -v ON_ERROR_STOP=1 -c "DROP ROLE IF EXISTS rr_evidence_transport;" >>"$LOG" 2>&1 || true
+}
+trap cleanup_transport EXIT
+
+verify_step() {
+  local n="$1"
+  local tmp result
+  tmp="$(mktemp)"
+  python3 - "$ROOT/proposed/HOSTED-INSTALL.md" "$n" "$tmp" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+n = sys.argv[2]
+m = re.search(rf"### Step {n}\n\n```sql\n(.*?)```", text, re.S)
+if not m:
+    raise SystemExit(f"missing step {n} query")
+Path(sys.argv[3]).write_text(m.group(1))
+PY
+  result="$(psqlq -At -f "$tmp" | tail -n 1)"
+  rm -f "$tmp"
+  echo "VERIFY step $n $result" | tee -a "$LOG"
+  if [[ "$result" != "t" ]]; then
+    echo "verify step $n failed" | tee -a "$LOG"
+    exit 1
+  fi
+}
+
 dump_schema() {
   local out="$1"
   pg_dump --schema-only --no-owner "$PGURL" \
@@ -85,19 +113,25 @@ echo "preflight pass" | tee -a "$LOG"
 echo "BASELINE" | tee -a "$LOG"
 snap baseline
 
-apply_packet 01.sql; snap inst-01
-apply_own 00-approval-boundary.sql; snap inst-00
-for n in 02 03 04 05 06; do apply_packet "$n.sql"; snap "inst-$n"; done
-apply_own 06b-approval-identity-check.sql; snap inst-06b
-for n in 07 08 09 10; do apply_packet "$n.sql"; snap "inst-$n"; done
-apply_own 10b-approval-executor-writes.sql; snap inst-10b
-for n in 11 12 13 14 15 16 17 18 19; do apply_packet "$n.sql"; snap "inst-$n"; done
-apply_packet 19b.sql; snap inst-19b
-apply_own 19c-agreement-contract.sql; snap inst-19c
-apply_packet 20.sql; snap inst-20
-apply_packet extend.sql; snap inst-extend
-apply_packet return.sql; snap inst-return
-apply_own record-uploaded-content-sha.sql; snap inst-sha
+echo "APPROVE BEFORE INSTALL" | tee -a "$LOG"
+psqlq -f "$ROOT/scripts/m2-approve-before.sql" | tee -a "$LOG"
+
+apply_packet 01.sql; snap inst-01; verify_step 1
+apply_own 00-approval-boundary.sql; snap inst-00; verify_step 2
+step_n=3
+for n in 02 03 04 05 06; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
+apply_own 06b-approval-identity-check.sql; snap inst-06b; verify_step 8
+step_n=9
+for n in 07 08 09 10; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
+apply_own 10b-approval-executor-writes.sql; snap inst-10b; verify_step 13
+step_n=14
+for n in 11 12 13 14 15 16 17 18 19; do apply_packet "$n.sql"; snap "inst-$n"; verify_step "$step_n"; step_n=$((step_n+1)); done
+apply_packet 19b.sql; snap inst-19b; verify_step 23
+apply_own 19c-agreement-contract.sql; snap inst-19c; verify_step 24
+apply_packet 20.sql; snap inst-20; verify_step 25
+apply_packet extend.sql; snap inst-extend; verify_step 26
+apply_packet return.sql; snap inst-return; verify_step 27
+apply_own record-uploaded-content-sha.sql; snap inst-sha; verify_step 28
 
 echo "PROOF" | tee -a "$LOG"
 if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
@@ -106,6 +140,7 @@ if grep -Eq '[0-9a-fA-F]{64}' "$ROOT/scripts/m2-functional-proof.sql"; then
 fi
 psqlq -f "$ROOT/scripts/m2-functional-proof.sql" | tee -a "$LOG"
 bun "$ROOT/scripts/m2-content-sha.test.ts" | tee -a "$LOG"
+bun "$ROOT/scripts/m2-approve-fallback.test.ts" | tee -a "$LOG"
 
 echo "06b REFUSAL" | tee -a "$LOG"
 psqlq <<'SQL' >>"$LOG" 2>&1

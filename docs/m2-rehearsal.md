@@ -183,6 +183,10 @@ The probe rows and the temporary `rr_evidence_transport` role were removed befor
 
 After step 7, the remaining packet call is `record_existing_rental_tx`. Before step 7 is applied, the two step 5 bodies fail the same way, and `record_snapshot_v1` also needs `approval_snapshot`.
 
+## Application deploy, then this migration
+
+Ship the application before the packet. `approveApplication` calls `approve_application_checked` with the manager JWT. `PGRST202` and `42883` are the only errors that use the legacy service-role status update and `application.approved` audit insert. Installing the packet first makes live Approve fail: the approval triggers refuse both of those writes. The rehearsal runs `scripts/m2-approve-before.sql` on the baseline, then `scripts/m2-functional-proof.sql` after install. The before script records a successful legacy approve. The proof records `approval_rpc_required` and `approval_audit_rpc_required` for the same service-role writes, then a successful `approve_application_checked`. Each hosted verify query also requires `prosecdef`, the `search_path` proconfig entry, and that `anon` and `authenticated` are not members of the privileged roles. `GRANT authenticated TO anon` leaves `proacl` unchanged and makes that query false.
+
 ## Recommended install order
 
 1. Drizzle objects already live: `application_identity_reviews`, `applications.deleted_at`, `application_waitlist_holds`.

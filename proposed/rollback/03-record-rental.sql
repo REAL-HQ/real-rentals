@@ -3,8 +3,9 @@
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
 --
--- Dropping public.record_existing_rental_tx removes its authenticated
--- EXECUTE grant. REVOKE ALL ON ALL FUNCTIONS IN SCHEMA private FROM
+-- Dropping public.record_existing_rental_tx removes its executor-only
+-- EXECUTE grant. authenticated is not granted that function.
+-- REVOKE ALL ON ALL FUNCTIONS IN SCHEMA private FROM
 -- rr_record_executor, later in this file, removes the step 3 EXECUTE on
 -- private.approval_validate(uuid) and returns that function to the step 0
 -- ACL. Do not GRANT it back.

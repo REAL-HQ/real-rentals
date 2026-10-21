@@ -2,6 +2,11 @@
 -- Existing approval_actor/lock/validate are reused; their provider adapters remain deny-by-default.
 CREATE ROLE rr_record_executor NOLOGIN NOSUPERUSER NOBYPASSRLS;
 -- INSTALLER ONLY: required by PostgreSQL non-superuser ownership transfers.
+-- CREATE on public stays. ALTER ... OWNER TO requires the new owner to hold
+-- CREATE on the object's schema. This step moves public.booking_vehicle_assignments
+-- and public.record_existing_rental_tx to rr_record_executor. CREATE on private
+-- stays for the private tables and sequences that move with them. The preflight
+-- row "public CREATE holders" lists who already holds CREATE on public.
 GRANT rr_record_executor TO postgres WITH SET TRUE;
 GRANT CREATE ON SCHEMA private, public TO rr_record_executor;
 CREATE SEQUENCE private.record_customer_number_seq AS bigint MINVALUE 1 NO CYCLE;
@@ -144,16 +149,15 @@ EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'record_contention_retry_
 END $$;
 ALTER FUNCTION public.record_existing_rental_tx(uuid,uuid,uuid,timestamptz,numeric,numeric,integer,uuid,text) OWNER TO rr_record_executor;
 -- No application JWT client calls this signature. src records through
--- public.record_existing_rental_evidence_v1. The body still calls
--- private.approval_actor() before the approval lock, and that check accepts
--- only the authenticator/authenticated gateway or the evidence-transport
--- issuer. This function is the direct entry those sessions use, including
--- the local manager proof, so authenticated keeps EXECUTE. anon, PUBLIC,
--- and service_role do not. The definer runs as rr_record_executor, and step
--- 0 revoked PUBLIC on approval_validate, so the executor needs that one
--- validator explicitly. The private record helpers stay executor-only.
-REVOKE ALL ON FUNCTION public.record_existing_rental_tx(uuid,uuid,uuid,timestamptz,numeric,numeric,integer,uuid,text) FROM PUBLIC,anon,service_role;
-GRANT EXECUTE ON FUNCTION public.record_existing_rental_tx(uuid,uuid,uuid,timestamptz,numeric,numeric,integer,uuid,text) TO authenticated;
+-- public.record_existing_rental_evidence_v1, which checks the evidence token,
+-- expiry, snapshot freshness, and the authoritative document before the
+-- executor-owned core runs. Leaving EXECUTE for authenticated would let a
+-- manager call this function and skip those checks. anon, PUBLIC,
+-- authenticated, and service_role do not have it. The definer runs as
+-- rr_record_executor, and step 0 revoked PUBLIC on approval_validate, so the
+-- executor needs that one validator explicitly. The private record helpers
+-- stay executor-only.
+REVOKE ALL ON FUNCTION public.record_existing_rental_tx(uuid,uuid,uuid,timestamptz,numeric,numeric,integer,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION private.approval_validate(uuid) TO rr_record_executor;
 -- Privileges for existing tables/helpers MUST be mapped to effective installed RLS/ownership.
 -- This proposal deliberately does not install permissive policies or modify existing owners.

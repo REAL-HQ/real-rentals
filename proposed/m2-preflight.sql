@@ -5,6 +5,9 @@
 -- expected/actual are present or absent. ok is true when they match.
 -- Prerequisites already on a migrations baseline are expected present:
 -- the identity-review table, applications.deleted_at, waitlist holds,
+-- who holds CREATE on schema public (step 4 grants it to rr_record_executor
+-- because ownership of public.booking_vehicle_assignments and
+-- public.record_existing_rental_tx requires it),
 -- storage.objects, storage.objects.name, storage.objects.user_metadata jsonb,
 -- storage.objects.version text, the condition-media bucket, one storage.objects
 -- row per bucket and path, and a postgres role that is superuser or BYPASSRLS.
@@ -85,6 +88,20 @@ SELECT 'postgres bypassrls or superuser' AS check_name, 'present' AS expected, C
     )) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (
       SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'postgres' AND (rolsuper OR rolbypassrls)
     )) = ('present' = 'present')) AS ok
+UNION ALL
+SELECT 'public CREATE holders' AS check_name, 'anon and authenticated absent' AS expected, (
+      SELECT coalesce(string_agg(r.rolname, ',' ORDER BY r.rolname), '')
+      FROM pg_catalog.pg_namespace n
+      JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl, pg_catalog.acldefault('n'::"char", n.nspowner))) a ON true
+      JOIN pg_catalog.pg_roles r ON r.oid = a.grantee
+      WHERE n.nspname = 'public' AND a.privilege_type = 'CREATE'
+    ) AS actual, NOT EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_namespace n
+      JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl, pg_catalog.acldefault('n'::"char", n.nspowner))) a ON true
+      JOIN pg_catalog.pg_roles r ON r.oid = a.grantee
+      WHERE n.nspname = 'public' AND a.privilege_type = 'CREATE' AND r.rolname IN ('anon','authenticated')
+    ) AS ok
 UNION ALL
 SELECT 'storage.buckets condition-media' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'condition-media')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'condition-media')) = ('present' = 'present')) AS ok
 UNION ALL

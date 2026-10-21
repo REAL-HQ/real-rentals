@@ -1,4 +1,9 @@
 -- Local functional proof. One transaction, then ROLLBACK.
+-- rr_evidence_transport exists only for this file. It is not a packet role.
+SELECT 'CREATE ROLE rr_evidence_transport NOLOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rr_evidence_transport')
+\gexec
+-- Local functional proof. One transaction, then ROLLBACK.
 -- License and agreement hashes are extensions.digest of the byte strings below.
 -- No sha256 hex literal is written in this file.
 -- (a) and (b) insert the confirmDocumentUpload column list with no content_sha256.
@@ -501,10 +506,9 @@ UPDATE storage.objects SET version = 'v1'
  WHERE bucket_id = 'driver-docs'
    AND name = '44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
 
--- record_existing_rental_tx stays executable by authenticated: its body is
--- the manager gateway entry. Confirm anon and a bare executor session are
--- not required here. link_replacement_agreement_v1 is executor-only, so the
--- authenticated manager must be denied before any write.
+-- record_existing_rental_tx is executor-only. An authenticated manager must
+-- record through record_existing_rental_evidence_v1. link_replacement_agreement_v1
+-- is executor-only too, so both calls are denied before any write.
 SET LOCAL SESSION AUTHORIZATION authenticator;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims', json_build_object(
@@ -522,6 +526,48 @@ BEGIN
 EXCEPTION WHEN insufficient_privilege THEN
  IF SQLERRM NOT LIKE '%link_replacement_agreement_v1%' THEN RAISE; END IF;
  RAISE NOTICE 'RESULT link replacement permission denied for authenticated';
+END $$;
+
+DO $$
+BEGIN
+ PERFORM public.record_existing_rental_tx(
+  '88888888-8888-4888-8888-888888888888',
+  '44444444-4444-4444-8444-444444444444',
+  '77777777-7777-4777-8777-777777777777',
+  '2026-10-01 15:00:00+00', 250.00, NULL, NULL, NULL, 'seeded existing rental');
+ RAISE EXCEPTION 'authenticated recorded without evidence';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%record_existing_rental_tx%' THEN RAISE; END IF;
+ RAISE NOTICE 'RESULT record tx permission denied for authenticated';
+END $$;
+
+-- The live Approve write, as authenticator to service_role, is the path the
+-- application used before the packet. The triggers refuse it. The manager
+-- RPC below is the path that still works.
+RESET SESSION AUTHORIZATION;
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE service_role;
+DO $$
+BEGIN
+ UPDATE public.applications SET status = 'approved'
+  WHERE id = '44444444-4444-4444-8444-444444444444';
+ RAISE EXCEPTION 'direct approve accepted';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%approval_rpc_required%' THEN RAISE; END IF;
+ RAISE NOTICE 'RESULT direct approve refused %', SQLERRM;
+END $$;
+DO $$
+BEGIN
+ INSERT INTO public.audit_log (actor_user_id, action, entity_type, entity_id, summary)
+ VALUES (
+  '11111111-1111-4111-8111-111111111111',
+  'application.approved', 'application',
+  '44444444-4444-4444-8444-444444444444',
+  'Direct approval audit');
+ RAISE EXCEPTION 'direct approval audit accepted';
+EXCEPTION WHEN insufficient_privilege THEN
+ IF SQLERRM NOT LIKE '%approval_audit_rpc_required%' THEN RAISE; END IF;
+ RAISE NOTICE 'RESULT direct approval audit refused %', SQLERRM;
 END $$;
 
 RESET SESSION AUTHORIZATION;
@@ -543,12 +589,7 @@ BEGIN
   '44444444-4444-4444-8444-444444444444',
   ver,
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','approve_only');
- recorded := public.record_existing_rental_tx(
-  '88888888-8888-4888-8888-888888888888',
-  '44444444-4444-4444-8444-444444444444',
-  '77777777-7777-4777-8777-777777777777',
-  '2026-10-01 15:00:00+00', 250.00, NULL, NULL, NULL, 'seeded existing rental');
- RAISE NOTICE 'RESULT d pass approved=% recorded=%', approved, recorded;
+ RAISE NOTICE 'RESULT d pass approved=%', approved;
 EXCEPTION WHEN OTHERS THEN
  GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
  RAISE NOTICE 'RESULT d fail %', SQLERRM;
@@ -582,6 +623,105 @@ BEGIN
     AND approval_evidence IS NOT NULL AND positive_evidence_v1 IS NULL;
  IF n <> 1 THEN RAISE EXCEPTION 'review shape missing'; END IF;
  RAISE NOTICE 'RESULT e pass review is approval_identity/resolved/verified under the 06b check';
+END $$;
+
+-- Evidence path. The issuer binds the documents and issues the token.
+-- The authenticated manager consumes it. That is the only record call.
+RESET SESSION AUTHORIZATION;
+GRANT rr_evidence_issuer TO rr_evidence_transport;
+GRANT rr_approval_executor TO rr_evidence_transport;
+SET LOCAL SESSION AUTHORIZATION rr_evidence_transport;
+SET LOCAL ROLE rr_evidence_issuer;
+SET LOCAL TIME ZONE 'UTC';
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+SELECT set_config('record.application_id','44444444-4444-4444-8444-444444444444', true);
+SELECT set_config('record.vehicle_id','77777777-7777-4777-8777-777777777777', true);
+
+DO $$
+DECLARE
+ app uuid := '44444444-4444-4444-8444-444444444444';
+ veh uuid := '77777777-7777-4777-8777-777777777777';
+ agr uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ doc_id uuid := '99999999-9999-4999-8999-999999999999';
+ op uuid := '88888888-8888-4888-8888-888888888888';
+ driver uuid := '22222222-2222-4222-8222-222222222222';
+ actor uuid := '11111111-1111-4111-8111-111111111111';
+ started timestamptz := '2026-10-01 15:00:00+00';
+ sha text; path text; expected jsonb; lic jsonb; snap jsonb; req jsonb; verified jsonb; token uuid; g jsonb;
+ doc uuid;
+BEGIN
+ FOREACH doc IN ARRAY ARRAY[
+  '55555555-5555-4555-8555-555555555555'::uuid,
+  '66666666-6666-4666-8666-666666666666'::uuid,
+  doc_id
+ ] LOOP
+  SELECT content_sha256 INTO sha FROM public.documents WHERE id = doc;
+  path := 'immutable-v1/' || doc::text || '/' || sha || '.pdf';
+  SELECT pg_catalog.to_jsonb(d) INTO expected FROM (
+   SELECT id, driver_id, storage_bucket, storage_path, content_sha256, integrity_v1,
+    category, is_current, superseded_by, review_status, reviewed_by, reviewed_at
+   FROM public.documents WHERE id = doc
+  ) d;
+  PERFORM private.bind_document_integrity_v1(doc, expected, sha, path, CASE WHEN doc = doc_id THEN agr ELSE NULL END);
+ END LOOP;
+ PERFORM set_config('role', 'rr_approval_executor', true);
+ lic := private.license_snapshot_v1(app);
+ PERFORM private.verify_license_v1(app, lic);
+ PERFORM set_config('role', 'rr_evidence_issuer', true);
+ snap := private.record_snapshot_v1(app, veh, agr, doc_id);
+ g := snap->'document';
+ req := pg_catalog.jsonb_build_object(
+  'operationId', op, 'applicationId', app, 'vehicleId', veh, 'startedAt', started,
+  'weeklyRate', 250, 'reason', 'seeded existing rental', 'currency', 'usd');
+ verified := pg_catalog.jsonb_build_object(
+  'request', pg_catalog.jsonb_build_object(
+   'actorId', actor, 'operationId', op, 'applicationId', app, 'vehicleId', veh,
+   'startedAt', started, 'weeklyCents', 25000, 'driverId', driver, 'currency', 'usd'),
+  'agreement', pg_catalog.jsonb_build_object(
+   'id', agr, 'documentId', doc_id, 'provenanceId', agr,
+   'signedVersion', g->>'version', 'currentVersion', g->>'version',
+   'signedHash', g->>'sha256', 'currentHash', g->>'sha256',
+   'status', 'signed', 'kind', 'esign', 'verification', 'esign-verified',
+   'applicationId', app, 'driverId', driver, 'vehicleId', veh,
+   'weeklyCents', 25000, 'currency', 'usd', 'effectiveAt', started,
+   'signedAt', '2026-09-30 15:00:00+00'),
+  'subscription', 'null'::jsonb);
+ token := private.issue_record_evidence_v1(req, verified, snap);
+ PERFORM set_config('m2.evidence_token', token::text, true);
+ PERFORM set_config('m2.evidence_req', req::text, true);
+ RAISE NOTICE 'RESULT evidence issued %', token;
+END $$;
+
+RESET SESSION AUTHORIZATION;
+SET LOCAL SESSION AUTHORIZATION authenticator;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims', json_build_object(
+ 'sub','11111111-1111-4111-8111-111111111111',
+ 'session_id','33333333-3333-4333-8333-333333333333',
+ 'role','authenticated',
+ 'exp', extract(epoch FROM clock_timestamp())+3600)::text, true);
+SELECT set_config('record.application_id','44444444-4444-4444-8444-444444444444', true);
+SELECT set_config('record.vehicle_id','77777777-7777-4777-8777-777777777777', true);
+
+DO $$
+DECLARE recorded jsonb; ctx text;
+BEGIN
+ recorded := public.record_existing_rental_evidence_v1(
+  current_setting('m2.evidence_token')::uuid,
+  current_setting('m2.evidence_req')::jsonb);
+ IF recorded->>'status' IS DISTINCT FROM 'recorded' OR recorded->>'recovered' IS DISTINCT FROM 'false' THEN
+  RAISE EXCEPTION 'evidence record result %', recorded;
+ END IF;
+ RAISE NOTICE 'RESULT evidence record pass %', recorded;
+EXCEPTION WHEN OTHERS THEN
+ GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
+ RAISE NOTICE 'RESULT evidence record fail %', SQLERRM;
+ RAISE NOTICE 'RESULT evidence record context %', ctx;
+ RAISE;
 END $$;
 
 -- Real service_role call, the PostgREST shape: session_user authenticator,
@@ -631,3 +771,4 @@ BEGIN
 END $$;
 
 ROLLBACK;
+DROP ROLE IF EXISTS rr_evidence_transport;

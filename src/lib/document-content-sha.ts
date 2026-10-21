@@ -32,6 +32,15 @@ export function resetUploadedContentShaProbe(): void {
   uploadedContentShaMissing = false;
 }
 
+/** Errors writeUploadedContentSha raises when the hash itself cannot be recorded. */
+export function isUploadedContentShaRefusal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message === "Uploaded object missing"
+    || error.message === "Uploaded bytes missing"
+    || error.message === "Uploaded object changed"
+    || error.message === "content_sha256_function_missing";
+}
+
 export function isMissingContentShaFunction(error: { message?: string; code?: string } | null | undefined): boolean {
   if (!error) return false;
   const code = String(error.code ?? "");
