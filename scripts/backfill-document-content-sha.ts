@@ -14,8 +14,9 @@
  * status, including 403 and a 5xx from writeUploadedContentSha's download,
  * is storage_errors and does not abort the run. A download error with no
  * HTTP status and no message is storage_errors, not missing. The writer
- * substitutes "Uploaded bytes missing" when the client sent neither, and
- * that fallback is a storage error. A thrown network error has a message
+ * substitutes "Uploaded object missing" or "Uploaded bytes missing" when
+ * the client sent neither, and both of those messages are storage_errors.
+ * A thrown network error has a message
  * and no HTTP status, and it still aborts the run. The unhashed write path
  * downloads once, inside writeUploadedContentSha.
  * --write exits nonzero when missing, mismatched, or storage_errors is
