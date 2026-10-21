@@ -161,7 +161,7 @@ export function BookingsPanel({
   return (
     <div>
       <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:items-center lg:gap-3">
-        <div className="flex w-full max-lg:min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
+        <div className="flex max-lg:w-full max-lg:min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
