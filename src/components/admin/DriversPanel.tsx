@@ -1,3 +1,10 @@
+import { OnboardingChecklist, OnboardingLoadError, OnboardingReadinessRows } from "./OnboardingChecklist";
+import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
+import {
+  ONBOARDING_CHECKLIST_ENABLED,
+  onboardingCohort,
+  type OnboardingChecklistResult,
+} from "@/lib/onboarding-checklist";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -309,12 +316,15 @@ export function DriversPanel({
   isOwner = false,
   isManager = false,
   canManageWaitlist = false,
+  canViewOnboarding = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
   /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
   isManager?: boolean;
+  /** Owner + Manager (team). The checklist stays unmounted while its flag is false. */
+  canViewOnboarding?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /**
@@ -378,6 +388,8 @@ export function DriversPanel({
    * param is claimed.
    */
   const [contactFilter, setContactFilter] = useState<string>("all");
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingChecklistResult | null>(null);
+  const [onboardingFailed, setOnboardingFailed] = useState(false);
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -652,6 +664,19 @@ export function DriversPanel({
    * blanked or hidden.
    */
   const loadDriverRows = useServerFn(listDriverRows);
+  const loadOnboarding = useServerFn(getOnboardingChecklist);
+  const refreshOnboarding = useCallback(() => {
+    if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
+    void loadOnboarding()
+      .then((result) => {
+        setOnboardingResult(result);
+        setOnboardingFailed(result.failed === true);
+      })
+      .catch(() => setOnboardingFailed(true));
+  }, [loadOnboarding, canViewOnboarding]);
+  useEffect(() => {
+    refreshOnboarding();
+  }, [refreshOnboarding]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -962,9 +987,13 @@ setDocCounts(requiredDocCounts(rows));
         }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
+        onSharedReadinessRefresh={refreshOnboarding}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         isManager={isManager}
+        canViewOnboarding={canViewOnboarding}
+        onboardingResult={onboardingResult}
+        onboardingFailed={onboardingFailed}
       />
       {deleteDialog}
       </>
@@ -1016,6 +1045,9 @@ setDocCounts(requiredDocCounts(rows));
           onClose={() => setShowDeleted(false)}
           onRestored={() => refreshDrivers()}
         />
+      )}
+      {ONBOARDING_CHECKLIST_ENABLED === true && (
+        <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
@@ -1415,11 +1447,15 @@ function DriverDetail({
   onSaved,
   onDelete,
   onScreeningChange,
+  onSharedReadinessRefresh,
   onVaultChange,
   isOwner,
   isManager = false,
   hasActiveRental,
   onRentalStarted,
+  canViewOnboarding = false,
+  onboardingResult = null,
+  onboardingFailed = false,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1428,6 +1464,8 @@ function DriverDetail({
   onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
+  /** Re-reads the shared checklist after a vault or screening edit. No-ops while the flag is off. */
+  onSharedReadinessRefresh?: () => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
   /** Manager and above. The quick review panel is not mounted otherwise. */
@@ -1435,6 +1473,9 @@ function DriverDetail({
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
+  canViewOnboarding?: boolean;
+  onboardingResult?: OnboardingChecklistResult | null;
+  onboardingFailed?: boolean;
 }) {
   const rentalActiveFlag = hasActiveRental;
   const rentalActive = hasActiveRental;
@@ -1467,6 +1508,7 @@ function DriverDetail({
       const row = data as DriverScreeningRow;
       setScreening(row);
       onScreeningChange?.(row);
+      onSharedReadinessRefresh?.();
       toast.success(`Status: ${next.replace(/_/g, " ")}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to advance status");
@@ -1793,6 +1835,15 @@ function DriverDetail({
     return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
   }, [driver, screening, vaultDocs]);
 
+  const sharedDriver =
+    ONBOARDING_CHECKLIST_ENABLED === true &&
+    canViewOnboarding &&
+    onboardingCohort(driver.status) &&
+    onboardingResult &&
+    onboardingResult.failed !== true
+      ? (onboardingResult.drivers.find((row) => row.id === driver.id) ?? null)
+      : null;
+
   const requirements: { ok: boolean; label: string }[] = [
     { ok: screeningDone, label: "Interview Complete" },
     { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
@@ -1871,17 +1922,47 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* The one operational checklist. Replaces the separate Readiness
-          Signals card and Requirements Checklist, which showed the same state twice. */}
+      {/* Flag off: the boolean rows this card already had. Flag on, a manager
+          looking at an approved driver sees the same shared facts as the
+          cohort list, from the read that already finished. Opening this
+          drawer does not start another list read. */}
       <SectionCard
         title="Rental Readiness"
-        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
+        right={
+          <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+            {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver
+              ? `${sharedDriver.steps.filter((step) => step.state === "done").length}/${sharedDriver.steps.length}`
+              : `${reqDone}/${requirements.length}`}
+          </span>
+        }
       >
-        <dl className="space-y-2 text-[12px]">
-          {requirements.map((r) => (
-            <SignalRow key={r.label} label={r.label} ok={r.ok} />
-          ))}
-        </dl>
+        {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver ? (
+          <OnboardingReadinessRows driver={sharedDriver} />
+        ) : (
+          <>
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingFailed ? (
+              <OnboardingLoadError />
+            ) : null}
+            {ONBOARDING_CHECKLIST_ENABLED === true &&
+            canViewOnboarding &&
+            onboardingCohort(driver.status) &&
+            onboardingResult?.failed !== true &&
+            onboardingResult?.truncated === true &&
+            !sharedDriver ? (
+              <p className="mb-2 text-[12px] text-[#55555E]">
+                This Driver Is Past The First 1000. Showing The Original Readiness Rows.
+              </p>
+            ) : null}
+            <dl className="space-y-2 text-[12px]">
+              {requirements.map((r) => (
+                <SignalRow key={r.label} label={r.label} ok={r.ok} />
+              ))}
+            </dl>
+          </>
+        )}
       </SectionCard>
     </div>
   );
@@ -2202,7 +2283,10 @@ function DriverDetail({
                       applicationId={driver.id}
                       docs={vaultDocs}
                       loading={vaultLoading}
-                      onRefresh={refreshVault}
+                      onRefresh={async () => {
+                        await refreshVault();
+                        onSharedReadinessRefresh?.();
+                      }}
                     />
                   </div>
                 </SectionCard>
@@ -2223,6 +2307,7 @@ function DriverDetail({
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
+                    onSharedReadinessRefresh?.();
                   }}
                   onRecordingChange={setHasRecording}
                 />
@@ -2468,6 +2553,7 @@ function DriverDetail({
         onSaved={(next) => {
           setScreening(next);
           onScreeningChange?.(next);
+          onSharedReadinessRefresh?.();
         }}
       />
 
