@@ -14,7 +14,7 @@
 --   3. applications FOR UPDATE NOWAIT
 --   4. rentals FOR UPDATE NOWAIT
 --   5. both vehicles FOR UPDATE NOWAIT, lower uuid first
---   6. agreement and its document FOR SHARE NOWAIT
+--   6. the step 19b evidence row, then the agreement and its document, FOR SHARE NOWAIT
 --   7. identity-review rows FOR SHARE NOWAIT, then the open assignment
 --   8. closure insert, swap operation, replacement assignment
 -- Two swaps cannot deadlock each other: the vehicle locks are sorted.

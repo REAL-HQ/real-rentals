@@ -37,7 +37,8 @@
 -- the transaction has rolled back. Same agreement and rental returns the
 -- stored row with recovered true and does not write a second audit.
 -- Does not set app.rental_tx. No charge, invoice, deposit, or subscription write.
--- Swap step 20 still uses its own column gate. This file does not remove that gate.
+-- Swap step 20 reads this table from private.swap_agreement_evidence.
+-- This file does not replace that function.
 
 CREATE OR REPLACE FUNCTION private.record_agreement_evidence(uuid,uuid,timestamptz,numeric) RETURNS uuid
  LANGUAGE plpgsql SET search_path='' AS $$
