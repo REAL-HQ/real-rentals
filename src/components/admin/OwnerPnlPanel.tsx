@@ -13,7 +13,7 @@ import type { OwnerPnlResponse } from "@/lib/owner-pnl.server";
 
 /**
  * Owner screen for one Eastern Time month. Mounted only while
- * OWNER_PNL_ENABLED is true. CSV is built in the browser.
+ * OWNER_PNL_ENABLED is true. CSV and Print are built in the browser.
  */
 
 function money(cents: number | null): string {
@@ -82,7 +82,8 @@ export function OwnerPnlPanel() {
   ] as const : [];
 
   return (
-    <div className="space-y-5">
+    <div className="owner-pnl space-y-5">
+      <style>{PRINT_CSS}</style>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold">Monthly Owner P&L</h2>
@@ -90,7 +91,7 @@ export function OwnerPnlPanel() {
             Attributed revenue, refunds, and expenses for one Eastern Time month, next to the month before. Deposits stay off the net.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           <input
             type="month"
             aria-label="Month"
@@ -99,6 +100,13 @@ export function OwnerPnlPanel() {
             onChange={(event) => setMonth(event.target.value)}
             className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
           />
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          >
+            Print
+          </button>
           <button
             type="button"
             disabled={!report}
@@ -191,3 +199,10 @@ export function OwnerPnlPanel() {
     </div>
   );
 }
+
+const PRINT_CSS = `@media print {
+  .owner-pnl, .owner-pnl * { color: #000 !important; background: #fff !important; }
+  .owner-pnl table { width: 100%; border-collapse: collapse; }
+  .owner-pnl th, .owner-pnl td { border-bottom: 1px solid #000; padding: 4px 8px 4px 0; }
+  .owner-pnl section, .owner-pnl table { break-inside: avoid; }
+}`;
