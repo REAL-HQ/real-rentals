@@ -160,20 +160,20 @@ export function BookingsPanel({
 
   return (
     <div>
-      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
-        <div className="flex-1 flex flex-wrap items-center gap-2">
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search driver, email, unit, plate, VIN…"
-            aria-label="Search bookings"
-            className="flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white"
-          />
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2">
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search driver, email, unit, plate, VIN…"
+          aria-label="Search bookings"
+          className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm"
+        />
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
           {/* The phase chips ARE the filter, and they count the scope the
               current search covers — not the page, which would change the
               numbers as you paged. */}
           {result && (
-            <span className="inline-flex items-center gap-2" data-testid="booking-phases">
+            <span className="inline-flex shrink-0 items-center gap-2" data-testid="booking-phases">
               {(["active", "completed", "cancelled"] as const).map((p) => {
                 const n = result.counts?.[p] ?? 0;
                 const on = phase === p;
@@ -199,7 +199,7 @@ export function BookingsPanel({
           )}
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
             <SelectTrigger
-              className="h-9 w-[150px] bg-white text-foreground text-sm"
+              className="h-9 w-[150px] shrink-0 bg-white text-foreground text-sm"
               aria-label="Sort"
             >
               <SelectValue placeholder="Sort" />
@@ -217,7 +217,7 @@ export function BookingsPanel({
                 setSearchInput("");
                 setList({ q: "", phase: "all", vehicle: "" });
               }}
-              className="text-sm text-muted-foreground hover:text-foreground px-2"
+              className="shrink-0 whitespace-nowrap px-2 text-sm text-muted-foreground hover:text-foreground"
             >
               Clear
             </button>
@@ -303,8 +303,10 @@ export function BookingsPanel({
               className="rounded-2xl bg-soft p-4 cursor-pointer transition-shadow hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-2">
-                <DriverCell b={b} />
-                <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
+                <div className="min-w-0 flex-1">
+                  <DriverCell b={b} />
+                </div>
+                <StatusPill className="shrink-0" status={b.phase} tone={PHASE_TONE[b.phase]}>
                   {BOOKING_PHASE_LABEL[b.phase]}
                 </StatusPill>
               </div>
@@ -328,7 +330,7 @@ export function BookingsPanel({
       )}
 
       {result && total > 0 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-muted-foreground">
           <span>
             Showing {firstShown}–{lastShown} of {total}
           </span>

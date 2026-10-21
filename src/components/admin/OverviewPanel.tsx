@@ -429,7 +429,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   }, [recentApps, appSort, readinessIndex]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Heading — the floating Weekly Revenue metric that sat here has moved
           into the Revenue card, where it has a range and a comparison. */}
       <div>
@@ -448,8 +448,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           prospect who is still 55% known says so on its face. */}
       {hot.length > 0 && (
         <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Flame className="w-4 h-4 shrink-0 text-[#D03020]" strokeWidth={2} />
             <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
               {hot.length}
@@ -591,7 +591,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             </Link>
           }
         >
-          <div className="grid grid-cols-[auto_1fr] gap-6 items-center">
+          <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6">
             <SegmentedDonut
               total={total}
               segments={[
@@ -616,18 +616,18 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ background: s.color }}
                     />
-                    <span className="text-[#111114] flex-1">{s.label}</span>
-                    <span className="tabular-nums font-medium text-[#111114]">{s.value}</span>
-                    <span className="tabular-nums text-[11px] text-[#9A9AA3] w-9 text-right">
+                    <span className="min-w-0 flex-1 text-[#111114]">{s.label}</span>
+                    <span className="shrink-0 tabular-nums font-medium text-[#111114]">{s.value}</span>
+                    <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-[#9A9AA3]">
                       {pctOf(s.value)}%
                     </span>
                   </li>
                 ))}
               </ul>
               <div className="mt-4">
-                <div className="flex items-baseline justify-between mb-1">
-                  <MicroLabel>Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
-                  <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+                <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <MicroLabel className="min-w-0">Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
+                  <span className="shrink-0 text-[11px] text-[#9A9AA3] tabular-nums">
                     {rented} of {rentable} rentable
                   </span>
                 </div>
@@ -718,35 +718,39 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                     <Link
                       to="/admin"
                       search={{ tab: "drivers", id: a.id }}
-                      className="flex items-center gap-3 px-5 py-3 border-b border-[#F4F4F6] last:border-0 hover:bg-[#FAFAFB] transition-colors"
+                      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#F4F4F6] px-4 py-3 last:border-0 transition-colors hover:bg-[#FAFAFB] sm:px-5"
                     >
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E] shrink-0">
-                        {initials(a.full_name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-medium text-[#111114] truncate flex items-center gap-1.5">
-                          {unread && (
-                            <span
-                              className="h-1.5 w-1.5 rounded-full bg-[#D03020] shrink-0"
-                              title="Not Yet Opened"
-                            />
-                          )}
-                          <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                      <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
+                        <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E]">
+                          {initials(a.full_name)}
                         </div>
-                        <div className="text-[11px] text-[#9A9AA3] mt-0.5 truncate">
-                          {timeAgo(a.created_at)}
-                          {progress ? ` · ${progress}` : ""}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 truncate text-[13px] font-medium text-[#111114]">
+                            {unread && (
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#D03020]"
+                                title="Not Yet Opened"
+                              />
+                            )}
+                            <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-[#9A9AA3]">
+                            {timeAgo(a.created_at)}
+                            {progress ? ` · ${progress}` : ""}
+                          </div>
                         </div>
                       </div>
-                      <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
-                      {(() => {
-                        const r = readinessIndex.get(a.id);
-                        // The old bare score pill lived here. A number on its
-                        // own could not say whether 100 meant a complete
-                        // applicant or two lucky answers, so the state goes in
-                        // its place and the figures stay on the profile.
-                        return r ? <ReadinessStatePill state={r.state} short /> : null;
-                      })()}
+                      <div className="flex flex-wrap items-center gap-1.5 pl-12 sm:pl-0">
+                        <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
+                        {(() => {
+                          const r = readinessIndex.get(a.id);
+                          // The old bare score pill lived here. A number on its
+                          // own could not say whether 100 meant a complete
+                          // applicant or two lucky answers, so the state goes in
+                          // its place and the figures stay on the profile.
+                          return r ? <ReadinessStatePill state={r.state} short /> : null;
+                        })()}
+                      </div>
                     </Link>
                   </li>
                 );
@@ -801,7 +805,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                 : `Last 12 Weeks · ${collectionRate}% Collection Rate${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
             }
             right={
-              <div className="flex items-baseline gap-3">
+              <div className="flex max-w-[11rem] flex-wrap justify-end gap-x-3 gap-y-0.5 sm:max-w-none">
                 <span className="text-[11px] text-[#55555E]">
                   Billed{" "}
                   <span className="tabular-nums font-medium text-[#111114]">{usd(totBilled)}</span>
@@ -1119,12 +1123,12 @@ function RevenueCard({
 
 function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {
   return (
-    <div className="rounded-xl border border-[#EDEDF0] bg-white px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+    <div className="min-w-0 rounded-xl border border-[#EDEDF0] bg-white px-2 py-2.5 sm:px-3">
+      <div className="text-[9px] font-semibold uppercase leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em]">
         {label}
       </div>
       <div
-        className={`mt-1 text-[18px] font-semibold tabular-nums leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
+        className={`mt-1 break-words text-[16px] font-semibold tabular-nums leading-tight sm:text-[18px] ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
       >
         {value}
       </div>
@@ -1147,7 +1151,7 @@ function SegmentedDonut({
   let offset = 0;
   const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}
