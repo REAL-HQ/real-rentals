@@ -83,6 +83,31 @@ const listInput = (d: unknown) =>
     })
     .parse(d);
 
+/** Columns the search box may match. Never taken from the request. */
+const APPLICATION_SEARCH_COLUMNS = ["full_name", "email", "phone"] as const;
+const VEHICLE_SEARCH_COLUMNS = [
+  "unit_number",
+  "license_plate",
+  "vin",
+  "make",
+  "model",
+] as const;
+
+/**
+ * PostgREST `or` of case-insensitive contains-filters.
+ *
+ * `.or()` is one filter expression, and a comma inside it starts another
+ * condition. The term is therefore not interpolated at the call: it has
+ * already been reduced by bookingSearchTargets, and it is reduced again here,
+ * then placed only as the value of an ilike on an allowlisted column. For any
+ * term that function returns, the expression is the same string a direct
+ * interpolation would have built.
+ */
+function bookingIlikeOr(columns: readonly string[], term: string): string {
+  const safe = term.replace(/[,()*%\\"':]/g, "");
+  return columns.map((column) => column + ".ilike.*" + safe + "*").join(",");
+}
+
 export const listBookings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(listInput)
@@ -100,19 +125,16 @@ export const listBookings = createServerFn({ method: "POST" })
     const q = bookingSearchTargets(data.q);
     let searchRentalIds: string[] | null = null;
     if (q) {
-      const like = `*${q}*`;
       const [{ data: apps }, { data: vehs }] = await Promise.all([
         sb
           .from("applications")
           .select("id")
-          .or(`full_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`)
+          .or(bookingIlikeOr(APPLICATION_SEARCH_COLUMNS, q))
           .limit(500),
         sb
           .from("vehicles")
           .select("id")
-          .or(
-            `unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},make.ilike.${like},model.ilike.${like}`,
-          )
+          .or(bookingIlikeOr(VEHICLE_SEARCH_COLUMNS, q))
           .limit(500),
       ]);
       const appIds = (apps ?? []).map((a: { id: string }) => a.id);
