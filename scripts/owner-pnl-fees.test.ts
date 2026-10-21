@@ -168,6 +168,79 @@ describe("monthly owner p&l stripe fees", () => {
   });
 });
 
+describe("stripe fee sign convention", () => {
+  it("turns a negative stripe_fee net and a positive charge fee into one positive cost, then reverses a refund fee once", async () => {
+    const created = OCTOBER.gte + 10;
+    const chargeTxn = {
+      id: "txn_charge",
+      object: "balance_transaction",
+      amount: 10000,
+      fee: 320,
+      net: 9680,
+      currency: "usd",
+      created,
+      type: "charge",
+      status: "available",
+      livemode: true,
+      fee_details: [
+        { amount: 290, currency: "usd", type: "stripe_fee", description: "Stripe processing fees" },
+        { amount: 30, currency: "usd", type: "stripe_fee", description: "Stripe processing fees" },
+      ],
+    };
+    const stripeFee = {
+      id: "txn_stripe_fee",
+      object: "balance_transaction",
+      amount: -150,
+      fee: 0,
+      net: -150,
+      currency: "usd",
+      created: created + 1,
+      type: "stripe_fee",
+      status: "available",
+      livemode: true,
+      fee_details: [],
+    };
+    const refundTxn = {
+      id: "txn_refund",
+      object: "balance_transaction",
+      amount: -10000,
+      fee: -320,
+      net: -9680,
+      currency: "usd",
+      created: created + 2,
+      type: "refund",
+      status: "available",
+      livemode: true,
+      fee_details: [{ amount: -320, currency: "usd", type: "stripe_fee", description: "Stripe processing fees" }],
+    };
+    expect(stripeFee.net).toBeLessThan(0);
+    expect(chargeTxn.fee).toBeGreaterThan(0);
+    expect(refundTxn.fee).toBeLessThan(0);
+    const read = await readOwnerPnlFees({
+      balanceTransactions: { list: async () => ({ data: [chargeTxn, stripeFee, refundTxn], has_more: false }) },
+    }, OCTOBER);
+    expect(read).toEqual({ ok: true, feesCents: 150 });
+    const report = buildOwnerPnl({
+      ...directory(),
+      month: "2026-10",
+      currentCharges: [{ ...charge(), amountCents: 10000 }],
+      previousCharges: [],
+      currentFees: read,
+      previousFees: { ok: true, feesCents: 0 },
+    });
+    expect(report?.current.revenueCents).toBe(10000);
+    expect(report?.current.feesCents).toBe(150);
+    expect(report?.current.netCents).toBe(9850);
+    expect(report?.current.netCents).toBe((report?.current.revenueCents ?? 0) - (report?.current.feesCents ?? 0));
+    expect(report?.current.vehicles[0]?.netCents).toBe(10000);
+    expect(report?.current.netCents).toBe((report?.current.vehicles[0]?.netCents ?? 0) - (report?.current.feesCents ?? 0));
+    const csv = ownerPnlCsv(report!);
+    expect(csv).toContain("Fees,1.50,0.00,1.50");
+    expect(csv).toContain("Net,98.50,0.00,98.50");
+    expect(csv).toContain("Revenue,100.00,0.00,100.00");
+  });
+});
+
 describe("owner pnl fee reader", () => {
   it("returns no cost when the list fails, is truncated, or is not USD", async () => {
     const thrown = await readOwnerPnlFees({
