@@ -47,6 +47,7 @@ const TRIGGERS = [
   { value: "rental_ended", label: "A Rental Ends" },
   { value: "incident_logged", label: "An Incident Is Logged" },
   { value: "payment_past_due", label: "A Payment Goes Past Due" },
+  { value: "document_expiring", label: "A Document Is Expiring" },
 ];
 
 const TOKENS = ["first_name", "full_name", "city", "phone", "email"];

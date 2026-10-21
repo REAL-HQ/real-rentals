@@ -68,6 +68,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
+import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
@@ -573,6 +574,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
       </div>
+      {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

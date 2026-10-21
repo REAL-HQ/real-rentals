@@ -135,6 +135,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { DocumentsExpiringList } from "./DocumentsExpiring";
+import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
+import type { ExpiryScope } from "@/lib/document-expiry";
 
 /**
  * What arrived, at a glance, above the tabs.
@@ -302,7 +305,7 @@ export function DriversPanel({
   canManageWaitlist?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
-  /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
+  /** ?filter= from the address bar. "waitlist" and "documents-expiring" are honoured. */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
@@ -330,12 +333,14 @@ export function DriversPanel({
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
   const setOpenId = useCallback(
-    (id: string | null) =>
+    (id: string | null) => {
+      const keep = urlFilter === "documents-expiring" ? { filter: "documents-expiring" as const } : {};
       void navigate({
         to: "/admin",
-        search: id ? { tab: "drivers", id } : { tab: "drivers" },
-      }),
-    [navigate],
+        search: id ? { tab: "drivers", id, ...keep } : { tab: "drivers", ...keep },
+      });
+    },
+    [navigate, urlFilter],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -357,19 +362,48 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
-  // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
-  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  // Waitlist and Documents Expiring live in the URL so a chip, a bookmark and the back button agree.
+  const urlListFilter =
+    urlFilter === "waitlist" || (urlFilter === "documents-expiring" && canManageWaitlist)
+      ? urlFilter
+      : null;
+  const filter = urlListFilter ?? localFilter;
   const setFilter = useCallback(
     (f: string) => {
-      if (f === "waitlist") {
-        void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
+      if (f === "waitlist" || (f === "documents-expiring" && canManageWaitlist)) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
         return;
       }
       setLocalFilter(f);
-      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+      if (urlFilter === "waitlist" || urlFilter === "documents-expiring") {
+        void navigate({ to: "/admin", search: { tab: "drivers" } });
+      }
     },
-    [navigate, urlFilter],
+    [navigate, urlFilter, canManageWaitlist],
   );
+  const loadExpiring = useServerFn(listExpiringRenterDocuments);
+  const [expiringDocs, setExpiringDocs] = useState<ExpiringRenterDocuments | null>(null);
+  const [expiringFailed, setExpiringFailed] = useState(false);
+  const [expiringScope, setExpiringScope] = useState<ExpiryScope>("approved");
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let live = true;
+    loadExpiring({ data: undefined })
+      .then((result) => {
+        if (!live) return;
+        setExpiringDocs(result);
+        setExpiringScope(result.defaultScope);
+        setExpiringFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setExpiringFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageWaitlist]);
   // Live waitlist size (entries not yet promoted) — never hard-coded.
   const loadWaitlist = useServerFn(listWaitlist);
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
@@ -817,6 +851,16 @@ setDocCounts(requiredDocCounts(rows));
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-documents-expiring-filter
+            onClick={() => setFilter("documents-expiring")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
+          </button>
+        )}
         {/*
          * Contact Status filter. Reads "Contact: All" so it can never be
          * mistaken for the application-status chips beside it.
@@ -851,6 +895,15 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         </div>
       </div>
+      {filter === "documents-expiring" ? (
+        <DocumentsExpiringList
+          result={expiringDocs}
+          failed={expiringFailed}
+          scope={expiringScope}
+          onScope={setExpiringScope}
+          onOpen={(id) => setOpenId(id)}
+        />
+      ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1136,6 +1189,7 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      )}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
